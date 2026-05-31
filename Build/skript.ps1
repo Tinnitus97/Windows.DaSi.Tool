@@ -2,41 +2,88 @@
 #Requires -RunAsAdministrator
 
 #------------------------------------------------------------------------------------
-# DASI-Skript - PowerShell Version (Optimiert & Fixes integriert)
+# Windows DaSi Tool - PowerShell Version (All-in-One Master)
 #------------------------------------------------------------------------------------
 
 # --- Globale Einstellungen und Initialisierung ---
-$Host.UI.RawUI.WindowTitle = "DASI-Skript"
+$Host.UI.RawUI.WindowTitle = "Windows DaSi Tool"
 
-# Lese die Version dynamisch aus der Versionsdatei.
-$script:VersionString = "0.0.0" # Standardwert
-$script:BuildString = "N/A"     # Standardwert
-# NEU: Variable fuer Performance-Modus
+# Lese die Version dynamisch aus der Versionsdatei (Hardcoded für .exe).
+$script:VersionString = "0.6.0" 
+$script:BuildString = "05.03.2026"
 $script:FastMode = $false
-
-try {
-    # Pfad zur Versionsdatei im Unterordner "Versionscheck"
-    $versionFilePath = Join-Path -Path $PSScriptRoot -ChildPath "Versionscheck\Version.txt"
-
-    if (Test-Path -Path $versionFilePath) {
-        # Lese den Inhalt, teile ihn am Trennzeichen '|' und weise die Werte zu.
-        $versionData = (Get-Content -Path $versionFilePath -Raw).Split('|')
-        $script:VersionString = $versionData[0].Trim()
-        $script:BuildString = $versionData[1].Trim()
-    }
-    else {
-        # Fehlermeldung, wenn die Datei nicht existiert.
-        Write-Warning "Die lokale Versionsdatei konnte nicht gefunden werden unter: $versionFilePath"
-    }
-}
-catch {
-    # Faengt Fehler beim Lesen oder Verarbeiten der Datei ab.
-    Write-Host "FEHLER beim Lesen der lokalen Versionsdatei." -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Red
-}
 
 $script:GlobalSourceUserProfileDir = $null
 $script:GlobalBackupBaseDir = $null
+
+# ============================================================================
+#                      Online-Versionscheck für Skript
+# ============================================================================
+function Invoke-UpdateCheck {
+    $versionCheckUrl = "https://raw.githubusercontent.com/Tinnitus97/backup_my_windows_Updater/main/newversion.txt"
+    $projectUrl = "https://github.com/Tinnitus97/backup_my_windows"
+    
+    Write-Host "--------------------------------------------------"
+    Write-Host "Aktuelle Skript-Version: $($script:VersionString) (Build: $($script:BuildString))"
+    Write-Host "Prüfe auf neue Version online..." -NoNewline
+
+    try {
+        # Versucht, die Versionsnummer von der URL herunterzuladen.
+        $onlineVersion = (Invoke-WebRequest -Uri $versionCheckUrl -UseBasicParsing -ErrorAction Stop).Content.Trim()
+
+        Write-Host " Fertig."
+        Write-Host "Online gefundene Version: $onlineVersion"
+
+        # Vergleich der Versionen.
+        if ([version]$onlineVersion -gt [version]$script:VersionString) {
+            Write-Host ""
+            Write-Host "**************************************************" -ForegroundColor Yellow
+            Write-Host "Eine neue Version ($onlineVersion) ist verfügbar!" -ForegroundColor Yellow
+            Write-Host "**************************************************" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "Was möchten Sie tun?" -ForegroundColor Cyan
+            Write-Host " [1] Update-Seite im Browser öffnen (Skript wird danach beendet)"
+            Write-Host " [2] Update ablehnen und die aktuelle Version trotzdem starten"
+            Write-Host " [3] Vorgang komplett abbrechen"
+            Write-Host ""
+            
+            # Benutzer nach seiner Wahl fragen
+            $choice = Read-Host "Ihre Wahl (1, 2 oder 3)"
+            
+            switch ($choice) {
+                '1' {
+                    Write-Host "Öffne die Projektseite: $projectUrl"
+                    Start-Process $projectUrl
+                    Write-Host "Das Skript wird beendet, damit Sie das Update durchführen können."
+                    Start-Sleep -Seconds 3
+                    exit
+                }
+                '2' {
+                    Write-Host "Update wird ignoriert. Starte das Hauptskript..."
+                    Write-Host "--------------------------------------------------"
+                    Write-Host ""
+                }
+                default { # Fängt '3' und alle anderen Eingaben ab
+                    Write-Host "Sie haben eine falsche Taste gedrückt, der Vorgang wird nun abgebrochen."
+                    Start-Sleep -Seconds 3
+                    exit
+                }
+            }
+        } else {
+            Write-Host "Sie verwenden die aktuellste Version des Skripts."
+            Write-Host "--------------------------------------------------"
+            Write-Host ""
+        }
+    }
+    catch {
+        # Dieser Block wird bei einem Fehler ausgeführt (z.B. keine Internetverbindung).
+        Write-Host ""
+        Write-Host "FEHLER: Konnte nicht online nach Updates suchen." -ForegroundColor Red
+        Write-Host "Das Skript wird trotzdem normal fortgesetzt."
+        Write-Host "--------------------------------------------------"
+        Write-Host ""
+    }
+}
 
 # --- Hilfsfunktionen ---
 
@@ -810,11 +857,11 @@ function Show-MainMenu {
         [string]$Build
     )
     Clear-Host
-    $Host.UI.RawUI.WindowTitle = "DASI-Skript - Hauptmenue"
+    $Host.UI.RawUI.WindowTitle = "Windows DaSi Tool - Hauptmenue"
     Write-Host "======================================================================================="
-    Write-Host "                               DASI-Skript - Hauptmenue"
+    Write-Host "                               Windows DaSi Tool - Hauptmenue"
     Write-Host "======================================================================================="
-    Write-Host "DASI-Skript Version $Version von $Build"
+    Write-Host "Windows DaSi Tool Version $Version von $Build"
     Write-Host ""
     Write-Host "Aktuell ausgewaehltes Quell-Benutzerprofil: $($script:GlobalSourceUserProfileDir)"
     Write-Host "Aktuell ausgewaehltes Backup-Basisverzeichnis: $($script:GlobalBackupBaseDir)"
@@ -836,7 +883,7 @@ function Show-MainMenu {
     Write-Host "Geben Sie eine oder mehrere Zahlen/Buchstaben kommagetrennt ein (z.B. 1,2,7) oder 'Q' zum Beenden."
 }
 
-# --- NEU/ANGEPASST: Globale Pfadauswahl mit NTFS-Pruefung fuer Backup-Drive ---
+# --- Globale Pfadauswahl mit NTFS-Pruefung fuer Backup-Drive ---
 function Select-GlobalPaths {
     Write-Host "`n--- Globale Pfadauswahl ---" -ForegroundColor Green
     
@@ -868,7 +915,7 @@ function Select-GlobalPaths {
         Invoke-PauseAndExit
     }
 
-    # NEU: Abfrage fuer Performance-Modus
+    # Abfrage fuer Performance-Modus
     Write-Host ""
     $fastModeChoice = Read-Host "Moechten Sie das detaillierte Logging deaktivieren? (Empfohlen fuer bessere Performance) (J/N)"
     if ($fastModeChoice -eq 'j' -or $fastModeChoice -eq 'J') {
@@ -890,6 +937,9 @@ function Select-GlobalPaths {
 
 
 # --- Skriptablauf ---
+
+# 1. Update-Check vor allem anderen ausfuehren
+Invoke-UpdateCheck
 
 # Globale Pfade einmalig abfragen
 Select-GlobalPaths
