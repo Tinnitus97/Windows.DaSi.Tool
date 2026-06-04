@@ -9,6 +9,7 @@ Dieses Skript ermöglicht die einfache Sicherung und Wiederherstellung von Windo
   - Firefox
   - Edge
   - Chrome
+  - Brave
 - **E-Mail-Client Thunderbird sichern und wiederherstellen**
 - **Liste installierter Programme exportieren und wiederherstellen**
 - **Export und Import von WLAN-Profilen**
