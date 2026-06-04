@@ -9,9 +9,10 @@
 $Host.UI.RawUI.WindowTitle = "Windows DaSi Tool"
 
 # Lese die Version dynamisch aus der Versionsdatei (Hardcoded für .exe).
-$script:VersionString = "0.6.0" 
+$script:VersionString = "0.6.3" 
 $script:BuildString = "05.03.2026"
-$script:FastMode = $false
+# Logging ist standardmäßig AUS (FastMode = $true)
+$script:FastMode = $true
 
 $script:GlobalSourceUserProfileDir = $null
 $script:GlobalBackupBaseDir = $null
@@ -87,7 +88,7 @@ function Invoke-UpdateCheck {
 
 # --- Hilfsfunktionen ---
 
-# Funktion zum Anzeigen eines Ordnerauswahldialogs
+# Funktion zum Anzeigen eines Ordnerauswahldialogs (Modern UI)
 function Select-FolderDialog {
     param (
         [string]$Description
@@ -96,11 +97,17 @@ function Select-FolderDialog {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
         Add-Type -AssemblyName System.Drawing -ErrorAction Stop
 
-        $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-        $dialog.Description = $Description
-        $dialog.ShowNewFolderButton = $true
+        # Wir nutzen den OpenFileDialog für den modernen Look
+        $dialog = New-Object System.Windows.Forms.OpenFileDialog
+        $dialog.Title = $Description
+        $dialog.ValidateNames = $false
+        $dialog.CheckFileExists = $false
+        $dialog.CheckPathExists = $true
+        # Dummy-Dateiname, um die Ordnerauswahl zu erzwingen
+        $dialog.FileName = "Ordner_auswählen" 
+        $dialog.Filter = "Ordner|\."
 
-        # Erstelle ein unsichtbares Besitzer-Formular (owner form)
+        # Erstelle ein unsichtbares Besitzer-Formular (owner form), damit der Dialog im Vordergrund bleibt
         $form = New-Object System.Windows.Forms.Form
         $form.StartPosition = 'CenterScreen'
         $form.Size = [System.Drawing.Size]::new(0, 0)
@@ -116,7 +123,9 @@ function Select-FolderDialog {
         $form.Dispose()
 
         if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-            return [string]$dialog.SelectedPath
+            # Da wir technisch gesehen den Datei-Dialog nutzen, müssen wir den Ordnerpfad aus der Eingabe extrahieren
+            $selectedPath = [System.IO.Path]::GetDirectoryName($dialog.FileName)
+            return [string]$selectedPath
         }
         else {
             return $null
@@ -312,6 +321,7 @@ function Install-App {
             "Firefox" { "Mozilla.Firefox.de" }
             "Thunderbird" { "Mozilla.Thunderbird.de" }
             "Chrome" { "Google.Chrome" }
+            "Brave" { "Brave.Brave" }
             default { $null }
         }
 
@@ -409,7 +419,7 @@ function Backup-UserProfile {
         (Join-Path $userDir "AppData\Local\Temp")
         (Join-Path $userDir "AppData\Local\Microsoft\Windows\INetCache")
         (Join-Path $userDir "AppData\Local\Google\Chrome\User Data\Default\Cache")
-        (Join-Path $userDir "AppData\Local\Microsoft\Edge\User Data\Default\Cache")
+        (Join-Path $userDir "AppData\Local\BraveSoftware\Brave-Browser\User Data\Default\Cache")
     )
 
     # Dynamische Suche nach OneDrive Ordnern
@@ -865,18 +875,19 @@ function Show-MainMenu {
     Write-Host ""
     Write-Host "Aktuell ausgewaehltes Quell-Benutzerprofil: $($script:GlobalSourceUserProfileDir)"
     Write-Host "Aktuell ausgewaehltes Backup-Basisverzeichnis: $($script:GlobalBackupBaseDir)"
-    Write-Host "Aktueller Performance-Modus: $(if($script:FastMode){'Minimales Logging (Aktiv)'}else{'Ausfuehrlich (Inaktiv)'})"
     Write-Host "---------------------------------------------------------------------------------------"
     Write-Host "   [P] Pfade neu auswaehlen (Benutzerprofil und Backup-Basisverzeichnis)"
+    Write-Host "   [L] Logging umschalten     (Aktuell: $(if($script:FastMode){'Minimal / AUS'}else{'Detailliert / AN'}))"
     Write-Host "---------------------------------------------------------------------------------------"
     Write-Host "   --- SICHERN ---                                     --- WIEDERHERSTELLEN ---"
-    Write-Host "   [1] Windows Benutzerprofil sichern                  [8]  Windows Benutzerprofil wiederherstellen"
-    Write-Host "   [2] Firefox-Profil sichern                          [9]  Firefox-Profil wiederherstellen"
-    Write-Host "   [3] Edge-Profil sichern                             [10] Edge-Profil wiederherstellen"
-    Write-Host "   [4] Chrome-Profil sichern                           [11] Chrome-Profil wiederherstellen"
-    Write-Host "   [5] Thunderbird-Profil sichern                      [12] Thunderbird-Profil wiederherstellen"
-    Write-Host "   [6] Liste installierter Programme exportieren       [13] Liste installierter Programme installieren"
-    Write-Host "   [7] WLAN Profile exportieren                        [14] WLAN Profile importieren"
+    Write-Host "   [1] Windows Benutzerprofil sichern                  [9]  Windows Benutzerprofil wiederherstellen"
+    Write-Host "   [2] Firefox-Profil sichern                          [10] Firefox-Profil wiederherstellen"
+    Write-Host "   [3] Edge-Profil sichern                             [11] Edge-Profil wiederherstellen"
+    Write-Host "   [4] Chrome-Profil sichern                           [12] Chrome-Profil wiederherstellen"
+    Write-Host "   [5] Brave-Profil sichern                            [13] Brave-Profil wiederherstellen"
+    Write-Host "   [6] Thunderbird-Profil sichern                      [14] Thunderbird-Profil wiederherstellen"
+    Write-Host "   [7] Liste installierter Programme exportieren       [15] Liste installierter Programme installieren"
+    Write-Host "   [8] WLAN Profile exportieren                        [16] WLAN Profile importieren"
     Write-Host ""
     Write-Host "   [Q] Beenden"
     Write-Host "======================================================================================="
@@ -915,16 +926,7 @@ function Select-GlobalPaths {
         Invoke-PauseAndExit
     }
 
-    # Abfrage fuer Performance-Modus
-    Write-Host ""
-    $fastModeChoice = Read-Host "Moechten Sie das detaillierte Logging deaktivieren? (Empfohlen fuer bessere Performance) (J/N)"
-    if ($fastModeChoice -eq 'j' -or $fastModeChoice -eq 'J') {
-        $script:FastMode = $true
-        Write-Host "[INFO] Performance-Modus AKTIVIERT (Minimales Logging)." -ForegroundColor Cyan
-    } else {
-        $script:FastMode = $false
-        Write-Host "[INFO] Performance-Modus DEAKTIVIERT (Detailliertes Logging)." -ForegroundColor Yellow
-    }
+    # Die Abfrage fuer den Performance-Modus wurde hier entfernt!
 
     $script:GlobalBackupBaseDir = $tempBackupBase
     Write-Host "[INFO] Quell-Benutzerprofil gesetzt auf: $($script:GlobalSourceUserProfileDir)" -ForegroundColor Green
@@ -950,15 +952,27 @@ do {
     $choicesString = Read-Host "Ihre Auswahl"
     $choicesArray = $choicesString.Trim() -split ',' | ForEach-Object { $_.Trim().ToUpper() }
 
+    # Ueberpruefen, ob Beenden gedrueckt wurde
     if ($choicesArray -contains "Q") {
         Write-Host "Skript wird auf Wunsch beendet."
         Start-Sleep -Seconds 2
         exit
     }
     
+    # Ueberpruefen, ob Pfade neu gewaehlt werden sollen
     if ($choicesArray -contains "P") {
         Select-GlobalPaths
         continue 
+    }
+
+    # Ueberpruefen, ob das Logging umgeschaltet werden soll
+    if ($choicesArray -contains "L") {
+        $script:FastMode = -not $script:FastMode
+        Write-Host "`n[INFO] Logging-Modus umgeschaltet! " -ForegroundColor Cyan -NoNewline
+        if ($script:FastMode) { Write-Host "Minimales Logging ist jetzt AKTIVIERT." -ForegroundColor Yellow }
+        else { Write-Host "Detailliertes Logging ist jetzt AKTIVIERT." -ForegroundColor Yellow }
+        Start-Sleep -Seconds 2
+        continue
     }
 
     $validActionChosenOrAttempted = $false
@@ -966,7 +980,8 @@ do {
     $currentChoiceIndex = 0
 
     foreach ($choice in $choicesArray) {
-        if ($choice -eq "P") { continue } 
+        # P, Q und L überspringen wir in der Schleife, da sie schon oben behandelt wurden
+        if ($choice -eq "P" -or $choice -eq "Q" -or $choice -eq "L") { continue } 
 
         $currentChoiceIndex++
         $actionInvokedAndSuccessful = $false
@@ -977,16 +992,18 @@ do {
             "2"  = "Firefox-Profil sichern"
             "3"  = "Edge-Profil sichern"
             "4"  = "Chrome-Profil sichern"
-            "5"  = "Thunderbird-Profil sichern"
-            "6"  = "Installierte Programme exportieren (Winget)"
-            "7"  = "WLAN Profile exportieren"
-            "8"  = "Windows Benutzerprofil wiederherstellen"
-            "9"  = "Firefox-Profil wiederherstellen"
-            "10" = "Edge-Profil wiederherstellen"
-            "11" = "Chrome-Profil wiederherstellen"
-            "12" = "Thunderbird-Profil wiederherstellen"
-            "13" = "Installierte Programme installieren (Winget)"
-            "14" = "WLAN Profile importieren"
+            "5"  = "Brave-Profil sichern"
+            "6"  = "Thunderbird-Profil sichern"
+            "7"  = "Installierte Programme exportieren (Winget)"
+            "8"  = "WLAN Profile exportieren"
+            "9"  = "Windows Benutzerprofil wiederherstellen"
+            "10" = "Firefox-Profil wiederherstellen"
+            "11" = "Edge-Profil wiederherstellen"
+            "12" = "Chrome-Profil wiederherstellen"
+            "13" = "Brave-Profil wiederherstellen"
+            "14" = "Thunderbird-Profil wiederherstellen"
+            "15" = "Installierte Programme installieren (Winget)"
+            "16" = "WLAN Profile importieren"
         }
 
         if ($actionNames.ContainsKey($choice)) {
@@ -1006,17 +1023,19 @@ do {
             "2" { $actionInvokedAndSuccessful = Backup-ApplicationProfile -AppName "Firefox" -ProfilePathInUserDir "AppData\Roaming\Mozilla\Firefox" -ProcessName "firefox" }
             "3" { $actionInvokedAndSuccessful = Backup-ApplicationProfile -AppName "Edge" -ProfilePathInUserDir "AppData\Local\Microsoft\Edge\User Data\Default" -ProcessName "msedge" }
             "4" { $actionInvokedAndSuccessful = Backup-ApplicationProfile -AppName "Chrome" -ProfilePathInUserDir "AppData\Local\Google\Chrome\User Data\Default" -ProcessName "chrome" }
-            "5" { $actionInvokedAndSuccessful = Backup-ApplicationProfile -AppName "Thunderbird" -ProfilePathInUserDir "AppData\Roaming\Thunderbird" -ProcessName "thunderbird" }
-            "6" { $actionInvokedAndSuccessful = Export-WingetPackages }
-            "7" { $actionInvokedAndSuccessful = Export-WlanProfiles }
+            "5" { $actionInvokedAndSuccessful = Backup-ApplicationProfile -AppName "Brave" -ProfilePathInUserDir "AppData\Local\BraveSoftware\Brave-Browser\User Data\Default" -ProcessName "brave" }
+            "6" { $actionInvokedAndSuccessful = Backup-ApplicationProfile -AppName "Thunderbird" -ProfilePathInUserDir "AppData\Roaming\Thunderbird" -ProcessName "thunderbird" }
+            "7" { $actionInvokedAndSuccessful = Export-WingetPackages }
+            "8" { $actionInvokedAndSuccessful = Export-WlanProfiles }
 
-            "8" { $actionInvokedAndSuccessful = Restore-UserProfile }
-            "9" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Firefox" -ProfilePathInUserDir "AppData\Roaming\Mozilla\Firefox" -ProcessName "firefox" }
-            "10" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Edge" -ProfilePathInUserDir "AppData\Local\Microsoft\Edge\User Data\Default" -ProcessName "msedge" }
-            "11" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Chrome" -ProfilePathInUserDir "AppData\Local\Google\Chrome\User Data\Default" -ProcessName "chrome" }
-            "12" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Thunderbird" -ProfilePathInUserDir "AppData\Roaming\Thunderbird" -ProcessName "thunderbird" }
-            "13" { $actionInvokedAndSuccessful = Import-WingetPackages }
-            "14" { $actionInvokedAndSuccessful = Import-WlanProfiles }
+            "9" { $actionInvokedAndSuccessful = Restore-UserProfile }
+            "10" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Firefox" -ProfilePathInUserDir "AppData\Roaming\Mozilla\Firefox" -ProcessName "firefox" }
+            "11" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Edge" -ProfilePathInUserDir "AppData\Local\Microsoft\Edge\User Data\Default" -ProcessName "msedge" }
+            "12" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Chrome" -ProfilePathInUserDir "AppData\Local\Google\Chrome\User Data\Default" -ProcessName "chrome" }
+            "13" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Brave" -ProfilePathInUserDir "AppData\Local\BraveSoftware\Brave-Browser\User Data\Default" -ProcessName "brave" }
+            "14" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Thunderbird" -ProfilePathInUserDir "AppData\Roaming\Thunderbird" -ProcessName "thunderbird" }
+            "15" { $actionInvokedAndSuccessful = Import-WingetPackages }
+            "16" { $actionInvokedAndSuccessful = Import-WlanProfiles }
 
             default {
                 Write-Host "[FEHLER] Ungueltige Auswahl: '$choice'. Diese Auswahl wird uebersprungen." -ForegroundColor Red
