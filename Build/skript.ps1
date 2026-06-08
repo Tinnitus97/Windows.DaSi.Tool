@@ -2,202 +2,507 @@
 #Requires -RunAsAdministrator
 
 #------------------------------------------------------------------------------------
-# Windows DaSi Tool - PowerShell Version (All-in-One Master)
+# Windows DaSi Tool - WPF GUI Version
 #------------------------------------------------------------------------------------
 
-# --- Globale Einstellungen und Initialisierung ---
-$Host.UI.RawUI.WindowTitle = "Windows DaSi Tool"
+Add-Type -AssemblyName PresentationCore, PresentationFramework
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
-# Lese die Version dynamisch aus der Versionsdatei (Hardcoded für .exe).
-$script:VersionString = "0.6.3" 
-$script:BuildString = "05.03.2026"
-# Logging ist standardmäßig AUS (FastMode = $true)
-$script:FastMode = $true
+# Konsole ausblenden
+Add-Type -Name Window -Namespace Console -MemberDefinition '
+[DllImport("Kernel32.dll")]
+public static extern IntPtr GetConsoleWindow();
+[DllImport("user32.dll")]
+public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
+'
+$consolePtr = [Console.Window]::GetConsoleWindow()
+[Console.Window]::ShowWindow($consolePtr, 0) | Out-Null
 
-$script:GlobalSourceUserProfileDir = $null
-$script:GlobalBackupBaseDir = $null
+$script:VersionString = "0.8.0" 
+$script:BuildString = "GUI-Edition"
+$WindowTitle = "Windows DaSi Tool $script:VersionString"
 
-# ============================================================================
-#                      Online-Versionscheck für Skript
-# ============================================================================
-function Invoke-UpdateCheck {
-    $versionCheckUrl = "https://raw.githubusercontent.com/Tinnitus97/backup_my_windows_Updater/main/newversion.txt"
-    $projectUrl = "https://github.com/Tinnitus97/backup_my_windows"
-    
-    Write-Host "--------------------------------------------------"
-    Write-Host "Aktuelle Skript-Version: $($script:VersionString) (Build: $($script:BuildString))"
-    Write-Host "Prüfe auf neue Version online..." -NoNewline
+#----Hilfsfunktionen (Main Thread)----------------------------#
 
+function Test-IsNtfsDrive {
+    param([string]$Path)
     try {
-        # Versucht, die Versionsnummer von der URL herunterzuladen.
-        $onlineVersion = (Invoke-WebRequest -Uri $versionCheckUrl -UseBasicParsing -ErrorAction Stop).Content.Trim()
-
-        Write-Host " Fertig."
-        Write-Host "Online gefundene Version: $onlineVersion"
-
-        # Vergleich der Versionen.
-        if ([version]$onlineVersion -gt [version]$script:VersionString) {
-            Write-Host ""
-            Write-Host "**************************************************" -ForegroundColor Yellow
-            Write-Host "Eine neue Version ($onlineVersion) ist verfügbar!" -ForegroundColor Yellow
-            Write-Host "**************************************************" -ForegroundColor Yellow
-            Write-Host ""
-            Write-Host "Was möchten Sie tun?" -ForegroundColor Cyan
-            Write-Host " [1] Update-Seite im Browser öffnen (Skript wird danach beendet)"
-            Write-Host " [2] Update ablehnen und die aktuelle Version trotzdem starten"
-            Write-Host " [3] Vorgang komplett abbrechen"
-            Write-Host ""
-            
-            # Benutzer nach seiner Wahl fragen
-            $choice = Read-Host "Ihre Wahl (1, 2 oder 3)"
-            
-            switch ($choice) {
-                '1' {
-                    Write-Host "Öffne die Projektseite: $projectUrl"
-                    Start-Process $projectUrl
-                    Write-Host "Das Skript wird beendet, damit Sie das Update durchführen können."
-                    Start-Sleep -Seconds 3
-                    exit
-                }
-                '2' {
-                    Write-Host "Update wird ignoriert. Starte das Hauptskript..."
-                    Write-Host "--------------------------------------------------"
-                    Write-Host ""
-                }
-                default { # Fängt '3' und alle anderen Eingaben ab
-                    Write-Host "Sie haben eine falsche Taste gedrückt, der Vorgang wird nun abgebrochen."
-                    Start-Sleep -Seconds 3
-                    exit
-                }
-            }
-        } else {
-            Write-Host "Sie verwenden die aktuellste Version des Skripts."
-            Write-Host "--------------------------------------------------"
-            Write-Host ""
-        }
+        $driveRoot = [System.IO.Path]::GetPathRoot($Path)
+        if ($driveRoot.StartsWith("\")) { return $true }
+        $driveInfo = [System.IO.DriveInfo]::new($driveRoot)
+        if ($driveInfo.DriveFormat -ine "NTFS") { return $false }
+        return $true
     }
-    catch {
-        # Dieser Block wird bei einem Fehler ausgeführt (z.B. keine Internetverbindung).
-        Write-Host ""
-        Write-Host "FEHLER: Konnte nicht online nach Updates suchen." -ForegroundColor Red
-        Write-Host "Das Skript wird trotzdem normal fortgesetzt."
-        Write-Host "--------------------------------------------------"
-        Write-Host ""
-    }
+    catch { return $false }
 }
 
-# --- Hilfsfunktionen ---
-
-# Funktion zum Anzeigen eines Ordnerauswahldialogs (Modern UI)
 function Select-FolderDialog {
-    param (
-        [string]$Description
-    )
+    param ([string]$Description)
     try {
-        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
-        Add-Type -AssemblyName System.Drawing -ErrorAction Stop
-
-        # Wir nutzen den OpenFileDialog für den modernen Look
         $dialog = New-Object System.Windows.Forms.OpenFileDialog
         $dialog.Title = $Description
         $dialog.ValidateNames = $false
         $dialog.CheckFileExists = $false
         $dialog.CheckPathExists = $true
-        # Dummy-Dateiname, um die Ordnerauswahl zu erzwingen
-        $dialog.FileName = "Ordner_auswählen" 
+        $dialog.FileName = "Ordner_auswaehlen" 
         $dialog.Filter = "Ordner|\."
 
-        # Erstelle ein unsichtbares Besitzer-Formular (owner form), damit der Dialog im Vordergrund bleibt
         $form = New-Object System.Windows.Forms.Form
         $form.StartPosition = 'CenterScreen'
         $form.Size = [System.Drawing.Size]::new(0, 0)
         $form.ShowInTaskbar = $false
         $form.TopMost = $true
-        $form.WindowState = 'Normal'
 
         $null = $form.Show()
-        $null = $form.BringToFront()
-        $null = $form.Focus()
-
         $result = $dialog.ShowDialog($form)
         $form.Dispose()
 
         if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-            # Da wir technisch gesehen den Datei-Dialog nutzen, müssen wir den Ordnerpfad aus der Eingabe extrahieren
-            $selectedPath = [System.IO.Path]::GetDirectoryName($dialog.FileName)
-            return [string]$selectedPath
+            return [System.IO.Path]::GetDirectoryName($dialog.FileName)
         }
-        else {
-            return $null
-        }
-    }
-    catch {
-        Write-Warning "Fehler beim Initialisieren des Ordnerdialogs: $($_.Exception.Message)"
-    }
+    } catch {}
     return $null
 }
 
-# Funktion zum Pausieren und Beenden des Skripts
-function Invoke-PauseAndExit {
-    param(
-        [string]$Message = "[INFO] Aktion abgeschlossen oder Fehler aufgetreten."
-    )
-    Write-Host ""
-    Write-Host $Message -ForegroundColor Yellow
-    Write-Host "Druecken Sie eine beliebige Taste, um das Fenster zu schliessen..." -NoNewline
-    if ($Host.Name -eq "ConsoleHost") {
-        $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") | Out-Null
-    }
-    else {
-        Read-Host
-    }
-    exit
+#----XAML Definition (100% PS2EXE Safe mit XML Entitaeten)---#
+$Xaml = @"
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="$WindowTitle"
+    MinWidth="1000" MinHeight="700"
+    Width="1150" Height="800"
+    WindowStartupLocation="CenterScreen"
+    Background="#1E1E2E"
+    Topmost="False">
+
+    <Window.Resources>
+        <Style x:Key="PathBox" TargetType="TextBox">
+            <Setter Property="Background" Value="#11111B"/>
+            <Setter Property="Foreground" Value="#CDD6F4"/>
+            <Setter Property="BorderBrush" Value="#45475A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="CardToggle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="#2A2A3E"/>
+            <Setter Property="Foreground" Value="#CDD6F4"/>
+            <Setter Property="BorderBrush" Value="#45475A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,10"/>
+            <Setter Property="Margin" Value="4,3"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="CheckMark" Width="16" Height="16" CornerRadius="3" BorderBrush="#6C7086" BorderThickness="1" Background="#11111B" Margin="0,0,10,0">
+                                    <Path x:Name="CheckIcon" Data="M3,8 L6,11 L13,4" Stroke="#A6E3A1" StrokeThickness="2" Visibility="Hidden" Stretch="None" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock Grid.Column="1" Text="{TemplateBinding Content}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#313244"/>
+                                <Setter Property="BorderBrush" Value="#89B4FA"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Background" Value="#313244"/>
+                                <Setter Property="BorderBrush" Value="#A6E3A1"/>
+                                <Setter TargetName="CheckIcon" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="CheckMark" Property="BorderBrush" Value="#A6E3A1"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ActionBtn" TargetType="Button">
+            <Setter Property="Background" Value="#89B4FA"/>
+            <Setter Property="Foreground" Value="#11111B"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="8,10"/>
+            <Setter Property="Margin" Value="4,10,4,4"/>
+            <Setter Property="Height" Value="45"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="5">
+                            <TextBlock Text="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#B4BEFE"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SecondaryBtn" TargetType="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#CDD6F4"/>
+            <Setter Property="BorderBrush" Value="#45475A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="4,3"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5">
+                            <TextBlock Text="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#45475A"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ExitBtn" TargetType="Button" BasedOn="{StaticResource SecondaryBtn}">
+            <Setter Property="Foreground" Value="#F38BA8"/>
+            <Setter Property="BorderBrush" Value="#F38BA8"/>
+        </Style>
+
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#89B4FA"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="4,16,4,4"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="6*"/>
+            <ColumnDefinition Width="4*"/>
+        </Grid.ColumnDefinitions>
+
+        <Grid Grid.Column="0" Margin="0,0,10,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                <TextBlock Style="{StaticResource SectionLabel}" Text="Optionen &amp; Verzeichnisse" Margin="4,0,4,4"/>
+                <UniformGrid Columns="3" Margin="0,0,0,8">
+                    <Button Name="BtnClearPaths" Style="{StaticResource SecondaryBtn}" Content="Pfade leeren"/>
+                    <ToggleButton Name="TgB_Logging" Style="{StaticResource CardToggle}" Content="Logging: Minimal / AUS"/>
+                    <Button Name="BtnExit" Style="{StaticResource ExitBtn}" Content="Beenden"/>
+                </UniformGrid>
+
+                <Grid Margin="4,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="40"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Benutzerprofil:" Foreground="#CDD6F4" VerticalAlignment="Center"/>
+                    <TextBox Name="TbSourcePath" Grid.Column="1" Style="{StaticResource PathBox}" Text="{Binding [2]}"/>
+                    <Button Name="BtnSelSource" Grid.Column="2" Content="..." Margin="4,0,0,0" Background="#313244" Foreground="#CDD6F4" BorderBrush="#45475A"/>
+                </Grid>
+                <Grid Margin="4,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="40"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Backup-Ziel/Quelle:" Foreground="#CDD6F4" VerticalAlignment="Center"/>
+                    <TextBox Name="TbBackupPath" Grid.Column="1" Style="{StaticResource PathBox}" Text="{Binding [3]}"/>
+                    <Button Name="BtnSelBackup" Grid.Column="2" Content="..." Margin="4,0,0,0" Background="#313244" Foreground="#CDD6F4" BorderBrush="#45475A"/>
+                </Grid>
+            </StackPanel>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="SICHERN (Backup)"/>
+                    <UniformGrid Columns="2">
+                        <ToggleButton Name="TgB_User" Style="{StaticResource CardToggle}" Content="Windows Benutzerprofil"/>
+                        <ToggleButton Name="TgB_Firefox" Style="{StaticResource CardToggle}" Content="Firefox-Profil"/>
+                        <ToggleButton Name="TgB_Edge" Style="{StaticResource CardToggle}" Content="Edge-Profil"/>
+                        <ToggleButton Name="TgB_Chrome" Style="{StaticResource CardToggle}" Content="Chrome-Profil"/>
+                        <ToggleButton Name="TgB_Brave" Style="{StaticResource CardToggle}" Content="Brave-Profil"/>
+                        <ToggleButton Name="TgB_Thunderbird" Style="{StaticResource CardToggle}" Content="Thunderbird-Profil"/>
+                        <ToggleButton Name="TgB_Winget" Style="{StaticResource CardToggle}" Content="Programme exportieren (Winget)"/>
+                        <ToggleButton Name="TgB_Wlan" Style="{StaticResource CardToggle}" Content="WLAN Profile exportieren"/>
+                    </UniformGrid>
+
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="WIEDERHERSTELLEN (Restore)"/>
+                    <UniformGrid Columns="2">
+                        <ToggleButton Name="TgR_User" Style="{StaticResource CardToggle}" Content="Windows Benutzerprofil"/>
+                        <ToggleButton Name="TgR_Firefox" Style="{StaticResource CardToggle}" Content="Firefox-Profil"/>
+                        <ToggleButton Name="TgR_Edge" Style="{StaticResource CardToggle}" Content="Edge-Profil"/>
+                        <ToggleButton Name="TgR_Chrome" Style="{StaticResource CardToggle}" Content="Chrome-Profil"/>
+                        <ToggleButton Name="TgR_Brave" Style="{StaticResource CardToggle}" Content="Brave-Profil"/>
+                        <ToggleButton Name="TgR_Thunderbird" Style="{StaticResource CardToggle}" Content="Thunderbird-Profil"/>
+                        <ToggleButton Name="TgR_Winget" Style="{StaticResource CardToggle}" Content="Programme installieren (Winget)"/>
+                        <ToggleButton Name="TgR_Wlan" Style="{StaticResource CardToggle}" Content="WLAN Profile importieren"/>
+                    </UniformGrid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Button Name="BtnExecute" Grid.Row="2" Style="{StaticResource ActionBtn}" Content="Ausgew&#228;hlte Aktionen starten"/>
+        </Grid>
+
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Aktivit&#228;ts-Protokoll" Foreground="#CDD6F4" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8"/>
+            <TextBox Name="TBLog" Grid.Row="1" Background="#11111B" Foreground="#A6E3A1" BorderBrush="#313244" BorderThickness="1" 
+                     FontFamily="Consolas" FontSize="11" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" 
+                     Padding="6" Text="{Binding [0]}" VerticalContentAlignment="Top"/>
+        </Grid>
+    </Grid>
+</Window>
+"@
+
+#----GUI Initialisierung & Binding-----------------------------#
+$Window = [Windows.Markup.XamlReader]::Parse($Xaml)
+[xml]$xmlParsed = $Xaml
+$xmlParsed.SelectNodes("//*[@Name]") | ForEach-Object {
+    Set-Variable -Name $_.Name -Value $Window.FindName($_.Name)
 }
 
-# --- NEU: Funktion zur Pruefung, ob ein Laufwerk NTFS-formatiert ist ---
-function Test-IsNtfsDrive {
-    param(
-        [string]$Path
-    )
-    try {
-        # Stammverzeichnis (Laufwerksbuchstabe) aus dem Pfad extrahieren
-        $driveRoot = [System.IO.Path]::GetPathRoot($Path)
-        
-        # Netzwerkpfade (UNC) ueberspringen, da dort die lokale Abfrage oft nicht funktioniert
-        if ($driveRoot.StartsWith("\")) {
-            Write-Host "[INFO] Netzwerkpfad erkannt. Lokale NTFS-Pruefung wird uebersprungen." -ForegroundColor Cyan
-            return $true
-        }
-        
-        # Laufwerksinformationen abrufen
-        $driveInfo = [System.IO.DriveInfo]::new($driveRoot)
-        
-        # Pruefen, ob das Format "NTFS" ist (Gross-/Kleinschreibung wird ignoriert)
-        if ($driveInfo.DriveFormat -ine "NTFS") {
-            return $false
-        }
-        
-        return $true
-    }
-    catch {
-        Write-Warning "Konnte das Dateisystem fuer '$Path' nicht ermitteln: $($_.Exception.Message)"
-        # Im Zweifel einen Abbruch erzwingen, wenn das Laufwerk gar nicht lesbar ist
-        return $false 
+$DataContext = New-Object System.Collections.ObjectModel.ObservableCollection[Object]
+$State = [pscustomobject]@{}
+
+function FillDataContext ($props) {
+    for ($i = 0; $i -lt $props.Length; $i++) {
+        $DataContext.Add($null)
+        $getter = [scriptblock]::Create("return `$DataContext['$i']")
+        $setter = [scriptblock]::Create("param(`$val) `$DataContext['$i']=`$val")
+        $State | Add-Member -Name $props[$i] -MemberType ScriptProperty -Value $getter -SecondValue $setter
     }
 }
-# ------------------------------------------------------------------------
+FillDataContext @("LogText", "UIEnabled", "SourcePath", "BackupPath")
+$Window.DataContext = $DataContext
 
-# Funktion zur Pruefung und Installation von Anwendungsupdates (Firefox/Thunderbird)
+# Log-Text ohne Umlaute
+$State.LogText = "Warte auf Eingabe...`nBitte waehle zuerst die benoetigten Pfade.`n"
+$State.UIEnabled = $true
+$State.SourcePath = ""
+$State.BackupPath = ""
+
+function Set-Binding {
+    param($Target, $Property, $Index)
+    $Binding = New-Object System.Windows.Data.Binding
+    $Binding.Path = "[$Index]"
+    $Binding.Mode = [System.Windows.Data.BindingMode]::TwoWay
+    [void]$Target.SetBinding($Property, $Binding)
+}
+
+Set-Binding $TBLog ([System.Windows.Controls.TextBox]::TextProperty) 0
+Set-Binding $TbSourcePath ([System.Windows.Controls.TextBox]::TextProperty) 2
+Set-Binding $TbBackupPath ([System.Windows.Controls.TextBox]::TextProperty) 3
+
+$ToggleButtons = @(
+    "TgB_User","TgB_Firefox","TgB_Edge","TgB_Chrome","TgB_Brave","TgB_Thunderbird","TgB_Winget","TgB_Wlan",
+    "TgR_User","TgR_Firefox","TgR_Edge","TgR_Chrome","TgR_Brave","TgR_Thunderbird","TgR_Winget","TgR_Wlan",
+    "BtnSelSource", "BtnSelBackup", "BtnClearPaths", "TgB_Logging", "BtnExecute"
+)
+foreach ($btn in $ToggleButtons) {
+    $ctrl = $Window.FindName($btn)
+    if ($ctrl) { Set-Binding $ctrl ([System.Windows.Controls.Control]::IsEnabledProperty) 1 }
+}
+
+#----Event Handler f�r UI & Pfade-----------------------#
+
+$TgB_Logging.Add_Click({
+    if ($TgB_Logging.IsChecked) { $TgB_Logging.Content = "Logging: Detailliert / AN" } 
+    else { $TgB_Logging.Content = "Logging: Minimal / AUS" }
+})
+
+$BtnClearPaths.Add_Click({
+    $State.SourcePath = ""
+    $State.BackupPath = ""
+    $State.LogText += ">> Pfade wurden geleert.`r`n"
+})
+
+$BtnSelSource.Add_Click({
+    $folder = Select-FolderDialog -Description "Quell-Benutzerprofil auswaehlen (z.B. C:\Users\Name)"
+    if ($folder) { $State.SourcePath = $folder }
+})
+
+$BtnSelBackup.Add_Click({
+    $folder = Select-FolderDialog -Description "Backup Basis-Verzeichnis auswaehlen"
+    if ($folder) {
+        if (Test-IsNtfsDrive -Path $folder) { $State.BackupPath = $folder } 
+        else { [System.Windows.MessageBox]::Show("Das ausgewaehlte Laufwerk ist NICHT mit NTFS formatiert!`nRobocopy benoetigt zwingend NTFS.", "Fehler", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) }
+    }
+})
+
+$Window.Add_Closing({
+    if (-not $State.UIEnabled) {
+        $res = [System.Windows.MessageBox]::Show("Es laeuft gerade eine Aktion!`nSoll diese wirklich hart abgebrochen und das Programm beendet werden?", "Abbruch Bestaetigen", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
+        if ($res -eq 'Yes') {
+            $SyncHash.CancelRequested = $true
+            foreach ($procId in $SyncHash.ActiveProcesses.ToArray()) {
+                Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+            }
+            Stop-Process -Name winget -Force -ErrorAction SilentlyContinue
+        } else {
+            $_.Cancel = $true
+        }
+    }
+})
+
+$BtnExit.Add_Click({ $Window.Close() })
+
+#----Ausf�hrungs-Logik (Runspace / Async) & Prozess-Tracking--#
+$Global:SyncHash = [hashtable]::Synchronized(@{})
+$SyncHash.Window = $Window
+$SyncHash.ActiveProcesses = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
+$SyncHash.CancelRequested = $false
+
+$Jobs = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
+$InitialSessionState = [initialsessionstate]::CreateDefault()
+
+function Start-RunspaceTask {
+    param([scriptblock]$ScriptBlock, [PSObject[]]$ProxyVars)
+    $Runspace = [runspacefactory]::CreateRunspace($InitialSessionState)
+    $Runspace.ApartmentState = 'STA'
+    $Runspace.ThreadOptions = 'ReuseThread'
+    $Runspace.Open()
+    foreach ($Var in $ProxyVars) { $Runspace.SessionStateProxy.SetVariable($Var.Name, $Var.Variable) }
+    $Thread = [powershell]::Create('NewRunspace')
+    $Thread.AddScript($ScriptBlock) | Out-Null
+    $Thread.Runspace = $Runspace
+    [void]$Jobs.Add([psobject]@{ PowerShell = $Thread; Runspace = $Thread.BeginInvoke() })
+}
+
+$JobCleanupScript = {
+    do {
+        foreach ($Job in $Jobs.ToArray()) {
+            if ($Job.Runspace.IsCompleted) {
+                [void]$Job.PowerShell.EndInvoke($Job.Runspace)
+                $Job.PowerShell.Runspace.Close()
+                $Job.PowerShell.Dispose()
+                $Jobs.Remove($Job)
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    } while ($SyncHash.CleanupJobs)
+}
+
+function Run-Async ($scriptBlock) {
+    Start-RunspaceTask $scriptBlock @(
+        [psobject]@{ Name = 'DataContext'; Variable = $DataContext },
+        [psobject]@{ Name = 'State';       Variable = $State       },
+        [psobject]@{ Name = 'SyncHash';    Variable = $SyncHash    }
+    )
+}
+
+# --- Originale Skript-Funktionen f�r den Runspace ---
+$RunspaceFunctionsCode = @'
+
+function Write-Log ($Text) { 
+    $State.LogText += "$Text`r`n" 
+    if ($State.LogText.Length -gt 100000) {
+        $State.LogText = "... [LOG GEKUERZT, UM ABSTURZ ZU VERHINDERN] ...`r`n" + $State.LogText.Substring($State.LogText.Length - 80000)
+    }
+}
+
+function Invoke-RobocopySafe ($Source, $Dest, $ExtraArgs) {
+    if ($SyncHash.CancelRequested) { return 999 }
+
+    $argString = "`"$Source`" `"$Dest`" $($ExtraArgs -join ' ')"
+    Write-Log "Robocopy Befehl: robocopy $argString"
+    
+    $pInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $pInfo.FileName = "robocopy.exe"
+    $pInfo.Arguments = $argString
+    $pInfo.RedirectStandardOutput = $true
+    $pInfo.UseShellExecute = $false
+    $pInfo.CreateNoWindow = $true
+    $pInfo.StandardOutputEncoding = [System.Console]::OutputEncoding
+
+    $p = New-Object System.Diagnostics.Process
+    $p.StartInfo = $pInfo
+    $p.Start() | Out-Null
+    
+    [void]$SyncHash.ActiveProcesses.Add($p.Id)
+
+    $buffer = New-Object System.Text.StringBuilder
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+    while (-not $p.HasExited) {
+        while ($p.StandardOutput.Peek() -gt -1) {
+            $line = $p.StandardOutput.ReadLine()
+            if (-not [string]::IsNullOrWhiteSpace($line)) {
+                [void]$buffer.AppendLine($line)
+            }
+        }
+        
+        if ($buffer.Length -gt 0 -and $sw.ElapsedMilliseconds -gt 500) {
+            $State.LogText += $buffer.ToString()
+            $buffer.Clear()
+            if ($State.LogText.Length -gt 100000) {
+                $State.LogText = "... [LOG GEKUERZT] ...`r`n" + $State.LogText.Substring($State.LogText.Length - 80000)
+            }
+            $sw.Restart()
+        }
+
+        if ($SyncHash.CancelRequested) { 
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            break 
+        }
+        Start-Sleep -Milliseconds 100
+    }
+
+    if (-not $p.StandardOutput.EndOfStream) {
+        $rest = $p.StandardOutput.ReadToEnd()
+        if (-not [string]::IsNullOrWhiteSpace($rest)) {
+            [void]$buffer.Append($rest)
+        }
+    }
+    if ($buffer.Length -gt 0) {
+        $State.LogText += $buffer.ToString()
+    }
+
+    [void]$SyncHash.ActiveProcesses.Remove($p.Id)
+    return $p.ExitCode
+}
+
 function Invoke-AppUpdateCheckAndInstall {
-    param(
-        [string]$AppName,
-        [string]$ExeName # z.B. "firefox.exe" oder "thunderbird.exe"
-    )
+    param([string]$AppName, [string]$ExeName)
+    if ($SyncHash.CancelRequested) { return }
 
-    Write-Host "`n--------------------------------------------------------------------------------------------------------------"
-    Write-Host "[INFO] Pruefe auf Updates fuer $AppName..."
-
-    # 1. Installierte Version aus der Registry holen
+    Write-Log "[INFO] Pruefe auf Updates fuer $AppName..."
     $installedVersion = $null
     $exePath = $null
     try {
@@ -206,117 +511,62 @@ function Invoke-AppUpdateCheckAndInstall {
             $exePath = $appPathEntry.'(Default)'
             if (Test-Path $exePath) {
                 $installedVersionString = (Get-Item $exePath).VersionInfo.ProductVersion
-                # Version-String wie "115.0.3 (64-bit)" behandeln
                 $installedVersion = [version]($installedVersionString.Split(' ')[0])
-                Write-Host "[INFO] Installierte $AppName Version: $installedVersion"
+                Write-Log "[INFO] Installierte $AppName Version: $installedVersion"
             }
+        } else {
+            Write-Log "[WARNUNG] $AppName scheint nicht installiert zu sein. Update-Pruefung uebersprungen."
+            return 
         }
-        else {
-            Write-Host "[WARNUNG] $AppName scheint nicht installiert zu sein oder wurde im Registrierungspfad nicht gefunden. Update-Pruefung wird uebersprungen."
-            return # Funktion beenden, wenn nicht gefunden
-        }
-    }
-    catch {
-        Write-Warning "Konnte installierte Version von $AppName nicht ermitteln: $($_.Exception.Message). Update-Pruefung wird uebersprungen."
-        return
-    }
+    } catch { return }
 
-    # 2. Neueste Version von Mozilla abrufen
     $latestVersion = $null
     $productIdentifier = $AppName.ToLower()
     $apiUrl = "https://product-details.mozilla.org/1.0/${productIdentifier}_versions.json"
     try {
         $versionInfo = Invoke-RestMethod -Uri $apiUrl -UseBasicParsing
-        if ($productIdentifier -eq "firefox") {
-            $latestVersionString = $versionInfo.LATEST_FIREFOX_VERSION
-        }
-        else {
-            # thunderbird
-            $latestVersionString = $versionInfo.LATEST_THUNDERBIRD_VERSION
-        }
+        if ($productIdentifier -eq "firefox") { $latestVersionString = $versionInfo.LATEST_FIREFOX_VERSION }
+        else { $latestVersionString = $versionInfo.LATEST_THUNDERBIRD_VERSION }
         $latestVersion = [version]$latestVersionString
-        Write-Host "[INFO] Neueste verfuegbare $AppName Version: $latestVersion"
-    }
-    catch {
-        Write-Warning "Konnte neueste Version von $AppName nicht von Mozilla abrufen: $($_.Exception.Message). Update-Pruefung wird uebersprungen."
-        return
-    }
+        Write-Log "[INFO] Neueste verfuegbare $AppName Version: $latestVersion"
+    } catch { return }
 
-    # 3. Vergleichen und bei Bedarf aktualisieren
     if ($latestVersion -gt $installedVersion) {
-        Write-Host "[AKTION] Eine neuere Version von $AppName ($latestVersion) ist verfuegbar. Update wird durchgefuehrt." -ForegroundColor Yellow
-        
-        # Anwendung vor dem Update schließen
+        Write-Log "[AKTION] Update fuer $AppName wird durchgefuehrt."
         $processName = $ExeName.Replace(".exe", "")
-        Write-Host "[INFO] Der $AppName ($processName) wird nun beendet (falls er laeuft)..."
         Get-Process $processName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 3
 
-        # 4. Herunterladen
         $downloadUrl = "https://download.mozilla.org/?product=${productIdentifier}-latest-ssl&os=win64&lang=de"
         $installerPath = Join-Path $env:TEMP "${productIdentifier}-installer.exe"
         
         try {
-            Write-Host "[INFO] Lade die neueste Version von $AppName herunter..."
+            Write-Log "[INFO] Lade Installer herunter..."
             Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
-            Write-Host "[ERFOLG] Download abgeschlossen." -ForegroundColor Green
-        }
-        catch {
-            Write-Host "[FEHLER] Download des $AppName Installers fehlgeschlagen: $($_.Exception.Message)" -ForegroundColor Red
-            if (Test-Path $installerPath) { Remove-Item $installerPath -Force }
-            return
-        }
+            Write-Log "[INFO] Starte stille Installation..."
+            
+            $p = Start-Process -FilePath $installerPath -ArgumentList "-ms" -Wait:$false -PassThru
+            [void]$SyncHash.ActiveProcesses.Add($p.Id)
+            $p.WaitForExit()
+            [void]$SyncHash.ActiveProcesses.Remove($p.Id)
 
-        # 5. Stille Installation
-        try {
-            Write-Host "[INFO] Starte die stille Installation von $AppName. Bitte warten..."
-            Start-Process -FilePath $installerPath -ArgumentList "-ms" -Wait -ErrorAction Stop
-            Write-Host "[ERFOLG] $AppName wurde erfolgreich aktualisiert." -ForegroundColor Green
-        }
-        catch {
-            Write-Host "[FEHLER] Die Installation von $AppName ist fehlgeschlagen: $($_.Exception.Message)" -ForegroundColor Red
-        }
-        finally {
+            Write-Log "[ERFOLG] $AppName wurde erfolgreich aktualisiert."
+        } catch {
+            Write-Log "[FEHLER] Update von $AppName fehlgeschlagen."
+        } finally {
             if (Test-Path $installerPath) { Remove-Item $installerPath -Force }
         }
-        
-    }
-    else {
-        Write-Host "[INFO] $AppName ist bereits auf der neuesten Version." -ForegroundColor Green
-    }
-    Write-Host "--------------------------------------------------------------------------------------------------------------`n"
+    } else { Write-Log "[INFO] $AppName ist bereits aktuell." }
 }
 
-# Funktion, die sicherstellt, dass eine App installiert ist
 function Install-App {
-    param (
-        [string]$AppName,
-        [string]$ExeName
-    )
-    
-    Write-Host "`n--------------------------------------------------------------------------------------------------------------"
-    Write-Host "[INFO] Pruefe, ob $AppName installiert ist..."
-    
-    # Pruefen, ob der App Path in der Registry existiert
+    param ([string]$AppName, [string]$ExeName)
+    if ($SyncHash.CancelRequested) { return }
+
+    Write-Log "[INFO] Pruefe, ob $AppName installiert ist..."
     $appPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$ExeName"
     if (-not (Test-Path $appPath)) {
-        Write-Host "[WARNUNG] $AppName scheint nicht installiert zu sein." -ForegroundColor Yellow
-        
-        # Sonderfall fuer Edge
-        if ($AppName -eq "Edge") {
-            Write-Host "[INFO] Microsoft Edge ist eine Kernkomponente von Windows und sollte vorhanden sein. Installation wird uebersprungen."
-            Write-Host "--------------------------------------------------------------------------------------------------------------`n"
-            return
-        }
-
-        $confirmation = Read-Host "Soll versucht werden, $AppName jetzt zu installieren? (J/N)"
-        if ($confirmation -ne 'j' -and $confirmation -ne 'J') {
-            Write-Host "[INFO] Installation uebersprungen. Die Wiederherstellung des Profils koennte fehlschlagen."
-            Write-Host "--------------------------------------------------------------------------------------------------------------`n"
-            return # Funktion verlassen
-        }
-
-        # Winget-ID fuer deutsche Versionen verwenden
+        if ($AppName -eq "Edge") { return }
         $wingetId = switch ($AppName) {
             "Firefox" { "Mozilla.Firefox.de" }
             "Thunderbird" { "Mozilla.Thunderbird.de" }
@@ -324,759 +574,244 @@ function Install-App {
             "Brave" { "Brave.Brave" }
             default { $null }
         }
-
-        if (-not $wingetId) {
-            Write-Host "[FEHLER] Keine Winget-ID fuer '$AppName' definiert. Installation kann nicht durchgefuehrt werden." -ForegroundColor Red
-            return
+        if ($wingetId) {
+            Write-Log "[INFO] Versuche, $AppName via Winget zu installieren..."
+            winget install --id $wingetId -e --accept-package-agreements --accept-source-agreements | Out-Null
+            Write-Log "[INFO] Winget-Installation abgeschlossen."
         }
-
-        # Installation mit Winget
-        try {
-            Write-Host "[INFO] Versuche, $AppName (ID: $wingetId) mit Winget zu installieren..."
-            winget install --id $wingetId -e --accept-package-agreements --accept-source-agreements
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "[ERFOLG] $AppName wurde erfolgreich installiert." -ForegroundColor Green
-            }
-            else {
-                Write-Host "[FEHLER] Winget-Installation fehlgeschlagen mit Fehlercode: $LASTEXITCODE" -ForegroundColor Red
-            }
-        }
-        catch {
-            Write-Host "[FEHLER] Fehler bei der Ausfuehrung von Winget: $($_.Exception.Message)" -ForegroundColor Red
-        }
-
-    }
-    else {
-        # App ist bereits installiert.
-        Write-Host "[INFO] $AppName ist bereits installiert. Pruefung abgeschlossen."
-    }
-    Write-Host "--------------------------------------------------------------------------------------------------------------`n"
+    } else { Write-Log "[INFO] $AppName ist bereits installiert." }
 }
 
-
-# --- Kernfunktionen (Aktionen) ---
-
-# 1. Windows Benutzerprofil sichern
 function Backup-UserProfile {
-    Write-Host "`n=============================================================================================================="
-    Write-Host "                Windows Benutzerprofil sichern"
-    Write-Host "=============================================================================================================="
-    Write-Host ""
-    
-    if (-not $script:GlobalSourceUserProfileDir -or -not $script:GlobalBackupBaseDir) {
-        Write-Host "[FEHLER] Globale Pfade fuer Benutzerprofil und Backup-Basisverzeichnis sind nicht gesetzt. Aktion uebersprungen." -ForegroundColor Red
-        return $false
-    }
-    $userDir = $script:GlobalSourceUserProfileDir
-    $destParentDir = $script:GlobalBackupBaseDir
+    $userDir = $State.SourcePath
+    $destParentDir = $State.BackupPath
+    $backupTargetDir = Join-Path $destParentDir "Benutzerprofil"
 
-    Write-Host "---------Die Sicherung des kompletten Benutzerprofils von '$userDir' wird ausgefuehrt---------" -ForegroundColor Cyan
-    Write-Host "---------Ziel-Basisverzeichnis: '$destParentDir' ---------" -ForegroundColor Cyan
-
-    # Pruefen, ob Zielpfad im Benutzerverzeichnis liegt
-    try {
-        $fullUserDir = (Get-Item -LiteralPath $userDir -ErrorAction Stop).FullName
-        $fullDestParentDir = (Get-Item -LiteralPath $destParentDir -ErrorAction Stop).FullName
-        $backupTargetDir = Join-Path $fullDestParentDir "Benutzerprofil"
-
-        if ($backupTargetDir.StartsWith($fullUserDir, [System.StringComparison]::OrdinalIgnoreCase)) {
-            Write-Host "[FEHLER] Das Backup-Zielverzeichnis '$backupTargetDir' liegt im zu sichernden Benutzerverzeichnis '$fullUserDir'. Sicherung wird abgebrochen..." -ForegroundColor Red
-            return $false
-        }
-        else {
-            Write-Host "[INFO] Das Backup-Zielverzeichnis '$backupTargetDir' liegt NICHT im Benutzerverzeichnis. Sicherung wird fortgesetzt..."
-        }
-    }
-    catch {
-        Write-Host "[FEHLER] Fehler beim ueberpruefen der Pfade: $($_.Exception.Message)" -ForegroundColor Red
-        return $false
+    if ($backupTargetDir.StartsWith($userDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-Log "[FEHLER] Ziel liegt im Quellverzeichnis. Abbruch."
+        return
     }
 
     $excludedDirs = @(
-        (Join-Path $userDir "AppData")
-        (Join-Path $userDir "Anwendungsdaten") 
-        (Join-Path $userDir "Application Data") 
-        (Join-Path $userDir "Cookies")
-        (Join-Path $userDir "Links") 
-        (Join-Path $userDir "Favorites") 
-        (Join-Path $userDir "Local Settings") 
-        (Join-Path $userDir "My Documents") 
-        (Join-Path $userDir "NetHood") 
-        (Join-Path $userDir "PrintHood") 
-        (Join-Path $userDir "Recent") 
-        (Join-Path $userDir "Templates") 
-        (Join-Path $userDir "Start Menu") 
-        (Join-Path $userDir "Druckumgebung") 
-        (Join-Path $userDir "Netzwerkumgebung") 
-        (Join-Path $userDir "SendTo") 
-        (Join-Path $userDir "Vorlagen") 
-        (Join-Path $userDir "Lokale Einstellungen") 
-        (Join-Path $userDir "Eigene Dateien") 
-        (Join-Path $userDir "Dropbox")
-        (Join-Path $userDir "HiDrive")
-        (Join-Path $userDir "Google Drive")
-        (Join-Path $userDir "iCloudDrive")
-        (Join-Path $userDir "AppData\Local\Temp")
-        (Join-Path $userDir "AppData\Local\Microsoft\Windows\INetCache")
-        (Join-Path $userDir "AppData\Local\Google\Chrome\User Data\Default\Cache")
+        (Join-Path $userDir "AppData"), (Join-Path $userDir "Anwendungsdaten"), (Join-Path $userDir "Application Data"),
+        (Join-Path $userDir "Cookies"), (Join-Path $userDir "Links"), (Join-Path $userDir "Favorites"),
+        (Join-Path $userDir "Local Settings"), (Join-Path $userDir "My Documents"), (Join-Path $userDir "NetHood"),
+        (Join-Path $userDir "PrintHood"), (Join-Path $userDir "Recent"), (Join-Path $userDir "Templates"),
+        (Join-Path $userDir "Start Menu"), (Join-Path $userDir "Druckumgebung"), (Join-Path $userDir "Netzwerkumgebung"),
+        (Join-Path $userDir "SendTo"), (Join-Path $userDir "Vorlagen"), (Join-Path $userDir "Lokale Einstellungen"),
+        (Join-Path $userDir "Eigene Dateien"), (Join-Path $userDir "Dropbox"), (Join-Path $userDir "HiDrive"),
+        (Join-Path $userDir "Google Drive"), (Join-Path $userDir "iCloudDrive"), (Join-Path $userDir "AppData\Local\Temp"),
+        (Join-Path $userDir "AppData\Local\Microsoft\Windows\INetCache"), (Join-Path $userDir "AppData\Local\Google\Chrome\User Data\Default\Cache"),
         (Join-Path $userDir "AppData\Local\BraveSoftware\Brave-Browser\User Data\Default\Cache")
     )
-
-    # Dynamische Suche nach OneDrive Ordnern
     $oneDriveFolders = Get-ChildItem -Path $userDir -Filter "OneDrive*" -Directory -ErrorAction SilentlyContinue
-    if ($oneDriveFolders) {
-        foreach ($folder in $oneDriveFolders) {
-            Write-Host "[INFO] Fuege OneDrive-Ordner zum Ausschluss hinzu: $($folder.FullName)"
-            $excludedDirs += $folder.FullName
-        }
-    }
+    if ($oneDriveFolders) { foreach ($folder in $oneDriveFolders) { $excludedDirs += $folder.FullName } }
 
-    $robocopyArgs = @(
-        "`"$userDir`"",
-        "`"$backupTargetDir`"",
-        "/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XA:SH", "/ETA"
-    )
-    # Performance-Optimierung
-    if ($script:FastMode) {
-        $robocopyArgs += "/NP", "/NFL", "/NDL"
-    }
-
+    $robocopyArgs = @("/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XA:SH", "/NP")
+    if ($SyncHash.FastMode) { $robocopyArgs += "/NFL", "/NDL" }
+    
     foreach ($exDir in $excludedDirs) {
-        if (Test-Path $exDir) {
-            $robocopyArgs += "/XD", "`"$exDir`""
-        }
-    }
-    
-    Write-Host "[INFO] Starte Robocopy fuer Benutzerprofil-Sicherung. Dies kann einige Zeit dauern..."
-    Write-Host "Robocopy Befehl: robocopy $($robocopyArgs -join ' ')"
-    & robocopy @robocopyArgs 2>&1 | Out-Host
-
-    if ($LASTEXITCODE -lt 8) {
-        Write-Host "[ERFOLG] Benutzerprofil wurde erfolgreich gesichert nach '$backupTargetDir'." -ForegroundColor Green
-    }
-    else {
-        Write-Host "[FEHLER] Fehler beim Sichern des Benutzerprofils. Robocopy Fehlercode: $LASTEXITCODE" -ForegroundColor Red
-        return $false
+        if (Test-Path $exDir) { $robocopyArgs += "/XD", "`"$exDir`"" }
     }
 
-    Write-Host "---------Die Sicherung des kompletten Benutzerprofils wurde ausgefuehrt---------" -ForegroundColor Cyan
-    return $true
+    Write-Log "[INFO] Starte Backup Benutzerprofil..."
+    $exitCode = Invoke-RobocopySafe -Source $userDir -Dest $backupTargetDir -ExtraArgs $robocopyArgs
+    if ($SyncHash.CancelRequested) { return }
+    if ($exitCode -lt 8) { Write-Log "[ERFOLG] Benutzerprofil gesichert." } else { Write-Log "[FEHLER] Robocopy Fehlercode: $exitCode" }
 }
 
-# 7. WLAN Profile exportieren
-function Export-WlanProfiles {
-    Write-Host "`n=============================================================================================================="
-    Write-Host "                WLAN Profile exportieren"
-    Write-Host "=============================================================================================================="
-    Write-Host ""
-    
-    if (-not $script:GlobalBackupBaseDir) {
-        Write-Host "[FEHLER] Globales Backup-Basisverzeichnis ist nicht gesetzt. Aktion uebersprungen." -ForegroundColor Red
-        return $false
-    }
-    
-    $destDir = Join-Path $script:GlobalBackupBaseDir "WLAN-Profile"
-    
-    # Ordner erstellen, falls nicht vorhanden
-    if (-not (Test-Path $destDir)) {
-        try {
-            New-Item -ItemType Directory -Path $destDir -Force -ErrorAction Stop | Out-Null
-        }
-        catch {
-            Write-Host "[FEHLER] Konnte Verzeichnis '$destDir' nicht erstellen: $($_.Exception.Message)" -ForegroundColor Red
-            return $false
-        }
-    }
-
-    Write-Host "---------Exportiere WLAN Profile nach '$destDir'---------" -ForegroundColor Cyan
-    
-    try {
-        Write-Host "[INFO] Fuehre 'netsh wlan export profile' aus..."
-        $output = netsh wlan export profile folder="$destDir" key=clear
-        
-        $xmlFiles = Get-ChildItem -Path $destDir -Filter "*.xml"
-        if ($xmlFiles.Count -gt 0) {
-            Write-Host "[ERFOLG] Es wurden $($xmlFiles.Count) WLAN-Profile erfolgreich exportiert." -ForegroundColor Green
-        }
-        else {
-            Write-Host "[WARNUNG] Es wurden keine WLAN-Profile gefunden oder exportiert." -ForegroundColor Yellow
-        }
-    }
-    catch {
-        Write-Host "[FEHLER] Fehler beim Exportieren der WLAN Profile: $_" -ForegroundColor Red
-        return $false
-    }
-    
-    Write-Host "---------WLAN Profile Export abgeschlossen---------" -ForegroundColor Cyan
-    return $true
-}
-
-# 14. WLAN Profile importieren
-function Import-WlanProfiles {
-    Write-Host "`n=============================================================================================================="
-    Write-Host "                WLAN Profile importieren"
-    Write-Host "=============================================================================================================="
-    Write-Host ""
-    
-    if (-not $script:GlobalBackupBaseDir) {
-        Write-Host "[FEHLER] Globales Backup-Basisverzeichnis ist nicht gesetzt. Aktion uebersprungen." -ForegroundColor Red
-        return $false
-    }
-
-    $srcDir = Join-Path $script:GlobalBackupBaseDir "WLAN-Profile"
-    
-    if (-not (Test-Path $srcDir)) {
-        Write-Host "[FEHLER] Der Ordner '$srcDir' wurde nicht gefunden." -ForegroundColor Red
-        return $false
-    }
-
-    Write-Host "---------Importiere WLAN Profile aus '$srcDir'---------" -ForegroundColor Cyan
-    
-    $xmlFiles = Get-ChildItem -Path $srcDir -Filter "*.xml"
-    
-    if ($xmlFiles.Count -eq 0) {
-        Write-Host "[WARNUNG] Keine XML-Dateien im Ordner gefunden." -ForegroundColor Yellow
-        return $false
-    }
-
-    foreach ($file in $xmlFiles) {
-        try {
-            Write-Host "[INFO] Importiere Profil: $($file.Name)..."
-            netsh wlan add profile filename="$($file.FullName)"
-        }
-        catch {
-            Write-Host "[FEHLER] Konnte $($file.Name) nicht importieren: $_" -ForegroundColor Red
-        }
-    }
-
-    Write-Host "---------WLAN Profile Import abgeschlossen---------" -ForegroundColor Cyan
-    return $true
-}
-
-# 8. Windows Benutzerprofil wiederherstellen
 function Restore-UserProfile {
-    Write-Host "`n=============================================================================================================="
-    Write-Host "                Windows Benutzerprofil wiederherstellen"
-    Write-Host "=============================================================================================================="
-    Write-Host ""
+    $destDir = $State.SourcePath
+    $backupSourceDir = Join-Path $State.BackupPath "Benutzerprofil"
+    if (-not (Test-Path $backupSourceDir)) { Write-Log "[FEHLER] Backup-Ordner nicht gefunden."; return }
 
-    if (-not $script:GlobalSourceUserProfileDir -or -not $script:GlobalBackupBaseDir) {
-        Write-Host "[FEHLER] Globale Pfade fuer Benutzerprofil und Backup-Basisverzeichnis sind nicht gesetzt. Aktion uebersprungen." -ForegroundColor Red
-        return $false
-    }
-    $destDir = $script:GlobalSourceUserProfileDir
-    $backupSourceDirParent = $script:GlobalBackupBaseDir
+    Write-Log "[INFO] Starte Restore Benutzerprofil..."
+    $robocopyArgs = @("/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32", "/NP")
+    if ($SyncHash.FastMode) { $robocopyArgs += "/NP", "/NFL", "/NDL" }
     
-    $backupSourceDir = Join-Path $backupSourceDirParent "Benutzerprofil"
-    if (-not (Test-Path $backupSourceDir)) {
-        Write-Host "[FEHLER] Backup-Ordner '$backupSourceDir' im globalen Backup-Verzeichnis nicht gefunden. Aktion abgebrochen." -ForegroundColor Red
-        return $false 
-    }
-
-    Write-Host "---------Die Wiederherstellung des kompletten Benutzerprofils von '$backupSourceDir' nach '$destDir' wird ausgefuehrt---------" -ForegroundColor Cyan
-    
-    Write-Host "[WARNUNG] Diese Aktion ueberschreibt Daten im Zielverzeichnis '$destDir'." -ForegroundColor Yellow
-
-    Write-Host "[INFO] Starte Robocopy fuer Benutzerprofil-Wiederherstellung. Dies kann einige Zeit dauern..."
-    $robocopyArgs = @(
-        "`"$backupSourceDir`"",
-        "`"$destDir`"",
-        "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32", "/ETA"
-    )
-    # Performance-Optimierung
-    if ($script:FastMode) {
-        $robocopyArgs += "/NP", "/NFL", "/NDL"
-    }
-
-    Write-Host "Robocopy Befehl: robocopy $($robocopyArgs -join ' ')"
-    & robocopy @robocopyArgs 2>&1 | Out-Host
-
-    if ($LASTEXITCODE -lt 8) {
-        Write-Host "[ERFOLG] Das Benutzerprofil wurde erfolgreich wiederhergestellt nach '$destDir'." -ForegroundColor Green
-    }
-    else {
-        Write-Host "[FEHLER] Fehler bei der Wiederherstellung des Benutzerprofils. Robocopy Fehlercode: $LASTEXITCODE" -ForegroundColor Red
-        return $false
-    }
-    Write-Host "---------Die Wiederherstellung des kompletten Benutzerprofils wurde ausgefuehrt---------" -ForegroundColor Cyan
-    return $true
+    $exitCode = Invoke-RobocopySafe -Source $backupSourceDir -Dest $destDir -ExtraArgs $robocopyArgs
+    if ($SyncHash.CancelRequested) { return }
+    if ($exitCode -lt 8) { Write-Log "[ERFOLG] Benutzerprofil wiederhergestellt." } else { Write-Log "[FEHLER] Robocopy Fehlercode: $exitCode" }
 }
 
-# Hilfsfunktion fuer Profil-Backups (Firefox, Edge, Chrome, Thunderbird)
-function Backup-ApplicationProfile {
-    param (
-        [string]$AppName,
-        [string]$ProfilePathInUserDir, 
-        [string]$ProcessName
-    )
-
-    if ($AppName -eq "Firefox") {
-        Invoke-AppUpdateCheckAndInstall -AppName "Firefox" -ExeName "firefox.exe"
-    }
-    elseif ($AppName -eq "Thunderbird") {
-        Invoke-AppUpdateCheckAndInstall -AppName "Thunderbird" -ExeName "thunderbird.exe"
-    }
+function Backup-ApplicationProfile ($AppName, $ProfilePathInUserDir, $ProcessName) {
+    if ($AppName -in "Firefox", "Thunderbird") { Invoke-AppUpdateCheckAndInstall $AppName "$ProcessName.exe" }
     
-    Write-Host "`n=============================================================================================================="
-    Write-Host "                $AppName-Profil sichern"
-    Write-Host "=============================================================================================================="
-    Write-Host ""
-
-    if (-not $script:GlobalSourceUserProfileDir -or -not $script:GlobalBackupBaseDir) {
-        Write-Host "[FEHLER] Globale Pfade fuer Benutzerprofil und Backup-Basisverzeichnis sind nicht gesetzt. Aktion uebersprungen." -ForegroundColor Red
-        return $false
-    }
-    $userDir = $script:GlobalSourceUserProfileDir
-    $destParentDir = $script:GlobalBackupBaseDir
-    
-    Write-Host "---------Die Sicherung von $AppName-Profil aus '$userDir' wird ausgefuehrt---------" -ForegroundColor Cyan
-    Write-Host "---------Ziel-Basisverzeichnis: '$destParentDir' ---------" -ForegroundColor Cyan
-
-    $appProfilePath = Join-Path $userDir $ProfilePathInUserDir
-    
+    $appProfilePath = Join-Path $State.SourcePath $ProfilePathInUserDir
     if (Test-Path $appProfilePath) {
-        Write-Host "[INFO] Der $AppName ($ProcessName) wird nun beendet (falls er laeuft)..."
-        Start-Sleep -Seconds 3
+        Write-Log "[INFO] Beende $AppName..."
         Get-Process $ProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
-
-        $targetBackupDir = Join-Path $destParentDir "$AppName-Profil"
-        $robocopyArgs = @(
-            "`"$appProfilePath`"",
-            "`"$targetBackupDir`"",
-            "/MIR", "/R:1", "/W:1", "/MT:32", "/ETA" 
-        )
-        # Performance-Optimierung
-        if ($script:FastMode) {
-            $robocopyArgs += "/NP", "/NFL", "/NDL"
-        }
-
-        Write-Host "Robocopy Befehl: robocopy $($robocopyArgs -join ' ')"
-        & robocopy @robocopyArgs 2>&1 | Out-Host
-
-        if ($LASTEXITCODE -lt 8) {
-            Write-Host "[ERFOLG] Das $AppName-Profil wurde erfolgreich gesichert nach '$targetBackupDir'." -ForegroundColor Green
-        }
-        else {
-            Write-Host "[FEHLER] Fehler beim Sichern des $AppName-Profils. Robocopy Fehlercode: $LASTEXITCODE" -ForegroundColor Red
-            return $false
-        }
-    }
-    else {
-        Write-Host "[FEHLER] Das $AppName-Profil wurde unter '$appProfilePath' nicht gefunden." -ForegroundColor Red
-        return $false
-    }
-    Write-Host "---------Die Sicherung von $AppName-Profil wurde ausgefuehrt---------" -ForegroundColor Cyan
-    return $true
+        
+        $targetBackupDir = Join-Path $State.BackupPath "$AppName-Profil"
+        $args = @("/MIR", "/R:1", "/W:1", "/MT:32", "/NP")
+        if ($SyncHash.FastMode) { $args += "/NFL", "/NDL" }
+        
+        $exitCode = Invoke-RobocopySafe -Source $appProfilePath -Dest $targetBackupDir -ExtraArgs $args
+        if ($SyncHash.CancelRequested) { return }
+        if ($exitCode -lt 8) { Write-Log "[ERFOLG] $AppName Profil gesichert." } else { Write-Log "[FEHLER] ExitCode $exitCode" }
+    } else { Write-Log "[FEHLER] Pfad nicht gefunden: $appProfilePath" }
 }
 
-# Hilfsfunktion fuer Profil-Wiederherstellung
-function Restore-ApplicationProfile {
-    param (
-        [string]$AppName,
-        [string]$ProfilePathInUserDir, 
-        [string]$ProcessName
-    )
+function Restore-ApplicationProfile ($AppName, $ProfilePathInUserDir, $ProcessName) {
+    Install-App $AppName "$ProcessName.exe"
+    if ($AppName -in "Firefox", "Thunderbird") { Invoke-AppUpdateCheckAndInstall $AppName "$ProcessName.exe" }
     
-    # 1. Sicherstellen, dass die Anwendung installiert ist
-    $exeName = "$ProcessName.exe"
-    Install-App -AppName $AppName -ExeName $exeName
-
-    # 2. Update-Check fuer bestimmte Anwendungen
-    if ($AppName -eq "Firefox") {
-        Invoke-AppUpdateCheckAndInstall -AppName "Firefox" -ExeName "firefox.exe"
-    }
-    elseif ($AppName -eq "Thunderbird") {
-        Invoke-AppUpdateCheckAndInstall -AppName "Thunderbird" -ExeName "thunderbird.exe"
-    }
-
-    Write-Host "`n=============================================================================================================="
-    Write-Host "                $AppName-Profil wiederherstellen"
-    Write-Host "=============================================================================================================="
-    Write-Host ""
-
-    if (-not $script:GlobalSourceUserProfileDir -or -not $script:GlobalBackupBaseDir) {
-        Write-Host "[FEHLER] Globale Pfade fuer Benutzerprofil und Backup-Basisverzeichnis sind nicht gesetzt. Aktion uebersprungen." -ForegroundColor Red
-        return $false
-    }
-    $targetUserDir = $script:GlobalSourceUserProfileDir
-    $backupParentDir = $script:GlobalBackupBaseDir
-
-    $backupSourceDir = Join-Path $backupParentDir "$AppName-Profil"
-    if (-not (Test-Path $backupSourceDir)) {
-        Write-Host "[FEHLER] Das $AppName Backup-Profil '$backupSourceDir' im globalen Backup-Verzeichnis wurde nicht gefunden." -ForegroundColor Red
-        return $false
-    }
+    $backupSourceDir = Join-Path $State.BackupPath "$AppName-Profil"
+    if (-not (Test-Path $backupSourceDir)) { Write-Log "[FEHLER] $AppName Backup nicht gefunden."; return }
+    $targetAppProfileDir = Join-Path $State.SourcePath $ProfilePathInUserDir
     
-    $targetAppProfileDir = Join-Path $targetUserDir $ProfilePathInUserDir
-    Write-Host "---------Die Wiederherstellung von $AppName-Profil von '$backupSourceDir' nach '$targetAppProfileDir' wird ausgefuehrt---------" -ForegroundColor Cyan
-
-    Write-Host "[WARNUNG] Diese Aktion ueberschreibt Daten im Zielverzeichnis '$targetAppProfileDir'." -ForegroundColor Yellow
-    
-    Write-Host "[INFO] Der $AppName ($ProcessName) wird nun beendet (falls er laeuft)..."
-    Start-Sleep -Seconds 3
+    Write-Log "[INFO] Beende $AppName..."
     Get-Process $ProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 
-    Write-Host "[INFO] Loesche altes $AppName Profilverzeichnis (falls vorhanden): '$targetAppProfileDir'"
-    if (Test-Path $targetAppProfileDir) {
-        try {
-            Remove-Item -Path $targetAppProfileDir -Recurse -Force -ErrorAction Stop
-            Write-Host "[INFO] Altes Profilverzeichnis '$targetAppProfileDir' geloescht."
-        }
-        catch {
-            Write-Warning "Konnte das alte Profilverzeichnis '$targetAppProfileDir' nicht vollstaendig loeschen: $($_.Exception.Message). Wiederherstellung koennte fehlschlagen."
-        }
-        Start-Sleep -Seconds 2
-    }
+    if (Test-Path $targetAppProfileDir) { Remove-Item -Path $targetAppProfileDir -Recurse -Force -ErrorAction SilentlyContinue }
     $parentOfTarget = Split-Path $targetAppProfileDir
-    if (-not (Test-Path $parentOfTarget)) {
-        New-Item -ItemType Directory -Path $parentOfTarget -Force -ErrorAction SilentlyContinue | Out-Null
-    }
+    if (-not (Test-Path $parentOfTarget)) { New-Item -ItemType Directory -Path $parentOfTarget -Force -ErrorAction SilentlyContinue | Out-Null }
 
-    $robocopyArgs = @(
-        "`"$backupSourceDir`"",
-        "`"$targetAppProfileDir`"",
-        "/MIR", "/R:1", "/W:1", "/MT:32", "/ETA"
-    )
-    # Performance-Optimierung
-    if ($script:FastMode) {
-        $robocopyArgs += "/NP", "/NFL", "/NDL"
-    }
-
-    Write-Host "Robocopy Befehl: robocopy $($robocopyArgs -join ' ')"
-    & robocopy @robocopyArgs 2>&1 | Out-Host
-
-    if ($LASTEXITCODE -lt 8) {
-        Write-Host "[ERFOLG] Das $AppName-Profil wurde erfolgreich wiederhergestellt nach '$targetAppProfileDir'." -ForegroundColor Green
-    }
-    else {
-        Write-Host "[FEHLER] Fehler bei der Wiederherstellung des $AppName-Profils. Robocopy Fehlercode: $LASTEXITCODE" -ForegroundColor Red
-        return $false
-    }
-    Write-Host "---------Die Wiederherstellung von $AppName-Profil wurde ausgefuehrt---------" -ForegroundColor Cyan
-    return $true
+    $args = @("/MIR", "/R:1", "/W:1", "/MT:32", "/NP")
+    if ($SyncHash.FastMode) { $args += "/NFL", "/NDL" }
+    
+    $exitCode = Invoke-RobocopySafe -Source $backupSourceDir -Dest $targetAppProfileDir -ExtraArgs $args
+    if ($SyncHash.CancelRequested) { return }
+    if ($exitCode -lt 8) { Write-Log "[ERFOLG] $AppName Profil wiederhergestellt." } else { Write-Log "[FEHLER] ExitCode $exitCode" }
 }
 
-# 6. Liste von installierten Programmen exportieren (Winget)
 function Export-WingetPackages {
-    Write-Host "`n=============================================================================================================="
-    Write-Host "                Liste von installierten Programmen exportieren"
-    Write-Host "=============================================================================================================="
-    Write-Host ""
-    
-    if (-not $script:GlobalBackupBaseDir) {
-        Write-Host "[FEHLER] Globales Backup-Basisverzeichnis ist nicht gesetzt. Aktion uebersprungen." -ForegroundColor Red
-        return $false
-    }
-    $destDir = $script:GlobalBackupBaseDir
-
-    Write-Host "---------Eine Liste der Installierten Programme wird nach '$destDir\Winget' exportiert---------" -ForegroundColor Cyan
-
-    $wingetDir = Join-Path $destDir "Winget"
-    if (-not (Test-Path $wingetDir)) {
-        try {
-            New-Item -ItemType Directory -Path $wingetDir -Force -ErrorAction Stop | Out-Null
-        }
-        catch {
-            Write-Host "[FEHLER] Konnte Winget-Verzeichnis '$wingetDir' nicht erstellen: $($_.Exception.Message)" -ForegroundColor Red
-            return $false
-        }
-    }
+    $wingetDir = Join-Path $State.BackupPath "Winget"
+    if (-not (Test-Path $wingetDir)) { New-Item -ItemType Directory -Path $wingetDir -Force | Out-Null }
     $exportFile = Join-Path $wingetDir "Export.json"
-
-    try {
-        Write-Host "[INFO] Exportiere Programmliste mit winget nach '$exportFile'..."
-        if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-            Write-Host "[FEHLER] winget.exe nicht gefunden oder nicht im PATH. Bitte winget installieren." -ForegroundColor Red
-            return $false
-        }
-        winget export -o "`"$exportFile`"" --accept-source-agreements
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "[ERFOLG] Programmliste erfolgreich nach '$exportFile' exportiert." -ForegroundColor Green
-        }
-        else {
-            Write-Host "[FEHLER] Fehler beim Exportieren der Programmliste mit winget. Winget Fehlercode: $LASTEXITCODE" -ForegroundColor Red
-            return $false 
-        }
-    }
-    catch {
-        Write-Host "[FEHLER] Winget-Befehl fehlgeschlagen: $($_.Exception.Message)" -ForegroundColor Red
-        return $false 
-    }
-    Write-Host "---------Eine Liste der Installierten Programme wurde exportiert---------" -ForegroundColor Cyan
-    return $true
+    Write-Log "[INFO] Exportiere Programmliste..."
+    winget export -o "`"$exportFile`"" --accept-source-agreements | Out-Null
+    Write-Log "[ERFOLG] Winget Export beendet."
 }
 
-# 13. Liste von installierten Programmen installieren (Winget)
 function Import-WingetPackages {
-    Write-Host "`n=============================================================================================================="
-    Write-Host "                Liste von installierten Programmen installieren"
-    Write-Host "=============================================================================================================="
-    Write-Host ""
-
-    if (-not $script:GlobalBackupBaseDir) {
-        Write-Host "[FEHLER] Globales Backup-Basisverzeichnis ist nicht gesetzt. Aktion uebersprungen." -ForegroundColor Red
-        return $false
-    }
-    $importFileDir = $script:GlobalBackupBaseDir
-    
-    Write-Host "---------Die exportierte Liste der Programme aus '$importFileDir\Winget\Export.json' wird installiert---------" -ForegroundColor Cyan
-    
-    $importFile = Join-Path $importFileDir "Winget\Export.json"
-    if (-not (Test-Path $importFile)) {
-        $importFileAlt = Join-Path $importFileDir "Export.json"
-        if (Test-Path $importFileAlt) {
-            $importFile = $importFileAlt
-            Write-Warning "Winget Export.json in '$importFileDir\Winget' nicht gefunden, verwende '$importFileAlt'."
-        }
-        else {
-            Write-Host "[FEHLER] Winget Importdatei 'Export.json' nicht im Ordner '$importFileDir\Winget' oder direkt in '$importFileDir' gefunden." -ForegroundColor Red
-            return $false 
-        }
-    }
-
-    try {
-        Write-Host "[INFO] Importiere und installiere Programme von '$importFile' mit winget..."
-        Write-Host "[WARNUNG] Dies kann einige Zeit dauern und erfordert moeglicherweise Benutzerinteraktion fuer einige Installationen." -ForegroundColor Yellow
-        if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-            Write-Host "[FEHLER] winget.exe nicht gefunden oder nicht im PATH. Bitte winget installieren." -ForegroundColor Red
-            return $false
-        }
-        winget import -i "`"$importFile`"" --accept-package-agreements --accept-source-agreements
-        if ($LASTEXITCODE -eq 0) { 
-            Write-Host "[ERFOLG] Programme von '$importFile' wurden (versucht) zu installieren." -ForegroundColor Green
-        }
-        else {
-            Write-Host "[WARNUNG] Winget Import beendet mit Code $LASTEXITCODE. Einige Installationen koennten fehlgeschlagen sein. Bitte Ausgabe pruefen." -ForegroundColor Yellow
-        }
-    }
-    catch {
-        Write-Host "[FEHLER] Winget-Befehl fehlgeschlagen: $($_.Exception.Message)" -ForegroundColor Red
-        return $false 
-    }
-    Write-Host "---------Die exportierte Liste der Programme wurde installiert---------" -ForegroundColor Cyan
-    return $true
+    $importFile = Join-Path $State.BackupPath "Winget\Export.json"
+    if (-not (Test-Path $importFile)) { $importFile = Join-Path $State.BackupPath "Export.json" }
+    if (Test-Path $importFile) {
+        Write-Log "[INFO] Importiere Winget Liste (Bitte warten)..."
+        winget import -i "`"$importFile`"" --accept-package-agreements --accept-source-agreements | Out-Null
+        Write-Log "[ERFOLG] Winget Import beendet."
+    } else { Write-Log "[FEHLER] Winget Exportdatei nicht gefunden." }
 }
 
-
-# --- Hauptmenue ---
-function Show-MainMenu {
-    param(
-        [string]$Version,
-        [string]$Build
-    )
-    Clear-Host
-    $Host.UI.RawUI.WindowTitle = "Windows DaSi Tool - Hauptmenue"
-    Write-Host "======================================================================================="
-    Write-Host "                               Windows DaSi Tool - Hauptmenue"
-    Write-Host "======================================================================================="
-    Write-Host "Windows DaSi Tool Version $Version von $Build"
-    Write-Host ""
-    Write-Host "Aktuell ausgewaehltes Quell-Benutzerprofil: $($script:GlobalSourceUserProfileDir)"
-    Write-Host "Aktuell ausgewaehltes Backup-Basisverzeichnis: $($script:GlobalBackupBaseDir)"
-    Write-Host "---------------------------------------------------------------------------------------"
-    Write-Host "   [P] Pfade neu auswaehlen (Benutzerprofil und Backup-Basisverzeichnis)"
-    Write-Host "   [L] Logging umschalten     (Aktuell: $(if($script:FastMode){'Minimal / AUS'}else{'Detailliert / AN'}))"
-    Write-Host "---------------------------------------------------------------------------------------"
-    Write-Host "   --- SICHERN ---                                     --- WIEDERHERSTELLEN ---"
-    Write-Host "   [1] Windows Benutzerprofil sichern                  [9]  Windows Benutzerprofil wiederherstellen"
-    Write-Host "   [2] Firefox-Profil sichern                          [10] Firefox-Profil wiederherstellen"
-    Write-Host "   [3] Edge-Profil sichern                             [11] Edge-Profil wiederherstellen"
-    Write-Host "   [4] Chrome-Profil sichern                           [12] Chrome-Profil wiederherstellen"
-    Write-Host "   [5] Brave-Profil sichern                            [13] Brave-Profil wiederherstellen"
-    Write-Host "   [6] Thunderbird-Profil sichern                      [14] Thunderbird-Profil wiederherstellen"
-    Write-Host "   [7] Liste installierter Programme exportieren       [15] Liste installierter Programme installieren"
-    Write-Host "   [8] WLAN Profile exportieren                        [16] WLAN Profile importieren"
-    Write-Host ""
-    Write-Host "   [Q] Beenden"
-    Write-Host "======================================================================================="
-    Write-Host "Geben Sie eine oder mehrere Zahlen/Buchstaben kommagetrennt ein (z.B. 1,2,7) oder 'Q' zum Beenden."
+function Export-WlanProfiles {
+    $destDir = Join-Path $State.BackupPath "WLAN-Profile"
+    if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+    Write-Log "[INFO] Exportiere WLAN Profile..."
+    netsh wlan export profile folder="$destDir" key=clear | Out-Null
+    Write-Log "[ERFOLG] WLAN Profile exportiert."
 }
 
-# --- Globale Pfadauswahl mit NTFS-Pruefung fuer Backup-Drive ---
-function Select-GlobalPaths {
-    Write-Host "`n--- Globale Pfadauswahl ---" -ForegroundColor Green
-    
-    # 1. Quell-Benutzerprofil auswaehlen
-    $tempSourceProfile = Select-FolderDialog -Description "Bitte waehlen Sie das lokale Benutzerprofil aus (C:\Users\Name), das gesichert oder wiederhergestellt werden soll."
-    if (-not $tempSourceProfile) {
-        Write-Host "[FEHLER] Kein Quell-Benutzerprofilordner ausgewaehlt. Das Skript kann nicht fortfahren." -ForegroundColor Red
-        Invoke-PauseAndExit
-    }
-    $script:GlobalSourceUserProfileDir = $tempSourceProfile
-
-    # 2. Backup-Basisverzeichnis auswaehlen
-    $tempBackupBase = Select-FolderDialog -Description "Bitte waehlen Sie den Speicherort aus, an den die Daten gesichert oder von dem sie wiederhergestellt werden sollen."
-    if (-not $tempBackupBase) {
-        Write-Host "[FEHLER] Kein Backup-Basisverzeichnis ausgewaehlt. Das Skript kann nicht fortfahren." -ForegroundColor Red
-        Invoke-PauseAndExit
-    }
-
-    # Pruefung auf NTFS-Formatierung des Backup-Laufwerks
-    Write-Host "[INFO] Pruefe Dateisystem des Backup-Laufwerks..." -ForegroundColor Cyan
-    if (-not (Test-IsNtfsDrive -Path $tempBackupBase)) {
-        Write-Host ""
-        Write-Host "==========================================================================================" -ForegroundColor Red
-        Write-Host "[FEHLER] Das ausgewaehlte Backup-Laufwerk ist NICHT mit NTFS formatiert!" -ForegroundColor Red
-        Write-Host "Robocopy benoetigt zwingend ein NTFS-Dateisystem, um Dateiberechtigungen (ACLs)" -ForegroundColor Red
-        Write-Host "und Dateien, die groesser als 4 GB sind, korrekt sichern zu koennen." -ForegroundColor Red
-        Write-Host "Bitte formatieren Sie den Datentraeger in NTFS oder waehlen Sie einen anderen." -ForegroundColor Red
-        Write-Host "==========================================================================================" -ForegroundColor Red
-        Invoke-PauseAndExit
-    }
-
-    # Die Abfrage fuer den Performance-Modus wurde hier entfernt!
-
-    $script:GlobalBackupBaseDir = $tempBackupBase
-    Write-Host "[INFO] Quell-Benutzerprofil gesetzt auf: $($script:GlobalSourceUserProfileDir)" -ForegroundColor Green
-    Write-Host "[INFO] Backup-Basisverzeichnis gesetzt auf: $($script:GlobalBackupBaseDir)" -ForegroundColor Green
-    Write-Host "[ERFOLG] Dateisystem-Pruefung bestanden (NTFS)." -ForegroundColor Green
-    Write-Host "-----------------------------------"
-    Start-Sleep -Seconds 2
+function Import-WlanProfiles {
+    $srcDir = Join-Path $State.BackupPath "WLAN-Profile"
+    if (Test-Path $srcDir) {
+        Write-Log "[INFO] Importiere WLAN Profile..."
+        Get-ChildItem -Path $srcDir -Filter "*.xml" | ForEach-Object {
+            netsh wlan add profile filename="$($_.FullName)" | Out-Null
+        }
+        Write-Log "[ERFOLG] WLAN Profile importiert."
+    } else { Write-Log "[FEHLER] WLAN Ordner nicht gefunden." }
 }
-# ------------------------------------------------------------------------------
+'@
 
+# Event f�r den "Ausf�hren" Button
+$BtnExecute.Add_Click({
+    $TaskList = @()
+    if ($TgB_User.IsChecked)        { $TaskList += "1" }
+    if ($TgB_Firefox.IsChecked)     { $TaskList += "2" }
+    if ($TgB_Edge.IsChecked)        { $TaskList += "3" }
+    if ($TgB_Chrome.IsChecked)      { $TaskList += "4" }
+    if ($TgB_Brave.IsChecked)       { $TaskList += "5" }
+    if ($TgB_Thunderbird.IsChecked) { $TaskList += "6" }
+    if ($TgB_Winget.IsChecked)      { $TaskList += "7" }
+    if ($TgB_Wlan.IsChecked)        { $TaskList += "8" }
 
-# --- Skriptablauf ---
+    if ($TgR_User.IsChecked)        { $TaskList += "9" }
+    if ($TgR_Firefox.IsChecked)     { $TaskList += "10" }
+    if ($TgR_Edge.IsChecked)        { $TaskList += "11" }
+    if ($TgR_Chrome.IsChecked)      { $TaskList += "12" }
+    if ($TgR_Brave.IsChecked)       { $TaskList += "13" }
+    if ($TgR_Thunderbird.IsChecked) { $TaskList += "14" }
+    if ($TgR_Winget.IsChecked)      { $TaskList += "15" }
+    if ($TgR_Wlan.IsChecked)        { $TaskList += "16" }
 
-# 1. Update-Check vor allem anderen ausfuehren
-Invoke-UpdateCheck
-
-# Globale Pfade einmalig abfragen
-Select-GlobalPaths
-
-# Hauptschleife fuer Menue
-do {
-    Show-MainMenu -Version $script:VersionString -Build $script:BuildString
-    $choicesString = Read-Host "Ihre Auswahl"
-    $choicesArray = $choicesString.Trim() -split ',' | ForEach-Object { $_.Trim().ToUpper() }
-
-    # Ueberpruefen, ob Beenden gedrueckt wurde
-    if ($choicesArray -contains "Q") {
-        Write-Host "Skript wird auf Wunsch beendet."
-        Start-Sleep -Seconds 2
-        exit
+    if ($TaskList.Count -eq 0) {
+        [System.Windows.MessageBox]::Show("Bitte waehle mindestens eine Aktion aus.", "Hinweis", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information)
+        return
     }
+
+    if (-not $State.SourcePath -or -not $State.BackupPath) {
+        [System.Windows.MessageBox]::Show("Bitte lege zuerst das Quell- und Zielverzeichnis fest.", "Fehler", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+        return
+    }
+
+    $SyncHash.FastMode = -not $TgB_Logging.IsChecked
+    $SyncHash.TaskList = $TaskList
+    $SyncHash.CancelRequested = $false
+
+    $State.UIEnabled = $false
+    $State.LogText += "`n=========================================`n"
+    $State.LogText += "Starte Abarbeitung der Warteschlange...`n"
     
-    # Ueberpruefen, ob Pfade neu gewaehlt werden sollen
-    if ($choicesArray -contains "P") {
-        Select-GlobalPaths
-        continue 
-    }
+    # Runspace starten
+    Run-Async {
+        . ([ScriptBlock]::Create($SyncHash.RunspaceFunctionsCode))
 
-    # Ueberpruefen, ob das Logging umgeschaltet werden soll
-    if ($choicesArray -contains "L") {
-        $script:FastMode = -not $script:FastMode
-        Write-Host "`n[INFO] Logging-Modus umgeschaltet! " -ForegroundColor Cyan -NoNewline
-        if ($script:FastMode) { Write-Host "Minimales Logging ist jetzt AKTIVIERT." -ForegroundColor Yellow }
-        else { Write-Host "Detailliertes Logging ist jetzt AKTIVIERT." -ForegroundColor Yellow }
-        Start-Sleep -Seconds 2
-        continue
-    }
-
-    $validActionChosenOrAttempted = $false
-    $numberOfChoices = $choicesArray.Count
-    $currentChoiceIndex = 0
-
-    foreach ($choice in $choicesArray) {
-        # P, Q und L überspringen wir in der Schleife, da sie schon oben behandelt wurden
-        if ($choice -eq "P" -or $choice -eq "Q" -or $choice -eq "L") { continue } 
-
-        $currentChoiceIndex++
-        $actionInvokedAndSuccessful = $false
-        $actionAttempted = $true 
-
-        $actionNames = @{
-            "1"  = "Windows Benutzerprofil sichern"
-            "2"  = "Firefox-Profil sichern"
-            "3"  = "Edge-Profil sichern"
-            "4"  = "Chrome-Profil sichern"
-            "5"  = "Brave-Profil sichern"
-            "6"  = "Thunderbird-Profil sichern"
-            "7"  = "Installierte Programme exportieren (Winget)"
-            "8"  = "WLAN Profile exportieren"
-            "9"  = "Windows Benutzerprofil wiederherstellen"
-            "10" = "Firefox-Profil wiederherstellen"
-            "11" = "Edge-Profil wiederherstellen"
-            "12" = "Chrome-Profil wiederherstellen"
-            "13" = "Brave-Profil wiederherstellen"
-            "14" = "Thunderbird-Profil wiederherstellen"
-            "15" = "Installierte Programme installieren (Winget)"
-            "16" = "WLAN Profile importieren"
-        }
-
-        if ($actionNames.ContainsKey($choice)) {
-            $displayText = $actionNames[$choice]
-        }
-        else {
-            $displayText = "Unbekannte Auswahl ($choice)"
-        }
-
-        Write-Host "`n=============================================================================================================="
-        Write-Host " Verarbeitung: '$displayText' (Aktion $currentChoiceIndex von $numberOfChoices)" -ForegroundColor Yellow
-        Write-Host "=============================================================================================================="
-        Start-Sleep -Seconds 1
-
-        switch ($choice) {
-            "1" { $actionInvokedAndSuccessful = Backup-UserProfile }
-            "2" { $actionInvokedAndSuccessful = Backup-ApplicationProfile -AppName "Firefox" -ProfilePathInUserDir "AppData\Roaming\Mozilla\Firefox" -ProcessName "firefox" }
-            "3" { $actionInvokedAndSuccessful = Backup-ApplicationProfile -AppName "Edge" -ProfilePathInUserDir "AppData\Local\Microsoft\Edge\User Data\Default" -ProcessName "msedge" }
-            "4" { $actionInvokedAndSuccessful = Backup-ApplicationProfile -AppName "Chrome" -ProfilePathInUserDir "AppData\Local\Google\Chrome\User Data\Default" -ProcessName "chrome" }
-            "5" { $actionInvokedAndSuccessful = Backup-ApplicationProfile -AppName "Brave" -ProfilePathInUserDir "AppData\Local\BraveSoftware\Brave-Browser\User Data\Default" -ProcessName "brave" }
-            "6" { $actionInvokedAndSuccessful = Backup-ApplicationProfile -AppName "Thunderbird" -ProfilePathInUserDir "AppData\Roaming\Thunderbird" -ProcessName "thunderbird" }
-            "7" { $actionInvokedAndSuccessful = Export-WingetPackages }
-            "8" { $actionInvokedAndSuccessful = Export-WlanProfiles }
-
-            "9" { $actionInvokedAndSuccessful = Restore-UserProfile }
-            "10" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Firefox" -ProfilePathInUserDir "AppData\Roaming\Mozilla\Firefox" -ProcessName "firefox" }
-            "11" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Edge" -ProfilePathInUserDir "AppData\Local\Microsoft\Edge\User Data\Default" -ProcessName "msedge" }
-            "12" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Chrome" -ProfilePathInUserDir "AppData\Local\Google\Chrome\User Data\Default" -ProcessName "chrome" }
-            "13" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Brave" -ProfilePathInUserDir "AppData\Local\BraveSoftware\Brave-Browser\User Data\Default" -ProcessName "brave" }
-            "14" { $actionInvokedAndSuccessful = Restore-ApplicationProfile -AppName "Thunderbird" -ProfilePathInUserDir "AppData\Roaming\Thunderbird" -ProcessName "thunderbird" }
-            "15" { $actionInvokedAndSuccessful = Import-WingetPackages }
-            "16" { $actionInvokedAndSuccessful = Import-WlanProfiles }
-
-            default {
-                Write-Host "[FEHLER] Ungueltige Auswahl: '$choice'. Diese Auswahl wird uebersprungen." -ForegroundColor Red
-                $actionAttempted = $false
+        foreach ($choice in $SyncHash.TaskList) {
+            if ($SyncHash.CancelRequested) { 
+                Write-Log "`n[ABBRUCH] Vorgang durch Benutzer abgebrochen!"
+                break 
             }
-        }
 
-        if ($actionAttempted) {
-            $validActionChosenOrAttempted = $true
-            if ($actionInvokedAndSuccessful) {
-                Write-Host "[ERFOLG] Aktion '$displayText' erfolgreich abgeschlossen." -ForegroundColor Green
+            Write-Log "`n--- Fuehre Aktion $choice aus ---"
+            
+            switch ($choice) {
+                "1"  { Backup-UserProfile }
+                "2"  { Backup-ApplicationProfile "Firefox" "AppData\Roaming\Mozilla\Firefox" "firefox" }
+                "3"  { Backup-ApplicationProfile "Edge" "AppData\Local\Microsoft\Edge\User Data\Default" "msedge" }
+                "4"  { Backup-ApplicationProfile "Chrome" "AppData\Local\Google\Chrome\User Data\Default" "chrome" }
+                "5"  { Backup-ApplicationProfile "Brave" "AppData\Local\BraveSoftware\Brave-Browser\User Data\Default" "brave" }
+                "6"  { Backup-ApplicationProfile "Thunderbird" "AppData\Roaming\Thunderbird" "thunderbird" }
+                "7"  { Export-WingetPackages }
+                "8"  { Export-WlanProfiles }
+                
+                "9"  { Restore-UserProfile }
+                "10" { Restore-ApplicationProfile "Firefox" "AppData\Roaming\Mozilla\Firefox" "firefox" }
+                "11" { Restore-ApplicationProfile "Edge" "AppData\Local\Microsoft\Edge\User Data\Default" "msedge" }
+                "12" { Restore-ApplicationProfile "Chrome" "AppData\Local\Google\Chrome\User Data\Default" "chrome" }
+                "13" { Restore-ApplicationProfile "Brave" "AppData\Local\BraveSoftware\Brave-Browser\User Data\Default" "brave" }
+                "14" { Restore-ApplicationProfile "Thunderbird" "AppData\Roaming\Thunderbird" "thunderbird" }
+                "15" { Import-WingetPackages }
+                "16" { Import-WlanProfiles }
             }
-            else {
-                Write-Host "[WARNUNG] Aktion '$displayText' wurde NICHT erfolgreich ausgefuehrt oder vom Benutzer abgebrochen." -ForegroundColor Yellow
-            }
+            Start-Sleep -Seconds 1
         }
         
-        if ($currentChoiceIndex -lt $numberOfChoices) { 
-            if ($actionAttempted) {
-                Write-Host "`nNaechste Aktion in 10 Sekunden..."
-                Start-Sleep -Seconds 10
-            }
-            else {
-                Write-Host "`nUngueltige Auswahl '$choice' uebersprungen. Fahre mit naechster Auswahl fort (falls vorhanden)..."
-                Start-Sleep -Seconds 2 
-            }
+        Write-Log "`n========================================="
+        if ($SyncHash.CancelRequested) {
+            Write-Log "Tool sicher beendet."
+        } else {
+            Write-Log "Alle ausgewaehlten Aktionen abgeschlossen!"
+            $State.UIEnabled = $true
         }
-    } 
-
-    if ($validActionChosenOrAttempted) {
-        Write-Host "`nAlle ausgewaehlten Aktionen wurden abgearbeitet. Kehre zum Hauptmenue zurueck oder 'Q' zum Beenden." -ForegroundColor Green
-        Write-Host "Druecken Sie eine Taste, um zum Menue zurueckzukehren..." -NoNewline
-        if ($Host.Name -eq "ConsoleHost") { $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") | Out-Null } else { Read-Host | Out-Null }
     }
-    elseif ($choicesArray.Count -gt 0 -and -not ($choicesArray -contains "P")) { 
-        Write-Host "`nKeine gueltigen Aktionen zur Ausfuehrung ausgewaehlt oder alle Eingaben waren ungueltig." -ForegroundColor Yellow
-        Write-Host "Druecken Sie eine Taste, um zum Menue zurueckzukehren..." -NoNewline
-        if ($Host.Name -eq "ConsoleHost") { $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") | Out-Null } else { Read-Host | Out-Null }
-    }
+})
 
-} while ($true)
+$SyncHash.RunspaceFunctionsCode = $RunspaceFunctionsCode
 
-Write-Host "Das Skript wird in 5 Sekunden geschlossen."
-Start-Sleep -Seconds 5
+Start-RunspaceTask $JobCleanupScript @([psobject]@{ Name = 'Jobs'; Variable = $Jobs })
+
+$Window.Add_Closed({ $SyncHash.CleanupJobs = $false })
+$SyncHash.CleanupJobs = $true
+
+# Fenster anzeigen
+$Window.Add_Loaded({
+    $Window.Activate()
+    $Window.Focus()
+    $Window.Topmost = $true
+    $Window.Dispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, [action]{ $Window.Topmost = $false }) | Out-Null
+})
+
+$Window.ShowDialog()
