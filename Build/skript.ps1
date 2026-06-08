@@ -19,7 +19,7 @@ public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
 $consolePtr = [Console.Window]::GetConsoleWindow()
 [Console.Window]::ShowWindow($consolePtr, 0) | Out-Null
 
-$script:VersionString = "0.10.0"
+$script:VersionString = "0.9.0"
 $script:BuildString = "GUI-Edition"
 $WindowTitle = "Windows DaSi Tool $script:VersionString"
 
@@ -248,14 +248,7 @@ $Xaml = @"
 
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="SICHERN (Backup)"/>
-                        <Button Name="BtnAllBackup" Grid.Column="1" Style="{StaticResource SecondaryBtn}" Content="Alle an/aus" Width="100" Height="28" VerticalAlignment="Bottom" Margin="4,0,4,2"/>
-                    </Grid>
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="SICHERN (Backup)"/>
                     <UniformGrid Columns="2">
                         <ToggleButton Name="TgB_User" Style="{StaticResource CardToggle}" Content="Windows Benutzerprofil"/>
                         <ToggleButton Name="TgB_Firefox" Style="{StaticResource CardToggle}" Content="Firefox-Profil"/>
@@ -267,14 +260,7 @@ $Xaml = @"
                         <ToggleButton Name="TgB_Wlan" Style="{StaticResource CardToggle}" Content="WLAN Profile exportieren"/>
                     </UniformGrid>
 
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="WIEDERHERSTELLEN (Restore)"/>
-                        <Button Name="BtnAllRestore" Grid.Column="1" Style="{StaticResource SecondaryBtn}" Content="Alle an/aus" Width="100" Height="28" VerticalAlignment="Bottom" Margin="4,0,4,2"/>
-                    </Grid>
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="WIEDERHERSTELLEN (Restore)"/>
                     <UniformGrid Columns="2">
                         <ToggleButton Name="TgR_User" Style="{StaticResource CardToggle}" Content="Windows Benutzerprofil"/>
                         <ToggleButton Name="TgR_Firefox" Style="{StaticResource CardToggle}" Content="Firefox-Profil"/>
@@ -288,14 +274,7 @@ $Xaml = @"
                 </StackPanel>
             </ScrollViewer>
 
-            <Grid Grid.Row="2">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <Button Name="BtnExecute" Style="{StaticResource ActionBtn}" Content="Ausgew&#228;hlte Aktionen starten"/>
-                <Button Name="BtnStop" Grid.Column="1" Style="{StaticResource ExitBtn}" Content="Stoppen" Width="130" Margin="4,10,4,4"/>
-            </Grid>
+            <Button Name="BtnExecute" Grid.Row="2" Style="{StaticResource ActionBtn}" Content="Ausgew&#228;hlte Aktionen starten"/>
         </Grid>
 
         <Grid Grid.Column="1">
@@ -331,7 +310,7 @@ function FillDataContext ($props) {
         $State | Add-Member -Name $props[$i] -MemberType ScriptProperty -Value $getter -SecondValue $setter
     }
 }
-FillDataContext @("LogText", "UIEnabled", "SourcePath", "BackupPath", "IsRunning")
+FillDataContext @("LogText", "UIEnabled", "SourcePath", "BackupPath")
 $Window.DataContext = $DataContext
 
 # Log-Text ohne Umlaute
@@ -339,28 +318,6 @@ $State.LogText = "Warte auf Eingabe...`nBitte waehle zuerst die benoetigten Pfad
 $State.UIEnabled = $true
 $State.SourcePath = ""
 $State.BackupPath = ""
-$State.IsRunning = $false
-
-#----Konfiguration: zuletzt verwendete Pfade merken------------#
-$script:ConfigDir  = Join-Path $env:APPDATA "WindowsDaSiTool"
-$script:ConfigFile = Join-Path $script:ConfigDir "config.json"
-
-function Save-AppConfig {
-    try {
-        if (-not (Test-Path $script:ConfigDir)) { New-Item -ItemType Directory -Path $script:ConfigDir -Force | Out-Null }
-        [pscustomobject]@{ SourcePath = $State.SourcePath; BackupPath = $State.BackupPath } |
-            ConvertTo-Json | Set-Content -Path $script:ConfigFile -Encoding UTF8
-    } catch {}
-}
-
-if (Test-Path $script:ConfigFile) {
-    try {
-        $cfg = Get-Content $script:ConfigFile -Raw -ErrorAction Stop | ConvertFrom-Json
-        if ($cfg.SourcePath -and (Test-Path $cfg.SourcePath)) { $State.SourcePath = $cfg.SourcePath }
-        if ($cfg.BackupPath -and (Test-Path $cfg.BackupPath)) { $State.BackupPath = $cfg.BackupPath }
-        if ($State.SourcePath -or $State.BackupPath) { $State.LogText += ">> Zuletzt verwendete Pfade geladen.`r`n" }
-    } catch {}
-}
 
 function Set-Binding {
     param($Target, $Property, $Index)
@@ -377,16 +334,12 @@ Set-Binding $TbBackupPath ([System.Windows.Controls.TextBox]::TextProperty) 3
 $ToggleButtons = @(
     "TgB_User","TgB_Firefox","TgB_Edge","TgB_Chrome","TgB_Brave","TgB_Thunderbird","TgB_Winget","TgB_Wlan",
     "TgR_User","TgR_Firefox","TgR_Edge","TgR_Chrome","TgR_Brave","TgR_Thunderbird","TgR_Winget","TgR_Wlan",
-    "BtnSelSource", "BtnSelBackup", "BtnClearPaths", "TgB_Logging", "TgB_AutoUpdate",
-    "BtnAllBackup", "BtnAllRestore", "BtnExecute"
+    "BtnSelSource", "BtnSelBackup", "BtnClearPaths", "TgB_Logging", "TgB_AutoUpdate", "BtnExecute"
 )
 foreach ($btn in $ToggleButtons) {
     $ctrl = $Window.FindName($btn)
     if ($ctrl) { Set-Binding $ctrl ([System.Windows.Controls.Control]::IsEnabledProperty) 1 }
 }
-
-# Stop-Button ist nur AKTIV, waehrend ein Vorgang laeuft (Index 4 = IsRunning)
-Set-Binding $BtnStop ([System.Windows.Controls.Control]::IsEnabledProperty) 4
 
 #----Event Handler f�r UI & Pfade-----------------------#
 
@@ -404,18 +357,17 @@ $BtnClearPaths.Add_Click({
     $State.SourcePath = ""
     $State.BackupPath = ""
     $State.LogText += ">> Pfade wurden geleert.`r`n"
-    Save-AppConfig
 })
 
 $BtnSelSource.Add_Click({
     $folder = Select-FolderDialog -Description "Quell-Benutzerprofil auswaehlen (z.B. C:\Users\Name)"
-    if ($folder) { $State.SourcePath = $folder; Save-AppConfig }
+    if ($folder) { $State.SourcePath = $folder }
 })
 
 $BtnSelBackup.Add_Click({
     $folder = Select-FolderDialog -Description "Backup Basis-Verzeichnis auswaehlen"
     if ($folder) {
-        if (Test-IsNtfsDrive -Path $folder) { $State.BackupPath = $folder; Save-AppConfig }
+        if (Test-IsNtfsDrive -Path $folder) { $State.BackupPath = $folder } 
         else { [System.Windows.MessageBox]::Show("Das ausgewaehlte Laufwerk ist NICHT mit NTFS formatiert!`nRobocopy benoetigt zwingend NTFS.", "Fehler", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) }
     }
 })
@@ -436,30 +388,6 @@ $Window.Add_Closing({
 })
 
 $BtnExit.Add_Click({ $Window.Close() })
-
-# "Alle an/aus": alle Toggles einer Sektion gemeinsam setzen
-$BtnAllBackup.Add_Click({
-    $list = @($TgB_User, $TgB_Firefox, $TgB_Edge, $TgB_Chrome, $TgB_Brave, $TgB_Thunderbird, $TgB_Winget, $TgB_Wlan)
-    $new = [bool]($list | Where-Object { -not $_.IsChecked })  # wenn irgendeiner aus ist -> alle an, sonst alle aus
-    foreach ($t in $list) { $t.IsChecked = $new }
-})
-
-$BtnAllRestore.Add_Click({
-    $list = @($TgR_User, $TgR_Firefox, $TgR_Edge, $TgR_Chrome, $TgR_Brave, $TgR_Thunderbird, $TgR_Winget, $TgR_Wlan)
-    $new = [bool]($list | Where-Object { -not $_.IsChecked })
-    foreach ($t in $list) { $t.IsChecked = $new }
-})
-
-# Stop-Button: laufenden Vorgang sauber abbrechen (ohne Fenster zu schliessen)
-$BtnStop.Add_Click({
-    if (-not $State.IsRunning) { return }
-    $SyncHash.CancelRequested = $true
-    $State.LogText += ">> Abbruch angefordert, laufende Prozesse werden beendet...`r`n"
-    foreach ($procId in $SyncHash.ActiveProcesses.ToArray()) {
-        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-    }
-    Stop-Process -Name winget -Force -ErrorAction SilentlyContinue
-})
 
 #----Ausf�hrungs-Logik (Runspace / Async) & Prozess-Tracking--#
 $Global:SyncHash = [hashtable]::Synchronized(@{})
@@ -508,9 +436,8 @@ function Run-Async ($scriptBlock) {
 # --- Originale Skript-Funktionen f�r den Runspace ---
 $RunspaceFunctionsCode = @'
 
-function Write-Log ($Text) {
-    $State.LogText += "$Text`r`n"
-    if ($Text -like "*[FEHLER]*") { $SyncHash.ErrorCount = [int]$SyncHash.ErrorCount + 1 }
+function Write-Log ($Text) { 
+    $State.LogText += "$Text`r`n" 
     if ($State.LogText.Length -gt 100000) {
         $State.LogText = "... [LOG GEKUERZT, UM ABSTURZ ZU VERHINDERN] ...`r`n" + $State.LogText.Substring($State.LogText.Length - 80000)
     }
@@ -844,14 +771,11 @@ $BtnExecute.Add_Click({
     $SyncHash.AutoUpdate = [bool]$TgB_AutoUpdate.IsChecked
     $SyncHash.TaskList = $TaskList
     $SyncHash.CancelRequested = $false
-    $SyncHash.ErrorCount = 0
-    $SyncHash.StartTime = Get-Date
 
     $State.UIEnabled = $false
-    $State.IsRunning = $true
     $State.LogText += "`n=========================================`n"
     $State.LogText += "Starte Abarbeitung der Warteschlange...`n"
-
+    
     # Runspace starten
     Run-Async {
         . ([ScriptBlock]::Create($SyncHash.RunspaceFunctionsCode))
@@ -861,15 +785,6 @@ $BtnExecute.Add_Click({
             "Cache", "Code Cache", "GPUCache", "GrShaderCache", "ShaderCache",
             "Service Worker", "Crashpad", "Application Cache", "Media Cache", "DawnGraphiteCache", "DawnWebGPUCache"
         )
-
-        # Freien Speicherplatz auf dem Ziel-Laufwerk pruefen
-        try {
-            $rootPath = [System.IO.Path]::GetPathRoot($State.BackupPath)
-            $di = [System.IO.DriveInfo]::new($rootPath)
-            $freeGB = [math]::Round($di.AvailableFreeSpace / 1GB, 1)
-            Write-Log "[INFO] Freier Speicher auf Ziel ($rootPath): $freeGB GB"
-            if ($freeGB -lt 1) { Write-Log "[WARNUNG] Sehr wenig freier Speicher auf dem Ziel-Laufwerk - Backup koennte fehlschlagen!" }
-        } catch {}
 
         foreach ($choice in $SyncHash.TaskList) {
             if ($SyncHash.CancelRequested) { 
@@ -901,31 +816,13 @@ $BtnExecute.Add_Click({
             Start-Sleep -Seconds 1
         }
         
-        # Abschluss-Zusammenfassung
-        $dauer = [int]((Get-Date) - $SyncHash.StartTime).TotalSeconds
-        $fehler = [int]$SyncHash.ErrorCount
         Write-Log "`n========================================="
-        Write-Log "Dauer: $dauer Sekunden  |  Fehler: $fehler"
         if ($SyncHash.CancelRequested) {
-            Write-Log "Vorgang abgebrochen - Tool sicher beendet."
-        } elseif ($fehler -eq 0) {
-            Write-Log "Alle ausgewaehlten Aktionen erfolgreich abgeschlossen!"
+            Write-Log "Tool sicher beendet."
         } else {
-            Write-Log "Abgeschlossen, aber mit $fehler Fehler(n) - bitte Protokoll pruefen."
+            Write-Log "Alle ausgewaehlten Aktionen abgeschlossen!"
+            $State.UIEnabled = $true
         }
-
-        # Protokoll automatisch als Datei sichern
-        try {
-            if ($State.BackupPath -and (Test-Path $State.BackupPath)) {
-                $logFile = Join-Path $State.BackupPath ("DaSi-Log_" + (Get-Date -Format "yyyyMMdd_HHmmss") + ".txt")
-                $State.LogText | Out-File -FilePath $logFile -Encoding UTF8 -ErrorAction Stop
-                Write-Log "[INFO] Protokoll gespeichert: $logFile"
-            }
-        } catch { Write-Log "[WARNUNG] Protokoll konnte nicht gespeichert werden." }
-
-        # UI in jedem Fall wieder freigeben
-        $State.IsRunning = $false
-        $State.UIEnabled = $true
     }
 })
 
@@ -933,7 +830,7 @@ $SyncHash.RunspaceFunctionsCode = $RunspaceFunctionsCode
 
 Start-RunspaceTask $JobCleanupScript @([psobject]@{ Name = 'Jobs'; Variable = $Jobs })
 
-$Window.Add_Closed({ $SyncHash.CleanupJobs = $false; Save-AppConfig })
+$Window.Add_Closed({ $SyncHash.CleanupJobs = $false })
 $SyncHash.CleanupJobs = $true
 
 # Fenster anzeigen
