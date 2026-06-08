@@ -23,7 +23,7 @@ Entwickelt für IT-Administratoren und Power-User – vereint die Robustheit von
 
 - **Benutzerprofile** – Vollständige Sicherung mit intelligentem Ausschluss von Cache- und Temp-Dateien
 - **Browser-Profile** – Automatisierte Sicherung & Wiederherstellung für Firefox, Edge, Chrome und Brave
-- **E-Mail-Profile** – Umfassender Thunderbird-Support inkl. automatischem Versionsabgleich
+- **E-Mail-Profile** – Umfassender Thunderbird-Support inkl. optionalem Versionsabgleich
 - **System-Tools** – Export und Import von Winget-Paketlisten und WLAN-Profilen
 
 ---
