@@ -19,7 +19,7 @@ public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
 $consolePtr = [Console.Window]::GetConsoleWindow()
 [Console.Window]::ShowWindow($consolePtr, 0) | Out-Null
 
-$script:VersionString = "0.9.0"
+$script:VersionString = "0.8.1"
 $script:BuildString = "GUI-Edition"
 $WindowTitle = "Windows DaSi Tool $script:VersionString"
 
