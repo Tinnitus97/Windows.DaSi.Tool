@@ -1,51 +1,61 @@
-Windows DaSi Tool
-Das Windows DaSi Tool ist ein hochperformantes, portables Dienstprogramm zur automatisierten Datensicherung und -wiederherstellung von Benutzerprofilen, Browser-Einstellungen und Systemkonfigurationen. Entwickelt für IT-Administratoren und Power-User, vereint es die Robustheit von Robocopy mit einer modernen, benutzerfreundlichen Oberfläche.
+# Windows DaSi Tool
 
-🚀 Features
-Portable & Direkt: Keine Installation erforderlich – einfach die .exe ausführen.
+> Hochperformantes, portables Dienstprogramm zur automatisierten Datensicherung und -wiederherstellung von Benutzerprofilen, Browser-Einstellungen und Systemkonfigurationen.
 
-Moderne WPF-GUI: Intuitive Benutzeroberfläche im Dark-Mode.
+Entwickelt für IT-Administratoren und Power-User – vereint die Robustheit von **Robocopy** mit einer modernen, benutzerfreundlichen Oberfläche.
 
-UAC-Unterstützung: Das Tool fordert beim Start automatisch die erforderlichen Administratorrechte via Windows-Benutzerkontensteuerung (UAC) an.
+<img width="1991" height="1394" alt="image" src="https://github.com/user-attachments/assets/7aad6576-1391-4665-9c35-122e4a0a87bb" />
 
-Asynchrone Verarbeitung: Dank PowerShell-Runspaces bleibt die Oberfläche während der Backups stets reaktionsfähig.
 
-Automatisierte Abläufe:
+---
 
-Benutzerprofile: Komplette Sicherung mit intelligentem Ausschluss von Cache- und Temp-Dateien.
+## 🚀 Features
 
-Browser-Profile: Automatisierte Sicherung & Wiederherstellung (Firefox, Edge, Chrome, Brave).
+| Feature | Beschreibung |
+|---|---|
+| **Portabel & direkt** | Keine Installation erforderlich – einfach die `.exe` ausführen |
+| **Moderne WPF-GUI** | Intuitive Benutzeroberfläche im Dark-Mode |
+| **UAC-Unterstützung** | Automatische Anforderung von Administratorrechten beim Programmstart |
+| **Asynchrone Verarbeitung** | PowerShell-Runspaces halten die Oberfläche während Backups reaktionsfähig |
+| **Robustes Back-End** | Robocopy für zuverlässige und performante Dateioperationen |
 
-E-Mail-Profile: Umfassender Thunderbird-Support inkl. automatischem Versionsabgleich.
+### Automatisierte Sicherungs- & Wiederherstellungsabläufe
 
-System-Tools: Export/Import von Winget-Paketlisten und WLAN-Profilen.
+- **Benutzerprofile** – Vollständige Sicherung mit intelligentem Ausschluss von Cache- und Temp-Dateien
+- **Browser-Profile** – Automatisierte Sicherung & Wiederherstellung für Firefox, Edge, Chrome und Brave
+- **E-Mail-Profile** – Umfassender Thunderbird-Support inkl. automatischem Versionsabgleich
+- **System-Tools** – Export und Import von Winget-Paketlisten und WLAN-Profilen
 
-Robustes Back-End: Nutzt Robocopy für zuverlässige Dateioperationen.
+---
 
-🛡 Systemanforderungen
-Betriebssystem: Windows 10 oder Windows 11.
+## 🛡️ Systemanforderungen
 
-Berechtigungen: Das Tool erfordert Administratorrechte. Die UAC-Abfrage erfolgt automatisch beim Programmstart.
+| Anforderung | Details |
+|---|---|
+| **Betriebssystem** | Windows 10 oder Windows 11 |
+| **Berechtigungen** | Administratorrechte (UAC-Abfrage erfolgt automatisch beim Start) |
+| **Dateisystem** | Backup-Zielverzeichnis muss auf einem **NTFS**-formatierten Laufwerk liegen |
 
-Dateisystem: Das Backup-Zielverzeichnis muss zwingend auf einem NTFS-formatierten Laufwerk liegen.
+---
 
-📥 Nutzung
-Lade die aktuelle WindowsDaSiTool.exe aus dem Releases-Bereich herunter.
+## 📥 Nutzung
 
-Starte die .exe. Bestätige die erscheinende UAC-Abfrage mit "Ja", um die nötigen Admin-Rechte zu gewähren.
+1. Lade die aktuelle `WindowsDaSiTool.exe` aus dem [Releases-Bereich](../../releases) herunter.
+2. Starte die `.exe` und bestätige die UAC-Abfrage mit **„Ja"**, um Administratorrechte zu gewähren.
+3. Wähle über die Schaltflächen dein **Quellverzeichnis** (z. B. `C:\Users\DeinName`) und das **Backup-Ziel** aus.
+4. Aktiviere die gewünschten Sicherungs- oder Wiederherstellungsaufgaben.
+5. Klicke auf **„Ausgewählte Aktionen starten"** – der Fortschritt wird in Echtzeit im Aktivitätsprotokoll angezeigt.
 
-Wähle über die Schaltflächen dein Quell-Verzeichnis (z. B. C:\Users\DeinName) und das Backup-Ziel aus.
+---
 
-Aktiviere die gewünschten Sicherungs- oder Wiederherstellungs-Aufgaben.
+## 🏗️ Technische Details
 
-Klicke auf "Ausgewählte Aktionen starten" – der Fortschritt wird dir in Echtzeit im Aktivitäts-Protokoll (rechts) angezeigt.
+- **Technologie:** PowerShell, WPF, PS2EXE
+- **Prozess-Management:** Browser- und E-Mail-Anwendungen werden vor dem Backup automatisch beendet, um Dateikonflikte zu vermeiden.
+- **Logging:** Echtzeit-Protokollierung mit automatischer Speicherbereinigung für optimale Performance.
 
-🏗 Technische Details
-Technologie: Entwickelt mit PowerShell, WPF und PS2EXE.
+---
 
-Prozess-Management: Anwendungen (Browser/E-Mail) werden vor dem Backup-Start automatisch beendet, um Dateikonflikte zu vermeiden.
+## 📜 Lizenz
 
-Logging: Echtzeit-Protokollierung mit automatischer Speicherbereinigung für optimale Performance.
-
-📜 Lizenz
-Dieses Projekt steht unter der MIT-Lizenz.
+Dieses Projekt steht unter der [MIT-Lizenz](LICENSE).
