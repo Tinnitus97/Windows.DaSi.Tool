@@ -341,7 +341,7 @@ foreach ($btn in $ToggleButtons) {
     if ($ctrl) { Set-Binding $ctrl ([System.Windows.Controls.Control]::IsEnabledProperty) 1 }
 }
 
-#----Event Handler f�r UI & Pfade-----------------------#
+#----Event Handler für UI & Pfade-----------------------#
 
 $TgB_Logging.Add_Click({
     if ($TgB_Logging.IsChecked) { $TgB_Logging.Content = "Logging: Detailliert / AN" }
@@ -389,7 +389,7 @@ $Window.Add_Closing({
 
 $BtnExit.Add_Click({ $Window.Close() })
 
-#----Ausf�hrungs-Logik (Runspace / Async) & Prozess-Tracking--#
+#----Ausführungs-Logik (Runspace / Async) & Prozess-Tracking--#
 $Global:SyncHash = [hashtable]::Synchronized(@{})
 $SyncHash.Window = $Window
 $SyncHash.ActiveProcesses = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
@@ -433,7 +433,7 @@ function Run-Async ($scriptBlock) {
     )
 }
 
-# --- Originale Skript-Funktionen f�r den Runspace ---
+# --- Originale Skript-Funktionen für den Runspace ---
 $RunspaceFunctionsCode = @'
 
 function Write-Log ($Text) { 
@@ -736,7 +736,7 @@ function Import-WlanProfiles {
 }
 '@
 
-# Event f�r den "Ausf�hren" Button
+# Event für den "Ausführen" Button
 $BtnExecute.Add_Click({
     $TaskList = @()
     if ($TgB_User.IsChecked)        { $TaskList += "1" }
