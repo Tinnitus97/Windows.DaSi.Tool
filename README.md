@@ -28,6 +28,20 @@ Entwickelt für IT-Administratoren und Power-User – vereint die Robustheit von
 
 ---
 
+## ✨ Neu: Komfort-Features
+
+| Feature | Nutzen |
+|---|---|
+| **Pfade werden gemerkt** | Quell- und Backup-Verzeichnis werden in `%APPDATA%\WindowsDaSiTool\config.json` gespeichert und beim nächsten Start automatisch geladen – kein erneutes Auswählen nötig. |
+| **„Alle an/aus"-Buttons** | Pro Sektion (Sichern / Wiederherstellen) lassen sich alle Häkchen mit einem Klick setzen oder entfernen. |
+| **Stop-Button** | Ein laufender Vorgang kann jetzt direkt über einen Button abgebrochen werden, ohne das Fenster zu schließen. Der Button ist nur aktiv, solange etwas läuft. |
+| **Speicherplatz-Prüfung** | Vor dem Lauf wird der freie Speicher auf dem Ziel-Laufwerk angezeigt und bei wenig Platz gewarnt. |
+| **Abschluss-Zusammenfassung** | Am Ende werden Dauer und Anzahl der Fehler ausgegeben. |
+| **Protokoll als Datei** | Nach jedem Lauf wird das komplette Protokoll als `DaSi-Log_<Zeitstempel>.txt` im Backup-Ziel gespeichert. |
+| **UI-Fix** | Nach einem Abbruch wird die Oberfläche zuverlässig wieder freigegeben (vorher konnte sie gesperrt bleiben). |
+
+---
+
 ## 🛡️ Systemanforderungen
 
 | Anforderung | Details |
