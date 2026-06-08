@@ -19,7 +19,7 @@ public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
 $consolePtr = [Console.Window]::GetConsoleWindow()
 [Console.Window]::ShowWindow($consolePtr, 0) | Out-Null
 
-$script:VersionString = "0.9.0"
+$script:VersionString = "0.8.0" 
 $script:BuildString = "GUI-Edition"
 $WindowTitle = "Windows DaSi Tool $script:VersionString"
 
@@ -217,10 +217,9 @@ $Xaml = @"
 
             <StackPanel Grid.Row="0" Margin="0,0,0,10">
                 <TextBlock Style="{StaticResource SectionLabel}" Text="Optionen &amp; Verzeichnisse" Margin="4,0,4,4"/>
-                <UniformGrid Columns="4" Margin="0,0,0,8">
+                <UniformGrid Columns="3" Margin="0,0,0,8">
                     <Button Name="BtnClearPaths" Style="{StaticResource SecondaryBtn}" Content="Pfade leeren"/>
                     <ToggleButton Name="TgB_Logging" Style="{StaticResource CardToggle}" Content="Logging: Minimal / AUS"/>
-                    <ToggleButton Name="TgB_AutoUpdate" Style="{StaticResource CardToggle}" Content="Apps updaten: AUS"/>
                     <Button Name="BtnExit" Style="{StaticResource ExitBtn}" Content="Beenden"/>
                 </UniformGrid>
 
@@ -334,23 +333,18 @@ Set-Binding $TbBackupPath ([System.Windows.Controls.TextBox]::TextProperty) 3
 $ToggleButtons = @(
     "TgB_User","TgB_Firefox","TgB_Edge","TgB_Chrome","TgB_Brave","TgB_Thunderbird","TgB_Winget","TgB_Wlan",
     "TgR_User","TgR_Firefox","TgR_Edge","TgR_Chrome","TgR_Brave","TgR_Thunderbird","TgR_Winget","TgR_Wlan",
-    "BtnSelSource", "BtnSelBackup", "BtnClearPaths", "TgB_Logging", "TgB_AutoUpdate", "BtnExecute"
+    "BtnSelSource", "BtnSelBackup", "BtnClearPaths", "TgB_Logging", "BtnExecute"
 )
 foreach ($btn in $ToggleButtons) {
     $ctrl = $Window.FindName($btn)
     if ($ctrl) { Set-Binding $ctrl ([System.Windows.Controls.Control]::IsEnabledProperty) 1 }
 }
 
-#----Event Handler fï¿½r UI & Pfade-----------------------#
+#----Event Handler für UI & Pfade-----------------------#
 
 $TgB_Logging.Add_Click({
-    if ($TgB_Logging.IsChecked) { $TgB_Logging.Content = "Logging: Detailliert / AN" }
+    if ($TgB_Logging.IsChecked) { $TgB_Logging.Content = "Logging: Detailliert / AN" } 
     else { $TgB_Logging.Content = "Logging: Minimal / AUS" }
-})
-
-$TgB_AutoUpdate.Add_Click({
-    if ($TgB_AutoUpdate.IsChecked) { $TgB_AutoUpdate.Content = "Apps updaten: AN" }
-    else { $TgB_AutoUpdate.Content = "Apps updaten: AUS" }
 })
 
 $BtnClearPaths.Add_Click({
@@ -389,7 +383,7 @@ $Window.Add_Closing({
 
 $BtnExit.Add_Click({ $Window.Close() })
 
-#----Ausfï¿½hrungs-Logik (Runspace / Async) & Prozess-Tracking--#
+#----Ausführungs-Logik (Runspace / Async) & Prozess-Tracking--#
 $Global:SyncHash = [hashtable]::Synchronized(@{})
 $SyncHash.Window = $Window
 $SyncHash.ActiveProcesses = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
@@ -433,7 +427,7 @@ function Run-Async ($scriptBlock) {
     )
 }
 
-# --- Originale Skript-Funktionen fï¿½r den Runspace ---
+# --- Originale Skript-Funktionen für den Runspace ---
 $RunspaceFunctionsCode = @'
 
 function Write-Log ($Text) { 
@@ -640,22 +634,20 @@ function Restore-UserProfile {
     if ($exitCode -lt 8) { Write-Log "[ERFOLG] Benutzerprofil wiederhergestellt." } else { Write-Log "[FEHLER] Robocopy Fehlercode: $exitCode" }
 }
 
-function Backup-ApplicationProfile ($AppName, $ProfilePathInUserDir, $ProcessName, [string[]]$ExcludeDirs = @()) {
-    if ($AppName -in "Firefox", "Thunderbird" -and $SyncHash.AutoUpdate) { Invoke-AppUpdateCheckAndInstall $AppName "$ProcessName.exe" }
-
+function Backup-ApplicationProfile ($AppName, $ProfilePathInUserDir, $ProcessName) {
+    if ($AppName -in "Firefox", "Thunderbird") { Invoke-AppUpdateCheckAndInstall $AppName "$ProcessName.exe" }
+    
     $appProfilePath = Join-Path $State.SourcePath $ProfilePathInUserDir
     if (Test-Path $appProfilePath) {
         Write-Log "[INFO] Beende $AppName..."
         Get-Process $ProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
-
+        
         $targetBackupDir = Join-Path $State.BackupPath "$AppName-Profil"
-        $roboArgs = @("/MIR", "/R:1", "/W:1", "/MT:32", "/NP")
-        if ($SyncHash.FastMode) { $roboArgs += "/NFL", "/NDL" }
-        # Cache-/Temp-Verzeichnisse ueberall im Profilbaum ausschliessen (Name-Match, ohne Pfad)
-        foreach ($ex in $ExcludeDirs) { $roboArgs += "/XD", "`"$ex`"" }
-
-        $exitCode = Invoke-RobocopySafe -Source $appProfilePath -Dest $targetBackupDir -ExtraArgs $roboArgs
+        $args = @("/MIR", "/R:1", "/W:1", "/MT:32", "/NP")
+        if ($SyncHash.FastMode) { $args += "/NFL", "/NDL" }
+        
+        $exitCode = Invoke-RobocopySafe -Source $appProfilePath -Dest $targetBackupDir -ExtraArgs $args
         if ($SyncHash.CancelRequested) { return }
         if ($exitCode -lt 8) { Write-Log "[ERFOLG] $AppName Profil gesichert." } else { Write-Log "[FEHLER] ExitCode $exitCode" }
     } else { Write-Log "[FEHLER] Pfad nicht gefunden: $appProfilePath" }
@@ -663,35 +655,24 @@ function Backup-ApplicationProfile ($AppName, $ProfilePathInUserDir, $ProcessNam
 
 function Restore-ApplicationProfile ($AppName, $ProfilePathInUserDir, $ProcessName) {
     Install-App $AppName "$ProcessName.exe"
-    if ($AppName -in "Firefox", "Thunderbird" -and $SyncHash.AutoUpdate) { Invoke-AppUpdateCheckAndInstall $AppName "$ProcessName.exe" }
-
+    if ($AppName -in "Firefox", "Thunderbird") { Invoke-AppUpdateCheckAndInstall $AppName "$ProcessName.exe" }
+    
     $backupSourceDir = Join-Path $State.BackupPath "$AppName-Profil"
     if (-not (Test-Path $backupSourceDir)) { Write-Log "[FEHLER] $AppName Backup nicht gefunden."; return }
     $targetAppProfileDir = Join-Path $State.SourcePath $ProfilePathInUserDir
-
+    
     Write-Log "[INFO] Beende $AppName..."
     Get-Process $ProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 
-    # Nicht-destruktiv: vorhandenes Profil umbenennen statt loeschen (Rollback moeglich)
-    if (Test-Path $targetAppProfileDir) {
-        $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-        $oldProfileDir = "${targetAppProfileDir}_alt_$stamp"
-        try {
-            Rename-Item -Path $targetAppProfileDir -NewName (Split-Path $oldProfileDir -Leaf) -ErrorAction Stop
-            Write-Log "[INFO] Bisheriges $AppName-Profil gesichert nach: $oldProfileDir"
-        } catch {
-            Write-Log "[WARNUNG] Konnte altes Profil nicht umbenennen, ueberschreibe direkt."
-            Remove-Item -Path $targetAppProfileDir -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
+    if (Test-Path $targetAppProfileDir) { Remove-Item -Path $targetAppProfileDir -Recurse -Force -ErrorAction SilentlyContinue }
     $parentOfTarget = Split-Path $targetAppProfileDir
     if (-not (Test-Path $parentOfTarget)) { New-Item -ItemType Directory -Path $parentOfTarget -Force -ErrorAction SilentlyContinue | Out-Null }
 
-    $roboArgs = @("/MIR", "/R:1", "/W:1", "/MT:32", "/NP")
-    if ($SyncHash.FastMode) { $roboArgs += "/NFL", "/NDL" }
-
-    $exitCode = Invoke-RobocopySafe -Source $backupSourceDir -Dest $targetAppProfileDir -ExtraArgs $roboArgs
+    $args = @("/MIR", "/R:1", "/W:1", "/MT:32", "/NP")
+    if ($SyncHash.FastMode) { $args += "/NFL", "/NDL" }
+    
+    $exitCode = Invoke-RobocopySafe -Source $backupSourceDir -Dest $targetAppProfileDir -ExtraArgs $args
     if ($SyncHash.CancelRequested) { return }
     if ($exitCode -lt 8) { Write-Log "[ERFOLG] $AppName Profil wiederhergestellt." } else { Write-Log "[FEHLER] ExitCode $exitCode" }
 }
@@ -719,7 +700,6 @@ function Export-WlanProfiles {
     $destDir = Join-Path $State.BackupPath "WLAN-Profile"
     if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
     Write-Log "[INFO] Exportiere WLAN Profile..."
-    Write-Log "[WARNUNG] WLAN-Passwoerter werden im Klartext in den Backup-Ordner geschrieben. Sicher aufbewahren!"
     netsh wlan export profile folder="$destDir" key=clear | Out-Null
     Write-Log "[ERFOLG] WLAN Profile exportiert."
 }
@@ -736,7 +716,7 @@ function Import-WlanProfiles {
 }
 '@
 
-# Event fï¿½r den "Ausfï¿½hren" Button
+# Event für den "Ausführen" Button
 $BtnExecute.Add_Click({
     $TaskList = @()
     if ($TgB_User.IsChecked)        { $TaskList += "1" }
@@ -768,7 +748,6 @@ $BtnExecute.Add_Click({
     }
 
     $SyncHash.FastMode = -not $TgB_Logging.IsChecked
-    $SyncHash.AutoUpdate = [bool]$TgB_AutoUpdate.IsChecked
     $SyncHash.TaskList = $TaskList
     $SyncHash.CancelRequested = $false
 
@@ -779,12 +758,6 @@ $BtnExecute.Add_Click({
     # Runspace starten
     Run-Async {
         . ([ScriptBlock]::Create($SyncHash.RunspaceFunctionsCode))
-
-        # Cache-/Temp-Ordner, die in Chromium-Profilen NICHT mitgesichert werden (sparen GBs, irrelevant)
-        $ChromiumCacheExcludes = @(
-            "Cache", "Code Cache", "GPUCache", "GrShaderCache", "ShaderCache",
-            "Service Worker", "Crashpad", "Application Cache", "Media Cache", "DawnGraphiteCache", "DawnWebGPUCache"
-        )
 
         foreach ($choice in $SyncHash.TaskList) {
             if ($SyncHash.CancelRequested) { 
@@ -797,18 +770,18 @@ $BtnExecute.Add_Click({
             switch ($choice) {
                 "1"  { Backup-UserProfile }
                 "2"  { Backup-ApplicationProfile "Firefox" "AppData\Roaming\Mozilla\Firefox" "firefox" }
-                "3"  { Backup-ApplicationProfile "Edge" "AppData\Local\Microsoft\Edge\User Data" "msedge" $ChromiumCacheExcludes }
-                "4"  { Backup-ApplicationProfile "Chrome" "AppData\Local\Google\Chrome\User Data" "chrome" $ChromiumCacheExcludes }
-                "5"  { Backup-ApplicationProfile "Brave" "AppData\Local\BraveSoftware\Brave-Browser\User Data" "brave" $ChromiumCacheExcludes }
+                "3"  { Backup-ApplicationProfile "Edge" "AppData\Local\Microsoft\Edge\User Data\Default" "msedge" }
+                "4"  { Backup-ApplicationProfile "Chrome" "AppData\Local\Google\Chrome\User Data\Default" "chrome" }
+                "5"  { Backup-ApplicationProfile "Brave" "AppData\Local\BraveSoftware\Brave-Browser\User Data\Default" "brave" }
                 "6"  { Backup-ApplicationProfile "Thunderbird" "AppData\Roaming\Thunderbird" "thunderbird" }
                 "7"  { Export-WingetPackages }
                 "8"  { Export-WlanProfiles }
                 
                 "9"  { Restore-UserProfile }
                 "10" { Restore-ApplicationProfile "Firefox" "AppData\Roaming\Mozilla\Firefox" "firefox" }
-                "11" { Restore-ApplicationProfile "Edge" "AppData\Local\Microsoft\Edge\User Data" "msedge" }
-                "12" { Restore-ApplicationProfile "Chrome" "AppData\Local\Google\Chrome\User Data" "chrome" }
-                "13" { Restore-ApplicationProfile "Brave" "AppData\Local\BraveSoftware\Brave-Browser\User Data" "brave" }
+                "11" { Restore-ApplicationProfile "Edge" "AppData\Local\Microsoft\Edge\User Data\Default" "msedge" }
+                "12" { Restore-ApplicationProfile "Chrome" "AppData\Local\Google\Chrome\User Data\Default" "chrome" }
+                "13" { Restore-ApplicationProfile "Brave" "AppData\Local\BraveSoftware\Brave-Browser\User Data\Default" "brave" }
                 "14" { Restore-ApplicationProfile "Thunderbird" "AppData\Roaming\Thunderbird" "thunderbird" }
                 "15" { Import-WingetPackages }
                 "16" { Import-WlanProfiles }
