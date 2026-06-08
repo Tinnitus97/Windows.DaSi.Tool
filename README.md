@@ -28,17 +28,6 @@ Entwickelt für IT-Administratoren und Power-User – vereint die Robustheit von
 
 ---
 
-## ✨ Neu in v0.9.0
-
-| Verbesserung | Nutzen |
-|---|---|
-| **Vollständige Chromium-Sicherung** | Es wird das komplette `User Data`-Verzeichnis gesichert (statt nur `Default`). Dadurch kommen **`Local State` (Entschlüsselungs-Key für Cookies/Passwörter)** und **alle Browser-Profile** mit – gespeicherte Passwörter funktionieren nach dem Restore wieder. Cache-/Temp-Ordner werden weiterhin ausgeschlossen. |
-| **Auto-Update jetzt optional** | Das stille Aktualisieren von Firefox/Thunderbird vor dem Backup läuft nur noch, wenn der Toggle **„Apps updaten: AN"** aktiv ist. Standard: **AUS** – ein Backup verändert deine Software nicht mehr ungefragt. |
-| **Nicht-destruktiver Restore** | Beim Wiederherstellen wird das vorhandene Profil nicht mehr gelöscht, sondern mit Zeitstempel umbenannt (`..._alt_JJJJMMTT_HHMMSS`) – **Rollback möglich**, falls etwas schiefgeht. |
-| **WLAN-Klartext-Hinweis** | Beim Export wird im Protokoll gewarnt, dass WLAN-Passwörter im Klartext im Backup-Ordner liegen. |
-
----
-
 ## 🛡️ Systemanforderungen
 
 | Anforderung | Details |
