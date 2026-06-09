@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 #Requires -RunAsAdministrator
 
 #------------------------------------------------------------------------------------
@@ -19,9 +19,12 @@ public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
 $consolePtr = [Console.Window]::GetConsoleWindow()
 [Console.Window]::ShowWindow($consolePtr, 0) | Out-Null
 
-$script:VersionString = "0.8.1"
+$script:VersionString = "0.8.2"
 $script:BuildString = "GUI-Edition"
 $WindowTitle = "Windows DaSi Tool $script:VersionString"
+
+$script:UpdateCheckUrl = "https://raw.githubusercontent.com/Tinnitus97/backup_my_windows_Updater/main/newversion.txt"
+$script:ProjectUrl     = "https://github.com/Tinnitus97/backup_my_windows"
 
 #----Hilfsfunktionen (Main Thread)----------------------------#
 
@@ -284,6 +287,16 @@ $Xaml = @"
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Text="Aktivit&#228;ts-Protokoll" Foreground="#CDD6F4" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8"/>
+
+            <Border Name="UpdateBanner" Grid.Row="0" Background="#313244" BorderBrush="#F9E2AF" BorderThickness="1"
+                    CornerRadius="5" Padding="8,6" Margin="0,26,0,0" Visibility="Collapsed" Cursor="Hand">
+                <StackPanel>
+                    <TextBlock Name="UpdateBannerText" Foreground="#F9E2AF" FontSize="11" FontWeight="SemiBold"
+                               TextWrapping="Wrap" Text="&#x1F504; Neue Version verfuegbar!"/>
+                    <TextBlock Foreground="#A6ADC8" FontSize="10" Margin="0,2,0,0"
+                               Text="Klicken, um die Projektseite zu oeffnen."/>
+                </StackPanel>
+            </Border>
             <TextBox Name="TBLog" Grid.Row="1" Background="#11111B" Foreground="#A6E3A1" BorderBrush="#313244" BorderThickness="1" 
                      FontFamily="Consolas" FontSize="11" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" 
                      Padding="6" Text="{Binding [0]}" VerticalContentAlignment="Top"/>
@@ -328,8 +341,40 @@ function Set-Binding {
 }
 
 Set-Binding $TBLog ([System.Windows.Controls.TextBox]::TextProperty) 0
+
+# ======================================================================
+# AUTO-SCROLL LOGIK (Kombination aus TextChanged und deiner Suchfunktion)
+# ======================================================================
+$SyncHash.LogAutoScroll = $true
+
+# 1. TextChanged fängt jede Änderung ab und scrollt, wenn es erlaubt ist
+$TBLog.Add_TextChanged({
+    if ($SyncHash.LogAutoScroll) {
+        $TBLog.ScrollToEnd()
+    }
+})
+
+# 2. Hilfsfunktion, um den echten internen ScrollViewer zu finden
+function Find-ScrollViewer ($element) {
+    if ($null -eq $element) { return $null }
+    $count = [System.Windows.Media.VisualTreeHelper]::GetChildrenCount($element)
+    for ($i = 0; $i -lt $count; $i++) {
+        $child = [System.Windows.Media.VisualTreeHelper]::GetChild($element, $i)
+        if ($child -is [System.Windows.Controls.ScrollViewer]) { return $child }
+        $found = Find-ScrollViewer $child
+        if ($null -ne $found) { return $found }
+    }
+    return $null
+}
+# ======================================================================
+
 Set-Binding $TbSourcePath ([System.Windows.Controls.TextBox]::TextProperty) 2
 Set-Binding $TbBackupPath ([System.Windows.Controls.TextBox]::TextProperty) 3
+
+# UpdateBanner Click -> Projektseite öffnen
+$UpdateBanner.Add_MouseLeftButtonUp({
+    Start-Process $script:ProjectUrl
+})
 
 $ToggleButtons = @(
     "TgB_User","TgB_Firefox","TgB_Edge","TgB_Chrome","TgB_Brave","TgB_Thunderbird","TgB_Winget","TgB_Wlan",
@@ -415,7 +460,7 @@ $JobCleanupScript = {
     do {
         foreach ($Job in $Jobs.ToArray()) {
             if ($Job.Runspace.IsCompleted) {
-                [void]$Job.PowerShell.EndInvoke($Job.Runspace)
+                try { [void]$Job.PowerShell.EndInvoke($Job.Runspace) } catch {}
                 $Job.PowerShell.Runspace.Close()
                 $Job.PowerShell.Dispose()
                 $Jobs.Remove($Job)
@@ -423,6 +468,15 @@ $JobCleanupScript = {
         }
         Start-Sleep -Milliseconds 500
     } while ($SyncHash.CleanupJobs)
+
+    # Nach Shutdown: verbleibende (noch laufende) Jobs forciert beenden
+    foreach ($Job in $Jobs.ToArray()) {
+        try {
+            $Job.PowerShell.Stop()
+            $Job.PowerShell.Runspace.Close()
+            $Job.PowerShell.Dispose()
+        } catch {}
+    }
 }
 
 function Run-Async ($scriptBlock) {
@@ -436,11 +490,15 @@ function Run-Async ($scriptBlock) {
 # --- Originale Skript-Funktionen für den Runspace ---
 $RunspaceFunctionsCode = @'
 
-function Write-Log ($Text) { 
-    $State.LogText += "$Text`r`n" 
-    if ($State.LogText.Length -gt 100000) {
-        $State.LogText = "... [LOG GEKUERZT, UM ABSTURZ ZU VERHINDERN] ...`r`n" + $State.LogText.Substring($State.LogText.Length - 80000)
+function Limit-LogText {
+    if ($State.LogText.Length -gt 40000) {
+        $State.LogText = "... [LOG GEKUERZT] ...`r`n" + $State.LogText.Substring($State.LogText.Length - 30000)
     }
+}
+
+function Write-Log ($Text) { 
+    $State.LogText += "$Text`r`n"
+    Limit-LogText
 }
 
 function Invoke-RobocopySafe ($Source, $Dest, $ExtraArgs) {
@@ -448,57 +506,85 @@ function Invoke-RobocopySafe ($Source, $Dest, $ExtraArgs) {
 
     $argString = "`"$Source`" `"$Dest`" $($ExtraArgs -join ' ')"
     Write-Log "Robocopy Befehl: robocopy $argString"
-    
+
     $pInfo = New-Object System.Diagnostics.ProcessStartInfo
     $pInfo.FileName = "robocopy.exe"
     $pInfo.Arguments = $argString
     $pInfo.RedirectStandardOutput = $true
+    $pInfo.RedirectStandardError  = $true
     $pInfo.UseShellExecute = $false
-    $pInfo.CreateNoWindow = $true
-    $pInfo.StandardOutputEncoding = [System.Console]::OutputEncoding
+    $pInfo.CreateNoWindow  = $true
+    $pInfo.StandardOutputEncoding = [System.Text.Encoding]::GetEncoding(850)
 
     $p = New-Object System.Diagnostics.Process
     $p.StartInfo = $pInfo
+    $p.EnableRaisingEvents = $true
+
+    # Gemeinsamer, thread-sicherer Zeilenpuffer
+    $lineBag = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
+
+    $outHandler = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -Action {
+        $line = $Event.SourceEventArgs.Data
+        if (-not [string]::IsNullOrWhiteSpace($line)) {
+            $Event.MessageData.Enqueue($line)
+        }
+    } -MessageData $lineBag
+
+    $errHandler = Register-ObjectEvent -InputObject $p -EventName ErrorDataReceived -Action {
+        $line = $Event.SourceEventArgs.Data
+        if (-not [string]::IsNullOrWhiteSpace($line)) {
+            $Event.MessageData.Enqueue("[STDERR] $line")
+        }
+    } -MessageData $lineBag
+
     $p.Start() | Out-Null
-    
+    $p.BeginOutputReadLine()
+    $p.BeginErrorReadLine()
+
     [void]$SyncHash.ActiveProcesses.Add($p.Id)
 
-    $buffer = New-Object System.Text.StringBuilder
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
     while (-not $p.HasExited) {
-        while ($p.StandardOutput.Peek() -gt -1) {
-            $line = $p.StandardOutput.ReadLine()
-            if (-not [string]::IsNullOrWhiteSpace($line)) {
-                [void]$buffer.AppendLine($line)
-            }
+        if ($SyncHash.CancelRequested) {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            break
         }
-        
-        if ($buffer.Length -gt 0 -and $sw.ElapsedMilliseconds -gt 500) {
-            $State.LogText += $buffer.ToString()
-            $buffer.Clear()
-            if ($State.LogText.Length -gt 100000) {
-                $State.LogText = "... [LOG GEKUERZT] ...`r`n" + $State.LogText.Substring($State.LogText.Length - 80000)
+
+        if ($lineBag.Count -gt 0 -and $sw.ElapsedMilliseconds -gt 400) {
+            $batch = [System.Text.StringBuilder]::new()
+            $line  = $null
+            while ($lineBag.TryDequeue([ref]$line)) {
+                [void]$batch.AppendLine($line)
+            }
+            if ($batch.Length -gt 0) {
+                $State.LogText += $batch.ToString()
+                Limit-LogText
             }
             $sw.Restart()
         }
 
-        if ($SyncHash.CancelRequested) { 
-            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-            break 
-        }
         Start-Sleep -Milliseconds 100
     }
 
-    if (-not $p.StandardOutput.EndOfStream) {
-        $rest = $p.StandardOutput.ReadToEnd()
-        if (-not [string]::IsNullOrWhiteSpace($rest)) {
-            [void]$buffer.Append($rest)
-        }
+    # Kurz warten damit asynchrone Events noch eintreffen koennen
+    Start-Sleep -Milliseconds 300
+
+    # Verbliebene Zeilen aus dem Puffer leeren
+    $rest = [System.Text.StringBuilder]::new()
+    $line = $null
+    while ($lineBag.TryDequeue([ref]$line)) {
+        [void]$rest.AppendLine($line)
     }
-    if ($buffer.Length -gt 0) {
-        $State.LogText += $buffer.ToString()
+    if ($rest.Length -gt 0) {
+        $State.LogText += $rest.ToString()
+        Limit-LogText
     }
+
+    Unregister-Event -SourceIdentifier $outHandler.Name -ErrorAction SilentlyContinue
+    Unregister-Event -SourceIdentifier $errHandler.Name -ErrorAction SilentlyContinue
+    Remove-Job -Name $outHandler.Name -ErrorAction SilentlyContinue
+    Remove-Job -Name $errHandler.Name -ErrorAction SilentlyContinue
 
     [void]$SyncHash.ActiveProcesses.Remove($p.Id)
     return $p.ExitCode
@@ -613,8 +699,8 @@ function Backup-UserProfile {
     $oneDriveFolders = Get-ChildItem -Path $userDir -Filter "OneDrive*" -Directory -ErrorAction SilentlyContinue
     if ($oneDriveFolders) { foreach ($folder in $oneDriveFolders) { $excludedDirs += $folder.FullName } }
 
-    $robocopyArgs = @("/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XA:SH", "/NP")
-    if ($SyncHash.FastMode) { $robocopyArgs += "/NFL", "/NDL" }
+    $robocopyArgs = @("/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XA:SH")
+    if ($SyncHash.FastMode) { $robocopyArgs += "/NP", "/NFL", "/NDL" }
     
     foreach ($exDir in $excludedDirs) {
         if (Test-Path $exDir) { $robocopyArgs += "/XD", "`"$exDir`"" }
@@ -632,7 +718,7 @@ function Restore-UserProfile {
     if (-not (Test-Path $backupSourceDir)) { Write-Log "[FEHLER] Backup-Ordner nicht gefunden."; return }
 
     Write-Log "[INFO] Starte Restore Benutzerprofil..."
-    $robocopyArgs = @("/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32", "/NP")
+    $robocopyArgs = @("/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32")
     if ($SyncHash.FastMode) { $robocopyArgs += "/NP", "/NFL", "/NDL" }
     
     $exitCode = Invoke-RobocopySafe -Source $backupSourceDir -Dest $destDir -ExtraArgs $robocopyArgs
@@ -650,8 +736,8 @@ function Backup-ApplicationProfile ($AppName, $ProfilePathInUserDir, $ProcessNam
         Start-Sleep -Seconds 2
 
         $targetBackupDir = Join-Path $State.BackupPath "$AppName-Profil"
-        $roboArgs = @("/MIR", "/R:1", "/W:1", "/MT:32", "/NP")
-        if ($SyncHash.FastMode) { $roboArgs += "/NFL", "/NDL" }
+        $roboArgs = @("/MIR", "/R:1", "/W:1", "/MT:32")
+        if ($SyncHash.FastMode) { $roboArgs += "/NP", "/NFL", "/NDL" }
         # Cache-/Temp-Verzeichnisse ueberall im Profilbaum ausschliessen (Name-Match, ohne Pfad)
         foreach ($ex in $ExcludeDirs) { $roboArgs += "/XD", "`"$ex`"" }
 
@@ -688,8 +774,8 @@ function Restore-ApplicationProfile ($AppName, $ProfilePathInUserDir, $ProcessNa
     $parentOfTarget = Split-Path $targetAppProfileDir
     if (-not (Test-Path $parentOfTarget)) { New-Item -ItemType Directory -Path $parentOfTarget -Force -ErrorAction SilentlyContinue | Out-Null }
 
-    $roboArgs = @("/MIR", "/R:1", "/W:1", "/MT:32", "/NP")
-    if ($SyncHash.FastMode) { $roboArgs += "/NFL", "/NDL" }
+    $roboArgs = @("/MIR", "/R:1", "/W:1", "/MT:32")
+    if ($SyncHash.FastMode) { $roboArgs += "/NP", "/NFL", "/NDL" }
 
     $exitCode = Invoke-RobocopySafe -Source $backupSourceDir -Dest $targetAppProfileDir -ExtraArgs $roboArgs
     if ($SyncHash.CancelRequested) { return }
@@ -772,6 +858,9 @@ $BtnExecute.Add_Click({
     $SyncHash.TaskList = $TaskList
     $SyncHash.CancelRequested = $false
 
+    # Flag bei Start explizit auf True setzen
+    $SyncHash.LogAutoScroll = $true
+
     $State.UIEnabled = $false
     $State.LogText += "`n=========================================`n"
     $State.LogText += "Starte Abarbeitung der Warteschlange...`n"
@@ -827,10 +916,36 @@ $BtnExecute.Add_Click({
 })
 
 $SyncHash.RunspaceFunctionsCode = $RunspaceFunctionsCode
+$SyncHash.UpdateCheckUrl  = $script:UpdateCheckUrl
+$SyncHash.ProjectUrl      = $script:ProjectUrl
+$SyncHash.CurrentVersion  = $script:VersionString
+$SyncHash.UpdateBanner    = $UpdateBanner
+$SyncHash.UpdateBannerText = $UpdateBannerText
 
 Start-RunspaceTask $JobCleanupScript @([psobject]@{ Name = 'Jobs'; Variable = $Jobs })
 
-$Window.Add_Closed({ $SyncHash.CleanupJobs = $false })
+$Window.Add_Closed({
+    $SyncHash.CleanupJobs     = $false
+    $SyncHash.CancelRequested = $true
+
+    # Alle noch laufenden Kindprozesse (Robocopy, Installer usw.) abschuessen
+    foreach ($procId in $SyncHash.ActiveProcesses.ToArray()) {
+        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+    }
+
+    # Alle Runspaces stoppen und freigeben
+    foreach ($Job in $Jobs.ToArray()) {
+        try {
+            $Job.PowerShell.Stop()
+            $Job.PowerShell.Runspace.Close()
+            $Job.PowerShell.Dispose()
+        } catch {}
+    }
+    $Jobs.Clear()
+
+    # Prozess sauber beenden (wichtig bei ps2exe-EXE)
+    [Environment]::Exit(0)
+})
 $SyncHash.CleanupJobs = $true
 
 # Fenster anzeigen
@@ -839,6 +954,47 @@ $Window.Add_Loaded({
     $Window.Focus()
     $Window.Topmost = $true
     $Window.Dispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, [action]{ $Window.Topmost = $false }) | Out-Null
+
+    # ======================================================================
+    # 3. Den internen ScrollViewer fischen und überwachen
+    # ======================================================================
+    $sv = Find-ScrollViewer $TBLog
+    if ($null -ne $sv) {
+        $sv.Add_ScrollChanged({
+            $e = if ($_.SourceEventArgs) { $_.SourceEventArgs } else { $_ }
+            
+            # Wenn sich die Ansicht ändert (z.B. durch Scrollen mit Rad oder Balken), 
+            # aber KEIN neuer Text dazugekommen ist:
+            if ($e.ExtentHeightChange -eq 0 -and $e.VerticalChange -ne 0) {
+                # Toleranz von 5 Pixeln, um Ungenauigkeiten abzufangen
+                $isAtBottom = (($e.VerticalOffset + $e.ViewportHeight) -ge ($e.ExtentHeight - 5))
+                $SyncHash.LogAutoScroll = $isAtBottom
+            }
+        })
+    }
+    # ======================================================================
+
+    # Update-Check im Hintergrund starten
+    Start-RunspaceTask {
+        . ([ScriptBlock]::Create($SyncHash.RunspaceFunctionsCode))
+        try {
+            $onlineVersionRaw = (Invoke-WebRequest -Uri $SyncHash.UpdateCheckUrl -UseBasicParsing -TimeoutSec 8 -ErrorAction Stop).Content.Trim()
+            if ([version]$onlineVersionRaw -gt [version]$SyncHash.CurrentVersion) {
+                $msg = "Neue Version $onlineVersionRaw verfuegbar (aktuell: $($SyncHash.CurrentVersion))"
+                $SyncHash.Window.Dispatcher.Invoke([action]{
+                    $SyncHash.UpdateBanner.Visibility = 'Visible'
+                    $SyncHash.UpdateBannerText.Text = "Neue Version $onlineVersionRaw verfuegbar  (installiert: $($SyncHash.CurrentVersion))"
+                })
+                Write-Log "[UPDATE] $msg - Klicke auf das Banner oben rechts."
+            }
+        } catch {
+            # Kein Internet oder Server nicht erreichbar -> stillschweigend ignorieren
+        }
+    } @(
+        [psobject]@{ Name = 'DataContext'; Variable = $DataContext },
+        [psobject]@{ Name = 'State';       Variable = $State       },
+        [psobject]@{ Name = 'SyncHash';    Variable = $SyncHash    }
+    )
 })
 
 $Window.ShowDialog()
