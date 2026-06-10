@@ -16,10 +16,17 @@ public static extern IntPtr GetConsoleWindow();
 [DllImport("user32.dll")]
 public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
 '
+# Nativer Win32-Aufruf zum garantierten Beenden des ps2exe-Host-Prozesses
+Add-Type -Name NativeExit -Namespace PS2EXE -MemberDefinition '
+[DllImport("kernel32.dll")]
+public static extern IntPtr GetCurrentProcess();
+[DllImport("kernel32.dll")]
+public static extern bool TerminateProcess(IntPtr hProcess, uint exitCode);
+'
 $consolePtr = [Console.Window]::GetConsoleWindow()
 [Console.Window]::ShowWindow($consolePtr, 0) | Out-Null
 
-$script:VersionString = "0.8.2"
+$script:VersionString = "0.8.3"
 $script:BuildString = "GUI-Edition"
 $WindowTitle = "Windows DaSi Tool $script:VersionString"
 
@@ -928,23 +935,20 @@ $Window.Add_Closed({
     $SyncHash.CleanupJobs     = $false
     $SyncHash.CancelRequested = $true
 
-    # Alle noch laufenden Kindprozesse (Robocopy, Installer usw.) abschuessen
+    # Kindprozesse (Robocopy, Installer usw.) beenden
     foreach ($procId in $SyncHash.ActiveProcesses.ToArray()) {
         Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
     }
 
-    # Alle Runspaces stoppen und freigeben
+    # Runspaces nicht-blockierend stoppen (BeginStop statt Stop, da Stop blockiert)
     foreach ($Job in $Jobs.ToArray()) {
-        try {
-            $Job.PowerShell.Stop()
-            $Job.PowerShell.Runspace.Close()
-            $Job.PowerShell.Dispose()
-        } catch {}
+        try { $Job.PowerShell.BeginStop($null, $null) } catch {}
     }
     $Jobs.Clear()
 
-    # Prozess sauber beenden (wichtig bei ps2exe-EXE)
-    [Environment]::Exit(0)
+    # Prozess direkt beenden (wichtig bei ps2exe-EXE)
+    Add-Type -Name Kernel -Namespace Win32 -MemberDefinition '[DllImport("kernel32.dll")] public static extern void ExitProcess(uint uExitCode);' -ErrorAction SilentlyContinue
+    [Win32.Kernel]::ExitProcess(0)
 })
 $SyncHash.CleanupJobs = $true
 
@@ -997,4 +1001,5 @@ $Window.Add_Loaded({
     )
 })
 
-$Window.ShowDialog()
+$app = [System.Windows.Application]::new()
+$app.Run($Window)
