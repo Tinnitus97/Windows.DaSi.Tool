@@ -4,8 +4,7 @@
 
 Entwickelt für IT-Administratoren und Power-User – vereint die Robustheit von **Robocopy** mit einer modernen, benutzerfreundlichen Oberfläche.
 
-<img width="1991" height="1394" alt="image" src="https://github.com/user-attachments/assets/7aad6576-1391-4665-9c35-122e4a0a87bb" />
-
+<img width="2255" height="1303" alt="image" src="https://github.com/user-attachments/assets/9d1307f3-4df7-4227-8f55-3d14fe50178b" />
 
 ---
 
