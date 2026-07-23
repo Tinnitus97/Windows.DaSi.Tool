@@ -59,11 +59,8 @@ erscheinen.
 
 Die gesamte Oberflaeche inklusive Aktivitaetsprotokoll laesst sich zwischen
 **Deutsch** und **Englisch** umschalten. Sprache und Farbschema werden beim Start
-aus den Windows-Einstellungen uebernommen und lassen sich jederzeit aendern.
-
-<div align="center">
-<img src="docs/images/hellmodus.png" alt="Anwendung im hellen Modus" width="850">
-</div>
+aus den Windows-Einstellungen uebernommen und lassen sich jederzeit ueber das
+Sonne-/Mond-Symbol und das Sprach-Dropdown aendern.
 
 ### Nachvollziehbares Protokoll
 
