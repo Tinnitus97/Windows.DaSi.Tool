@@ -1,0 +1,232 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="WindowsDaSiTool.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+
+                <!-- ===== Dunkles Theme (Catppuccin Mocha) ===== -->
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="BaseBrush" Color="#1E1E2E"/>
+                    <SolidColorBrush x:Key="CrustBrush" Color="#11111B"/>
+                    <SolidColorBrush x:Key="Surface0Brush" Color="#313244"/>
+                    <SolidColorBrush x:Key="Surface1Brush" Color="#45475A"/>
+                    <SolidColorBrush x:Key="CardBrush" Color="#2A2A3E"/>
+                    <SolidColorBrush x:Key="TextBrush" Color="#CDD6F4"/>
+                    <SolidColorBrush x:Key="SubtextBrush" Color="#A6ADC8"/>
+                    <SolidColorBrush x:Key="OverlayBrush" Color="#6C7086"/>
+                    <SolidColorBrush x:Key="BlueBrush" Color="#89B4FA"/>
+                    <SolidColorBrush x:Key="LavenderBrush" Color="#B4BEFE"/>
+                    <SolidColorBrush x:Key="GreenBrush" Color="#A6E3A1"/>
+                    <SolidColorBrush x:Key="RedBrush" Color="#F38BA8"/>
+                    <SolidColorBrush x:Key="YellowBrush" Color="#F9E2AF"/>
+                </ResourceDictionary>
+
+                <!-- ===== Helles Theme (Catppuccin Latte) ===== -->
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="BaseBrush" Color="#EFF1F5"/>
+                    <SolidColorBrush x:Key="CrustBrush" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="Surface0Brush" Color="#CCD0DA"/>
+                    <SolidColorBrush x:Key="Surface1Brush" Color="#BCC0CC"/>
+                    <SolidColorBrush x:Key="CardBrush" Color="#E6E9EF"/>
+                    <SolidColorBrush x:Key="TextBrush" Color="#4C4F69"/>
+                    <SolidColorBrush x:Key="SubtextBrush" Color="#6C6F85"/>
+                    <SolidColorBrush x:Key="OverlayBrush" Color="#9CA0B0"/>
+                    <SolidColorBrush x:Key="BlueBrush" Color="#1E66F5"/>
+                    <SolidColorBrush x:Key="LavenderBrush" Color="#7287FD"/>
+                    <SolidColorBrush x:Key="GreenBrush" Color="#40A02B"/>
+                    <SolidColorBrush x:Key="RedBrush" Color="#D20F39"/>
+                    <SolidColorBrush x:Key="YellowBrush" Color="#DF8E1D"/>
+                </ResourceDictionary>
+
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+        <Style Selector="TextBlock.section">
+            <Setter Property="Foreground" Value="{DynamicResource BlueBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="2,0,2,8"/>
+        </Style>
+
+        <!-- ============ App-Titel / Untertitel ============ -->
+        <Style Selector="TextBlock.appTitle">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+        <Style Selector="TextBlock.appSubtitle">
+            <Setter Property="Foreground" Value="{DynamicResource SubtextBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="TextBlock.fieldLabel">
+            <Setter Property="Foreground" Value="{DynamicResource SubtextBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- ============ Segment-Umschalter (Sichern/Wiederherstellen) ============ -->
+        <Style Selector="RadioButton.segment">
+            <Setter Property="Foreground" Value="{DynamicResource SubtextBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border x:Name="seg" Background="{TemplateBinding Background}"
+                            CornerRadius="6" Padding="14,9">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.segment:pointerover /template/ Border#seg">
+            <Setter Property="Background" Value="{DynamicResource Surface1Brush}"/>
+        </Style>
+        <Style Selector="RadioButton.segment:checked">
+            <Setter Property="Foreground" Value="{DynamicResource CrustBrush}"/>
+        </Style>
+        <Style Selector="RadioButton.segment:checked /template/ Border#seg">
+            <Setter Property="Background" Value="{DynamicResource BlueBrush}"/>
+        </Style>
+        <Style Selector="Border.segmentBar">
+            <Setter Property="Background" Value="{DynamicResource CrustBrush}"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+
+        <!-- ============ Panel-Karte (Gruppen-Container) ============ -->
+        <Style Selector="Border.panel">
+            <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Surface0Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="14"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <!-- ============ ComboBox (Schnellauswahl) ============ -->
+        <Style Selector="ComboBox.quick">
+            <Setter Property="Background" Value="{DynamicResource CrustBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="5"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Padding" Value="8,0,4,0"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <!-- ============ Karten-Checkbox ============
+             Die CheckBox selbst traegt KEINEN Rahmen mehr. Der Karten-Look
+             (Rahmen, Hintergrund, Ecken) kommt vom umschliessenden Border
+             "cardHost". Dadurch sitzt die Haekchen-Box zuverlaessig mit
+             Abstand zur Umrandung, unabhaengig von Template-Interna. -->
+        <Style Selector="Border.cardHost">
+            <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="5"/>
+            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="Margin" Value="4,3"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Border.cardHost:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource BlueBrush}"/>
+        </Style>
+
+        <Style Selector="CheckBox.card">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="CheckBox.card TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style Selector="CheckBox.card:checked">
+            <Setter Property="Background" Value="{DynamicResource Surface0Brush}"/>
+        </Style>
+        <Style Selector="CheckBox.card:disabled">
+            <Setter Property="Opacity" Value="0.35"/>
+        </Style>
+
+        <!-- ============ Primaerer Aktions-Button ============ -->
+        <Style Selector="Button.action">
+            <Setter Property="Background" Value="{DynamicResource BlueBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CrustBrush}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="8,10"/>
+            <Setter Property="Margin" Value="4,10,4,4"/>
+            <Setter Property="Height" Value="45"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="CornerRadius" Value="5"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.action:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource LavenderBrush}"/>
+        </Style>
+        <Style Selector="Button.action:disabled">
+            <Setter Property="Opacity" Value="0.4"/>
+        </Style>
+
+        <!-- ============ Sekundaerer Button ============ -->
+        <Style Selector="Button.secondary">
+            <Setter Property="Background" Value="{DynamicResource Surface0Brush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="4,3"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="CornerRadius" Value="5"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.secondary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface1Brush}"/>
+        </Style>
+        <Style Selector="Button.secondary:disabled">
+            <Setter Property="Opacity" Value="0.35"/>
+        </Style>
+
+        <!-- ============ Beenden-Button ============ -->
+        <Style Selector="Button.exit">
+            <Setter Property="Foreground" Value="{DynamicResource RedBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource RedBrush}"/>
+        </Style>
+
+        <!-- ============ Pfad-Textbox ============ -->
+        <Style Selector="TextBox.path">
+            <Setter Property="Background" Value="{DynamicResource CrustBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,0"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+    </Application.Styles>
+</Application>

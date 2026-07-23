@@ -1,0 +1,17 @@
+# Build-Ausgaben
+bin/
+obj/
+publish/
+*.user
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.suo
+
+# Signaturzertifikate niemals einchecken
+*.pfx
+*.snk
+
+# Sonstiges
+*.log

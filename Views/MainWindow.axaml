@@ -1,0 +1,150 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:WindowsDaSiTool.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="WindowsDaSiTool.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding WindowTitle}"
+        MinWidth="1000" MinHeight="600"
+        Width="1200" Height="700"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BaseBrush}"
+        Icon="/Assets/app.ico">
+
+    <Grid Margin="16" RowDefinitions="Auto,*">
+
+        <!-- ============ Kopfzeile ============ -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="2,0,2,14">
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Classes="appTitle" Text="{Binding WindowTitle}"/>
+                <TextBlock Classes="appSubtitle" Text="{Binding AppSubtitle}" Margin="0,2,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                <Button Classes="secondary" Width="46" Content="{Binding ThemeIcon}"
+                        FontSize="18" ToolTip.Tip="Hell-/Dunkelmodus"
+                        Command="{Binding ToggleThemeCommand}"/>
+                <ComboBox Classes="quick" Width="150" VerticalAlignment="Center"
+                          ItemsSource="{Binding Languages}"
+                          SelectedIndex="{Binding SelectedLanguageIndex}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ============ Hauptbereich: zwei Spalten ============ -->
+        <Grid Grid.Row="1" ColumnDefinitions="6*,4*">
+
+            <!-- ============ Linke Spalte: Bedienung ============ -->
+            <Grid Grid.Column="0" Margin="0,0,12,0" RowDefinitions="Auto,*,Auto">
+
+                <!-- Optionen & Verzeichnisse -->
+                <Border Grid.Row="0" Classes="panel">
+                    <StackPanel>
+                        <TextBlock Classes="section" Text="{Binding SectionOptions}"/>
+
+                        <Grid ColumnDefinitions="130,*,44" Margin="0,0,0,6">
+                            <TextBlock Classes="fieldLabel" Text="{Binding LabelQuickSelect}"/>
+                            <ComboBox Grid.Column="1" Classes="quick"
+                                      ItemsSource="{Binding UserProfiles}"
+                                      SelectedItem="{Binding SelectedProfile}"
+                                      PlaceholderText="{Binding QuickSelectHint}"
+                                      IsEnabled="{Binding UiEnabled}"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*,44" Margin="0,0,0,6">
+                            <TextBlock Classes="fieldLabel" Text="{Binding LabelUserProfile}"/>
+                            <TextBox Grid.Column="1" Classes="path" Text="{Binding SourcePath}"/>
+                            <Button Grid.Column="2" Content="…" Margin="6,0,0,0" Classes="secondary"
+                                    Command="{Binding SelectSourceCommand}" IsEnabled="{Binding UiEnabled}"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*,44" Margin="0,0,0,10">
+                            <TextBlock Classes="fieldLabel" Text="{Binding LabelBackupTarget}"/>
+                            <TextBox Grid.Column="1" Classes="path" Text="{Binding BackupPath}"/>
+                            <Button Grid.Column="2" Content="…" Margin="6,0,0,0" Classes="secondary"
+                                    Command="{Binding SelectBackupCommand}" IsEnabled="{Binding UiEnabled}"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*,*,*">
+                            <Button Grid.Column="0" Classes="secondary" Margin="0,0,4,0" Content="{Binding BtnClearPaths}"
+                                    Command="{Binding ClearPathsCommand}" IsEnabled="{Binding UiEnabled}"/>
+                            <Button Grid.Column="1" Classes="secondary" Margin="4,0,4,0" Content="{Binding LoggingLabel}"
+                                    Command="{Binding ToggleLoggingCommand}" IsEnabled="{Binding UiEnabled}"/>
+                            <Button Grid.Column="2" Classes="secondary" Margin="4,0,0,0" Content="{Binding AutoUpdateLabel}"
+                                    Command="{Binding ToggleAutoUpdateCommand}" IsEnabled="{Binding UiEnabled}"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Aktionen: umschaltbar zwischen Sichern und Wiederherstellen -->
+                <Border Grid.Row="1" Classes="panel" VerticalAlignment="Top">
+                    <StackPanel>
+                            <!-- Umschalter -->
+                            <Border Classes="segmentBar">
+                                <Grid ColumnDefinitions="*,*">
+                                    <RadioButton Grid.Column="0" Classes="segment" GroupName="mode"
+                                                 Content="{Binding TabBackup}"
+                                                 IsChecked="{Binding IsBackupMode, Mode=TwoWay}"
+                                                 IsEnabled="{Binding UiEnabled}"/>
+                                    <RadioButton Grid.Column="1" Classes="segment" GroupName="mode"
+                                                 Content="{Binding TabRestore}"
+                                                 IsChecked="{Binding IsRestoreMode, Mode=TwoWay}"
+                                                 IsEnabled="{Binding UiEnabled}"/>
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Classes="section" Text="{Binding ModeTitle}"/>
+                            <UniformGrid Columns="2">
+                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgUserProfile}"  IsChecked="{Binding SelUser}"        IsEnabled="{Binding UiEnabled}"/></Border>
+                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgFirefox}"      IsChecked="{Binding SelFirefox}"     IsEnabled="{Binding UiEnabled}"/></Border>
+                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgEdge}"         IsChecked="{Binding SelEdge}"        IsEnabled="{Binding UiEnabled}"/></Border>
+                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgChrome}"       IsChecked="{Binding SelChrome}"      IsEnabled="{Binding UiEnabled}"/></Border>
+                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgBrave}"        IsChecked="{Binding SelBrave}"       IsEnabled="{Binding UiEnabled}"/></Border>
+                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgThunderbird}"  IsChecked="{Binding SelThunderbird}" IsEnabled="{Binding UiEnabled}"/></Border>
+                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWinget}"       IsChecked="{Binding SelWinget}"      IsEnabled="{Binding UiEnabled}"/></Border>
+                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWlan}"         IsChecked="{Binding SelWlan}"        IsEnabled="{Binding UiEnabled}"/></Border>
+                            </UniformGrid>
+                        </StackPanel>
+                    </Border>
+
+                <Button Grid.Row="2" Classes="action" Content="{Binding BtnExecute}"
+                        Command="{Binding ExecuteCommand}" IsEnabled="{Binding UiEnabled}"/>
+            </Grid>
+
+            <!-- ============ Rechte Spalte: Protokoll ============ -->
+            <Border Grid.Column="1" Classes="panel" Margin="0" Padding="14">
+                <Grid RowDefinitions="Auto,Auto,*">
+                    <TextBlock Grid.Row="0" Text="{Binding LogTitle}" Foreground="{DynamicResource TextBrush}"
+                               FontSize="13" FontWeight="SemiBold" Margin="0,0,0,10"/>
+
+                    <Border Grid.Row="1" Background="{DynamicResource Surface0Brush}"
+                            BorderBrush="{DynamicResource YellowBrush}" BorderThickness="1"
+                            CornerRadius="5" Padding="10,7" Margin="0,0,0,10" Cursor="Hand"
+                            IsVisible="{Binding UpdateAvailable}"
+                            PointerReleased="OnUpdateBannerClick">
+                        <StackPanel>
+                            <TextBlock Foreground="{DynamicResource YellowBrush}" FontSize="11" FontWeight="SemiBold"
+                                       TextWrapping="Wrap" Text="{Binding UpdateBannerText}"/>
+                            <TextBlock Foreground="{DynamicResource SubtextBrush}" FontSize="10" Margin="0,2,0,0"
+                                       Text="{Binding BannerHint}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="2" Background="{DynamicResource CrustBrush}"
+                            BorderBrush="{DynamicResource Surface0Brush}" BorderThickness="1"
+                            CornerRadius="5">
+                        <ScrollViewer Name="LogScroll" Padding="8"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <SelectableTextBlock Name="TBLog"
+                                     Foreground="{DynamicResource GreenBrush}"
+                                     FontFamily="Consolas,Cascadia Mono,monospace" FontSize="11"
+                                     TextWrapping="Wrap"
+                                     Text="{Binding LogText}"/>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
