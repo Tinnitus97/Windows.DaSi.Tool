@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -111,7 +111,7 @@ public sealed class WingetService
 
     private async Task<bool> RegisterForCurrentUser()
     {
-        _log(Loc.Tr("[INFO] winget scheint fuer diesen Benutzer nicht registriert zu sein. Versuche Registrierung des App-Installer-Pakets...", "[INFO] winget does not appear to be registered for this user. Attempting to register the App Installer package..."));
+        _log(Loc.Tr("[INFO] winget scheint für diesen Benutzer nicht registriert zu sein. Versuche Registrierung des App-Installer-Pakets...", "[INFO] winget does not appear to be registered for this user. Attempting to register the App Installer package..."));
 
         // Add-AppxPackage steht nur ueber Windows PowerShell (powershell.exe)
         // zuverlaessig zur Verfuegung -> ueber den Prozess-Runner aufrufen.
@@ -133,7 +133,7 @@ public sealed class WingetService
         }
         catch (Exception ex)
         {
-            if (!_cancel.FastMode) _log(Loc.Tr($"[INFO] Registrierung per Paketfamilie nicht moeglich: {ex.Message}", $"[INFO] Registration by package family not possible: {ex.Message}"));
+            if (!_cancel.FastMode) _log(Loc.Tr($"[INFO] Registrierung per Paketfamilie nicht möglich: {ex.Message}", $"[INFO] Registration by package family not possible: {ex.Message}"));
         }
 
         // Variante 2: klassisch ueber das AppxManifest im Paketordner
@@ -145,7 +145,7 @@ public sealed class WingetService
             {
                 if (await RunPs($"Add-AppxPackage -Register '{manifest}' -DisableDevelopmentMode -ErrorAction Stop"))
                 {
-                    _log(Loc.Tr($"[INFO] Registrierung ueber AppxManifest erfolgreich: {loc}", $"[INFO] Registration via AppxManifest succeeded: {loc}"));
+                    _log(Loc.Tr($"[INFO] Registrierung über AppxManifest erfolgreich: {loc}", $"[INFO] Registration via AppxManifest succeeded: {loc}"));
                     return true;
                 }
             }
@@ -176,7 +176,7 @@ public sealed class WingetService
 
         _log(Loc.Tr("[FEHLER] winget konnte mit keiner Methode gestartet werden. Versuchte Wege:", "[ERROR] winget could not be started by any method. Attempted paths:"));
         foreach (var a in attempts.Distinct()) _log("    " + a);
-        _log(Loc.Tr("[INFO] Bitte einmal unter dem Benutzer, der dieses Tool startet, 'winget --version' in einer Konsole ausfuehren. Falls der Befehl unbekannt ist, den 'App-Installer' im Microsoft Store aktualisieren und danach erneut versuchen.", "[INFO] Please run 'winget --version' once in a console under the user that starts this tool. If the command is unknown, update the 'App Installer' from the Microsoft Store and try again."));
+        _log(Loc.Tr("[INFO] Bitte einmal unter dem Benutzer, der dieses Tool startet, 'winget --version' in einer Konsole ausführen. Falls der Befehl unbekannt ist, den 'App-Installer' im Microsoft Store aktualisieren und danach erneut versuchen.", "[INFO] Please run 'winget --version' once in a console under the user that starts this tool. If the command is unknown, update the 'App Installer' from the Microsoft Store and try again."));
         return null;
     }
 
@@ -310,8 +310,8 @@ public sealed class WingetService
         var totalPackages = json.Sources.Sum(s => s.Packages.Count);
         if (totalPackages == 0)
         {
-            _log(Loc.Tr($"[FEHLER] Der Winget-Export enthaelt keine Pakete (ExitCode: {result.ExitCode}).", $"[ERROR] The winget export contains no packages (ExitCode: {result.ExitCode})."));
-            _log(Loc.Tr("[INFO] Moegliche Ursache: winget kann im erhoehten Kontext die Paketliste nicht lesen. Bitte einmal 'winget list' in einer Administrator-Konsole ausfuehren und die Quellvereinbarung bestaetigen, danach erneut versuchen.", "[INFO] Possible cause: winget cannot read the package list in the elevated context. Please run 'winget list' once in an administrator console and accept the source agreement, then try again."));
+            _log(Loc.Tr($"[FEHLER] Der Winget-Export enthält keine Pakete (ExitCode: {result.ExitCode}).", $"[ERROR] The winget export contains no packages (ExitCode: {result.ExitCode})."));
+            _log(Loc.Tr("[INFO] Mögliche Ursache: winget kann im erhöhten Kontext die Paketliste nicht lesen. Bitte einmal 'winget list' in einer Administrator-Konsole ausführen und die Quellvereinbarung bestätigen, danach erneut versuchen.", "[INFO] Possible cause: winget cannot read the package list in the elevated context. Please run 'winget list' once in an administrator console and accept the source agreement, then try again."));
             SafeDelete(exportFile);
             return;
         }
@@ -337,7 +337,7 @@ public sealed class WingetService
         json.Sources = json.Sources.Where(s => s.Packages.Count > 0).ToList();
 
         if (skipped.Count > 0 && !_cancel.FastMode)
-            foreach (var id in skipped) _log(Loc.Tr($"[INFO] Uebersprungen (Zusatz-/Laufzeitpaket): {id}", $"[INFO] Skipped (companion/runtime package): {id}"));
+            foreach (var id in skipped) _log(Loc.Tr($"[INFO] Übersprungen (Zusatz-/Laufzeitpaket): {id}", $"[INFO] Skipped (companion/runtime package): {id}"));
 
         // Bekannt-Liste: nicht zugeordnete, aber bekannte Programme retten
         if (json.Sources.Count == 0) json.Sources.Add(new WingetSource());
@@ -363,7 +363,7 @@ public sealed class WingetService
                     existing.Add(rescued.ToLowerInvariant());
                     keptTotal++;
                 }
-                _log(Loc.Tr($"[INFO] Zuordnung ueber Bekannt-Liste: {name} -> {rescued}", $"[INFO] Mapped via known-list: {name} -> {rescued}"));
+                _log(Loc.Tr($"[INFO] Zuordnung über Bekannt-Liste: {name} -> {rescued}", $"[INFO] Mapped via known-list: {name} -> {rescued}"));
             }
             else stillUnresolved.Add(name);
         }
@@ -371,7 +371,7 @@ public sealed class WingetService
 
         if (keptTotal == 0)
         {
-            _log(Loc.Tr("[FEHLER] Nach dem Herausfiltern der Zusatzpakete sind keine Programme uebrig geblieben.", "[ERROR] After filtering out companion packages, no programs remain."));
+            _log(Loc.Tr("[FEHLER] Nach dem Herausfiltern der Zusatzpakete sind keine Programme übrig geblieben.", "[ERROR] After filtering out companion packages, no programs remain."));
             SafeDelete(exportFile);
             return;
         }
@@ -384,8 +384,8 @@ public sealed class WingetService
         if (stillUnresolved.Count > 0)
         {
             await File.WriteAllLinesAsync(unresolvedFile, stillUnresolved.Distinct().OrderBy(x => x));
-            _log(Loc.Tr($"[WARNUNG] {stillUnresolved.Count} installierte Programme sind nicht im Winget-Katalog verfuegbar (z.B. Eigenentwicklungen, Firmensoftware, o.ae.).", $"[WARNING] {stillUnresolved.Count} installed programs are not available in the winget catalog (e.g. in-house or company software)."));
-            _log(Loc.Tr($"[INFO] Liste gespeichert unter: {unresolvedFile} - diese muessen bei Bedarf manuell installiert werden.", $"[INFO] List saved to: {unresolvedFile} - these must be installed manually if needed."));
+            _log(Loc.Tr($"[WARNUNG] {stillUnresolved.Count} installierte Programme sind nicht im Winget-Katalog verfügbar (z.B. Eigenentwicklungen, Firmensoftware, o.Ä.).", $"[WARNING] {stillUnresolved.Count} installed programs are not available in the winget catalog (e.g. in-house or company software)."));
+            _log(Loc.Tr($"[INFO] Liste gespeichert unter: {unresolvedFile} - diese müssen bei Bedarf manuell installiert werden.", $"[INFO] List saved to: {unresolvedFile} - these must be installed manually if needed."));
         }
     }
 
@@ -415,12 +415,12 @@ public sealed class WingetService
     {
         if (selected is null || selected.Count == 0)
         {
-            _log(Loc.Tr("[INFO] Winget Import abgebrochen oder keine Programme ausgewaehlt.", "[INFO] Winget import cancelled or no programs selected."));
+            _log(Loc.Tr("[INFO] Winget Import abgebrochen oder keine Programme ausgewählt.", "[INFO] Winget import cancelled or no programs selected."));
             return;
         }
         if (await ResolveLauncher() is null) return;
 
-        _log(Loc.Tr($"[INFO] Starte Winget-Import fuer {selected.Count} Programme...", $"[INFO] Starting winget import for {selected.Count} programs..."));
+        _log(Loc.Tr($"[INFO] Starte Winget-Import für {selected.Count} Programme...", $"[INFO] Starting winget import for {selected.Count} programs..."));
         int ok = 0, skip = 0, fail = 0, i = 0;
 
         foreach (var pkg in selected)
@@ -452,7 +452,7 @@ public sealed class WingetService
             }
         }
 
-        _log(Loc.Tr($"[ERFOLG] Winget-Import abgeschlossen: {ok} installiert, {skip} uebersprungen (bereits vorhanden), {fail} fehlgeschlagen.", $"[SUCCESS] Winget import finished: {ok} installed, {skip} skipped (already present), {fail} failed."));
+        _log(Loc.Tr($"[ERFOLG] Winget-Import abgeschlossen: {ok} installiert, {skip} übersprungen (bereits vorhanden), {fail} fehlgeschlagen.", $"[SUCCESS] Winget import finished: {ok} installed, {skip} skipped (already present), {fail} failed."));
     }
 
     // ---------------------------------------------------------------- Helpers

@@ -7,8 +7,8 @@
         x:Class="WindowsDaSiTool.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding WindowTitle}"
-        MinWidth="1000" MinHeight="600"
-        Width="1200" Height="700"
+        MinWidth="960" MinHeight="540"
+        Width="1200" Height="720"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BaseBrush}"
         Icon="/Assets/app.ico">
@@ -35,10 +35,15 @@
         <Grid Grid.Row="1" ColumnDefinitions="6*,4*">
 
             <!-- ============ Linke Spalte: Bedienung ============ -->
-            <Grid Grid.Column="0" Margin="0,0,12,0" RowDefinitions="Auto,*,Auto">
+            <Grid Grid.Column="0" Margin="0,0,12,0" RowDefinitions="*,Auto">
+
+                <!-- Scrollbarer Bereich: passt sich kleinen Fensterhoehen an -->
+                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" Padding="0,0,4,0">
+                    <StackPanel Spacing="12">
 
                 <!-- Optionen & Verzeichnisse -->
-                <Border Grid.Row="0" Classes="panel">
+                <Border Classes="panel">
                     <StackPanel>
                         <TextBlock Classes="section" Text="{Binding SectionOptions}"/>
 
@@ -65,19 +70,35 @@
                                     Command="{Binding SelectBackupCommand}" IsEnabled="{Binding UiEnabled}"/>
                         </Grid>
 
-                        <Grid ColumnDefinitions="*,*,*">
+                        <Grid ColumnDefinitions="*,*">
                             <Button Grid.Column="0" Classes="secondary" Margin="0,0,4,0" Content="{Binding BtnClearPaths}"
                                     Command="{Binding ClearPathsCommand}" IsEnabled="{Binding UiEnabled}"/>
-                            <Button Grid.Column="1" Classes="secondary" Margin="4,0,4,0" Content="{Binding LoggingLabel}"
+                            <Button Grid.Column="1" Classes="secondary" Margin="4,0,0,0" Content="{Binding LoggingLabel}"
                                     Command="{Binding ToggleLoggingCommand}" IsEnabled="{Binding UiEnabled}"/>
-                            <Button Grid.Column="2" Classes="secondary" Margin="4,0,0,0" Content="{Binding AutoUpdateLabel}"
-                                    Command="{Binding ToggleAutoUpdateCommand}" IsEnabled="{Binding UiEnabled}"/>
                         </Grid>
+
+                        <!-- Speicherueberwachung -->
+                        <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
+                            <Button Grid.Column="0" Classes="secondary" Margin="0,0,4,0"
+                                    Content="{Binding BtnCheckStorage}"
+                                    Command="{Binding CheckStorageCommand}"
+                                    IsEnabled="{Binding UiEnabled}"/>
+                            <Button Grid.Column="1" Classes="secondary" Margin="4,0,0,0"
+                                    Content="{Binding AutoStorageLabel}"
+                                    Command="{Binding ToggleAutoStorageCommand}"
+                                    IsEnabled="{Binding UiEnabled}"/>
+                        </Grid>
+                        <Border Margin="0,6,0,0" Padding="8,6" CornerRadius="5"
+                                IsVisible="{Binding StorageInfoVisible}"
+                                Background="{DynamicResource Surface0Brush}">
+                            <TextBlock Text="{Binding StorageInfo}" TextWrapping="Wrap" FontSize="11"
+                                       Foreground="{Binding StorageBrush}"/>
+                        </Border>
                     </StackPanel>
                 </Border>
 
                 <!-- Aktionen: umschaltbar zwischen Sichern und Wiederherstellen -->
-                <Border Grid.Row="1" Classes="panel" VerticalAlignment="Top">
+                <Border Classes="panel">
                     <StackPanel>
                             <!-- Umschalter -->
                             <Border Classes="segmentBar">
@@ -93,8 +114,8 @@
                                 </Grid>
                             </Border>
 
-                            <TextBlock Classes="section" Text="{Binding ModeTitle}"/>
-                            <UniformGrid Columns="2">
+                            <TextBlock Classes="section" Text="{Binding ModeTitle}" IsVisible="False"/>
+                            <UniformGrid Columns="2" Margin="0,4,0,0">
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgUserProfile}"  IsChecked="{Binding SelUser}"        IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgFirefox}"      IsChecked="{Binding SelFirefox}"     IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgEdge}"         IsChecked="{Binding SelEdge}"        IsEnabled="{Binding UiEnabled}"/></Border>
@@ -103,19 +124,39 @@
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgThunderbird}"  IsChecked="{Binding SelThunderbird}" IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWinget}"       IsChecked="{Binding SelWinget}"      IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWlan}"         IsChecked="{Binding SelWlan}"        IsEnabled="{Binding UiEnabled}"/></Border>
+                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgPrinter}"      IsChecked="{Binding SelPrinter}"     IsEnabled="{Binding UiEnabled}"/></Border>
+                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWallpaper}"    IsChecked="{Binding SelWallpaper}"   IsEnabled="{Binding UiEnabled}"/></Border>
                             </UniformGrid>
                         </StackPanel>
                     </Border>
 
-                <Button Grid.Row="2" Classes="action" Content="{Binding BtnExecute}"
-                        Command="{Binding ExecuteCommand}" IsEnabled="{Binding UiEnabled}"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <StackPanel Grid.Row="1" Margin="0,12,0,0">
+                    <Border IsVisible="{Binding ProgressVisible}" Margin="0,0,0,8"
+                            Padding="10,8" CornerRadius="6"
+                            Background="{DynamicResource Surface0Brush}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding ProgressText}" FontSize="12"
+                                       Foreground="{DynamicResource TextBrush}" Margin="0,0,0,6"/>
+                            <ProgressBar IsIndeterminate="True" Height="6" CornerRadius="3"/>
+                        </StackPanel>
+                    </Border>
+                    <Button Classes="action" Content="{Binding BtnExecute}"
+                            Command="{Binding ExecuteCommand}" IsEnabled="{Binding UiEnabled}"/>
+                </StackPanel>
             </Grid>
 
             <!-- ============ Rechte Spalte: Protokoll ============ -->
             <Border Grid.Column="1" Classes="panel" Margin="0" Padding="14">
                 <Grid RowDefinitions="Auto,Auto,*">
-                    <TextBlock Grid.Row="0" Text="{Binding LogTitle}" Foreground="{DynamicResource TextBrush}"
-                               FontSize="13" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                        <TextBlock Grid.Column="0" Text="{Binding LogTitle}" Foreground="{DynamicResource TextBrush}"
+                                   FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Classes="secondary" Content="{Binding BtnClearLog}"
+                                Padding="10,4" FontSize="11" Command="{Binding ClearLogCommand}"/>
+                    </Grid>
 
                     <Border Grid.Row="1" Background="{DynamicResource Surface0Brush}"
                             BorderBrush="{DynamicResource YellowBrush}" BorderThickness="1"

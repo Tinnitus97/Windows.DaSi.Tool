@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace WindowsDaSiTool.Services;
@@ -16,7 +16,6 @@ public sealed class CancellationTokenState
     public bool IsCancelled { get; private set; }
 
     public bool FastMode { get; set; } = true;
-    public bool AutoUpdate { get; set; }
 
     public void RequestCancel() => IsCancelled = true;
     public void Reset() { lock (_lock) { IsCancelled = false; } }

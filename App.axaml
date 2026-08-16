@@ -81,7 +81,7 @@
             <Setter Property="Template">
                 <ControlTemplate>
                     <Border x:Name="seg" Background="{TemplateBinding Background}"
-                            CornerRadius="6" Padding="14,9">
+                            CornerRadius="6" Padding="12,6">
                         <ContentPresenter Content="{TemplateBinding Content}"
                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
@@ -110,8 +110,8 @@
             <Setter Property="BorderBrush" Value="{DynamicResource Surface0Brush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Padding" Value="14"/>
-            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="0"/>
         </Style>
 
         <!-- ============ ComboBox (Schnellauswahl) ============ -->
@@ -121,8 +121,8 @@
             <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="5"/>
-            <Setter Property="Height" Value="36"/>
-            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="MinHeight" Value="30"/>
             <Setter Property="Padding" Value="8,0,4,0"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
@@ -139,8 +139,8 @@
             <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="5"/>
-            <Setter Property="MinHeight" Value="40"/>
-            <Setter Property="Margin" Value="4,3"/>
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Margin" Value="3,2"/>
             <Setter Property="Padding" Value="12,0"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
@@ -173,9 +173,9 @@
             <Setter Property="Foreground" Value="{DynamicResource CrustBrush}"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="8,10"/>
-            <Setter Property="Margin" Value="4,10,4,4"/>
-            <Setter Property="Height" Value="45"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Margin" Value="4,6,4,4"/>
+            <Setter Property="Height" Value="34"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="CornerRadius" Value="5"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
@@ -195,8 +195,10 @@
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Margin" Value="4,3"/>
-            <Setter Property="Height" Value="40"/>
+            <Setter Property="Margin" Value="2,2"/>
+            <Setter Property="Height" Value="27"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="5,0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="CornerRadius" Value="5"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
@@ -223,8 +225,8 @@
             <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,0"/>
-            <Setter Property="Height" Value="36"/>
-            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="MinHeight" Value="30"/>
             <Setter Property="IsReadOnly" Value="True"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>

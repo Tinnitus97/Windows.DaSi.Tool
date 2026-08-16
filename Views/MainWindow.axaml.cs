@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
@@ -88,9 +88,9 @@ public partial class MainWindow : Window
             // Es laeuft noch eine Aktion -> Rueckfrage
             e.Cancel = true;
             var confirmed = await MessageBox.ShowYesNo(this,
-                WindowsDaSiTool.Services.Loc.Tr("Abbruch bestaetigen", "Confirm cancellation"),
+                WindowsDaSiTool.Services.Loc.Tr("Abbruch bestätigen", "Confirm cancellation"),
                 WindowsDaSiTool.Services.Loc.Tr(
-                    "Es laeuft gerade eine Aktion!\nSoll diese wirklich hart abgebrochen und das Programm beendet werden?",
+                    "Es läuft gerade eine Aktion!\nSoll diese wirklich hart abgebrochen und das Programm beendet werden?",
                     "An action is currently running!\nDo you really want to abort it and close the program?"));
 
             if (confirmed)

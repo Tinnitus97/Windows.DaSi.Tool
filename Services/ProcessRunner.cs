@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
@@ -29,7 +29,8 @@ public sealed class ProcessRunner
     /// </summary>
     public async Task<ProcessResult> RunAsync(
         string fileName, string arguments,
-        Encoding? outputEncoding = null, int timeoutMs = 0)
+        Encoding? outputEncoding = null, int timeoutMs = 0,
+        string? workingDirectory = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -42,6 +43,8 @@ public sealed class ProcessRunner
             StandardOutputEncoding = outputEncoding ?? Encoding.UTF8,
             StandardErrorEncoding = outputEncoding ?? Encoding.UTF8
         };
+        if (!string.IsNullOrEmpty(workingDirectory))
+            psi.WorkingDirectory = workingDirectory;
 
         var proc = new Process { StartInfo = psi };
         try
@@ -84,7 +87,7 @@ public sealed class ProcessRunner
             var combined = string.Join("\r\n",
                 new[] { stdout, stderr }.Where(s => !string.IsNullOrEmpty(s)));
 
-            return new ProcessResult(proc.ExitCode, combined, timedOut ? "Zeitueberschreitung" : null);
+            return new ProcessResult(proc.ExitCode, combined, timedOut ? "Zeitüberschreitung" : null);
         }
         finally
         {
@@ -151,14 +154,42 @@ public sealed class ProcessRunner
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
         }
 
-        return new ProcessResult(proc.ExitCode, output, timedOut ? "Zeitueberschreitung" : null);
+        return new ProcessResult(proc.ExitCode, output, timedOut ? "Zeitüberschreitung" : null);
     }
 
     /// <summary>
     /// Robocopy-Lauf mit fortlaufender Ausgabe ins Log.
     /// Rueckgabe ist der Robocopy-ExitCode (>=8 = Fehler).
     /// </summary>
-    public async Task<int> RunRobocopyAsync(string arguments, Action<string> onLine)
+    /// <summary>
+    /// Erkennt eine von Robocopy ausgegebene Datei-Zeile (fuer den Zaehler).
+    /// Datei-Zeilen sind mit Tab/Whitespace eingerueckt und enthalten einen
+    /// Pfad. Kopf-, Options- und Zusammenfassungszeilen werden ausgeschlossen.
+    /// </summary>
+    private static bool IsRobocopyFileLine(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return false;
+        // Muss eingerueckt sein (Robocopy rueckt Datei-/Ordnerzeilen ein).
+        if (line[0] != '\t' && line[0] != ' ') return false;
+        var t = line.Trim();
+        if (t.Length == 0) return false;
+        // Zusammenfassungs-/Kopfzeilen ausschliessen.
+        if (t.StartsWith("Insgesamt") || t.StartsWith("Total") ||
+            t.StartsWith("Kopiert") || t.StartsWith("Copied") ||
+            t.StartsWith("Verzeich") || t.StartsWith("Dirs") ||
+            t.StartsWith("Dateien") || t.StartsWith("Files") ||
+            t.StartsWith("Bytes") || t.StartsWith("Zeiten") || t.StartsWith("Times") ||
+            t.StartsWith("Beschleunigt") || t.StartsWith("Speed") ||
+            t.StartsWith("Optionen") || t.StartsWith("Options") ||
+            t.StartsWith("Quelle") || t.StartsWith("Source") ||
+            t.StartsWith("Ziel") || t.StartsWith("Dest") ||
+            t.StartsWith("---") || t.StartsWith("===") ||
+            t.StartsWith("ROBOCOPY") || t.StartsWith("Gestartet") || t.StartsWith("Started"))
+            return false;
+        return true;
+    }
+
+    public async Task<int> RunRobocopyAsync(string arguments, Action<string> onLine, Action<int>? onFileCounted = null)
     {
         if (_cancel.IsCancelled) return 999;
 
@@ -170,16 +201,39 @@ public sealed class ProcessRunner
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.GetEncoding(850)
+            StandardOutputEncoding = SystemHelpers.ConsoleEncoding
         };
+
+        // Im FastMode werden Dateizeilen nur gezaehlt (fuer den Fortschritt),
+        // aber NICHT ins Log geschrieben - das Log bleibt aufgeraeumt.
+        bool countOnly = _cancel.FastMode && onFileCounted != null;
+        int fileCount = 0;
 
         var proc = new Process { StartInfo = psi };
         var queue = new ConcurrentQueue<string>();
-        proc.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) queue.Enqueue(e.Data); };
+        proc.OutputDataReceived += (_, e) =>
+        {
+            if (string.IsNullOrWhiteSpace(e.Data)) return;
+            if (countOnly && IsRobocopyFileLine(e.Data))
+            {
+                // Nur zaehlen, nicht ins Log. Anzeige gedrosselt (alle 25 Dateien).
+                int c = System.Threading.Interlocked.Increment(ref fileCount);
+                if (c % 25 == 0) onFileCounted!(c);
+                return;
+            }
+            queue.Enqueue(e.Data);
+        };
         proc.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) queue.Enqueue("[STDERR] " + e.Data); };
 
         try { proc.Start(); }
         catch (Exception ex) { onLine($"[FEHLER] Robocopy konnte nicht gestartet werden: {ex.Message}"); return 999; }
+
+        // Robocopy-Prozess hoeher priorisieren. Das ist der Prozess, der die
+        // eigentliche Kopierarbeit macht - anders als die App selbst. Bringt
+        // vor allem etwas, wenn die CPU (nicht die Platte) der Engpass ist,
+        // z.B. bei sehr vielen kleinen Dateien. Fehler hier sind unkritisch.
+        try { proc.PriorityClass = ProcessPriorityClass.AboveNormal; }
+        catch { /* fehlende Rechte o.ae. - ignorieren */ }
 
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
@@ -205,6 +259,8 @@ public sealed class ProcessRunner
             var rest = new StringBuilder();
             while (queue.TryDequeue(out var line)) rest.AppendLine(line);
             if (rest.Length > 0) onLine(rest.ToString().TrimEnd());
+            // Endstand des Zaehlers melden.
+            if (countOnly && fileCount > 0) onFileCounted!(fileCount);
         }
         finally
         {

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -9,6 +9,36 @@ namespace WindowsDaSiTool.Services;
 
 public static class SystemHelpers
 {
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern uint GetOEMCP();
+
+    private static System.Text.Encoding? _consoleEncoding;
+
+    /// <summary>
+    /// Liefert die Kodierung, in der Windows-Konsolenprogramme (robocopy,
+    /// PrintBrm) ihre Ausgabe schreiben. Das ist die OEM-Codepage des Systems -
+    /// auf deutschem Windows 850, kann aber je nach Region abweichen (z.B. 437,
+    /// 852, 866). Wird dynamisch ermittelt, mit 850 als Rueckfallwert.
+    /// </summary>
+    public static System.Text.Encoding ConsoleEncoding
+    {
+        get
+        {
+            if (_consoleEncoding != null) return _consoleEncoding;
+            try
+            {
+                var cp = (int)GetOEMCP();
+                _consoleEncoding = System.Text.Encoding.GetEncoding(cp);
+            }
+            catch
+            {
+                try { _consoleEncoding = System.Text.Encoding.GetEncoding(850); }
+                catch { _consoleEncoding = System.Text.Encoding.UTF8; }
+            }
+            return _consoleEncoding;
+        }
+    }
+
     /// <summary>
     /// Liest aus der Registry, ob Windows im hellen Modus laeuft.
     /// true = heller Modus, false = dunkler Modus (Fallback bei Unklarheit: dunkel).
@@ -77,6 +107,140 @@ public static class SystemHelpers
         }
         catch { /* Zugriff verweigert o.ae. */ }
         return result.OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct SYSTEM_POWER_STATUS
+    {
+        public byte ACLineStatus;        // 0 = Akku, 1 = Netz, 255 = unbekannt
+        public byte BatteryFlag;         // 128 = kein Systemakku (Desktop)
+        public byte BatteryLifePercent;  // 0-100, 255 = unbekannt
+        public byte SystemStatusFlag;
+        public int  BatteryLifeTime;
+        public int  BatteryFullLifeTime;
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS lpSystemPowerStatus);
+
+    /// <summary>
+    /// Prueft, ob das Geraet gerade im Akkubetrieb laeuft (Notebook ohne
+    /// angeschlossenes Ladegeraet). Rueckgabe:
+    ///   true  = laeuft auf Akku, Netzteil sollte angeschlossen werden
+    ///   false = am Netz ODER Desktop-PC ohne Akku ODER Status unbekannt
+    /// Der aktuelle Ladestand (0-100, oder -1 wenn unbekannt) kommt ueber
+    /// den out-Parameter zurueck.
+    /// </summary>
+    public static bool IsOnBattery(out int batteryPercent)
+    {
+        batteryPercent = -1;
+        try
+        {
+            if (!GetSystemPowerStatus(out var status))
+                return false;
+
+            // BatteryFlag 128 = kein Systemakku vorhanden (Desktop) -> nicht warnen.
+            if (status.BatteryFlag == 128)
+                return false;
+
+            if (status.BatteryLifePercent <= 100)
+                batteryPercent = status.BatteryLifePercent;
+
+            // ACLineStatus 0 = kein Netzteil -> Akkubetrieb.
+            return status.ACLineStatus == 0;
+        }
+        catch
+        {
+            return false; // im Zweifel nicht warnen
+        }
+    }
+
+    /// <summary>
+    /// Liefert den freien Speicherplatz (in Bytes) auf dem Laufwerk des
+    /// angegebenen Pfads. -1 bei Fehler (z.B. Netzwerkpfad nicht erreichbar).
+    /// </summary>
+    public static long GetFreeSpace(string path)
+    {
+        try
+        {
+            var root = Path.GetPathRoot(Path.GetFullPath(path));
+            if (string.IsNullOrEmpty(root)) return -1;
+            var drive = new DriveInfo(root);
+            return drive.IsReady ? drive.AvailableFreeSpace : -1;
+        }
+        catch { return -1; }
+    }
+
+    /// <summary>
+    /// Berechnet die Groesse eines Ordners (rekursiv, in Bytes). Ordner in der
+    /// Ausschlussliste (voll qualifizierte Pfade) werden uebersprungen - so
+    /// entspricht die Schaetzung dem, was tatsaechlich gesichert wird. Nicht
+    /// zugaengliche Unterordner werden stillschweigend ausgelassen. Reagiert
+    /// auf Abbruch ueber das CancellationToken.
+    /// </summary>
+    public static long GetDirectorySize(string path, IEnumerable<string>? excludeDirs = null,
+                                        System.Threading.CancellationToken ct = default)
+    {
+        long total = 0;
+        if (!Directory.Exists(path)) return 0;
+
+        var excludeSet = new HashSet<string>(
+            (excludeDirs ?? Enumerable.Empty<string>())
+                .Select(d => { try { return Path.GetFullPath(d).TrimEnd('\\').ToLowerInvariant(); } catch { return d.ToLowerInvariant(); } }),
+            StringComparer.OrdinalIgnoreCase);
+
+        var stack = new Stack<string>();
+        stack.Push(path);
+
+        while (stack.Count > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            var dir = stack.Pop();
+
+            var norm = dir.TrimEnd('\\').ToLowerInvariant();
+            if (excludeSet.Contains(norm)) continue;
+
+            // Dateien dieses Ordners aufsummieren.
+            try
+            {
+                foreach (var f in Directory.EnumerateFiles(dir))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    try { total += new FileInfo(f).Length; } catch { /* Datei nicht lesbar */ }
+                }
+            }
+            catch { /* Ordner nicht lesbar */ }
+
+            // Unterordner einreihen.
+            try
+            {
+                foreach (var sub in Directory.EnumerateDirectories(dir))
+                {
+                    // Symlinks/Reparse-Punkte auslassen (verhindert Endlosschleifen).
+                    try
+                    {
+                        var attr = File.GetAttributes(sub);
+                        if ((attr & FileAttributes.ReparsePoint) != 0) continue;
+                    }
+                    catch { continue; }
+                    stack.Push(sub);
+                }
+            }
+            catch { /* Ordner nicht lesbar */ }
+        }
+        return total;
+    }
+
+    /// <summary>Formatiert eine Byte-Zahl menschenlesbar (z.B. "12,3 GB").</summary>
+    public static string FormatBytes(long bytes)
+    {
+        if (bytes < 0) return "?";
+        string[] units = { "B", "KB", "MB", "GB", "TB", "PB" };
+        double val = bytes;
+        int i = 0;
+        while (val >= 1024 && i < units.Length - 1) { val /= 1024; i++; }
+        return i == 0 ? $"{val:0} {units[i]}" : $"{val:0.0} {units[i]}";
     }
 
     public static bool IsNtfsDrive(string path)

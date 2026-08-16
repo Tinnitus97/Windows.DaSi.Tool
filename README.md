@@ -34,6 +34,8 @@ Durchgang Benutzerprofile, Browserdaten, installierte Programme und WLAN-Zugaeng
 | **E-Mail** | Thunderbird-Profil mit Konten und lokalen Ordnern |
 | **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog |
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
+| **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen ueber PrintBRM in einer Datei |
+| **Hintergrundbild** | Sichert das Desktop-Hintergrundbild und stellt es am Originalpfad wieder her |
 
 ---
 

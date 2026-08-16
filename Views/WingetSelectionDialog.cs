@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -103,7 +103,7 @@ public static class WingetSelectionDialog
         };
         var subtitle = new TextBlock
         {
-            Text = Loc.Tr("Waehle die Programme, die installiert werden sollen:","Select the programs to install:"),
+            Text = Loc.Tr("Wähle die Programme, die installiert werden sollen:","Select the programs to install:"),
             Foreground = new SolidColorBrush(Color.Parse("#CDD6F4")),
             FontSize = 12, Margin = new Avalonia.Thickness(0, 0, 0, 10)
         };
