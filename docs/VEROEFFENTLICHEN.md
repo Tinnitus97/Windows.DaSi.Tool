@@ -6,7 +6,7 @@ Ein Stand, ein Etikett, ein `update.json`.
 | --- | --- |
 | **Was** | `WindowsDaSiTool.exe` |
 | **Nummer** | aus `<Version>` in der `.csproj` |
-| **Etikett** | `v1.0.6` |
+| **Etikett** | `1.0.6` (auch `v1.0.6` oder `Version-1.0.6`) |
 | **Ergebnis** | `WindowsDaSiTool.exe` + `SHA256SUMS.txt` an der Veröffentlichung |
 
 ---
@@ -25,23 +25,42 @@ Ein Stand, ein Etikett, ein `update.json`.
 > Reiter **Actions** → links *Veröffentlichen* → rechts **Run workflow** →
 > Nummer: `1.0.6` → **Run workflow**
 
-Das Etikett `v1.0.6` legt der Workflow selbst an.
+Das Etikett `1.0.6` legt der Workflow selbst an.
 
 **b) In GitHub Desktop**
 
 > Reiter **History** → Rechtsklick auf den obersten Commit → **Create Tag…** →
-> `v1.0.6` → dann **Push origin**
+> `1.0.6` → dann **Push origin**
 
 **c) Auf der Kommandozeile**
 
 ```bash
-git tag v1.0.6
-git push origin v1.0.6
+git tag 1.0.6
+git push origin 1.0.6
 ```
 
 Der Workflow prüft in jedem Fall, ob die Nummer zur `.csproj` passt (sonst
 bricht er mit einer klaren Meldung ab), baut die EXE, bildet die Prüfsumme,
 legt die Veröffentlichung an und schreibt `update.json` fort.
+
+### Zwei Stolperstellen beim Etikett
+
+**Der Name.** Der Workflow liest die Nummer aus dem Namen heraus, deshalb
+funktionieren `1.0.6`, `v1.0.6` und `Version-1.0.6` gleichermaßen. Was **nicht**
+funktioniert, ist ein Name ganz ohne dreiteilige Nummer (`release`, `neu`,
+`v1.2`) — dann findet der Workflow nichts zum Bauen und bricht ab.
+
+**Woran das Etikett hängt.** Ein Etikett zeigt auf **einen bestimmten Commit**,
+nicht auf den Zweig. Der Workflow baut genau diesen Commit — und er läuft
+überhaupt nur, wenn die Datei `.github/workflows/release.yml` **in diesem
+Commit schon vorhanden** ist. Hängst du das Etikett versehentlich an einen
+älteren Stand, passiert nichts: keine Veröffentlichung, nicht einmal ein
+fehlgeschlagener Lauf im Reiter *Actions*.
+
+> In GitHub Desktop passiert das leicht, weil *Create Tag…* im Reiter
+> **History** auf **die gerade markierte Zeile** wirkt — nicht automatisch auf
+> die oberste. Nach dem Setzen lohnt der Blick auf die Etikett-Markierung:
+> Sie muss am obersten Commit kleben.
 
 ---
 

@@ -7,6 +7,23 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [1.0.7] - 2026-08-17
+
+### Behoben
+
+- **Beim Beenden erschien „Es läuft gerade eine Aktion!", obwohl nichts lief.**
+  Das Fenster hat vor dem Schließen `UiEnabled` befragt — also den Schalter, der
+  die Oberfläche sperrt. Gesperrt wird sie aber auch während des Selbstupdates.
+  Nach „Jetzt aktualisieren" schließt sich das Programm selbst, damit das
+  Austauschskript die EXE ersetzen kann; genau dabei kam die Rückfrage nach
+  einem harten Abbruch. Ein „Nein" hielt das Fenster offen, während das Skript
+  schon auf das Ende des Vorgangs wartete — das Update lief ins Nichts.
+
+  Es gibt jetzt eine eigene Eigenschaft `IsActionRunning`, die ausschließlich
+  während der Warteschlange gesetzt ist. Nur sie entscheidet über die Rückfrage.
+
+---
+
 ## [1.0.6] - 2026-08-17
 
 ### Hinzugefügt
@@ -196,6 +213,7 @@ PowerShell/WPF-Skripts als native C#-Anwendung mit Avalonia.
 
 ---
 
-[1.0.6]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/v1.0.6
+[1.0.7]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.7
+[1.0.6]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.6
 [1.0.5]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/v1.0.5
 [1.0.0]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/v1.0.0

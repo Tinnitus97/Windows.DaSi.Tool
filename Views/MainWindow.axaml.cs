@@ -78,7 +78,14 @@ public partial class MainWindow : Window
         try
         {
             if (DataContext is not MainWindowViewModel vm) return;
-            if (vm.UiEnabled || _forceClose) return;
+
+            // Gefragt wird NUR, wenn wirklich eine Aktion laeuft. Frueher stand
+            // hier "!vm.UiEnabled" - die Oberflaeche ist aber auch beim
+            // Selbstupdate gesperrt. Dann erschien beim Schliessen die Frage
+            // nach einem harten Abbruch, obwohl nichts lief; ein "Nein" liess
+            // das Fenster offen, waehrend das Austauschskript bereits auf sein
+            // Ende wartete.
+            if (!vm.IsActionRunning || _forceClose) return;
 
             // Es laeuft noch eine Aktion -> Rueckfrage
             e.Cancel = true;

@@ -18,7 +18,7 @@ namespace WindowsDaSiTool.ViewModels;
 public partial class MainWindowViewModel : ObservableObject
 {
     // ---- Konstanten (entsprechen den $script:-Variablen) ----
-    private const string VersionString = "1.0.6";
+    private const string VersionString = "1.0.7";
     private const string ProjectUrl = "https://github.com/Tinnitus97/Windows.DaSi.Tool";
 
     private readonly CancellationTokenState _cancel = new();
@@ -39,6 +39,16 @@ public partial class MainWindowViewModel : ObservableObject
     // ---- gebundener Zustand ----
     [ObservableProperty] private string _logText = "";
     [ObservableProperty] private bool _uiEnabled = true;
+
+    /// <summary>
+    /// Laeuft gerade eine Aktion aus der Warteschlange? Bewusst getrennt von
+    /// <see cref="UiEnabled"/>: Die Oberflaeche wird auch aus anderen Gruenden
+    /// gesperrt - etwa waehrend des Selbstupdates. Nur diese Eigenschaft darf
+    /// darueber entscheiden, ob beim Schliessen nach einem harten Abbruch
+    /// gefragt wird. Sonst fragt das Fenster nach einem Abbruch, obwohl gar
+    /// nichts laeuft.
+    /// </summary>
+    [ObservableProperty] private bool _isActionRunning;
     [ObservableProperty] private string _sourcePath = "";
     [ObservableProperty] private string _backupPath = "";
 
@@ -658,6 +668,7 @@ public partial class MainWindowViewModel : ObservableObject
         _backup.BackupPath = BackupPath;
 
         UiEnabled = false;
+        IsActionRunning = true;
         Log("\r\n=========================================");
         Log(Tr("Starte Abarbeitung der Warteschlange...", "Starting to process the queue..."));
 
@@ -676,6 +687,7 @@ public partial class MainWindowViewModel : ObservableObject
             Log("\r\n=========================================");
             if (_cancel.IsCancelled) Log(Tr("Tool sicher beendet.", "Tool stopped safely."));
             else { Log(Tr("Alle ausgewählten Aktionen abgeschlossen!", "All selected actions completed!")); }
+            IsActionRunning = false;
             UiEnabled = true;
         }
     }

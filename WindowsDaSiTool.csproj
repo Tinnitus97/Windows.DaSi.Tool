@@ -12,7 +12,7 @@
     <AssemblyName>WindowsDaSiTool</AssemblyName>
     <Product>Windows DaSi Tool</Product>
     <AssemblyTitle>Windows DaSi Tool</AssemblyTitle>
-    <Version>1.0.6</Version>
+    <Version>1.0.7</Version>
     <Description>Backup- und Restore-Tool fuer Windows-Benutzerprofile</Description>
 
     <!-- Fenster-Icon der EXE -->
