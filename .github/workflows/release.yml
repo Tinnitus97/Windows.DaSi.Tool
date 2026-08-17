@@ -14,13 +14,21 @@ name: Veröffentlichen
 
 on:
   push:
+    # Bewusst großzügig: In diesem Repository heißen die Etiketten bisher
+    # schlicht "1.0.5" - ohne führendes v. Damit ein Etikett nicht wirkungslos
+    # verpufft, weil es anders geschrieben ist als erwartet, greifen mehrere
+    # Muster. Die Nummer wird anschließend aus dem Namen herausgelesen.
     tags:
-      - 'v*'
+      - '[0-9]*'          # 1.0.6
+      - 'v*'              # v1.0.6
+      - 'V*'              # V1.0.6
+      - 'version-*'       # version-1.0.6
+      - 'Version-*'       # Version-1.0.6
 
   workflow_dispatch:
     inputs:
       nummer:
-        description: 'Versionsnummer, z.B. 1.0.6 (ohne führendes v)'
+        description: 'Versionsnummer, z.B. 1.0.6'
         type: string
         required: true
 
@@ -44,16 +52,23 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
-            $version = '${{ inputs.nummer }}'.Trim().TrimStart('v')
-          } else {
-            $version = '${{ github.ref_name }}'.TrimStart('v')
-          }
+          $istKnopf = '${{ github.event_name }}' -eq 'workflow_dispatch'
+          $roh = if ($istKnopf) { '${{ inputs.nummer }}' } else { '${{ github.ref_name }}' }
 
-          if ($version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
-            Write-Host "::error::'$version' ist keine Versionsnummer der Form 1.2.3."
+          # Die Nummer wird aus dem Namen HERAUSGELESEN statt nur ein "v"
+          # abgeschnitten. So funktionieren "1.0.6", "v1.0.6" und
+          # "Version-1.0.6" gleichermaßen.
+          $treffer = [regex]::Match($roh.Trim(), '\d+\.\d+\.\d+(\.\d+)?')
+          if (-not $treffer.Success) {
+            Write-Host "::error::Aus '$roh' lässt sich keine Versionsnummer der Form 1.2.3 lesen."
             exit 1
           }
+          $version = $treffer.Value
+
+          # Beim Etikett dessen Namen unverändert weiterbenutzen - sonst
+          # entstünde neben dem gesetzten Etikett ein zweites mit anderem Namen.
+          # Beim Knopfdruck die hier übliche Schreibweise: blanke Nummer.
+          $tag = if ($istKnopf) { $version } else { '${{ github.ref_name }}' }
 
           # Gegenprobe: Steht in der Projektdatei dieselbe Nummer?
           $csproj = Get-ChildItem -Recurse -Filter 'WindowsDaSiTool.csproj' | Select-Object -First 1
@@ -67,7 +82,7 @@ jobs:
           }
 
           "version=$version"           >> $env:GITHUB_OUTPUT
-          "tag=v$version"              >> $env:GITHUB_OUTPUT
+          "tag=$tag"                   >> $env:GITHUB_OUTPUT
           "csproj=$($csproj.FullName)" >> $env:GITHUB_OUTPUT
 
       - name: Kompilieren
