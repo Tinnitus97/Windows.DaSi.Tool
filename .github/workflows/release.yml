@@ -1,0 +1,139 @@
+name: Veröffentlichen
+
+# Baut WindowsDaSiTool.exe, hängt sie samt Prüfsumme an eine Veröffentlichung
+# und schreibt danach update.json fort - die Datei, die das Programm abfragt.
+#
+# ZWEI WEGE, DAS AUSZULÖSEN:
+#
+#   1. Etikett setzen und schieben (GitHub Desktop: Rechtsklick auf einen
+#      Commit im Verlauf -> "Create Tag…", danach "Push origin").
+#
+#   2. Ohne Etikett, ohne Kommandozeile: im Reiter "Actions" links diesen
+#      Workflow wählen, rechts "Run workflow", Nummer eintragen.
+#      Das Etikett wird dabei selbst angelegt.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+  workflow_dispatch:
+    inputs:
+      nummer:
+        description: 'Versionsnummer, z.B. 1.0.6 (ohne führendes v)'
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  programm:
+    runs-on: windows-latest
+    steps:
+      # Beim Etikett dessen Stand, beim Knopfdruck der Stand des Standardzweigs.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Version und Etikett bestimmen
+        id: version
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $version = '${{ inputs.nummer }}'.Trim().TrimStart('v')
+          } else {
+            $version = '${{ github.ref_name }}'.TrimStart('v')
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
+            Write-Host "::error::'$version' ist keine Versionsnummer der Form 1.2.3."
+            exit 1
+          }
+
+          # Gegenprobe: Steht in der Projektdatei dieselbe Nummer?
+          $csproj = Get-ChildItem -Recurse -Filter 'WindowsDaSiTool.csproj' | Select-Object -First 1
+          if (-not $csproj) { throw 'WindowsDaSiTool.csproj nicht gefunden.' }
+
+          $inFile = ([xml](Get-Content $csproj.FullName)).Project.PropertyGroup.Version |
+                    Where-Object { $_ }
+          if ($inFile -ne $version) {
+            Write-Host "::error::Nummer $version passt nicht zu <Version>$inFile</Version> in $($csproj.Name). Bitte erst die Projektdatei anpassen."
+            exit 1
+          }
+
+          "version=$version"           >> $env:GITHUB_OUTPUT
+          "tag=v$version"              >> $env:GITHUB_OUTPUT
+          "csproj=$($csproj.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Kompilieren
+        shell: pwsh
+        run: |
+          dotnet publish '${{ steps.version.outputs.csproj }}' `
+            -c Release -r win-x64 -o publish `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=none -p:DebugSymbols=false
+          if (-not (Test-Path 'publish/WindowsDaSiTool.exe')) { throw 'EXE wurde nicht erzeugt.' }
+
+      - name: Prüfsumme bilden
+        id: hash
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash publish/WindowsDaSiTool.exe -Algorithm SHA256).Hash.ToLower()
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          "$hash *WindowsDaSiTool.exe" | Out-File publish/SHA256SUMS.txt -Encoding ascii
+
+      # Legt das Etikett mit an, falls es noch nicht existiert (Knopfdruck-Weg).
+      - name: Veröffentlichung anlegen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Windows DaSi Tool ${{ steps.version.outputs.version }}
+          files: |
+            publish/WindowsDaSiTool.exe
+            publish/SHA256SUMS.txt
+          generate_release_notes: true
+
+      # Gebaut wurde unter Umständen von einem Etikett aus - das ist ein loser
+      # Stand ohne Zweig. Zum Schreiben von update.json deshalb erst auf den
+      # Standardzweig wechseln. Der Name steht bewusst NICHT fest im Text,
+      # sondern kommt aus dem Repository selbst: Wird der Standardzweig einmal
+      # umbenannt, läuft der Workflow weiter, statt am Namen zu scheitern.
+      - name: update.json fortschreiben
+        shell: pwsh
+        env:
+          ZWEIG: ${{ github.event.repository.default_branch }}
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git fetch origin $env:ZWEIG
+          git checkout -B $env:ZWEIG origin/$env:ZWEIG
+
+          python tools/write-update-json.py `
+            --repo    '${{ github.repository }}' `
+            --tag     '${{ steps.version.outputs.tag }}' `
+            --version '${{ steps.version.outputs.version }}' `
+            --sha256  '${{ steps.hash.outputs.sha256 }}' `
+            --datei   'WindowsDaSiTool.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'update.json konnte nicht geschrieben werden.' }
+
+          git add update.json
+
+          # "git diff --quiet" meldet ueber den Rueckgabewert, nicht ueber
+          # Text. Ein "if (git diff …)" waere immer falsch, weil der Befehl
+          # gar nichts ausgibt - deshalb ausdruecklich $LASTEXITCODE pruefen.
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host 'update.json war bereits aktuell.'
+            exit 0
+          }
+
+          git commit -m "update.json: Version ${{ steps.version.outputs.version }} [skip ci]"
+          git push origin $env:ZWEIG

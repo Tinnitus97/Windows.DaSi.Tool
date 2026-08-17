@@ -71,11 +71,6 @@ public partial class MainWindow : Window
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
-    private void OnUpdateBannerClick(object? sender, PointerReleasedEventArgs e)
-    {
-        (DataContext as MainWindowViewModel)?.OpenProjectPage();
-    }
-
     private bool _forceClose;
 
     private async void OnWindowClosing(object? sender, WindowClosingEventArgs e)

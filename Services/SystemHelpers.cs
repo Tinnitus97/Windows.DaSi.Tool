@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 
 namespace WindowsDaSiTool.Services;
@@ -37,6 +36,38 @@ public static class SystemHelpers
             }
             return _consoleEncoding;
         }
+    }
+
+    /// <summary>
+    /// Verzeichnis, in dem die EXE liegt. Dorthin gehoert eine abweichende
+    /// Update-Adresse (Update-Url.txt), und dort wird die EXE beim
+    /// Selbstaustausch ersetzt.
+    ///
+    /// Funktioniert auch bei einer SingleFile-EXE: Dort zeigt BaseDirectory in
+    /// das Entpackverzeichnis unter %TEMP%, ProcessPath dagegen auf die EXE
+    /// selbst.
+    /// </summary>
+    public static string GetApplicationDirectory()
+    {
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(exe))
+            {
+                var dir = Path.GetDirectoryName(exe);
+                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) return dir;
+            }
+        }
+        catch { /* Rueckfall unten */ }
+
+        try
+        {
+            var baseDir = AppContext.BaseDirectory?.TrimEnd(Path.DirectorySeparatorChar);
+            if (!string.IsNullOrEmpty(baseDir) && Directory.Exists(baseDir)) return baseDir;
+        }
+        catch { /* Rueckfall unten */ }
+
+        return Directory.GetCurrentDirectory();
     }
 
     /// <summary>
@@ -256,23 +287,4 @@ public static class SystemHelpers
         catch { return false; }
     }
 
-    /// <summary>
-    /// Prueft die Online-Version gegen die aktuelle. Gibt die neue Version
-    /// zurueck, wenn ein Update verfuegbar ist, sonst null.
-    /// </summary>
-    public static async Task<string?> CheckForUpdate(string updateUrl, string currentVersion)
-    {
-        try
-        {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            var raw = (await http.GetStringAsync(updateUrl)).Trim();
-            if (Version.TryParse(raw, out var online) && Version.TryParse(currentVersion, out var current)
-                && online > current)
-            {
-                return raw;
-            }
-        }
-        catch { /* offline / nicht erreichbar */ }
-        return null;
-    }
 }

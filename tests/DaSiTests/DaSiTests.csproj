@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Prueft die Dienste ohne Oberflaeche.
+
+    Bewusst KEIN Testframework und KEIN net10.0-windows: Die geprueften Dateien
+    kommen ohne Avalonia aus, dadurch laeuft die Pruefung auf einem
+    Linux-Laeufer in wenigen Sekunden.
+
+    Die Quelldateien werden eingebunden statt referenziert - das Hauptprojekt
+    zielt auf Windows und liesse sich sonst nicht daneben uebersetzen.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>DaSiTests</RootNamespace>
+    <AssemblyName>DaSiTests</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../Services/UpdateService.cs" />
+  </ItemGroup>
+
+</Project>

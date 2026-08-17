@@ -12,7 +12,7 @@
     <AssemblyName>WindowsDaSiTool</AssemblyName>
     <Product>Windows DaSi Tool</Product>
     <AssemblyTitle>Windows DaSi Tool</AssemblyTitle>
-    <Version>1.0.5</Version>
+    <Version>1.0.6</Version>
     <Description>Backup- und Restore-Tool fuer Windows-Benutzerprofile</Description>
 
     <!-- Fenster-Icon der EXE -->
@@ -46,6 +46,17 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
+
+  <!--
+    Die Projektdatei liegt im Wurzelverzeichnis des Repositories. Das .NET SDK
+    sammelt von dort JEDE .cs-Datei ein - auch die des Testprojekts unter
+    tests\. Das ergaebe zwei Einstiegspunkte (Fehler CS0017).
+  -->
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+    <Compile Remove="publish/**" />
+    <Compile Remove="tools/**" />
   </ItemGroup>
 
 </Project>

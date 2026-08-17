@@ -7,6 +7,66 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [1.0.6] - 2026-08-17
+
+### Hinzugefügt
+
+- **Selbstaktualisierung über GitHub.** Beim Start holt das Programm eine
+  einzige Datei:
+
+  ```
+  https://raw.githubusercontent.com/Tinnitus97/Windows.DaSi.Tool/HEAD/update.json
+  ```
+
+  Gibt es eine neuere Fassung, erscheint der gewohnte gelbe Streifen — jetzt
+  aber mit zwei Schaltflächen: **Was ist neu?** öffnet die Veröffentlichung im
+  Browser, **Jetzt aktualisieren** erledigt den Rest.
+
+- **Programm aktualisieren.** Lädt die neue EXE, prüft ihre **SHA256-Summe**
+  gegen die Angabe in `update.json` und tauscht sie aus. Stimmt die Summe
+  nicht, wird die Datei verworfen und nichts ersetzt.
+
+  Weil eine laufende EXE sich unter Windows nicht selbst überschreiben kann,
+  erledigt das ein kleines Skript, das auf das Ende des Vorgangs wartet, die
+  Datei ersetzt und danach neu startet. Es liegt in einem eigenen Ordner
+  (`%TEMP%\WindowsDaSiTool-Update`). Schlägt das Ersetzen fehl — fehlende
+  Schreibrechte, oder das Programm läuft an einem anderen Arbeitsplatz aus
+  demselben Ordner —, bleibt ein Fenster mit dem Grund und dem Pfad zur neuen
+  Fassung stehen.
+
+- **Heruntergeladen und ersetzt wird nichts ohne Rückfrage.** Der Dialog nennt
+  Versionsnummer und Zielpfad.
+
+- **Veröffentlichung über GitHub Actions.** `release.yml` baut die EXE, bildet
+  die Prüfsumme, hängt beides an eine Veröffentlichung und schreibt
+  `update.json` fort. Auslösen wahlweise über ein Etikett (`v1.0.6`) oder per
+  Knopfdruck unter *Actions → Veröffentlichen → Run workflow*. `build.yml`
+  prüft bei jedem Push, ob der Quelltext noch übersetzt und die Prüfungen
+  durchlaufen.
+
+### Geändert
+
+- **Der Update-Check läuft nicht mehr über das alte Repository**
+  `backup_my_windows_Updater/newversion.txt`. Diese Datei enthielt nur eine
+  nackte Versionsnummer — es gab keine Adresse zum Herunterladen und keine
+  Prüfsumme, der Streifen konnte deshalb nur die Projektseite öffnen.
+- Der Klick auf die Streifenfläche öffnet nichts mehr von selbst; beide
+  Schaltflächen sagen ausdrücklich, was sie tun.
+
+### Entfernt
+
+- `SystemHelpers.CheckForUpdate` — durch `UpdateService` ersetzt.
+
+### Behoben
+
+- `SystemHelpers.GetApplicationDirectory` fehlte in diesem Projekt (es gab die
+  Methode nur in den Schwesterprogrammen) — der Build brach mit `CS0117` ab.
+  Jetzt vorhanden, mit derselben Behandlung für SingleFile-EXEs: `ProcessPath`
+  statt `AppContext.BaseDirectory`, weil letzteres bei einer gepackten EXE ins
+  Entpackverzeichnis unter `%TEMP%` zeigt.
+
+---
+
 ## [1.0.5] - 2026-08-02
 
 ### Hinzugefügt
@@ -136,5 +196,6 @@ PowerShell/WPF-Skripts als native C#-Anwendung mit Avalonia.
 
 ---
 
+[1.0.6]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/v1.0.6
 [1.0.5]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/v1.0.5
 [1.0.0]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/v1.0.0

@@ -158,17 +158,30 @@
                                 Padding="10,4" FontSize="11" Command="{Binding ClearLogCommand}"/>
                     </Grid>
 
+                    <!-- Update-Streifen: erscheint nur, wenn es wirklich etwas Neues gibt.
+                         Der Klick auf die Fläche öffnet nichts mehr von selbst - beide
+                         Schaltflächen sagen ausdrücklich, was sie tun. -->
                     <Border Grid.Row="1" Background="{DynamicResource Surface0Brush}"
                             BorderBrush="{DynamicResource YellowBrush}" BorderThickness="1"
-                            CornerRadius="5" Padding="10,7" Margin="0,0,0,10" Cursor="Hand"
-                            IsVisible="{Binding UpdateAvailable}"
-                            PointerReleased="OnUpdateBannerClick">
-                        <StackPanel>
-                            <TextBlock Foreground="{DynamicResource YellowBrush}" FontSize="11" FontWeight="SemiBold"
-                                       TextWrapping="Wrap" Text="{Binding UpdateBannerText}"/>
-                            <TextBlock Foreground="{DynamicResource SubtextBrush}" FontSize="10" Margin="0,2,0,0"
-                                       Text="{Binding BannerHint}"/>
-                        </StackPanel>
+                            CornerRadius="5" Padding="10,7" Margin="0,0,0,10"
+                            IsVisible="{Binding UpdateAvailable}">
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                            <StackPanel Grid.Column="0" Margin="0,0,8,0" VerticalAlignment="Center">
+                                <TextBlock Foreground="{DynamicResource YellowBrush}" FontSize="11" FontWeight="SemiBold"
+                                           TextWrapping="Wrap" Text="{Binding UpdateBannerText}"/>
+                                <TextBlock Foreground="{DynamicResource SubtextBrush}" FontSize="10" Margin="0,2,0,0"
+                                           TextWrapping="Wrap" Text="{Binding BannerHint}"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary" VerticalAlignment="Center"
+                                    Padding="10,4" FontSize="11"
+                                    Content="{Binding BtnUpdateNotes}"
+                                    Command="{Binding OpenUpdateNotesCommand}"/>
+                            <Button Grid.Column="2" Classes="action" VerticalAlignment="Center"
+                                    Margin="6,0,0,0" Padding="10,4" FontSize="11"
+                                    Content="{Binding BtnUpdateNow}"
+                                    Command="{Binding UpdateProgramCommand}"
+                                    IsEnabled="{Binding UiEnabled}"/>
+                        </Grid>
                     </Border>
 
                     <Border Grid.Row="2" Background="{DynamicResource CrustBrush}"

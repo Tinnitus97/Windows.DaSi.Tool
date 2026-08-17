@@ -1,0 +1,68 @@
+name: Bauen und prüfen
+
+# Läuft bei jedem Push und jedem Pull Request.
+# Zweck: Übersetzt der Quelltext noch, und laufen die Prüfungen durch?
+# Veröffentlicht wird hier NICHTS - das macht release.yml beim Setzen eines
+# Etiketts oder per Knopfdruck.
+
+on:
+  push:
+    # update.json schreibt der Veröffentlichungs-Workflow selbst fort - dafür
+    # muss hier nicht erneut gebaut werden.
+    paths-ignore: [ 'update.json', 'docs/**', '**/*.md' ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Die Dienste ohne Oberfläche - läuft auf Linux und ist in Sekunden durch.
+  pruefungen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Prüfungen ausführen
+        run: dotnet run --project tests/DaSiTests -c Release
+
+  # Das eigentliche Programm zielt auf Windows und braucht deshalb einen
+  # Windows-Läufer.
+  uebersetzen:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      # Bewusst OHNE --warnaserror: Eine neue Avalonia-Fassung bringt gelegentlich
+      # eine zusätzliche Warnung mit. Das soll auffallen, aber nicht den Zweig
+      # blockieren. Warnungen stehen im Protokoll dieses Schrittes.
+      - name: Kompilieren
+        shell: pwsh
+        run: |
+          $csproj = Get-ChildItem -Recurse -Filter 'WindowsDaSiTool.csproj' | Select-Object -First 1
+          if (-not $csproj) { throw 'WindowsDaSiTool.csproj nicht gefunden.' }
+          dotnet build $csproj.FullName -c Release
+
+      # Nur zum Ausprobieren eines Zwischenstandes - die ausgelieferte EXE
+      # entsteht in release.yml.
+      - name: Probeweise veröffentlichen
+        shell: pwsh
+        run: |
+          $csproj = Get-ChildItem -Recurse -Filter 'WindowsDaSiTool.csproj' | Select-Object -First 1
+          dotnet publish $csproj.FullName -c Release -r win-x64 -o publish `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=none -p:DebugSymbols=false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WindowsDaSiTool-Testbau
+          path: publish/WindowsDaSiTool.exe
+          retention-days: 7

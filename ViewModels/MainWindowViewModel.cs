@@ -18,8 +18,7 @@ namespace WindowsDaSiTool.ViewModels;
 public partial class MainWindowViewModel : ObservableObject
 {
     // ---- Konstanten (entsprechen den $script:-Variablen) ----
-    private const string VersionString = "1.0.5";
-    private const string UpdateCheckUrl = "https://raw.githubusercontent.com/Tinnitus97/backup_my_windows_Updater/main/newversion.txt";
+    private const string VersionString = "1.0.6";
     private const string ProjectUrl = "https://github.com/Tinnitus97/Windows.DaSi.Tool";
 
     private readonly CancellationTokenState _cancel = new();
@@ -218,7 +217,10 @@ public partial class MainWindowViewModel : ObservableObject
     public string BtnExecute       => Tr("Ausgewählte Aktionen starten", "Start selected actions");
     public string LogTitle         => Tr("Aktivitäts-Protokoll", "Activity log");
     public string BtnClearLog      => Tr("Log leeren", "Clear log");
-    public string BannerHint       => Tr("Klicken, um die Projektseite zu öffnen.", "Click to open the project page.");
+    public string BannerHint       => Tr("Wird geprüft, heruntergeladen und ersetzt - erst nach Rückfrage.",
+                                         "Checked, downloaded and replaced - only after confirmation.");
+    public string BtnUpdateNow     => Tr("Jetzt aktualisieren", "Update now");
+    public string BtnUpdateNotes   => Tr("Was ist neu?", "What's new?");
 
     public string TgUserProfile    => Tr("Windows Benutzerprofil", "Windows user profile");
     public string TgFirefox        => Tr("Firefox-Profil", "Firefox profile");
@@ -866,20 +868,123 @@ public partial class MainWindowViewModel : ObservableObject
         };
     }
 
-    // ---------------------------------------------------------------- Update-Check
+    // ---------------------------------------------------------------- Update
 
+    /// <summary>
+    /// Der zuletzt abgefragte Stand. Bewusst gemerkt: Die Abfrage laeuft beim
+    /// Start, geklickt wird oft erst Minuten spaeter.
+    /// </summary>
+    private UpdateManifest? _manifest;
+
+    /// <summary>
+    /// Fragt update.json ab und blendet bei einem neueren Stand den Streifen
+    /// ein. Heruntergeladen wird hier noch nichts.
+    /// </summary>
     private async Task CheckForUpdatesAsync()
     {
-        var newVersion = await SystemHelpers.CheckForUpdate(UpdateCheckUrl, VersionString);
-        if (newVersion != null)
+        var url = UpdateService.ResolveManifestUrl(SystemHelpers.GetApplicationDirectory());
+        var manifest = await UpdateService.FetchAsync(url, System.Threading.CancellationToken.None);
+        _manifest = manifest;
+
+        if (!manifest.Success || !manifest.Program.IsUsable) return;
+        if (!UpdateService.IsProgramNewer(VersionString, manifest.Program.Version)) return;
+
+        Dispatcher.UIThread.Post(() =>
         {
-            Dispatcher.UIThread.Post(() =>
-            {
-                UpdateBannerText = Tr($"\uD83D\uDD04 Neue Version {newVersion} verfügbar  (installiert: {VersionString})",
-                                      $"\uD83D\uDD04 New version {newVersion} available  (installed: {VersionString})");
-                UpdateAvailable = true;
-            });
+            UpdateBannerText = Tr(
+                $"\uD83D\uDD04 Neue Version {manifest.Program.Version} verfügbar  (installiert: {VersionString})",
+                $"\uD83D\uDD04 New version {manifest.Program.Version} available  (installed: {VersionString})");
+            UpdateAvailable = true;
+        });
+    }
+
+    /// <summary>
+    /// Laedt die neue EXE, vergleicht ihre SHA256-Summe mit der Angabe aus
+    /// update.json und tauscht sie aus.
+    ///
+    /// Eine laufende EXE kann sich unter Windows nicht selbst ueberschreiben.
+    /// Deshalb uebernimmt das ein kleines Skript, das auf das Ende dieses
+    /// Vorgangs wartet, die Datei ersetzt und danach neu startet.
+    /// </summary>
+    [RelayCommand]
+    private async Task UpdateProgram()
+    {
+        if (_manifest is null || !_manifest.Program.IsUsable) return;
+
+        var win = GetMainWindow();
+        var entry = _manifest.Program;
+
+        var current = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(current))
+        {
+            Log(Tr("[FEHLER] Der eigene Programmpfad ließ sich nicht ermitteln.",
+                   "[ERROR] Could not determine own program path."));
+            return;
         }
+
+        if (win is not null)
+        {
+            var frage = Tr(
+                $"Version {entry.Version} herunterladen und die laufende Fassung {VersionString} ersetzen?\n\n" +
+                $"Datei: {current}\n\n" +
+                "Das Programm wird dabei beendet und danach neu gestartet.",
+                $"Download version {entry.Version} and replace the running {VersionString}?\n\n" +
+                $"File: {current}\n\n" +
+                "The program will close and restart afterwards.");
+
+            if (!await MessageBox.ShowYesNo(win, Tr("Programm aktualisieren", "Update program"), frage))
+            {
+                Log(Tr("Abgebrochen.", "Cancelled."));
+                return;
+            }
+        }
+
+        try
+        {
+            UiEnabled = false;
+            Log(Tr($"Lade Version {entry.Version}...", $"Downloading version {entry.Version}..."));
+
+            var ziel = Path.Combine(UpdateService.WorkFolder, "WindowsDaSiTool.exe");
+            var ergebnis = await UpdateService.DownloadAsync(
+                entry.Url, entry.Sha256, ziel, System.Threading.CancellationToken.None);
+
+            if (!ergebnis.Success)
+            {
+                Log(Tr($"[FEHLER] Download fehlgeschlagen: {ergebnis.Error}",
+                       $"[ERROR] Download failed: {ergebnis.Error}"));
+                if (win is not null)
+                    await MessageBox.ShowInfo(win, Tr("Download fehlgeschlagen", "Download failed"),
+                                              ergebnis.Error ?? "");
+                return;
+            }
+
+            Log(Tr($"Geladen ({ergebnis.Bytes / 1024 / 1024} MB), Prüfsumme stimmt. Wird ersetzt...",
+                   $"Downloaded ({ergebnis.Bytes / 1024 / 1024} MB), checksum matches. Replacing..."));
+
+            var skript = UpdateService.WriteUpdateScript(ziel, current, Environment.ProcessId);
+            UpdateService.StartUpdateScript(skript);
+
+            GetMainWindow()?.Close();
+        }
+        catch (Exception ex)
+        {
+            Log(Tr($"[FEHLER] {ex.Message}", $"[ERROR] {ex.Message}"));
+        }
+        finally
+        {
+            UiEnabled = true;
+        }
+    }
+
+    /// <summary>Oeffnet die Uebersicht der Veroeffentlichungen im Browser.</summary>
+    [RelayCommand]
+    private void OpenUpdateNotes()
+    {
+        var url = string.IsNullOrWhiteSpace(_manifest?.Program.Notes)
+            ? UpdateService.ReleasesPageUrl
+            : _manifest!.Program.Notes;
+
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
     }
 
     public void OpenProjectPage()

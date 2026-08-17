@@ -6,7 +6,7 @@
 
 **Datensicherung und Wiederherstellung von Windows-Benutzerprofilen — portabel, schnell, ohne Installation.**
 
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
+[![Version](https://img.shields.io/badge/Version-1.0.6-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)](https://github.com/Tinnitus97/Windows.DaSi.Tool)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![License](https://img.shields.io/badge/Lizenz-MIT-green)](LICENSE)
@@ -79,6 +79,41 @@ was installiert werden soll.
 <div align="center">
 <img src="docs/images/winget-auswahl.png" alt="Auswahldialog fuer die Winget-Wiederherstellung" width="600">
 </div>
+
+---
+
+## Selbstaktualisierung
+
+Beim Start holt das Programm **eine** Datei:
+
+```
+https://raw.githubusercontent.com/Tinnitus97/Windows.DaSi.Tool/HEAD/update.json
+```
+
+Gibt es eine neuere Fassung, erscheint über dem Protokoll ein gelber Streifen
+mit zwei Schaltflächen — **Was ist neu?** und **Jetzt aktualisieren**. Gibt es
+nichts, bleibt er unsichtbar.
+
+**Heruntergeladen und ersetzt wird nichts ohne Rückfrage.** Vor dem Austausch
+wird die **SHA256-Summe** der geladenen Datei mit der Angabe aus `update.json`
+verglichen; stimmt sie nicht, wird die Datei verworfen.
+
+Eine laufende EXE kann sich unter Windows nicht selbst überschreiben. Deshalb
+schreibt das Programm ein kleines Skript nach `%TEMP%\WindowsDaSiTool-Update`,
+das auf sein Ende wartet, die Datei ersetzt und neu startet. Schlägt das fehl
+(fehlende Schreibrechte, oder das Programm läuft anderswo aus demselben Ordner),
+bleibt ein Fenster mit dem Grund und dem Pfad zur neuen Fassung stehen.
+
+Für ein internes Spiegelverzeichnis lässt sich in `Update-Url.txt` **neben der
+EXE** eine abweichende Adresse hinterlegen — eine Zeile, vollständige
+`https://…`-Adresse.
+
+> Warum nicht `api.github.com`? Die Schnittstelle erlaubt ohne Anmeldung nur 60
+> Abrufe je Stunde und IP-Adresse — in einer Firma sitzen alle Rechner hinter
+> derselben Adresse. `raw.githubusercontent.com` kennt diese Grenze nicht.
+
+Wie eine neue Fassung veröffentlicht wird — im Browser, in GitHub Desktop oder
+auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTLICHEN.md)**.
 
 ---
 
