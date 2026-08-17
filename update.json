@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "program": {
+    "version": "1.0.7",
+    "released": "2026-08-17",
+    "url": "https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/download/1.0.7/WindowsDaSiTool.exe",
+    "sha256": "14dab89c72b330e3e6178cca7bfe7dfa883688285074301bcfa97414901aed72",
+    "notes": "https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.7"
+  }
+}
