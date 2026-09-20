@@ -65,4 +65,4 @@ jobs:
         with:
           name: WindowsDaSiTool-Testbau
           path: publish/WindowsDaSiTool.exe
-          retention-days: 7
+          retention-days: 3
