@@ -57,3 +57,33 @@ updates:
         update-types:
           - minor
           - patch
+
+  # Dieselbe Pflege für die Aktionen in .github/workflows/ - checkout,
+  # setup-dotnet, upload-artifact und die übrigen. Bis hierher wurden sie von
+  # Hand gepflegt und waren entsprechend ungleich (checkout@v4 neben
+  # checkout@v5, upload-artifact@v4 neben @v6); künftig hebt Dependabot sie an.
+  - package-ecosystem: github-actions
+
+    # Bei Aktionen ist "/" wörtlich das Repository-Stammverzeichnis: Dependabot
+    # sieht dann in .github/workflows/ nach. Ein anderer Pfad wäre hier falsch.
+    directory: "/"
+
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+
+    open-pull-requests-limit: 3
+
+    commit-message:
+      prefix: "Aktionen"
+
+    groups:
+      # Alle Aktionen in einer einzigen Anfrage, bewusst ohne update-types.
+      # Eine neue Hauptversion wechselt bei den offiziellen Aktionen fast immer
+      # nur die Node-Fassung des Läufers; sie gemeinsam anzuheben hält die
+      # Workflows untereinander gleich - genau darum ging es.
+      aktionen:
+        patterns:
+          - "*"

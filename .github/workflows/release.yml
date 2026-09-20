@@ -40,11 +40,11 @@ jobs:
     runs-on: windows-latest
     steps:
       # Beim Etikett dessen Stand, beim Knopfdruck der Stand des Standardzweigs.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -107,7 +107,7 @@ jobs:
 
       # Legt das Etikett mit an, falls es noch nicht existiert (Knopfdruck-Weg).
       - name: Veröffentlichung anlegen
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: Windows DaSi Tool ${{ steps.version.outputs.version }}
