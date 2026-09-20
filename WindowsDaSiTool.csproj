@@ -28,10 +28,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <!-- System.Text.Encoding.CodePages wurde entfernt: Ab .NET 10 ist die
          Funktionalitaet (CodePagesEncodingProvider fuer Codepage 850) im
@@ -39,9 +39,9 @@
          Der Registrierungscode in Program.cs bleibt unveraendert und funktioniert. -->
     <!-- Diese (nur unter Linux genutzte) D-Bus-Abhaengigkeit kommt ueber
          Avalonia.Desktop transitiv herein. Wir setzen sie explizit auf die
-         neueste Version 0.94.2 - deutlich ueber der fuer CVE-2026-39959 (HIGH)
+         neueste Fassung - deutlich ueber der fuer CVE-2026-39959 (HIGH)
          gepatchten 0.92.0, also CVE-frei. Unter Windows nicht ausgefuehrt. -->
-    <PackageReference Include="Tmds.DBus.Protocol" Version="0.94.2" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.95.1" />
   </ItemGroup>
 
   <ItemGroup>
