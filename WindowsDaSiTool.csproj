@@ -39,7 +39,7 @@
          Der Registrierungscode in Program.cs bleibt unveraendert und funktioniert. -->
     <!-- Diese (nur unter Linux genutzte) D-Bus-Abhaengigkeit kommt ueber
          Avalonia.Desktop transitiv herein. Wir setzen sie explizit auf die
-         neueste Version 0.94.2 - deutlich ueber der fuer CVE-2026-39959 (HIGH)
+         neueste Fassung - deutlich ueber der fuer CVE-2026-39959 (HIGH)
          gepatchten 0.92.0, also CVE-frei. Unter Windows nicht ausgefuehrt. -->
     <PackageReference Include="Tmds.DBus.Protocol" Version="0.94.2" />
   </ItemGroup>

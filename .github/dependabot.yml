@@ -1,0 +1,59 @@
+# Hält die NuGet-Pakete von selbst auf Stand.
+#
+# Dependabot sieht einmal pro Woche nach, ob es für ein Paket aus einer
+# .csproj eine neuere Fassung gibt, und öffnet dafür einen Pull Request.
+# Gebaut und geprüft wird der von build.yml wie jeder andere Zweig auch -
+# was dort nicht durchläuft, lässt sich also nicht versehentlich
+# zusammenführen. Zusammengeführt wird nichts von allein; das bleibt ein Klick.
+#
+# WICHTIG: Die Datei wirkt erst, wenn sie im Standardzweig liegt. Auf einem
+# Nebenzweig tut sie nichts.
+#
+# Sicherheitslücken meldet Dependabot unabhängig von diesem Takt sofort -
+# vorausgesetzt, "Dependabot security updates" ist in den Einstellungen des
+# Repositories eingeschaltet.
+
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+
+    # "/" meint das ganze Repository: Dependabot durchsucht von der Wurzel aus
+    # auch die Unterordner und findet damit WindowsDaSiTool.csproj und das
+    # Testprojekt unter tests\.
+    directory: "/"
+
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+
+    # Mehr als drei offene Paket-Anfragen gleichzeitig bringen nichts - sie
+    # veralten schneller, als sie durchgesehen werden.
+    open-pull-requests-limit: 3
+
+    commit-message:
+      prefix: "Pakete"
+
+    groups:
+      # Die vier Avalonia-Pakete tragen stets dieselbe Versionsnummer und
+      # müssen gemeinsam wandern. Einzeln angehoben ergäbe das einen Build,
+      # der an widersprüchlichen Fassungen scheitert - deshalb steht hier
+      # bewusst KEIN update-types: Auch der Sprung auf eine neue Hauptversion
+      # kommt als ein einziger Pull Request, der alle vier zusammen anhebt.
+      avalonia:
+        patterns:
+          - "Avalonia*"
+
+      # Alles Übrige (CommunityToolkit.Mvvm, Tmds.DBus.Protocol, ...) in einer
+      # gemeinsamen Anfrage - aber nur kleine Sprünge. Eine neue Hauptversion
+      # kommt absichtlich allein, damit sie einzeln angesehen werden kann.
+      uebrige-pakete:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "Avalonia*"
+        update-types:
+          - minor
+          - patch
