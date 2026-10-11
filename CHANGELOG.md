@@ -7,6 +7,17 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [1.0.8] - 2026-10-11
+
+### Geändert
+
+- **Avalonia 12.1.3** (bisher 12.1.2) — Avalonia, Avalonia.Desktop,
+  Avalonia.Fonts.Inter und Avalonia.Themes.Fluent.
+- Pakete und GitHub Actions halten sich über Dependabot selbst auf Stand;
+  alle Workflows auf denselben, neuesten Stand gezogen.
+
+---
+
 ## [1.0.7] - 2026-08-17
 
 ### Behoben
@@ -213,6 +224,7 @@ PowerShell/WPF-Skripts als native C#-Anwendung mit Avalonia.
 
 ---
 
+[1.0.8]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.8
 [1.0.7]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.7
 [1.0.6]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.6
 [1.0.5]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/v1.0.5
