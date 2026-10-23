@@ -1,0 +1,139 @@
+name: .NET-Version prüfen
+
+# Wird mit der neuesten stabilen .NET-Version gebaut?
+#
+# Maßstab ist die Liste von Microsoft, aus der auch die Download-Seite gespeist
+# wird (releases-index.json): die höchste Version, die weder Vorschau noch
+# Release Candidate ist. Geprüft wird jede Stelle, die beim Bauen die Version
+# festlegt:
+#
+#   <TargetFramework> in jeder .csproj / .props    net10.0, net10.0-windows
+#   dotnet-version in den Workflows                10.0.x
+#   sdk.version in global.json                     falls vorhanden
+#   die SDK-Prüfung in build.ps1                   falls vorhanden
+#
+# Steht irgendwo eine ältere Version, schlägt die Prüfung fehl und nennt Datei
+# und Zeile. Zusätzlich läuft sie jeden Montag von selbst - eine neue
+# .NET-Version erscheint, ohne dass sich im Repository etwas ändert.
+
+on:
+  push:
+    paths-ignore: [ 'update.json', 'docs/**', '**/*.md' ]
+  pull_request:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aktuell:
+    name: Neueste stabile .NET-Version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Gegen die Liste von Microsoft prüfen
+        run: |
+          python3 - <<'PY'
+          import json, os, re, sys, time, urllib.request
+          from pathlib import Path
+
+          QUELLEN = [
+              'https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json',
+              'https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/releases-index.json',
+          ]
+
+          def lade_liste():
+              # Zum Ausprobieren ohne Netz: RELEASES_INDEX=pfad/zur/datei.json
+              if os.environ.get('RELEASES_INDEX'):
+                  return json.loads(Path(os.environ['RELEASES_INDEX']).read_text(encoding='utf-8'))
+              fehler = ''
+              for versuch in range(3):
+                  for url in QUELLEN:
+                      try:
+                          with urllib.request.urlopen(url, timeout=30) as antwort:
+                              return json.load(antwort)
+                      except Exception as ex:
+                          fehler = f'{url}: {ex}'
+                  time.sleep(10 * (versuch + 1))
+              print(f'::error::Die Liste der .NET-Versionen war nicht abrufbar ({fehler}).')
+              sys.exit(1)
+
+          def zahlen(version):
+              return tuple(int(teil) for teil in version.split('.'))
+
+          # Stabil heißt: keine Vorschau (preview) und kein Release Candidate (go-live).
+          stabil = [r for r in lade_liste()['releases-index']
+                    if r.get('support-phase') in ('active', 'maintenance')]
+          if not stabil:
+              print('::error::In der Liste von Microsoft steht keine stabile .NET-Version.')
+              sys.exit(1)
+          neueste = max(stabil, key=lambda r: zahlen(r['channel-version']))
+          soll = neueste['channel-version']
+          print(f".NET {soll} ist die neueste stabile Version "
+                f"({neueste.get('release-type', '?').upper()}, Laufzeit {neueste.get('latest-runtime')}, "
+                f"SDK {neueste.get('latest-sdk')}, vom {neueste.get('latest-release-date')}).")
+          print()
+
+          # (Datei, Zeile, was dort steht, die Version darin, Art der Stelle)
+          stellen = []
+
+          def zeilen(pfad):
+              return enumerate(pfad.read_text(encoding='utf-8-sig', errors='replace').splitlines(), 1)
+
+          for pfad in sorted(Path('.').rglob('*')):
+              teile = set(pfad.parts)
+              if not pfad.is_file() or teile & {'.git', 'bin', 'obj', 'publish', 'node_modules'}:
+                  continue
+
+              if pfad.suffix in ('.csproj', '.props', '.targets'):
+                  for nr, zeile in zeilen(pfad):
+                      for m in re.finditer(r'<TargetFrameworks?>([^<]+)</TargetFrameworks?>', zeile):
+                          for tfm in m.group(1).split(';'):
+                              tfm = tfm.strip()
+                              v = re.fullmatch(r'net(\d+\.\d+)(-.+)?', tfm)
+                              if v:
+                                  stellen.append((pfad, nr, tfm, v.group(1), 'Zielframework'))
+
+              elif pfad.parent == Path('.github/workflows') and pfad.suffix in ('.yml', '.yaml'):
+                  for nr, zeile in zeilen(pfad):
+                      v = re.search(r'''dotnet-version:\s*['"]?((\d+\.\d+)[^'"\s]*)''', zeile)
+                      if v:
+                          stellen.append((pfad, nr, v.group(1), v.group(2), 'SDK im Workflow'))
+
+              elif pfad.name == 'global.json':
+                  version = (json.loads(pfad.read_text(encoding='utf-8-sig')).get('sdk') or {}).get('version')
+                  if version:
+                      nr = next((nr for nr, zeile in zeilen(pfad) if version in zeile), 1)
+                      stellen.append((pfad, nr, version, '.'.join(version.split('.')[:2]), 'SDK in global.json'))
+
+              elif pfad.name == 'build.ps1':
+                  # Die SDK-Prüfung des Bauskripts:  $_ -match '^\s*10\.'
+                  for nr, zeile in zeilen(pfad):
+                      v = re.search(r"-match\s+'\^\\s\*(\d+)\\\.'", zeile)
+                      if v:
+                          stellen.append((pfad, nr, f'SDK {v.group(1)}', v.group(1) + '.0', 'SDK-Prüfung in build.ps1'))
+
+          if not stellen:
+              print('::error::Keine Stelle gefunden, an der die .NET-Version festgelegt wird. Hat sich der Aufbau geändert?')
+              sys.exit(1)
+
+          veraltet = 0
+          for pfad, nr, text, version, art in stellen:
+              ok = version == soll
+              print(f"  [{'OK' if ok else 'ALT'}]  {pfad.as_posix()}:{nr}  {art}: {text}")
+              if ok:
+                  continue
+              veraltet += 1
+              wie = 'eine Vorschau' if zahlen(version) > zahlen(soll) else 'veraltet'
+              print(f'::error file={pfad.as_posix()},line={nr}::{art}: {text} ist {wie} - '
+                    f'die neueste stabile Version ist .NET {soll}.')
+
+          print()
+          if veraltet:
+              print(f'{veraltet} von {len(stellen)} Stellen bauen nicht mit .NET {soll}.')
+              sys.exit(1)
+          print(f'Alle {len(stellen)} Stellen bauen mit .NET {soll}.')
+          PY
