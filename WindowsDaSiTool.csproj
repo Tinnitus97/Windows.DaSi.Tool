@@ -41,7 +41,7 @@
          Avalonia.Desktop transitiv herein. Wir setzen sie explizit auf die
          neueste Fassung - deutlich ueber der fuer CVE-2026-39959 (HIGH)
          gepatchten 0.92.0, also CVE-frei. Unter Windows nicht ausgefuehrt. -->
-    <PackageReference Include="Tmds.DBus.Protocol" Version="0.95.1" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.95.2" />
   </ItemGroup>
 
   <ItemGroup>
