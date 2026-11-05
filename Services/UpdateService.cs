@@ -354,10 +354,12 @@ public static class UpdateService
 
             :fertig
             start "" "%~2"
-            rem Loeschen und Beenden in EINER Zeile: cmd liest die Zeile vorab
-            rem ganz ein. Stuende exit darunter, faende cmd die eigene, gerade
-            rem geloeschte Datei nicht mehr und endete mit Fehlercode 1.
-            del "%~f0" >nul 2>&1 & exit /b 0
+            rem Sich selbst loeschen: "(goto)" ohne Sprungziel beendet den Batch
+            rem sofort, der Rest dieser bereits eingelesenen Zeile laeuft danach
+            rem ohne Rueckgriff auf die Datei. Mit "del" und darunter "exit /b"
+            rem suchte cmd die gerade geloeschte Datei und meldete "The batch
+            rem file cannot be found." (Exit-Code 1) - so gesehen unter Windows.
+            (goto) 2>nul & del "%~f0" >nul 2>&1 & exit /b 0
 
             :fehler
             rem Kein "pause": Dieses Skript laeuft ohne sichtbares Fenster.

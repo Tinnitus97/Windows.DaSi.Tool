@@ -101,7 +101,7 @@ internal static class Program
             inhalt.Contains("goto ersetzen", StringComparison.Ordinal)
             && inhalt.Contains("ping -n 2", StringComparison.Ordinal));
         Check("Skript loescht sich und endet in derselben Zeile",
-            inhalt.Contains("del \"%~f0\" >nul 2>&1 & exit /b 0", StringComparison.Ordinal));
+            inhalt.Contains("(goto) 2>nul & del \"%~f0\" >nul 2>&1 & exit /b 0", StringComparison.Ordinal));
         Check("Skript kommt ohne for-Schleife und tasklist aus (lief frueher immer 60 s)",
             !inhalt.Contains("for /l", StringComparison.OrdinalIgnoreCase)
             && !inhalt.Contains("tasklist", StringComparison.OrdinalIgnoreCase));
