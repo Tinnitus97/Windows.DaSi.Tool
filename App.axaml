@@ -139,9 +139,13 @@
             <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="5"/>
-            <Setter Property="MinHeight" Value="34"/>
-            <Setter Property="Margin" Value="3,2"/>
-            <Setter Property="Padding" Value="12,0"/>
+            <!-- Groesser als frueher (34): Die Kachelflaeche bekommt jetzt den
+                 restlichen Platz der linken Spalte, und die UniformGrid verteilt
+                 ihn gleichmaessig auf die Zeilen. MinHeight ist dabei die
+                 Untergrenze fuer kleine Fenster, nicht die feste Hoehe. -->
+            <Setter Property="MinHeight" Value="52"/>
+            <Setter Property="Margin" Value="3,3"/>
+            <Setter Property="Padding" Value="14,0"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style Selector="Border.cardHost:pointerover">
@@ -150,7 +154,7 @@
 
         <Style Selector="CheckBox.card">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -162,6 +166,24 @@
         </Style>
         <Style Selector="CheckBox.card:checked">
             <Setter Property="Background" Value="{DynamicResource Surface0Brush}"/>
+        </Style>
+
+        <!-- Unterpunkte einer Kachel (AppData, Cloud-Anbieter). Kleiner und
+             blasser als die Kachel selbst, damit auf einen Blick erkennbar
+             bleibt, dass sie zu ihr gehoeren und nicht gleichrangig sind. -->
+        <Style Selector="CheckBox.subCard">
+            <Setter Property="Foreground" Value="{DynamicResource SubtextBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="CheckBox.subCard TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style Selector="CheckBox.subCard:checked">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
         </Style>
         <Style Selector="CheckBox.card:disabled">
             <Setter Property="Opacity" Value="0.35"/>

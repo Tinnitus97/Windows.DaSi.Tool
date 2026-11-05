@@ -39,34 +39,25 @@ public sealed class BackupService
     // ------------------------------------------------------------ Benutzerprofil
 
     /// <summary>
+    /// Soll der Ordner AppData mitgesichert werden? Vorgabe nein.
+    /// </summary>
+    public bool IncludeAppData { get; set; }
+
+    /// <summary>
+    /// Sollen die erkannten Cloud-Ordner mitgesichert werden? Vorgabe nein.
+    /// </summary>
+    public bool IncludeCloud { get; set; }
+
+    /// <summary>
     /// Baut die Liste der vom Profil-Backup ausgeschlossenen Ordner (voll
     /// qualifizierte Pfade). Wird sowohl vom eigentlichen Backup als auch von
     /// der Speicher-Schaetzung verwendet, damit beide konsistent sind.
+    ///
+    /// Die Entscheidung selbst steht in <see cref="ProfileExcludes"/> - dort
+    /// ohne Abhaengigkeiten und damit pruefbar.
     /// </summary>
-    public static List<string> GetProfileExcludes(string userDir)
-    {
-        var excluded = new List<string>
-        {
-            "AppData", "Anwendungsdaten", "Application Data", "Cookies", "Links", "Favorites",
-            "Local Settings", "My Documents", "NetHood", "PrintHood", "Recent", "Templates",
-            "Start Menu", "Druckumgebung", "Netzwerkumgebung", "SendTo", "Vorlagen",
-            "Lokale Einstellungen", "Eigene Dateien", "Dropbox", "HiDrive", "Google Drive", "iCloudDrive"
-        }.Select(d => Path.Combine(userDir, d)).ToList();
-
-        excluded.Add(Path.Combine(userDir, @"AppData\Local\Temp"));
-        excluded.Add(Path.Combine(userDir, @"AppData\Local\Microsoft\Windows\INetCache"));
-        excluded.Add(Path.Combine(userDir, @"AppData\Local\Google\Chrome\User Data\Default\Cache"));
-        excluded.Add(Path.Combine(userDir, @"AppData\Local\BraveSoftware\Brave-Browser\User Data\Default\Cache"));
-
-        try
-        {
-            foreach (var od in Directory.GetDirectories(userDir, "OneDrive*"))
-                excluded.Add(od);
-        }
-        catch { }
-
-        return excluded;
-    }
+    public static List<string> GetProfileExcludes(string userDir, bool includeAppData = false, bool includeCloud = false)
+        => ProfileExcludes.Build(userDir, includeAppData, includeCloud);
 
     public async Task BackupUserProfile()
     {
@@ -79,11 +70,26 @@ public sealed class BackupService
             return;
         }
 
-        var excluded = GetProfileExcludes(userDir);
+        var excluded = GetProfileExcludes(userDir, IncludeAppData, IncludeCloud);
 
         var args = new List<string> { Quote(userDir), Quote(backupTargetDir), "/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XA:SH" };
         if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
         foreach (var ex in excluded) if (Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
+
+        // Im Protokoll festhalten, was mitlaeuft - sonst laesst sich hinterher
+        // nicht mehr nachvollziehen, warum ein Backup so gross wurde.
+        if (IncludeAppData)
+            _log(Loc.Tr("[INFO] AppData wird mitgesichert (Zwischenspeicher bleiben ausgenommen).",
+                        "[INFO] AppData is included (caches remain excluded)."));
+        if (IncludeCloud)
+        {
+            var clouds = CloudProviders.Detect(userDir);
+            _log(clouds.Count > 0
+                ? Loc.Tr($"[INFO] Cloud-Ordner werden mitgesichert: {CloudProviders.Summarize(clouds)}.",
+                         $"[INFO] Cloud folders are included: {CloudProviders.Summarize(clouds)}.")
+                : Loc.Tr("[INFO] Cloud-Ordner sollen mitgesichert werden - es wurde aber keiner gefunden.",
+                         "[INFO] Cloud folders should be included - but none were found."));
+        }
 
         _log(Loc.Tr("[INFO] Starte Backup Benutzerprofil...", "[INFO] Starting user profile backup..."));
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
@@ -100,6 +106,23 @@ public sealed class BackupService
         _log(Loc.Tr("[INFO] Starte Restore Benutzerprofil...", "[INFO] Starting user profile restore..."));
         var args = new List<string> { Quote(backupSourceDir), Quote(destDir), "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32" };
         if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+
+        // Dieselben zwei Schalter wirken auch hier - sonst waeren sie beim
+        // Wiederherstellen wirkungslos: robocopy kopiert mit /E den ganzen
+        // Sicherungsordner. Enthielt die Sicherung AppData, landete es ohne
+        // diese Ausschluesse auch dann auf der Platte, wenn der Haken
+        // ausdruecklich NICHT gesetzt ist - und die Rueckfrage davor waere
+        // eine leere Geste.
+        //
+        // Ausgeschlossen wird relativ zum SICHERUNGSORDNER, nicht zum Profil:
+        // /XD vergleicht gegen die Quelle.
+        foreach (var ex in GetProfileExcludes(backupSourceDir, IncludeAppData, IncludeCloud))
+            if (Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
+
+        if (IncludeAppData)
+            _log(Loc.Tr("[INFO] AppData wird mit wiederhergestellt.", "[INFO] AppData is included in the restore."));
+        if (IncludeCloud)
+            _log(Loc.Tr("[INFO] Cloud-Ordner werden mit wiederhergestellt.", "[INFO] Cloud folders are included in the restore."));
 
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
         if (_cancel.IsCancelled) return;

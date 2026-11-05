@@ -106,6 +106,92 @@ internal static class Program
         UpdateService.CleanUp();
         Check("Arbeitsordner laesst sich aufraeumen", !Directory.Exists(UpdateService.WorkFolder));
 
+        // ================================================================
+        // Cloud-Anbieter erkennen
+        // ================================================================
+        Console.WriteLine("\n== Cloud-Anbieter erkennen ==");
+
+        var profil = Path.Combine(root, "Profil");
+        foreach (var d in new[]
+                 {
+                     "OneDrive",                 // genauer Name
+                     "OneDrive - Muster GmbH",   // Firmenkonto, Praefixmuster
+                     "Dropbox",
+                     "HiDrive",                  // STRATO
+                     "Nextcloud",
+                     "Dokumente",                // keine Cloud
+                     "Desktop",                  // keine Cloud
+                     "AppData"                   // keine Cloud
+                 })
+        {
+            Directory.CreateDirectory(Path.Combine(profil, d));
+        }
+
+        var clouds = CloudProviders.Detect(profil);
+        var namen = clouds.Select(c => Path.GetFileName(c.Path)).OrderBy(n => n).ToArray();
+
+        Check("alle fuenf Cloud-Ordner gefunden", clouds.Count == 5, string.Join(", ", namen));
+        Check("OneDrive mit Firmennamen wird erkannt",
+            namen.Contains("OneDrive - Muster GmbH"));
+        Check("OneDrive ohne Zusatz wird erkannt", namen.Contains("OneDrive"));
+        Check("STRATO HiDrive wird als Anbieter benannt",
+            clouds.Any(c => c.Provider == "STRATO HiDrive"));
+        Check("gewoehnliche Ordner bleiben unangetastet",
+            !namen.Contains("Dokumente") && !namen.Contains("Desktop") && !namen.Contains("AppData"));
+        Check("jeder Ordner wird nur einmal gemeldet",
+            namen.Length == namen.Distinct().Count());
+
+        var zusammen = CloudProviders.Summarize(clouds);
+        Check("Zusammenfassung nennt jeden Anbieter einmal",
+            zusammen.Split(", ").Length == zusammen.Split(", ").Distinct().Count(), zusammen);
+        Check("Zusammenfassung nennt OneDrive", zusammen.Contains("OneDrive", StringComparison.Ordinal), zusammen);
+
+        Check("ein nicht vorhandenes Profil liefert eine leere Liste",
+            CloudProviders.Detect(Path.Combine(root, "gibt-es-nicht")).Count == 0);
+        Check("ein leerer Pfad liefert eine leere Liste",
+            CloudProviders.Detect("").Count == 0);
+
+        // ================================================================
+        // Was beim Profil-Backup ausgelassen wird
+        // ================================================================
+        Console.WriteLine("\n== Ausschlussliste fuer das Benutzerprofil ==");
+
+        static bool Hat(System.Collections.Generic.List<string> liste, string profil, string rel)
+            => liste.Contains(Path.Combine(profil, rel), StringComparer.OrdinalIgnoreCase);
+
+        var vorgabe = ProfileExcludes.Build(profil);
+        Check("Vorgabe: AppData bleibt draussen", Hat(vorgabe, profil, "AppData"));
+        Check("Vorgabe: Cloud-Ordner bleiben draussen",
+            Hat(vorgabe, profil, "Dropbox") && Hat(vorgabe, profil, "OneDrive - Muster GmbH"));
+        Check("Vorgabe: Junctions bleiben draussen",
+            Hat(vorgabe, profil, "Anwendungsdaten") && Hat(vorgabe, profil, "Eigene Dateien"));
+
+        var mitAppData = ProfileExcludes.Build(profil, includeAppData: true);
+        Check("AppData an: AppData ist nicht mehr ausgeschlossen",
+            !Hat(mitAppData, profil, "AppData"));
+        Check("AppData an: die Zwischenspeicher bleiben trotzdem draussen",
+            Hat(mitAppData, profil, @"AppData\Local\Temp")
+            && Hat(mitAppData, profil, @"AppData\Local\Microsoft\Windows\INetCache"));
+        Check("AppData an: Cloud-Ordner bleiben unveraendert draussen",
+            Hat(mitAppData, profil, "Dropbox"));
+
+        var mitCloud = ProfileExcludes.Build(profil, includeCloud: true);
+        Check("Cloud an: kein Cloud-Ordner mehr ausgeschlossen",
+            !Hat(mitCloud, profil, "Dropbox")
+            && !Hat(mitCloud, profil, "OneDrive")
+            && !Hat(mitCloud, profil, "Nextcloud"));
+        Check("Cloud an: AppData bleibt unveraendert draussen",
+            Hat(mitCloud, profil, "AppData"));
+
+        var beides = ProfileExcludes.Build(profil, includeAppData: true, includeCloud: true);
+        Check("beides an: weder AppData noch Cloud ausgeschlossen",
+            !Hat(beides, profil, "AppData") && !Hat(beides, profil, "Dropbox"));
+        Check("beides an: Junctions und Zwischenspeicher bleiben draussen",
+            Hat(beides, profil, "Anwendungsdaten") && Hat(beides, profil, @"AppData\Local\Temp"));
+
+        Check("die Liste enthaelt keine Dubletten",
+            beides.Count == beides.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
         try { Directory.Delete(root, true); } catch { }
         return _failed == 0 ? 0 : 1;

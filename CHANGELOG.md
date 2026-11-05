@@ -7,6 +7,37 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [Unveröffentlicht]
+
+### Hinzugefügt
+
+- **Winget-Bereitschaftsprüfung.** Vor jedem Export und jedem Import wird
+  geprüft, ob winget startet *und* seine Paketquelle antwortet. Fehlt eines
+  von beidem, sagt das Tool vorher Bescheid und nennt den Weg zur Behebung —
+  statt mitten in der Warteschlange abzubrechen. Stehen andere Aktionen an,
+  lässt sich der winget-Schritt überspringen, ohne den Rest zu verlieren.
+- **AppData optional mitsichern** (Vorgabe: aus). Zwischenspeicher wie
+  `Temp`, `INetCache` und die Browser-Caches bleiben dabei ausgenommen. Vor
+  dem *Wiederherstellen* kommt eine Rückfrage mit Warnung, weil in AppData
+  maschinengebundene Angaben liegen.
+- **Cloud-Anbieter optional mitsichern** (Vorgabe: aus), mit Warnung zu
+  Laufzeit und möglichen Konflikten — in beide Richtungen.
+- **Cloud-Ordner werden selbst erkannt**: OneDrive (auch mit angehängtem
+  Firmennamen), Dropbox, Google Drive, iCloud, STRATO HiDrive, Nextcloud,
+  ownCloud, MagentaCLOUD, pCloud, MEGA, Box, Tresorit, Seafile, Proton
+  Drive, Jottacloud und Sync.com.
+
+### Geändert
+
+- Die Kacheln sind größer und füllen den verfügbaren Platz der linken Spalte
+  aus. Das Benutzerprofil steht über die volle Breite und trägt seine beiden
+  Zusatzoptionen bei sich.
+- Beide Zusatzoptionen wirken auch beim Wiederherstellen: Ohne Haken bleibt
+  AppData bzw. der Cloud-Ordner aus dem Rückschreiben heraus, selbst wenn die
+  Sicherung ihn enthält.
+
+---
+
 ## [1.0.8] - 2026-10-11
 
 ### Geändert

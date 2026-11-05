@@ -37,13 +37,19 @@
             <!-- ============ Linke Spalte: Bedienung ============ -->
             <Grid Grid.Column="0" Margin="0,0,12,0" RowDefinitions="*,Auto">
 
-                <!-- Scrollbarer Bereich: passt sich kleinen Fensterhoehen an -->
-                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                <!-- Scrollbarer Bereich: passt sich kleinen Fensterhoehen an.
+                     Der Inhalt ist ueber MinHeight an die Hoehe des Sichtfensters
+                     gebunden. Dadurch kann die Kachelflaeche darunter mit "*" den
+                     verbleibenden Platz ausfuellen - ohne die Bindung bekaeme sie
+                     im ScrollViewer unendlich viel Hoehe angeboten und fiele auf
+                     ihre Inhaltsgroesse zurueck. Wird der Inhalt hoeher als das
+                     Fenster, greift wie bisher der Rollbalken. -->
+                <ScrollViewer Name="LeftScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled" Padding="0,0,4,0">
-                    <StackPanel Spacing="12">
+                    <Grid RowDefinitions="Auto,*" MinHeight="{Binding #LeftScroll.Bounds.Height}">
 
                 <!-- Optionen & Verzeichnisse -->
-                <Border Classes="panel">
+                <Border Grid.Row="0" Classes="panel" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Classes="section" Text="{Binding SectionOptions}"/>
 
@@ -98,10 +104,10 @@
                 </Border>
 
                 <!-- Aktionen: umschaltbar zwischen Sichern und Wiederherstellen -->
-                <Border Classes="panel">
-                    <StackPanel>
+                <Border Grid.Row="1" Classes="panel">
+                    <Grid RowDefinitions="Auto,Auto,*">
                             <!-- Umschalter -->
-                            <Border Classes="segmentBar">
+                            <Border Grid.Row="0" Classes="segmentBar">
                                 <Grid ColumnDefinitions="*,*">
                                     <RadioButton Grid.Column="0" Classes="segment" GroupName="mode"
                                                  Content="{Binding TabBackup}"
@@ -114,9 +120,29 @@
                                 </Grid>
                             </Border>
 
-                            <TextBlock Classes="section" Text="{Binding ModeTitle}" IsVisible="False"/>
-                            <UniformGrid Columns="2" Margin="0,4,0,0">
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgUserProfile}"  IsChecked="{Binding SelUser}"        IsEnabled="{Binding UiEnabled}"/></Border>
+                            <!-- Das Benutzerprofil steht ueber voller Breite und traegt seine
+                                 beiden Zusatzoptionen gleich bei sich. Sie gehoeren fachlich dazu
+                                 und waeren als eigene Kacheln in der Reihe nicht als Unterpunkte
+                                 erkennbar. Beide sind nur bedienbar, wenn das Profil gewaehlt ist,
+                                 und stehen bewusst auf AUS. -->
+                            <Border Grid.Row="1" Classes="cardHost" Margin="3,2,3,6" Padding="12,8">
+                                <StackPanel Spacing="6">
+                                    <CheckBox Classes="card" Content="{Binding TgUserProfile}"
+                                              IsChecked="{Binding SelUser}" IsEnabled="{Binding UiEnabled}"/>
+                                    <Grid ColumnDefinitions="*,*" Margin="24,0,0,0">
+                                        <CheckBox Grid.Column="0" Classes="subCard"
+                                                  Content="{Binding TgUserAppData}"
+                                                  IsChecked="{Binding SelUserAppData}"
+                                                  IsEnabled="{Binding UserOptionsEnabled}"/>
+                                        <CheckBox Grid.Column="1" Classes="subCard"
+                                                  Content="{Binding TgUserCloud}"
+                                                  IsChecked="{Binding SelUserCloud}"
+                                                  IsEnabled="{Binding UserOptionsEnabled}"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <UniformGrid Grid.Row="2" Columns="2">
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgFirefox}"      IsChecked="{Binding SelFirefox}"     IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgEdge}"         IsChecked="{Binding SelEdge}"        IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgChrome}"       IsChecked="{Binding SelChrome}"      IsEnabled="{Binding UiEnabled}"/></Border>
@@ -127,10 +153,10 @@
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgPrinter}"      IsChecked="{Binding SelPrinter}"     IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWallpaper}"    IsChecked="{Binding SelWallpaper}"   IsEnabled="{Binding UiEnabled}"/></Border>
                             </UniformGrid>
-                        </StackPanel>
-                    </Border>
+                    </Grid>
+                </Border>
 
-                    </StackPanel>
+                    </Grid>
                 </ScrollViewer>
 
                 <StackPanel Grid.Row="1" Margin="0,12,0,0">

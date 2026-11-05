@@ -40,6 +40,10 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _logText = "";
     [ObservableProperty] private bool _uiEnabled = true;
 
+    // Die Zusatzoptionen zum Benutzerprofil haengen ebenfalls daran und muessen
+    // mitgesperrt werden, solange eine Aktion laeuft.
+    partial void OnUiEnabledChanged(bool value) => OnPropertyChanged(nameof(UserOptionsEnabled));
+
     /// <summary>
     /// Laeuft gerade eine Aktion aus der Warteschlange? Bewusst getrennt von
     /// <see cref="UiEnabled"/>: Die Oberflaeche wird auch aus anderen Gruenden
@@ -233,6 +237,15 @@ public partial class MainWindowViewModel : ObservableObject
     public string BtnUpdateNotes   => Tr("Was ist neu?", "What's new?");
 
     public string TgUserProfile    => Tr("Windows Benutzerprofil", "Windows user profile");
+    // Wie bei den anderen Sonderpunkten folgt die Beschriftung dem Modus - die
+    // Haken wirken in beide Richtungen, und "sichern" waere beim
+    // Wiederherstellen schlicht falsch.
+    public string TgUserAppData => IsRestoreMode
+        ? Tr("AppData mit wiederherstellen", "Include AppData")
+        : Tr("AppData mit sichern", "Include AppData");
+    public string TgUserCloud => IsRestoreMode
+        ? Tr("Cloud-Anbieter mit wiederherstellen", "Include cloud providers")
+        : Tr("Cloud-Anbieter mit sichern", "Include cloud providers");
     public string TgFirefox        => Tr("Firefox-Profil", "Firefox profile");
     public string TgEdge           => Tr("Edge-Profil", "Edge profile");
     public string TgChrome         => Tr("Chrome-Profil", "Chrome profile");
@@ -255,8 +268,36 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _selPrinter;
     [ObservableProperty] private bool _selWallpaper;
 
+    // ---- Zusatzoptionen zum Benutzerprofil ----
+    //
+    // Beide stehen bewusst auf AUS. Sie vervielfachen die Datenmenge und die
+    // Laufzeit; wer sie braucht, soll sie bewusst einschalten - nicht
+    // versehentlich eingeschaltet lassen.
+    [ObservableProperty] private bool _selUserAppData;
+    [ObservableProperty] private bool _selUserCloud;
+
+    /// <summary>
+    /// Die beiden Zusatzoptionen sind nur bedienbar, wenn das Benutzerprofil
+    /// ueberhaupt gewaehlt ist - sonst haetten sie keine Wirkung.
+    /// </summary>
+    public bool UserOptionsEnabled => UiEnabled && SelUser;
+
     // Bei Aenderung der groessenrelevanten Auswahl die Auto-Berechnung anstossen.
-    partial void OnSelUserChanged(bool value) => ScheduleAutoStorageCheck();
+    partial void OnSelUserChanged(bool value)
+    {
+        OnPropertyChanged(nameof(UserOptionsEnabled));
+
+        // Ohne Benutzerprofil sind die Zusatzoptionen gegenstandslos. Sie
+        // hier zurueckzusetzen verhindert, dass sie unsichtbar gesetzt bleiben
+        // und beim naechsten Anhaken des Profils ueberraschend wirken.
+        if (!value) { SelUserAppData = false; SelUserCloud = false; }
+
+        ScheduleAutoStorageCheck();
+    }
+
+    partial void OnSelUserAppDataChanged(bool value) => ScheduleAutoStorageCheck();
+    partial void OnSelUserCloudChanged(bool value) => ScheduleAutoStorageCheck();
+
     partial void OnSelFirefoxChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelEdgeChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelChromeChanged(bool value) => ScheduleAutoStorageCheck();
@@ -279,6 +320,8 @@ public partial class MainWindowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsBackupMode));
         // Beschriftungen, die vom Modus abhaengen, aktualisieren.
+        OnPropertyChanged(nameof(TgUserAppData));
+        OnPropertyChanged(nameof(TgUserCloud));
         OnPropertyChanged(nameof(TgWinget));
         OnPropertyChanged(nameof(TgWlan));
         OnPropertyChanged(nameof(TgPrinter));
@@ -438,6 +481,8 @@ public partial class MainWindowViewModel : ObservableObject
             var sourcePath = SourcePath;
             bool restore = IsRestoreMode;
             bool selUser = SelUser;
+            bool selAppData = SelUserAppData;
+            bool selCloud = SelUserCloud;
             var relPaths = SelectedProfileRelPaths();
             var restoreSubdirs = SelectedBackupSubdirs(); // nur fuer Restore
 
@@ -466,7 +511,7 @@ public partial class MainWindowViewModel : ObservableObject
                     // Sicherung: Summe ALLER ausgewaehlten Quellen.
                     if (selUser && !string.IsNullOrWhiteSpace(sourcePath))
                         size += SystemHelpers.GetDirectorySize(sourcePath,
-                                    BackupService.GetProfileExcludes(sourcePath));
+                                    BackupService.GetProfileExcludes(sourcePath, selAppData, selCloud));
 
                     // Browser-/Mail-Profile einzeln dazurechnen.
                     if (!string.IsNullOrWhiteSpace(sourcePath))
@@ -609,6 +654,144 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void Exit() => GetMainWindow()?.Close();
 
+    /// <summary>
+    /// Warnt, bevor Cloud-Ordner mitgesichert oder zurueckgeschrieben werden.
+    ///
+    /// Der Grund ist nicht nur die Datenmenge. Cloud-Ordner enthalten oft
+    /// Platzhalterdateien, die erst beim Zugriff vom Anbieter geladen werden -
+    /// robocopy loest sie dabei aus und zieht damit den gesamten
+    /// Online-Bestand auf die Platte. Beim Zurueckschreiben laeuft derselbe
+    /// Weg rueckwaerts: Der Client haelt die Dateien fuer geaendert und laedt
+    /// alles erneut hoch, was in geteilten Ordnern zu Konflikten fuehrt.
+    /// </summary>
+    private async Task<bool> ConfirmCloudAsync()
+    {
+        var gefunden = CloudProviders.Detect(SourcePath);
+        var liste = gefunden.Count > 0
+            ? CloudProviders.Summarize(gefunden)
+            : Tr("keine erkannt", "none detected");
+
+        var frage = IsRestoreMode
+            ? Tr($"Erkannte Cloud-Anbieter: {liste}\n\n"
+                 + "Das Zurueckschreiben von Cloud-Ordnern dauert sehr lange und kann Probleme machen: "
+                 + "Der Cloud-Client haelt die zurueckgeschriebenen Dateien fuer geaendert und laedt sie "
+                 + "erneut hoch. In geteilten Ordnern entstehen dabei Dubletten und Konflikte.\n\n"
+                 + "Empfehlung: Cloud-Ordner nicht zurueckschreiben, sondern den Cloud-Client auf dem "
+                 + "neuen Rechner neu anmelden - er holt die Daten dann selbst.\n\nTrotzdem fortfahren?",
+                 $"Detected cloud providers: {liste}\n\n"
+                 + "Restoring cloud folders takes a very long time and can cause problems: "
+                 + "the cloud client considers the restored files changed and uploads them again. "
+                 + "In shared folders this creates duplicates and conflicts.\n\n"
+                 + "Recommendation: do not restore cloud folders - sign in to the cloud client on the "
+                 + "new machine instead and let it fetch the data itself.\n\nContinue anyway?")
+            : Tr($"Erkannte Cloud-Anbieter: {liste}\n\n"
+                 + "Das Mitsichern dauert sehr lange. Dateien, die nur online liegen, werden dabei "
+                 + "vollstaendig heruntergeladen - das Backup kann dadurch um ein Vielfaches groesser "
+                 + "werden als die Anzeige im Explorer vermuten laesst.\n\n"
+                 + "Auch das spaetere Zurueckschreiben dauert entsprechend lange und kann beim "
+                 + "Cloud-Client zu Konflikten fuehren.\n\nTrotzdem mitsichern?",
+                 $"Detected cloud providers: {liste}\n\n"
+                 + "Including them takes a very long time. Files that exist only online are downloaded "
+                 + "in full - the backup can therefore become many times larger than Explorer suggests.\n\n"
+                 + "Restoring them later takes just as long and can cause conflicts in the cloud "
+                 + "client.\n\nInclude them anyway?");
+
+        var weiter = await ShowYesNo(Tr("Cloud-Ordner", "Cloud folders"), frage);
+        if (!weiter)
+            Log(Tr("[INFO] Start abgebrochen - Cloud-Ordner wurden nicht bestaetigt.",
+                   "[INFO] Start cancelled - cloud folders were not confirmed."));
+        return weiter;
+    }
+
+    /// <summary>
+    /// Warnt vor dem Zurueckschreiben von AppData. Beim Sichern ist AppData
+    /// harmlos - gefaehrlich wird es erst in der Gegenrichtung: Dort liegen
+    /// maschinengebundene Angaben (Lizenzen, Geraetekennungen, Sitzungen) und
+    /// Dateien laufender Programme.
+    /// </summary>
+    private async Task<bool> ConfirmAppDataRestoreAsync()
+    {
+        var weiter = await ShowYesNo(
+            Tr("AppData wiederherstellen", "Restore AppData"),
+            Tr("AppData wird mit zurueckgeschrieben.\n\n"
+               + "ACHTUNG: In AppData liegen Einstellungen, die an diesen Rechner gebunden sind - "
+               + "Lizenzen, Geraetekennungen und angemeldete Sitzungen. Auf einem anderen Rechner "
+               + "oder ueber eine neuere Programmfassung geschrieben, koennen einzelne Programme "
+               + "danach nicht mehr starten oder eine Neuanmeldung verlangen.\n\n"
+               + "Schliesse vorher alle Programme. Dateien, die gerade benutzt werden, werden "
+               + "uebersprungen.\n\nAppData wirklich wiederherstellen?",
+               "AppData will be restored as well.\n\n"
+               + "CAUTION: AppData holds settings tied to this machine - licences, device identifiers "
+               + "and signed-in sessions. Written on a different machine, or over a newer version of a "
+               + "program, individual programs may fail to start afterwards or ask you to sign in "
+               + "again.\n\n"
+               + "Close all programs first. Files that are in use will be skipped.\n\n"
+               + "Really restore AppData?"));
+
+        if (!weiter)
+            Log(Tr("[INFO] Start abgebrochen - AppData-Wiederherstellung wurde nicht bestaetigt.",
+                   "[INFO] Start cancelled - AppData restore was not confirmed."));
+        return weiter;
+    }
+
+    /// <summary>
+    /// Prueft vor Export oder Import, ob winget einsatzbereit ist.
+    ///
+    /// Ist es das nicht, haengt die Antwort davon ab, was sonst noch ansteht:
+    /// Steht winget allein in der Warteschlange, ist Schluss. Gibt es daneben
+    /// andere Aufgaben, darf der Benutzer ohne den winget-Schritt weitermachen -
+    /// ein kaputtes winget soll nicht die Profilsicherung verhindern.
+    /// </summary>
+    /// <returns>true, wenn weitergemacht werden darf.</returns>
+    private async Task<bool> EnsureWingetReadyAsync(List<string> tasks)
+    {
+        _cancel.Reset();
+        ProgressVisible = true;
+        ProgressText = Tr("Prüfe, ob winget einsatzbereit ist...", "Checking whether winget is ready...");
+        UiEnabled = false;
+        try
+        {
+            var stand = await _winget.CheckReadinessAsync();
+            if (stand.Ready) return true;
+
+            Log(Tr($"[FEHLER] winget ist nicht einsatzbereit: {stand.Problem}",
+                   $"[ERROR] winget is not ready: {stand.Problem}"));
+
+            var andere = tasks.Count(t => t is not ("Export-Winget" or "Import-Winget"));
+            if (andere == 0)
+            {
+                await ShowInfo(Tr("winget nicht einsatzbereit", "winget not ready"),
+                               stand.Problem + "\n\n" + stand.Hint);
+                return false;
+            }
+
+            var ohne = await ShowYesNo(
+                Tr("winget nicht einsatzbereit", "winget not ready"),
+                stand.Problem + "\n\n" + stand.Hint + "\n\n" +
+                Tr($"Die übrigen {andere} Aktionen sind davon nicht betroffen.\n\n"
+                   + "Ohne den winget-Schritt fortfahren?",
+                   $"The remaining {andere} actions are not affected.\n\n"
+                   + "Continue without the winget step?"));
+
+            if (!ohne)
+            {
+                Log(Tr("[INFO] Start abgebrochen.", "[INFO] Start cancelled."));
+                return false;
+            }
+
+            tasks.RemoveAll(t => t is "Export-Winget" or "Import-Winget");
+            Log(Tr("[INFO] Der winget-Schritt wurde übersprungen, die übrigen Aktionen laufen weiter.",
+                   "[INFO] The winget step was skipped, the remaining actions continue."));
+            return true;
+        }
+        finally
+        {
+            ProgressVisible = false;
+            ProgressText = "";
+            UiEnabled = true;
+        }
+    }
+
     [RelayCommand]
     private async Task Execute()
     {
@@ -643,6 +826,20 @@ public partial class MainWindowViewModel : ObservableObject
             }
         }
 
+        // ---- Rueckfragen zu den Zusatzoptionen des Benutzerprofils ----
+        if (SelUser && SelUserCloud && !await ConfirmCloudAsync()) return;
+        if (SelUser && SelUserAppData && IsRestoreMode && !await ConfirmAppDataRestoreAsync()) return;
+
+        // ---- winget: erst pruefen, dann arbeiten ----
+        //
+        // Bewusst VOR der Paketauswahl und vor dem ersten Kopiervorgang: Ein
+        // nicht einsatzbereites winget soll auffallen, solange der Benutzer
+        // noch etwas entscheiden kann - nicht nach zwanzig Minuten Profilkopie.
+        if (tasks.Contains("Export-Winget") || tasks.Contains("Import-Winget"))
+        {
+            if (!await EnsureWingetReadyAsync(tasks)) return;
+        }
+
         // Winget-Import: Auswahl JETZT auf dem UI-Thread abfragen
         List<WingetPackage>? wingetSelection = null;
         if (tasks.Contains("Import-Winget"))
@@ -665,6 +862,9 @@ public partial class MainWindowViewModel : ObservableObject
         _cancel.Reset();
         _cancel.FastMode = !DetailedLogging;
         _backup.SourcePath = SourcePath;
+        // Die Zusatzoptionen gelten nur zusammen mit dem Benutzerprofil.
+        _backup.IncludeAppData = SelUser && SelUserAppData;
+        _backup.IncludeCloud = SelUser && SelUserCloud;
         _backup.BackupPath = BackupPath;
 
         UiEnabled = false;

@@ -188,6 +188,96 @@ public sealed class WingetService
         return await RunWingetRaw(launcher.Value.Exe, launcher.Value.Mode, args, timeoutMs);
     }
 
+    // ------------------------------------------------------- Bereitschaft
+
+    /// <summary>
+    /// Ergebnis der Bereitschaftspruefung. <paramref name="Problem"/> und
+    /// <paramref name="Hint"/> sind nur gesetzt, wenn es nicht geht - der Text
+    /// ist dann fuer den Benutzer gedacht, nicht fuers Protokoll.
+    /// </summary>
+    public sealed record WingetReadiness(bool Ready, string? Version, string? Problem, string? Hint)
+    {
+        public static WingetReadiness Ok(string version) => new(true, version, null, null);
+        public static WingetReadiness Fail(string problem, string hint) => new(false, null, problem, hint);
+    }
+
+    /// <summary>
+    /// Prueft, ob winget vorhanden, fuer diesen Benutzer registriert UND
+    /// benutzbar ist - BEVOR ein Export oder Import startet.
+    ///
+    /// Warum nicht einfach loslaufen: Ohne Pruefung bricht erst der eigentliche
+    /// Vorgang ab, und zwar mitten in einer Warteschlange, in der davor schon
+    /// Profile kopiert wurden. Der Benutzer sieht dann einen Fehler an einer
+    /// Stelle, an der er nichts mehr tun kann. Hier faellt es vorher auf.
+    ///
+    /// Geprueft wird in zwei Stufen, weil "vorhanden" und "funktionsfaehig"
+    /// zweierlei sind:
+    ///   1. Laesst sich winget ueberhaupt starten ("--version")? Schlaegt das
+    ///      fehl, versucht <see cref="ResolveLauncher"/> zuvor noch, das
+    ///      App-Installer-Paket fuer diesen Benutzer zu registrieren.
+    ///   2. Antwortet die Paketquelle ("source list")? winget kann startbar
+    ///      sein, waehrend die Quelle fehlt oder die Nutzungsbedingungen nie
+    ///      bestaetigt wurden - dann liefert ein Export eine leere Liste,
+    ///      ohne dass irgendwo ein Fehler steht.
+    /// </summary>
+    public async Task<WingetReadiness> CheckReadinessAsync()
+    {
+        _log(Loc.Tr("[INFO] Prüfe, ob winget einsatzbereit ist...", "[INFO] Checking whether winget is ready..."));
+
+        var launcher = await ResolveLauncher();
+        if (_cancel.IsCancelled)
+            return WingetReadiness.Fail(
+                Loc.Tr("Abgebrochen.", "Cancelled."),
+                Loc.Tr("Die Prüfung wurde abgebrochen.", "The check was cancelled."));
+
+        if (launcher is null)
+            return WingetReadiness.Fail(
+                Loc.Tr("winget lässt sich auf diesem Rechner nicht starten.",
+                       "winget cannot be started on this machine."),
+                Loc.Tr("Der Paket-Manager ist nicht installiert oder für diesen Benutzer nicht registriert. "
+                       + "Öffne eine Konsole als dieser Benutzer und führe 'winget --version' aus. "
+                       + "Meldet Windows den Befehl als unbekannt, installiere oder aktualisiere den "
+                       + "'App-Installer' im Microsoft Store und starte das Tool neu.\n\n"
+                       + "Die versuchten Wege stehen ausführlich im Protokoll.",
+                       "The package manager is not installed or not registered for this user. "
+                       + "Open a console as this user and run 'winget --version'. "
+                       + "If Windows reports the command as unknown, install or update the "
+                       + "'App Installer' from the Microsoft Store and restart the tool.\n\n"
+                       + "The attempted paths are listed in detail in the log."));
+
+        // Stufe 2: Antwortet die Paketquelle?
+        var quellen = await InvokeWinget("source list --disable-interactivity", 60000);
+        if (_cancel.IsCancelled)
+            return WingetReadiness.Fail(
+                Loc.Tr("Abgebrochen.", "Cancelled."),
+                Loc.Tr("Die Prüfung wurde abgebrochen.", "The check was cancelled."));
+
+        if (!quellen.Started || quellen.ExitCode != 0)
+            return WingetReadiness.Fail(
+                Loc.Tr("winget startet, kann aber seine Paketquellen nicht lesen.",
+                       "winget starts but cannot read its package sources."),
+                Loc.Tr("Ohne Paketquelle liefert ein Export eine leere Liste und ein Import findet nichts. "
+                       + "Führe in einer Konsole 'winget source reset --force' und danach "
+                       + "'winget source update' aus.",
+                       "Without a package source an export returns an empty list and an import finds nothing. "
+                       + "Run 'winget source reset --force' and then 'winget source update' in a console."));
+
+        if (!quellen.Output.Contains("winget", StringComparison.OrdinalIgnoreCase))
+            return WingetReadiness.Fail(
+                Loc.Tr("Die Paketquelle 'winget' ist nicht eingerichtet.",
+                       "The 'winget' package source is not set up."),
+                Loc.Tr("winget läuft, aber die offizielle Quelle fehlt - Programme lassen sich so weder "
+                       + "zuverlässig erfassen noch installieren. Führe in einer Konsole "
+                       + "'winget source reset --force' aus.",
+                       "winget runs, but the official source is missing - programs can neither be captured "
+                       + "nor installed reliably. Run 'winget source reset --force' in a console."));
+
+        var version = await InvokeWinget("--version", 20000);
+        var nummer = version.Started && version.ExitCode == 0 ? version.Output.Trim() : "?";
+        _log(Loc.Tr($"[INFO] winget ist einsatzbereit ({nummer}).", $"[INFO] winget is ready ({nummer})."));
+        return WingetReadiness.Ok(nummer);
+    }
+
     private async Task<bool> PackageExists(string id)
     {
         var r = await InvokeWinget($"show --exact --id {Quote(id)} --source winget --accept-source-agreements --disable-interactivity");
