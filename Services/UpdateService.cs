@@ -354,8 +354,10 @@ public static class UpdateService
 
             :fertig
             start "" "%~2"
-            del "%~f0" >nul 2>&1
-            exit /b 0
+            rem Loeschen und Beenden in EINER Zeile: cmd liest die Zeile vorab
+            rem ganz ein. Stuende exit darunter, faende cmd die eigene, gerade
+            rem geloeschte Datei nicht mehr und endete mit Fehlercode 1.
+            del "%~f0" >nul 2>&1 & exit /b 0
 
             :fehler
             rem Kein "pause": Dieses Skript laeuft ohne sichtbares Fenster.

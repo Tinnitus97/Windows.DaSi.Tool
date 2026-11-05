@@ -100,6 +100,8 @@ internal static class Program
         Check("Skript wiederholt den Austausch, solange die Datei gesperrt ist",
             inhalt.Contains("goto ersetzen", StringComparison.Ordinal)
             && inhalt.Contains("ping -n 2", StringComparison.Ordinal));
+        Check("Skript loescht sich und endet in derselben Zeile",
+            inhalt.Contains("del \"%~f0\" >nul 2>&1 & exit /b 0", StringComparison.Ordinal));
         Check("Skript kommt ohne for-Schleife und tasklist aus (lief frueher immer 60 s)",
             !inhalt.Contains("for /l", StringComparison.OrdinalIgnoreCase)
             && !inhalt.Contains("tasklist", StringComparison.OrdinalIgnoreCase));
@@ -308,6 +310,9 @@ internal static class Program
                 var fertig = proc.WaitForExit(60_000);
                 var ausgabe = proc.StandardOutput.ReadToEnd() + proc.StandardError.ReadToEnd();
                 Check("Skript endet von selbst", fertig);
+                Check("Skript endet sauber (Exit-Code 0)",
+                    fertig && proc.ExitCode == 0,
+                    $"ExitCode {(fertig ? proc.ExitCode : -1)}: {ausgabe.Trim().Replace("\r\n", " | ")}");
                 Check("die neue Fassung steht danach am Ziel",
                     File.Exists(ziel2) && File.ReadAllBytes(ziel2).AsSpan().SequenceEqual(erwartet),
                     ausgabe.Trim().Replace("\r\n", " | "));
@@ -348,7 +353,8 @@ internal static class Program
                 Check("danach steht die neue Fassung am Ziel",
                     File.ReadAllBytes(ziel3).AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(Environment.SystemDirectory, "hostname.exe"))),
                     ausgabe.Trim());
-                Check("und das ohne Fehlerfall (kein Editor-Hinweis)", proc.ExitCode == 0, $"ExitCode {proc.ExitCode}");
+                Check("und das ohne Fehlerfall (kein Editor-Hinweis)", proc.ExitCode == 0,
+                    $"ExitCode {proc.ExitCode}: {ausgabe.Trim().Replace("\r\n", " | ")}");
             }
             UpdateService.CleanUp();
         }
