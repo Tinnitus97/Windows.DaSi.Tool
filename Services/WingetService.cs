@@ -484,7 +484,15 @@ public sealed class WingetService
         }
 
         json.CreationDate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-        var opts = new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+        // Lesbar fuer Menschen: Ohne den Encoder stuende "Notepad++" als
+        // "Notepad\u002B\u002B" in der Datei. Gueltig waere beides - aber wer
+        // die Liste vor einer Neuinstallation durchsieht, soll sie lesen koennen.
+        var opts = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
         // Fertige Liste zuerst vollstaendig in die Zwischendatei, dann in einem
         // Schritt an die Stelle der alten. Schlaegt schon das Schreiben fehl
         // (Platte voll), bleibt die alte Export.json unangetastet.
@@ -564,7 +572,11 @@ public sealed class WingetService
             }
         }
 
-        _log(Loc.Tr($"[ERFOLG] Winget-Import abgeschlossen: {ok} installiert, {skip} übersprungen (bereits vorhanden), {fail} fehlgeschlagen.", $"[SUCCESS] Winget import finished: {ok} installed, {skip} skipped (already present), {fail} failed."));
+        // Die Bilanzzeile traegt nur dann [ERFOLG], wenn wirklich nichts
+        // fehlgeschlagen ist. Frueher stand dort immer [ERFOLG] - auch bei
+        // "0 installiert, 5 fehlgeschlagen".
+        var kennung = fail > 0 ? Loc.Tr("[WARNUNG]", "[WARNING]") : Loc.Tr("[ERFOLG]", "[SUCCESS]");
+        _log(Loc.Tr($"{kennung} Winget-Import abgeschlossen: {ok} installiert, {skip} übersprungen (bereits vorhanden), {fail} fehlgeschlagen.", $"{kennung} Winget import finished: {ok} installed, {skip} skipped (already present), {fail} failed."));
     }
 
     // ---------------------------------------------------------------- Helpers

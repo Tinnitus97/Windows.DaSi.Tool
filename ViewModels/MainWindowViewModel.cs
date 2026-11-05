@@ -76,6 +76,19 @@ public partial class MainWindowViewModel : ObservableObject
 
     // ---- Speicherueberwachung ----
     [ObservableProperty] private string _storageInfo = "";
+
+    // Die Speicherzeile in beiden Sprachen. Beim Sprachwechsel wird nur die
+    // andere Fassung angezeigt - frueher blieb die Zeile bis zur naechsten
+    // Neuberechnung in der alten Sprache stehen.
+    private string _storageInfoDe = "", _storageInfoEn = "";
+
+    private void SetStorageInfo(string de, string en)
+    {
+        _storageInfoDe = de;
+        _storageInfoEn = en;
+        StorageInfo = Tr(de, en);
+    }
+
     [ObservableProperty] private bool _storageInfoVisible;
     // Ampel: 0 = neutral/grau, 1 = gruen (passt), 2 = gelb (knapp), 3 = rot (reicht nicht)
     [ObservableProperty] private int _storageStatus;
@@ -151,21 +164,21 @@ public partial class MainWindowViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(value))
         {
             StorageInfoVisible = false;
-            StorageInfo = "";
+            SetStorageInfo("", "");
             StorageStatus = 0;
             return;
         }
         var free = SystemHelpers.GetFreeSpace(value);
         if (free < 0)
         {
-            StorageInfo = Tr("Freier Speicher am Ziel: nicht ermittelbar",
-                             "Free space on target: unavailable");
+            SetStorageInfo("Freier Speicher am Ziel: nicht ermittelbar",
+                           "Free space on target: unavailable");
             StorageStatus = 0;
         }
         else
         {
-            StorageInfo = Tr($"Frei am Ziel: {SystemHelpers.FormatBytes(free)}  -  für Größenschätzung 'Speicher prüfen'",
-                             $"Free on target: {SystemHelpers.FormatBytes(free)}  -  use 'Check storage' for a size estimate");
+            SetStorageInfo($"Frei am Ziel: {SystemHelpers.FormatBytes(free)}  -  für Größenschätzung 'Speicher prüfen'",
+                           $"Free on target: {SystemHelpers.FormatBytes(free)}  -  use 'Check storage' for a size estimate");
             StorageStatus = 0;
         }
         StorageInfoVisible = true;
@@ -176,7 +189,12 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _loggingLabel = "Log: aus";
 
     [ObservableProperty] private bool _updateAvailable;
-    [ObservableProperty] private string _updateBannerText = "";
+    // Die angebotene Version; der Hinweistext daraus wird bei jedem Abruf in
+    // der aktuellen Sprache gebaut, folgt also auch einem Sprachwechsel.
+    private string? _angeboteneVersion;
+    public string UpdateBannerText => _angeboteneVersion is null ? "" : Tr(
+        $"\uD83D\uDD04 Neue Version {_angeboteneVersion} verfügbar  (installiert: {VersionString})",
+        $"\uD83D\uDD04 New version {_angeboteneVersion} available  (installed: {VersionString})");
 
     // ---- Sprache ----
     // IsEnglish steuert den Umschalter; true = Englisch.
@@ -201,6 +219,7 @@ public partial class MainWindowViewModel : ObservableObject
         // Dynamische Labels ebenfalls aktualisieren.
         LoggingLabel = Tr(DetailedLogging ? "Log: an" : "Log: aus",
                           DetailedLogging ? "Log: on" : "Log: off");
+        StorageInfo = Tr(_storageInfoDe, _storageInfoEn);
 
         // Begruessungstext mitschalten, solange noch keine echten Zeilen im Log stehen.
         lock (_logLock)
@@ -505,8 +524,8 @@ public partial class MainWindowViewModel : ObservableObject
         }
         if (string.IsNullOrWhiteSpace(BackupPath))
         {
-            StorageInfo = Tr("Bitte zuerst ein Backup-Ziel/-Quelle festlegen.",
-                             "Please set a backup target/source first.");
+            SetStorageInfo("Bitte zuerst ein Backup-Ziel/-Quelle festlegen.",
+                           "Please set a backup target/source first.");
             StorageStatus = 2;
             StorageInfoVisible = true;
             return;
@@ -514,7 +533,7 @@ public partial class MainWindowViewModel : ObservableObject
 
         StorageChecking = true;
         StorageStatus = 0;
-        StorageInfo = Tr("Berechne Datenmenge...", "Calculating data size...");
+        SetStorageInfo("Berechne Datenmenge...", "Calculating data size...");
         StorageInfoVisible = true;
 
         var walkCts = new System.Threading.CancellationTokenSource();
@@ -589,15 +608,15 @@ public partial class MainWindowViewModel : ObservableObject
 
             if (free < 0)
             {
-                StorageInfo = Tr($"Datenmenge: ca. {sizeStr}  |  Freier Platz: nicht ermittelbar",
-                                 $"Data size: ~{sizeStr}  |  Free space: unavailable");
+                SetStorageInfo($"Datenmenge: ca. {sizeStr}  |  Freier Platz: nicht ermittelbar",
+                               $"Data size: ~{sizeStr}  |  Free space: unavailable");
                 StorageStatus = 2;
             }
             else if (free < needed)
             {
                 var missing = SystemHelpers.FormatBytes(needed - free);
-                StorageInfo = Tr($"WARNUNG: Datenmenge ca. {sizeStr}, aber nur {freeStr} frei. Es fehlen ca. {missing} (inkl. 10% Reserve).",
-                                 $"WARNING: Data size ~{sizeStr}, but only {freeStr} free. About {missing} short (incl. 10% margin).");
+                SetStorageInfo($"WARNUNG: Datenmenge ca. {sizeStr}, aber nur {freeStr} frei. Es fehlen ca. {missing} (inkl. 10% Reserve).",
+                               $"WARNING: Data size ~{sizeStr}, but only {freeStr} free. About {missing} short (incl. 10% margin).");
                 StorageStatus = 3;
                 Log(Tr($"[WARNUNG] Speicher reicht möglicherweise nicht: ca. {sizeStr} Daten, {freeStr} frei.",
                        $"[WARNING] Storage may be insufficient: ~{sizeStr} data, {freeStr} free."));
@@ -606,8 +625,8 @@ public partial class MainWindowViewModel : ObservableObject
             }
             else if (free < needed * 1.5)
             {
-                StorageInfo = Tr($"Datenmenge ca. {sizeStr}, {freeStr} frei - passt, aber knapp.",
-                                 $"Data size ~{sizeStr}, {freeStr} free - fits, but tight.");
+                SetStorageInfo($"Datenmenge ca. {sizeStr}, {freeStr} frei - passt, aber knapp.",
+                               $"Data size ~{sizeStr}, {freeStr} free - fits, but tight.");
                 StorageStatus = 2;
                 popupMsg = Tr($"Der Speicher am Ziel reicht, ist aber knapp.\n\nDatenmenge: ca. {sizeStr}\nFrei: {freeStr}",
                               $"The target has enough space, but it is tight.\n\nData size: ~{sizeStr}\nFree: {freeStr}");
@@ -615,8 +634,8 @@ public partial class MainWindowViewModel : ObservableObject
             else
             {
                 var afterStr = SystemHelpers.FormatBytes(free - dataSize);
-                StorageInfo = Tr($"Datenmenge ca. {sizeStr}, {freeStr} frei. Danach noch ca. {afterStr} frei.",
-                                 $"Data size ~{sizeStr}, {freeStr} free. About {afterStr} left afterwards.");
+                SetStorageInfo($"Datenmenge ca. {sizeStr}, {freeStr} frei. Danach noch ca. {afterStr} frei.",
+                               $"Data size ~{sizeStr}, {freeStr} free. About {afterStr} left afterwards.");
                 StorageStatus = 1;
             }
             StorageInfoVisible = true;
@@ -632,8 +651,8 @@ public partial class MainWindowViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StorageInfo = Tr($"Größenberechnung fehlgeschlagen: {ex.Message}",
-                             $"Size calculation failed: {ex.Message}");
+            SetStorageInfo($"Größenberechnung fehlgeschlagen: {ex.Message}",
+                           $"Size calculation failed: {ex.Message}");
             StorageStatus = 2;
         }
         finally
@@ -841,10 +860,12 @@ public partial class MainWindowViewModel : ObservableObject
             var ohne = await ShowYesNo(
                 Tr("winget nicht einsatzbereit", "winget not ready"),
                 stand.Problem + "\n\n" + stand.Hint + "\n\n" +
-                Tr($"Die übrigen {andere} Aktionen sind davon nicht betroffen.\n\n"
-                   + "Ohne den winget-Schritt fortfahren?",
-                   $"The remaining {andere} actions are not affected.\n\n"
-                   + "Continue without the winget step?"));
+                Tr((andere == 1 ? "Die übrige Aktion ist davon nicht betroffen."
+                                : $"Die übrigen {andere} Aktionen sind davon nicht betroffen.")
+                   + "\n\nOhne den winget-Schritt fortfahren?",
+                   (andere == 1 ? "The remaining action is not affected."
+                                : $"The remaining {andere} actions are not affected.")
+                   + "\n\nContinue without the winget step?"));
 
             if (!ohne)
             {
@@ -1180,9 +1201,8 @@ public partial class MainWindowViewModel : ObservableObject
 
         Dispatcher.UIThread.Post(() =>
         {
-            UpdateBannerText = Tr(
-                $"\uD83D\uDD04 Neue Version {manifest.Program.Version} verfügbar  (installiert: {VersionString})",
-                $"\uD83D\uDD04 New version {manifest.Program.Version} available  (installed: {VersionString})");
+            _angeboteneVersion = manifest.Program.Version;
+            OnPropertyChanged(nameof(UpdateBannerText));
             UpdateAvailable = true;
         });
     }
