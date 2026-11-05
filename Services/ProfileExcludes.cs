@@ -83,4 +83,28 @@ public static class ProfileExcludes
         // zwar harmlos, macht die Befehlszeile aber unnoetig lang.
         return excluded.Distinct(System.StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    /// <summary>
+    /// true, wenn <paramref name="path"/> derselbe Ordner wie
+    /// <paramref name="baseDir"/> ist oder darunter liegt.
+    ///
+    /// Bewusst nicht einfach StartsWith: "C:\Users\Maximilian" beginnt mit
+    /// "C:\Users\Max", liegt aber nicht darin. Deshalb wird gegen den Ordner
+    /// MIT abschliessendem Trennzeichen verglichen.
+    /// </summary>
+    public static bool IsInside(string path, string baseDir)
+    {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(baseDir)) return false;
+
+        static string Normal(string p)
+        {
+            try { p = Path.GetFullPath(p); } catch { /* so lassen, wie er ist */ }
+            return p.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+
+        var pfad = Normal(path);
+        var basis = Normal(baseDir);
+        return string.Equals(pfad, basis, System.StringComparison.OrdinalIgnoreCase)
+               || pfad.StartsWith(basis + Path.DirectorySeparatorChar, System.StringComparison.OrdinalIgnoreCase);
+    }
 }

@@ -184,7 +184,7 @@ public sealed class WingetService
     {
         var launcher = await ResolveLauncher();
         if (launcher is null)
-            return new ProcessResult(-1, "", "winget ist in dieser Umgebung nicht ausfuehrbar (Details siehe Log).");
+            return new ProcessResult(-1, "", "winget ist in dieser Umgebung nicht ausführbar (Details siehe Log).");
         return await RunWingetRaw(launcher.Value.Exe, launcher.Value.Mode, args, timeoutMs);
     }
 
@@ -350,14 +350,33 @@ public sealed class WingetService
         Directory.CreateDirectory(wingetDir);
         var exportFile = Path.Combine(wingetDir, "Export.json");
         var unresolvedFile = Path.Combine(wingetDir, "Nicht-zugeordnete-Programme.txt");
-        SafeDelete(exportFile);
-        SafeDelete(unresolvedFile);
 
+        // winget schreibt in eine Zwischendatei. Die bisherige Export.json wird
+        // erst ersetzt, wenn die neue vollstaendig und brauchbar ist.
+        //
+        // Frueher wurde die alte Liste hier als Erstes GELOESCHT - noch bevor
+        // feststand, ob winget ueberhaupt startet. Brach der Export ab, war
+        // die alte Liste weg und keine neue da. Genau an dieser Datei haengt
+        // aber die spaetere Neuinstallation aller Programme.
+        var neuFile = exportFile + ".neu";
+        SafeDelete(neuFile);
+        try
+        {
+            await ExportInto(neuFile, exportFile, unresolvedFile);
+        }
+        finally
+        {
+            SafeDelete(neuFile);
+        }
+    }
+
+    private async Task ExportInto(string neuFile, string exportFile, string unresolvedFile)
+    {
         if (await ResolveLauncher() is null) return;
         _log(Loc.Tr("[INFO] Starte nativen Winget-Export (das kann einen Moment dauern)...", "[INFO] Starting native winget export (this may take a moment)..."));
 
         var result = await InvokeWinget(
-            $"export -o {Quote(exportFile)} --source winget --accept-source-agreements --disable-interactivity");
+            $"export -o {Quote(neuFile)} --source winget --accept-source-agreements --disable-interactivity");
         if (_cancel.IsCancelled) { _log(Loc.Tr("[ABBRUCH] Winget-Export durch Benutzer abgebrochen.", "[CANCELLED] Winget export cancelled by user.")); return; }
         if (!result.Started) { _log(Loc.Tr($"[FEHLER] winget konnte nicht gestartet werden: {result.StartError}", $"[ERROR] winget could not be started: {result.StartError}")); return; }
 
@@ -378,7 +397,7 @@ public sealed class WingetService
             }
         }
 
-        if (!File.Exists(exportFile))
+        if (!File.Exists(neuFile))
         {
             _log(Loc.Tr($"[FEHLER] 'winget export' hat keine Datei erzeugt (ExitCode: {result.ExitCode}).", $"[ERROR] 'winget export' did not produce a file (ExitCode: {result.ExitCode})."));
             if (!string.IsNullOrWhiteSpace(result.Output)) _log(Loc.Tr("[INFO] Winget-Ausgabe: ", "[INFO] Winget output: ") + result.Output.Trim());
@@ -388,7 +407,7 @@ public sealed class WingetService
         WingetExport? json;
         try
         {
-            json = JsonSerializer.Deserialize<WingetExport>(await File.ReadAllTextAsync(exportFile));
+            json = JsonSerializer.Deserialize<WingetExport>(await File.ReadAllTextAsync(neuFile));
         }
         catch (Exception ex)
         {
@@ -402,7 +421,6 @@ public sealed class WingetService
         {
             _log(Loc.Tr($"[FEHLER] Der Winget-Export enthält keine Pakete (ExitCode: {result.ExitCode}).", $"[ERROR] The winget export contains no packages (ExitCode: {result.ExitCode})."));
             _log(Loc.Tr("[INFO] Mögliche Ursache: winget kann im erhöhten Kontext die Paketliste nicht lesen. Bitte einmal 'winget list' in einer Administrator-Konsole ausführen und die Quellvereinbarung bestätigen, danach erneut versuchen.", "[INFO] Possible cause: winget cannot read the package list in the elevated context. Please run 'winget list' once in an administrator console and accept the source agreement, then try again."));
-            SafeDelete(exportFile);
             return;
         }
 
@@ -462,13 +480,17 @@ public sealed class WingetService
         if (keptTotal == 0)
         {
             _log(Loc.Tr("[FEHLER] Nach dem Herausfiltern der Zusatzpakete sind keine Programme übrig geblieben.", "[ERROR] After filtering out companion packages, no programs remain."));
-            SafeDelete(exportFile);
             return;
         }
 
         json.CreationDate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
         var opts = new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
-        await File.WriteAllTextAsync(exportFile, JsonSerializer.Serialize(json, opts));
+        // Fertige Liste zuerst vollstaendig in die Zwischendatei, dann in einem
+        // Schritt an die Stelle der alten. Schlaegt schon das Schreiben fehl
+        // (Platte voll), bleibt die alte Export.json unangetastet.
+        await File.WriteAllTextAsync(neuFile, JsonSerializer.Serialize(json, opts));
+        File.Move(neuFile, exportFile, overwrite: true);
+        SafeDelete(unresolvedFile);   // gehoert zum alten Stand
         _log(Loc.Tr($"[ERFOLG] {keptTotal} Programme exportiert nach: {exportFile} ({skipped.Count} Zusatzpakete herausgefiltert)", $"[SUCCESS] {keptTotal} programs exported to: {exportFile} ({skipped.Count} companion packages filtered out)"));
 
         if (stillUnresolved.Count > 0)

@@ -192,6 +192,48 @@ internal static class Program
         Check("die Liste enthaelt keine Dubletten",
             beides.Count == beides.Distinct(StringComparer.OrdinalIgnoreCase).Count());
 
+        // ================================================================
+        // Liegt das Ziel im Quellprofil? (frueher ein reiner Praefixvergleich)
+        // ================================================================
+        Console.WriteLine("\n== Ziel im Quellverzeichnis ==");
+        var nutzer = Path.Combine(root, "Users");
+        var max = Path.Combine(nutzer, "Max");
+        Check("Maximilian liegt NICHT in Max (der alte Fehler)",
+            !ProfileExcludes.IsInside(Path.Combine(nutzer, "Maximilian", "Backup"), max));
+        Check("ein Unterordner von Max liegt in Max",
+            ProfileExcludes.IsInside(Path.Combine(max, "Backup", "Benutzerprofil"), max));
+        Check("Max selbst gilt als darin",
+            ProfileExcludes.IsInside(max, max));
+        Check("abschliessendes Trennzeichen stoert nicht",
+            ProfileExcludes.IsInside(Path.Combine(max, "x"), max + Path.DirectorySeparatorChar));
+        Check("Gross-/Kleinschreibung zaehlt nicht",
+            ProfileExcludes.IsInside(Path.Combine(max, "x").ToUpperInvariant(), max.ToLowerInvariant()));
+        Check("ein Nachbarordner liegt nicht darin",
+            !ProfileExcludes.IsInside(Path.Combine(nutzer, "Anna"), max));
+        Check("leere Angaben liegen nirgends drin",
+            !ProfileExcludes.IsInside("", max) && !ProfileExcludes.IsInside(max, ""));
+
+        // ================================================================
+        // Wann gilt eine Aktion als fehlgeschlagen?
+        // ================================================================
+        Console.WriteLine("\n== Fehlerzeilen im Protokoll ==");
+        Check("[FEHLER] am Zeilenanfang zaehlt",
+            ActionOutcome.IsErrorLine("[FEHLER] Robocopy Fehlercode: 16"));
+        Check("[ERROR] im englischen Modus zaehlt",
+            ActionOutcome.IsErrorLine("[ERROR] Robocopy error code: 16"));
+        Check("eingerueckter Paketfehler zaehlt",
+            ActionOutcome.IsErrorLine("    -> [FEHLER] Paket wurde im Winget-Katalog nicht gefunden."));
+        Check("mit vorangestelltem Zeilenumbruch zaehlt",
+            ActionOutcome.IsErrorLine("\r\n[FEHLER] Aktion abgebrochen"));
+        Check("robocopy-eigene Zeile ohne Klammern zaehlt NICHT",
+            !ActionOutcome.IsErrorLine("2026/11/05 10:00:00 FEHLER 32 (0x00000020) Datei wird kopiert"));
+        Check("[WARNUNG] ist kein Fehlschlag",
+            !ActionOutcome.IsErrorLine("[WARNUNG] Es konnte kein aktuelles Hintergrundbild gefunden werden"));
+        Check("[ERFOLG] ist kein Fehlschlag",
+            !ActionOutcome.IsErrorLine("[ERFOLG] Benutzerprofil gesichert."));
+        Check("leere Zeile ist kein Fehlschlag",
+            !ActionOutcome.IsErrorLine("") && !ActionOutcome.IsErrorLine(null));
+
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
         try { Directory.Delete(root, true); } catch { }
         return _failed == 0 ? 0 : 1;

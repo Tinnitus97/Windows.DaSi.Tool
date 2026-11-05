@@ -64,7 +64,10 @@ public sealed class BackupService
         var userDir = SourcePath;
         var backupTargetDir = Path.Combine(BackupPath, "Benutzerprofil");
 
-        if (backupTargetDir.StartsWith(userDir, StringComparison.OrdinalIgnoreCase))
+        // Frueher ein reiner Praefixvergleich: Profil "C:\Users\Max" und Ziel
+        // "C:\Users\Maximilian\Backup" galten als "Ziel im Quellverzeichnis",
+        // und das Backup wurde verweigert.
+        if (ProfileExcludes.IsInside(backupTargetDir, userDir))
         {
             _log(Loc.Tr("[FEHLER] Ziel liegt im Quellverzeichnis. Abbruch.", "[ERROR] Target is inside the source directory. Aborting."));
             return;
@@ -166,8 +169,27 @@ public sealed class BackupService
         {
             var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             var oldDir = $"{targetAppProfileDir}_alt_{stamp}";
-            try { Directory.Move(targetAppProfileDir, oldDir); _log(Loc.Tr($"[INFO] Bisheriges {appName}-Profil gesichert nach: {oldDir}", $"[INFO] Previous {appName} profile moved to: {oldDir}")); }
-            catch { try { Directory.Delete(targetAppProfileDir, true); } catch { } }
+            try
+            {
+                Directory.Move(targetAppProfileDir, oldDir);
+                _log(Loc.Tr($"[INFO] Bisheriges {appName}-Profil gesichert nach: {oldDir}", $"[INFO] Previous {appName} profile moved to: {oldDir}"));
+            }
+            catch (Exception ex)
+            {
+                // Frueher wurde das bestehende Profil hier rekursiv GELOESCHT. Das
+                // scheitert aus demselben Grund wie das Verschieben - eine noch
+                // gesperrte Datei - aber erst, nachdem schon ein Teil weg ist.
+                // Uebrig blieb ein halb geloeschtes Profil, und schlug danach das
+                // Zurueckschreiben fehl, war gar keins mehr da. Abbrechen ist
+                // hier die einzige Antwort, die nichts kaputt machen kann.
+                _log(Loc.Tr($"[FEHLER] Das bisherige {appName}-Profil ließ sich nicht beiseitelegen ({ex.Message}). "
+                            + $"Wiederherstellung abgebrochen - am bestehenden Profil wurde nichts verändert. "
+                            + $"Bitte {appName} vollständig schließen und erneut versuchen.",
+                            $"[ERROR] The existing {appName} profile could not be moved aside ({ex.Message}). "
+                            + $"Restore aborted - the existing profile was left untouched. "
+                            + $"Please close {appName} completely and try again."));
+                return;
+            }
         }
         var parent = Path.GetDirectoryName(targetAppProfileDir);
         if (parent != null && !Directory.Exists(parent)) Directory.CreateDirectory(parent);
@@ -189,8 +211,30 @@ public sealed class BackupService
         var destDir = Path.Combine(BackupPath, "WLAN-Profile");
         Directory.CreateDirectory(destDir);
         _log(Loc.Tr("[INFO] Exportiere WLAN Profile...", "[INFO] Exporting WiFi profiles..."));
-        await _runner.RunAsync("netsh", $"wlan export profile folder=\"{destDir}\" key=clear");
-        _log(Loc.Tr("[ERFOLG] WLAN Profile exportiert.", "[SUCCESS] WiFi profiles exported."));
+        var r = await _runner.RunAsync("netsh", $"wlan export profile folder=\"{destDir}\" key=clear",
+                                       SystemHelpers.ConsoleEncoding);
+
+        // Frueher stand hier immer "[ERFOLG]" - auch wenn netsh gar nicht lief
+        // oder ablehnte. Typisch auf einem PC ohne WLAN-Adapter: "Der Dienst
+        // 'WLAN-AutoKonfig' wird nicht ausgefuehrt."
+        if (!r.Started)
+        {
+            _log(Loc.Tr($"[FEHLER] netsh konnte nicht gestartet werden: {r.StartError}",
+                        $"[ERROR] netsh could not be started: {r.StartError}"));
+            return;
+        }
+        var anzahl = Directory.GetFiles(destDir, "*.xml").Length;
+        if (r.ExitCode != 0)
+        {
+            _log(Loc.Tr($"[FEHLER] WLAN-Export fehlgeschlagen (ExitCode {r.ExitCode}): {r.Output.Trim()}",
+                        $"[ERROR] WiFi export failed (ExitCode {r.ExitCode}): {r.Output.Trim()}"));
+            return;
+        }
+        _log(anzahl > 0
+            ? Loc.Tr($"[ERFOLG] {anzahl} WLAN-Profile exportiert. Sie enthalten die Schlüssel im Klartext - den Sicherungsordner entsprechend schützen.",
+                     $"[SUCCESS] {anzahl} WiFi profiles exported. They contain the keys in clear text - protect the backup folder accordingly.")
+            : Loc.Tr("[WARNUNG] Auf diesem Rechner sind keine WLAN-Profile gespeichert.",
+                     "[WARNING] No WiFi profiles are stored on this computer."));
     }
 
     public async Task ImportWlan()
@@ -198,9 +242,20 @@ public sealed class BackupService
         var srcDir = Path.Combine(BackupPath, "WLAN-Profile");
         if (!Directory.Exists(srcDir)) { _log(Loc.Tr("[FEHLER] WLAN Ordner nicht gefunden.", "[ERROR] WiFi folder not found.")); return; }
         _log(Loc.Tr("[INFO] Importiere WLAN Profile...", "[INFO] Importing WiFi profiles..."));
+        int ok = 0, fehler = 0;
         foreach (var xml in Directory.GetFiles(srcDir, "*.xml"))
-            await _runner.RunAsync("netsh", $"wlan add profile filename=\"{xml}\"");
-        _log(Loc.Tr("[ERFOLG] WLAN Profile importiert.", "[SUCCESS] WiFi profiles imported."));
+        {
+            var r = await _runner.RunAsync("netsh", $"wlan add profile filename=\"{xml}\"",
+                                           SystemHelpers.ConsoleEncoding);
+            if (r.Started && r.ExitCode == 0) { ok++; continue; }
+            fehler++;
+            _log(Loc.Tr($"    -> [FEHLER] {Path.GetFileNameWithoutExtension(xml)}: {(r.StartError ?? r.Output).Trim()}",
+                        $"    -> [ERROR] {Path.GetFileNameWithoutExtension(xml)}: {(r.StartError ?? r.Output).Trim()}"));
+        }
+        _log(fehler == 0
+            ? Loc.Tr($"[ERFOLG] {ok} WLAN-Profile importiert.", $"[SUCCESS] {ok} WiFi profiles imported.")
+            : Loc.Tr($"[FEHLER] WLAN-Import: {ok} importiert, {fehler} fehlgeschlagen.",
+                     $"[ERROR] WiFi import: {ok} imported, {fehler} failed."));
     }
 
     // ------------------------------------------------------------ Drucker
@@ -432,12 +487,22 @@ public sealed class BackupService
         try { if (File.Exists(pathFile)) originalPath = (await File.ReadAllTextAsync(pathFile)).Trim(); }
         catch { /* ignore */ }
 
-        // Das gesicherte Bild im Backup-Ordner finden (erste Nicht-Textdatei).
+        // Das gesicherte Bild im Backup-Ordner finden. Es wird unter seinem
+        // Originalnamen abgelegt - nach mehreren Sicherungen mit wechselnden
+        // Hintergruenden liegen deshalb mehrere Bilder nebeneinander. Frueher
+        // nahm diese Stelle "die erste Datei", also ein beliebiges davon. Jetzt
+        // das Bild, dessen Name zum gemerkten Originalpfad passt, und sonst das
+        // zuletzt gesicherte.
         string? backupImage = null;
         try
         {
-            backupImage = Directory.EnumerateFiles(srcDir)
-                .FirstOrDefault(f => !f.EndsWith(WallpaperPathFile, StringComparison.OrdinalIgnoreCase));
+            var bilder = Directory.EnumerateFiles(srcDir)
+                .Where(f => !f.EndsWith(WallpaperPathFile, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var originalName = string.IsNullOrWhiteSpace(originalPath) ? null : Path.GetFileName(originalPath);
+            backupImage = bilder.FirstOrDefault(f => originalName is not null
+                              && string.Equals(Path.GetFileName(f), originalName, StringComparison.OrdinalIgnoreCase))
+                          ?? bilder.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
         }
         catch { /* ignore */ }
 
@@ -533,8 +598,21 @@ public sealed class BackupService
         if (wingetId is null) return;
 
         _log(Loc.Tr($"[INFO] Versuche, {appName} via Winget zu installieren...", $"[INFO] Trying to install {appName} via winget..."));
-        await _runner.RunAsync("winget", $"install --id {wingetId} -e --accept-package-agreements --accept-source-agreements");
-        _log(Loc.Tr("[INFO] Winget-Installation abgeschlossen.", "[INFO] Winget installation finished."));
+        var r = await _runner.RunAsync("winget", $"install --id {wingetId} -e --accept-package-agreements --accept-source-agreements");
+
+        // Frueher stand hier immer "Installation abgeschlossen" - auch wenn
+        // winget gar nicht startete. Bewusst eine WARNUNG und kein FEHLER: Das
+        // Profil selbst wird trotzdem zurueckgeschrieben, und darum geht es
+        // bei dieser Aktion. Nur muss der Benutzer wissen, dass das Programm
+        // noch fehlt.
+        if (!r.Started)
+            _log(Loc.Tr($"[WARNUNG] winget konnte nicht gestartet werden ({r.StartError}). {appName} bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
+                        $"[WARNING] winget could not be started ({r.StartError}). Please install {appName} manually - the profile is restored anyway."));
+        else if (r.ExitCode != 0)
+            _log(Loc.Tr($"[WARNUNG] {appName} ließ sich per winget nicht installieren (ExitCode {r.ExitCode}). Bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
+                        $"[WARNING] {appName} could not be installed via winget (ExitCode {r.ExitCode}). Please install it manually - the profile is restored anyway."));
+        else
+            _log(Loc.Tr($"[INFO] {appName} wurde per winget installiert.", $"[INFO] {appName} was installed via winget."));
     }
 
     // ------------------------------------------------------------ Helpers

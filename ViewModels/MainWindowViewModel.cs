@@ -405,8 +405,30 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Fehlerzeilen der gerade laufenden Aktion.
+    ///
+    /// Warum ueber das Protokoll: Die Dienste werfen bei einem Fehlschlag
+    /// keine Ausnahme, sie schreiben "[FEHLER] ..." und kehren normal zurueck.
+    /// Die Warteschlange hat deshalb frueher nur Ausnahmen als Fehler gezaehlt -
+    /// ein gescheitertes robocopy (Code 16), ein fehlender Sicherungsordner
+    /// oder ein nicht startbares winget landeten als [OK] in der Bilanz UND in
+    /// der Protokolldatei im Sicherungsziel. Ausgerechnet die Datei, mit der
+    /// sich nachweisen laesst, dass eine Sicherung gelaufen ist, meldete dann
+    /// Erfolg.
+    ///
+    /// Das Protokoll ist in diesem Programm der eine Weg, auf dem jeder Dienst
+    /// Fehler meldet - jede Stelle benutzt dafuer "[FEHLER]" bzw. "[ERROR]".
+    /// Zeilen aus der robocopy-Ausgabe selbst ("FEHLER 5 (0x00000005) ...")
+    /// tragen keine eckigen Klammern und zaehlen nicht mit; scheitert robocopy
+    /// wirklich, meldet der Dienst den Fehlercode ohnehin selbst.
+    /// </summary>
+    private int _aktionsFehler;
+
     private void Log(string text)
     {
+        if (ActionOutcome.IsErrorLine(text)) System.Threading.Interlocked.Increment(ref _aktionsFehler);
+
         string snapshot;
         lock (_logLock)
         {
@@ -458,9 +480,29 @@ public partial class MainWindowViewModel : ObservableObject
         return list;
     }
 
+    /// <summary>
+    /// Abbruch fuer die gerade laufende Groessenberechnung, und ob danach mit
+    /// der inzwischen geaenderten Auswahl neu gerechnet werden muss.
+    ///
+    /// Frueher kehrte ein zweiter Aufruf waehrend einer laufenden Berechnung
+    /// einfach zurueck. Hakte man in den Sekunden, die ein grosses Profil
+    /// braucht, AppData an, wurde das nie berechnet - die Anzeige zeigte die
+    /// Groesse OHNE AppData, und der Platzbedarf wurde unterschaetzt. Gerade
+    /// die beiden Zusatzoptionen veraendern die Groesse am staerksten.
+    /// </summary>
+    private System.Threading.CancellationTokenSource? _storageWalkCts;
+    private bool _storageRecheck;
+    private bool _storageRecheckPopup;
+
     private async Task RunStorageCheck(bool showPopup)
     {
-        if (StorageChecking) return;
+        if (StorageChecking)
+        {
+            _storageRecheck = true;
+            _storageRecheckPopup |= showPopup;
+            _storageWalkCts?.Cancel();
+            return;
+        }
         if (string.IsNullOrWhiteSpace(BackupPath))
         {
             StorageInfo = Tr("Bitte zuerst ein Backup-Ziel/-Quelle festlegen.",
@@ -474,6 +516,10 @@ public partial class MainWindowViewModel : ObservableObject
         StorageStatus = 0;
         StorageInfo = Tr("Berechne Datenmenge...", "Calculating data size...");
         StorageInfoVisible = true;
+
+        var walkCts = new System.Threading.CancellationTokenSource();
+        _storageWalkCts = walkCts;
+        var ct = walkCts.Token;
 
         try
         {
@@ -496,8 +542,15 @@ public partial class MainWindowViewModel : ObservableObject
                     foreach (var sub in restoreSubdirs)
                     {
                         var full = System.IO.Path.Combine(backupPath, sub);
-                        if (System.IO.Directory.Exists(full))
-                            size += SystemHelpers.GetDirectorySize(full);
+                        // Beim Benutzerprofil dieselben Ausschluesse wie beim
+                        // Zurueckschreiben selbst: Ohne Haken bleiben AppData und
+                        // die Cloud-Ordner draussen - dann zaehlen sie auch hier
+                        // nicht mit.
+                        if (sub == "Benutzerprofil" && System.IO.Directory.Exists(full))
+                            size += SystemHelpers.GetDirectorySize(full,
+                                        ProfileExcludes.Build(full, selAppData, selCloud), ct);
+                        else if (System.IO.Directory.Exists(full))
+                            size += SystemHelpers.GetDirectorySize(full, ct: ct);
                         else if (System.IO.File.Exists(full))
                         {
                             try { size += new System.IO.FileInfo(full).Length; } catch { }
@@ -511,7 +564,7 @@ public partial class MainWindowViewModel : ObservableObject
                     // Sicherung: Summe ALLER ausgewaehlten Quellen.
                     if (selUser && !string.IsNullOrWhiteSpace(sourcePath))
                         size += SystemHelpers.GetDirectorySize(sourcePath,
-                                    BackupService.GetProfileExcludes(sourcePath, selAppData, selCloud));
+                                    BackupService.GetProfileExcludes(sourcePath, selAppData, selCloud), ct);
 
                     // Browser-/Mail-Profile einzeln dazurechnen.
                     if (!string.IsNullOrWhiteSpace(sourcePath))
@@ -520,12 +573,12 @@ public partial class MainWindowViewModel : ObservableObject
                         {
                             var full = System.IO.Path.Combine(sourcePath, rel);
                             if (System.IO.Directory.Exists(full))
-                                size += SystemHelpers.GetDirectorySize(full);
+                                size += SystemHelpers.GetDirectorySize(full, ct: ct);
                         }
                     }
                     return (size, SystemHelpers.GetFreeSpace(backupPath));
                 }
-            });
+            }, ct);
 
             var margin = (long)(dataSize * 0.10); // 10% Sicherheitsreserve
             var needed = dataSize + margin;
@@ -573,6 +626,10 @@ public partial class MainWindowViewModel : ObservableObject
             if (showPopup && popupMsg != null)
                 await ShowInfo(Tr("Speicherplatz", "Storage"), popupMsg);
         }
+        catch (OperationCanceledException)
+        {
+            // Die Auswahl hat sich geaendert - die Neuberechnung folgt im finally.
+        }
         catch (Exception ex)
         {
             StorageInfo = Tr($"Größenberechnung fehlgeschlagen: {ex.Message}",
@@ -582,6 +639,16 @@ public partial class MainWindowViewModel : ObservableObject
         finally
         {
             StorageChecking = false;
+            if (ReferenceEquals(_storageWalkCts, walkCts)) _storageWalkCts = null;
+            walkCts.Dispose();
+        }
+
+        if (_storageRecheck)
+        {
+            var popup = _storageRecheckPopup;
+            _storageRecheck = false;
+            _storageRecheckPopup = false;
+            await RunStorageCheck(popup);
         }
     }
 
@@ -666,19 +733,25 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     private async Task<bool> ConfirmCloudAsync()
     {
-        var gefunden = CloudProviders.Detect(SourcePath);
+        // Beim Wiederherstellen kommt es darauf an, was IN DER SICHERUNG liegt -
+        // das wird gleich zurueckgeschrieben. Frueher wurde hier das Zielprofil
+        // durchsucht; auf einem frischen Rechner hat das noch keine Cloud-Ordner,
+        // und die Rueckfrage meldete "keine erkannt", waehrend gleich OneDrive
+        // zurueckgeschrieben wurde.
+        var ort = IsRestoreMode ? Path.Combine(BackupPath, "Benutzerprofil") : SourcePath;
+        var gefunden = CloudProviders.Detect(ort);
         var liste = gefunden.Count > 0
             ? CloudProviders.Summarize(gefunden)
             : Tr("keine erkannt", "none detected");
 
         var frage = IsRestoreMode
-            ? Tr($"Erkannte Cloud-Anbieter: {liste}\n\n"
-                 + "Das Zurueckschreiben von Cloud-Ordnern dauert sehr lange und kann Probleme machen: "
-                 + "Der Cloud-Client haelt die zurueckgeschriebenen Dateien fuer geaendert und laedt sie "
+            ? Tr($"Cloud-Anbieter in der Sicherung: {liste}\n\n"
+                 + "Das Zurückschreiben von Cloud-Ordnern dauert sehr lange und kann Probleme machen: "
+                 + "Der Cloud-Client hält die zurückgeschriebenen Dateien für geändert und lädt sie "
                  + "erneut hoch. In geteilten Ordnern entstehen dabei Dubletten und Konflikte.\n\n"
-                 + "Empfehlung: Cloud-Ordner nicht zurueckschreiben, sondern den Cloud-Client auf dem "
+                 + "Empfehlung: Cloud-Ordner nicht zurückschreiben, sondern den Cloud-Client auf dem "
                  + "neuen Rechner neu anmelden - er holt die Daten dann selbst.\n\nTrotzdem fortfahren?",
-                 $"Detected cloud providers: {liste}\n\n"
+                 $"Cloud providers in the backup: {liste}\n\n"
                  + "Restoring cloud folders takes a very long time and can cause problems: "
                  + "the cloud client considers the restored files changed and uploads them again. "
                  + "In shared folders this creates duplicates and conflicts.\n\n"
@@ -686,10 +759,10 @@ public partial class MainWindowViewModel : ObservableObject
                  + "new machine instead and let it fetch the data itself.\n\nContinue anyway?")
             : Tr($"Erkannte Cloud-Anbieter: {liste}\n\n"
                  + "Das Mitsichern dauert sehr lange. Dateien, die nur online liegen, werden dabei "
-                 + "vollstaendig heruntergeladen - das Backup kann dadurch um ein Vielfaches groesser "
-                 + "werden als die Anzeige im Explorer vermuten laesst.\n\n"
-                 + "Auch das spaetere Zurueckschreiben dauert entsprechend lange und kann beim "
-                 + "Cloud-Client zu Konflikten fuehren.\n\nTrotzdem mitsichern?",
+                 + "vollständig heruntergeladen - das Backup kann dadurch um ein Vielfaches größer "
+                 + "werden, als die Anzeige im Explorer vermuten lässt.\n\n"
+                 + "Auch das spätere Zurückschreiben dauert entsprechend lange und kann beim "
+                 + "Cloud-Client zu Konflikten führen.\n\nTrotzdem mitsichern?",
                  $"Detected cloud providers: {liste}\n\n"
                  + "Including them takes a very long time. Files that exist only online are downloaded "
                  + "in full - the backup can therefore become many times larger than Explorer suggests.\n\n"
@@ -698,7 +771,7 @@ public partial class MainWindowViewModel : ObservableObject
 
         var weiter = await ShowYesNo(Tr("Cloud-Ordner", "Cloud folders"), frage);
         if (!weiter)
-            Log(Tr("[INFO] Start abgebrochen - Cloud-Ordner wurden nicht bestaetigt.",
+            Log(Tr("[INFO] Start abgebrochen - Cloud-Ordner wurden nicht bestätigt.",
                    "[INFO] Start cancelled - cloud folders were not confirmed."));
         return weiter;
     }
@@ -713,15 +786,15 @@ public partial class MainWindowViewModel : ObservableObject
     {
         var weiter = await ShowYesNo(
             Tr("AppData wiederherstellen", "Restore AppData"),
-            Tr("AppData wird mit zurueckgeschrieben.\n\n"
-               + "ACHTUNG: In AppData liegen Einstellungen, die an diesen Rechner gebunden sind - "
-               + "Lizenzen, Geraetekennungen und angemeldete Sitzungen. Auf einem anderen Rechner "
-               + "oder ueber eine neuere Programmfassung geschrieben, koennen einzelne Programme "
+            Tr("AppData wird mit zurückgeschrieben.\n\n"
+               + "ACHTUNG: In AppData liegen Einstellungen, die an den Rechner gebunden sind - "
+               + "Lizenzen, Gerätekennungen und angemeldete Sitzungen. Auf einem anderen Rechner "
+               + "oder über eine neuere Programmfassung geschrieben, können einzelne Programme "
                + "danach nicht mehr starten oder eine Neuanmeldung verlangen.\n\n"
-               + "Schliesse vorher alle Programme. Dateien, die gerade benutzt werden, werden "
-               + "uebersprungen.\n\nAppData wirklich wiederherstellen?",
+               + "Schließe vorher alle Programme. Dateien, die gerade benutzt werden, werden "
+               + "übersprungen.\n\nAppData wirklich wiederherstellen?",
                "AppData will be restored as well.\n\n"
-               + "CAUTION: AppData holds settings tied to this machine - licences, device identifiers "
+               + "CAUTION: AppData holds settings tied to the machine - licences, device identifiers "
                + "and signed-in sessions. Written on a different machine, or over a newer version of a "
                + "program, individual programs may fail to start afterwards or ask you to sign in "
                + "again.\n\n"
@@ -729,7 +802,7 @@ public partial class MainWindowViewModel : ObservableObject
                + "Really restore AppData?"));
 
         if (!weiter)
-            Log(Tr("[INFO] Start abgebrochen - AppData-Wiederherstellung wurde nicht bestaetigt.",
+            Log(Tr("[INFO] Start abgebrochen - AppData-Wiederherstellung wurde nicht bestätigt.",
                    "[INFO] Start cancelled - AppData restore was not confirmed."));
         return weiter;
     }
@@ -945,6 +1018,7 @@ public partial class MainWindowViewModel : ObservableObject
             _currentActionText = Tr($"Aktion {index} von {total}: {FriendlyAction(choice)}",
                                     $"Action {index} of {total}: {FriendlyAction(choice)}");
             ProgressText = _currentActionText;
+            System.Threading.Interlocked.Exchange(ref _aktionsFehler, 0);
             Log(Tr($"\r\n--- Führe Aktion {choice} aus ---", $"\r\n--- Running action {choice} ---"));
 
             bool ok = true;
@@ -982,6 +1056,9 @@ public partial class MainWindowViewModel : ObservableObject
                 Log(Tr($"[FEHLER] Aktion '{choice}' abgebrochen: {ex.Message}", $"[ERROR] Action '{choice}' aborted: {ex.Message}"));
                 Program.WriteCrashLog($"RunQueue/{choice}", ex);
             }
+
+            // Erfolgreich heisst: keine Ausnahme, keine Fehlerzeile, kein Abbruch.
+            if (System.Threading.Volatile.Read(ref _aktionsFehler) > 0 || _cancel.IsCancelled) ok = false;
 
             results.Add((choice, ok));
             await Task.Delay(1000);
@@ -1259,8 +1336,13 @@ public partial class MainWindowViewModel : ObservableObject
         {
             // Absturzschutz: Sollte der Dialog trotzdem scheitern, nicht abstuerzen.
             Program.WriteCrashLog("PickFolder", ex);
-            var msg = Tr("Der Ordner-Dialog konnte nicht geöffnet werden. Bitte den Pfad manuell in das Textfeld eingeben.",
-                         "The folder dialog could not be opened. Please type the path into the text field instead.");
+            // Die Pfadfelder sind bewusst schreibgeschuetzt (der Dialog prueft das
+            // Ziel auf NTFS). Frueher stand hier "Pfad manuell eingeben" - eine
+            // Anweisung, die sich nicht befolgen liess.
+            var msg = Tr("Der Ordner-Dialog konnte nicht geöffnet werden. Bitte erneut versuchen. "
+                         + "Bleibt der Fehler, steht die Ursache in WindowsDaSiTool_Absturz.log auf dem Desktop.",
+                         "The folder dialog could not be opened. Please try again. "
+                         + "If the error persists, the cause is in WindowsDaSiTool_Absturz.log on the desktop.");
             Log("[WARNUNG] " + msg);
             await ShowInfo(Tr("Ordner-Dialog", "Folder dialog"), msg);
         }
