@@ -29,12 +29,44 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Geändert
 
-- Die Kacheln sind größer und füllen den verfügbaren Platz der linken Spalte
-  aus. Das Benutzerprofil steht über die volle Breite und trägt seine beiden
-  Zusatzoptionen bei sich.
+- Die Kacheln füllen den verfügbaren Platz der linken Spalte aus. Das
+  Benutzerprofil steht über die volle Breite und trägt seine beiden
+  Zusatzoptionen untereinander bei sich, bündig mit der rechten
+  Kachelspalte. Alles ist beim Start ohne Rollbalken sichtbar — auch dann,
+  wenn die Zeile der Speicherprüfung eingeblendet wird.
 - Beide Zusatzoptionen wirken auch beim Wiederherstellen: Ohne Haken bleibt
   AppData bzw. der Cloud-Ordner aus dem Rückschreiben heraus, selbst wenn die
   Sicherung ihn enthält.
+
+### Behoben
+
+- **Selbstaktualisierung bei Umlaut im Benutzernamen.** Das Austauschskript
+  lag unter `C:\Users\<Name>` und enthielt die Pfade als UTF-8 mit BOM;
+  cmd liest Batchdateien aber in der OEM-Codepage. Aus jedem Umlaut wurde
+  Zeichensalat, der Austausch scheiterte — in einem Fenster, das nie
+  erschien, mit einem `pause`, das ewig wartete. Jetzt: Pfade als
+  Argumente, reines ASCII, im Fehlerfall eine Erklärung im Editor und die
+  bisherige Fassung startet wieder. Außerdem wartete jedes Update rund
+  60 Sekunden, weil die Warteschleife nie vorzeitig ausstieg; jetzt dient
+  die Dateisperre als Signal. Unter echtem Windows geprüft.
+- **Bilanz und Protokolldatei meldeten Fehlschläge als Erfolg.** Gezählt
+  wurden nur Abstürze, nicht die `[FEHLER]`-Zeilen der Aktionen.
+- Ein Backup-Ziel wie `C:\Users\Maximilian\Backup` galt beim Profil `Max`
+  als „im Quellverzeichnis“ und wurde verweigert.
+- Ließ sich ein Browserprofil beim Wiederherstellen nicht beiseitelegen,
+  wurde es rekursiv gelöscht. Jetzt bleibt es unverändert, mit Meldung.
+- Der Winget-Export löschte die alte Programmliste, bevor feststand, ob
+  eine neue entsteht. Die Liste ist jetzt außerdem lesbar (`Notepad++`
+  statt `Notepad\u002B\u002B`), und die Import-Bilanz trägt `[WARNUNG]`
+  statt `[ERFOLG]`, sobald ein Programm scheitert.
+- Die Speicherprüfung verwarf Neuberechnungen, die während einer laufenden
+  Berechnung angestoßen wurden, und schätzte beim Wiederherstellen AppData
+  und Cloud-Ordner mit ein, obwohl sie ausgespart werden.
+- Speicherzeile und Update-Hinweis wechseln die Sprache jetzt sofort mit.
+- WLAN-Export/-Import und die Einzelinstallation per winget meldeten
+  Erfolg, auch wenn das Werkzeug dahinter scheiterte.
+- Das Hintergrundbild wurde aus der ersten statt der passenden Datei
+  wiederhergestellt.
 
 ---
 
