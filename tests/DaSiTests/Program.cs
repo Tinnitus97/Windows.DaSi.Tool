@@ -91,17 +91,60 @@ internal static class Program
         File.WriteAllText(neu, "x");
         var ziel = Path.Combine(root, "WindowsDaSiTool.exe");
 
-        var skript = UpdateService.WriteUpdateScript(neu, ziel, 4711);
+        var skript = UpdateService.WriteUpdateScript(neu, ziel);
         var inhalt = File.ReadAllText(skript);
         Check("Skript wurde geschrieben", File.Exists(skript));
         Check("Skript liegt im eigenen Arbeitsordner",
             skript.StartsWith(UpdateService.WorkFolder, StringComparison.OrdinalIgnoreCase), skript);
-        Check("Skript wartet auf den Vorgang", inhalt.Contains("4711", StringComparison.Ordinal));
+        // Gewartet wird ueber die Dateisperre: move wird wiederholt, bis es klappt.
+        Check("Skript wiederholt den Austausch, solange die Datei gesperrt ist",
+            inhalt.Contains("goto ersetzen", StringComparison.Ordinal)
+            && inhalt.Contains("ping -n 2", StringComparison.Ordinal));
+        Check("Skript kommt ohne for-Schleife und tasklist aus (lief frueher immer 60 s)",
+            !inhalt.Contains("for /l", StringComparison.OrdinalIgnoreCase)
+            && !inhalt.Contains("tasklist", StringComparison.OrdinalIgnoreCase));
         Check("Skript ersetzt die Datei", inhalt.Contains("move /y", StringComparison.Ordinal));
         Check("Skript startet danach neu", inhalt.Contains("start \"\"", StringComparison.Ordinal));
-        Check("Skript meldet einen Fehlschlag",
+        // Frueher endete der Fehlerzweig mit "pause" - in einem Fenster, das wegen
+        // CreateNoWindow nie erschien. Das cmd wartete dann unsichtbar fuer immer.
+        Check("Skript meldet einen Fehlschlag sichtbar (Editor statt pause)",
             inhalt.Contains("errorlevel", StringComparison.Ordinal)
-            && inhalt.Contains("pause", StringComparison.Ordinal));
+            && inhalt.Contains("notepad.exe", StringComparison.Ordinal)
+            && !inhalt.Split('\n').Select(z => z.Trim())
+                    .Where(z => !z.StartsWith("rem", StringComparison.OrdinalIgnoreCase))
+                    .Any(z => z.Equals("pause", StringComparison.OrdinalIgnoreCase)
+                              || z.StartsWith("pause ", StringComparison.OrdinalIgnoreCase)));
+        Check("Skript startet im Fehlerfall die bisherige Fassung wieder",
+            inhalt.Split(":fehler")[1].Contains("start \"\" \"%~2\"", StringComparison.Ordinal));
+
+        // Der Kern des Fehlers: Pfade mit Umlauten duerfen nicht in der Datei stehen.
+        var umlautNeu = Path.Combine(root, "Jürgen Müller", "neu", "WindowsDaSiTool.exe");
+        var umlautZiel = Path.Combine(root, "Björn Öztürk", "WindowsDaSiTool.exe");
+        var skriptU = UpdateService.WriteUpdateScript(umlautNeu, umlautZiel);
+        var bytes = File.ReadAllBytes(skriptU);
+        Check("Skript enthaelt nur ASCII, auch bei Umlauten im Pfad",
+            bytes.All(b => b < 0x80), $"{bytes.Count(b => b >= 0x80)} Nicht-ASCII-Bytes");
+        Check("Skript hat kein BOM",
+            !(bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF));
+        Check("die Pfade stehen nicht in der Datei, sie kommen als Argumente",
+            !File.ReadAllText(skriptU).Contains("Müller", StringComparison.Ordinal)
+            && File.ReadAllText(skriptU).Contains("%~1", StringComparison.Ordinal)
+            && File.ReadAllText(skriptU).Contains("%~2", StringComparison.Ordinal));
+
+        var start = UpdateService.BuildUpdateStart(skriptU, umlautNeu, umlautZiel);
+        Check("der Aufruf reicht beide Pfade unversehrt durch",
+            start.Arguments.Contains(umlautNeu, StringComparison.Ordinal)
+            && start.Arguments.Contains(umlautZiel, StringComparison.Ordinal), start.Arguments);
+        Check("der Aufruf bleibt unsichtbar", start.CreateNoWindow && !start.UseShellExecute);
+
+        var notiz = Path.Combine(UpdateService.WorkFolder, UpdateService.FailureNoteFileName);
+        var notizText = File.Exists(notiz) ? File.ReadAllText(notiz) : "";
+        Check("die Erklaerung fuer den Fehlerfall nennt beide Pfade",
+            notizText.Contains(umlautNeu, StringComparison.Ordinal)
+            && notizText.Contains(umlautZiel, StringComparison.Ordinal));
+        var notizBytes = File.Exists(notiz) ? File.ReadAllBytes(notiz) : Array.Empty<byte>();
+        Check("die Erklaerung hat ein BOM, damit der Editor die Umlaute zeigt",
+            notizBytes.Length >= 3 && notizBytes[0] == 0xEF && notizBytes[1] == 0xBB && notizBytes[2] == 0xBF);
 
         UpdateService.CleanUp();
         Check("Arbeitsordner laesst sich aufraeumen", !Directory.Exists(UpdateService.WorkFolder));
@@ -253,13 +296,12 @@ internal static class Program
             File.WriteAllText(ziel2, "alte Fassung");
             var erwartet = File.ReadAllBytes(neu2);
 
-            // Eine PID, die es nicht gibt - das Skript soll nicht warten.
-            var skript2 = UpdateService.WriteUpdateScript(neu2, ziel2, 999_996);
-            var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c \"\"{skript2}\"\"")
-            {
-                UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
-            };
+            var skript2 = UpdateService.WriteUpdateScript(neu2, ziel2);
+            // Genau der Aufruf, den auch das Programm benutzt.
+            var psi = UpdateService.BuildUpdateStart(skript2, neu2, ziel2);
+            psi.RedirectStandardInput = true;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
             using (var proc = System.Diagnostics.Process.Start(psi)!)
             {
                 proc.StandardInput.Close();   // ein "pause" darf den Test nicht aufhalten
@@ -269,6 +311,44 @@ internal static class Program
                 Check("die neue Fassung steht danach am Ziel",
                     File.Exists(ziel2) && File.ReadAllBytes(ziel2).AsSpan().SequenceEqual(erwartet),
                     ausgabe.Trim().Replace("\r\n", " | "));
+            }
+
+            // Zweiter Lauf: Die Zieldatei ist gesperrt, wie von einem noch
+            // laufenden Programm. Das Skript muss warten und danach austauschen.
+            Console.WriteLine("\n== Austauschskript wartet, solange das Ziel gesperrt ist ==");
+            var ziel3 = Path.Combine(heim, "Gesperrt", "WindowsDaSiTool.exe");
+            var neu3 = Path.Combine(heim, "Neu3", "WindowsDaSiTool.exe");
+            Directory.CreateDirectory(Path.GetDirectoryName(ziel3)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(neu3)!);
+            File.Copy(Path.Combine(Environment.SystemDirectory, "hostname.exe"), neu3);
+            File.WriteAllText(ziel3, "alte Fassung, noch in Benutzung");
+
+            var skript3 = UpdateService.WriteUpdateScript(neu3, ziel3);
+            var uhr = System.Diagnostics.Stopwatch.StartNew();
+            var sperre = new FileStream(ziel3, FileMode.Open, FileAccess.Read, FileShare.None);
+            var psi3 = UpdateService.BuildUpdateStart(skript3, neu3, ziel3);
+            psi3.RedirectStandardInput = true;
+            psi3.RedirectStandardOutput = true;
+            psi3.RedirectStandardError = true;
+            using (var proc = System.Diagnostics.Process.Start(psi3)!)
+            {
+                proc.StandardInput.Close();
+                System.Threading.Thread.Sleep(3000);
+                // Solange gesperrt: Das Skript darf weder fertig sein noch
+                // die neue Fassung schon verschoben haben.
+                Check("waehrend der Sperre wartet das Skript noch",
+                    !proc.HasExited && File.Exists(neu3));
+                sperre.Dispose();   // "Programm beendet"
+                var fertig = proc.WaitForExit(30_000);
+                uhr.Stop();
+                var ausgabe = proc.StandardOutput.ReadToEnd() + proc.StandardError.ReadToEnd();
+                Check("Skript endet nach Freigabe von selbst", fertig, ausgabe.Trim());
+                Check("es hat gewartet, solange gesperrt war (>= 3 s)",
+                    uhr.Elapsed.TotalSeconds >= 3, $"{uhr.Elapsed.TotalSeconds:F1} s");
+                Check("danach steht die neue Fassung am Ziel",
+                    File.ReadAllBytes(ziel3).AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(Environment.SystemDirectory, "hostname.exe"))),
+                    ausgabe.Trim());
+                Check("und das ohne Fehlerfall (kein Editor-Hinweis)", proc.ExitCode == 0, $"ExitCode {proc.ExitCode}");
             }
             UpdateService.CleanUp();
         }

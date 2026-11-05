@@ -1250,8 +1250,8 @@ public partial class MainWindowViewModel : ObservableObject
             Log(Tr($"Geladen ({ergebnis.Bytes / 1024 / 1024} MB), Prüfsumme stimmt. Wird ersetzt...",
                    $"Downloaded ({ergebnis.Bytes / 1024 / 1024} MB), checksum matches. Replacing..."));
 
-            var skript = UpdateService.WriteUpdateScript(ziel, current, Environment.ProcessId);
-            UpdateService.StartUpdateScript(skript);
+            var skript = UpdateService.WriteUpdateScript(ziel, current);
+            UpdateService.StartUpdateScript(skript, ziel, current);
 
             GetMainWindow()?.Close();
         }
