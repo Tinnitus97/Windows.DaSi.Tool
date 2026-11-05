@@ -105,6 +105,15 @@
 
                 <!-- Aktionen: umschaltbar zwischen Sichern und Wiederherstellen -->
                 <Border Grid.Row="1" Classes="panel">
+                    <!-- Das Fluent-Design gibt dem Kaestchen jeder Checkbox einen Kasten
+                         mit fester Hoehe aus der Ressource CheckBoxMinHeight (32 px) -
+                         nicht ueber MinHeight, sondern als Height in der Vorlage. Deshalb
+                         wirkt nur das Ueberschreiben der Ressource. Bewusst hier und nicht
+                         in App.axaml: So gilt es nur fuer die Kacheln, und die Checkboxen
+                         in anderen Fenstern (etwa der Winget-Auswahl) bleiben, wie sie sind. -->
+                    <Border.Resources>
+                        <x:Double x:Key="CheckBoxMinHeight">24</x:Double>
+                    </Border.Resources>
                     <Grid RowDefinitions="Auto,Auto,*">
                             <!-- Umschalter -->
                             <Border Grid.Row="0" Classes="segmentBar">
@@ -125,16 +134,25 @@
                                  und waeren als eigene Kacheln in der Reihe nicht als Unterpunkte
                                  erkennbar. Beide sind nur bedienbar, wenn das Profil gewaehlt ist,
                                  und stehen bewusst auf AUS. -->
-                            <Border Grid.Row="1" Classes="cardHost" Margin="3,2,3,4" Padding="12,6">
-                                <Grid ColumnDefinitions="Auto,*">
+                            <!-- Ausrichtung: Margin 3 + Rahmen 1 + Padding 14 sind dieselben 18 px
+                                 wie bei den Kacheln darunter, und "*,*" teilt die Kachel genau in
+                                 der Mitte. Dadurch steht das Profil-Kaestchen buendig ueber der
+                                 linken Spalte und - mit nochmals 18 px Einzug - die Unterpunkte
+                                 buendig ueber der rechten. -->
+                            <Border Grid.Row="1" Classes="cardHost" Margin="3,2,3,2" Padding="14,3">
+                                <Grid ColumnDefinitions="*,*">
                                     <CheckBox Grid.Column="0" Classes="card" VerticalAlignment="Center"
                                               Content="{Binding TgUserProfile}"
                                               IsChecked="{Binding SelUser}" IsEnabled="{Binding UiEnabled}"/>
-                                    <!-- Die beiden Unterpunkte untereinander, rechts neben dem
-                                         Profil - so bleibt die Kachel nur zwei Zeilen hoch und
-                                         die uebrigen Kacheln passen ohne Rollbalken darunter. -->
+                                    <!-- Die beiden Unterpunkte untereinander, buendig mit den
+                                         Kaestchen der rechten Kachelspalte. -->
                                     <StackPanel Grid.Column="1" Spacing="2" Margin="18,0,0,0"
                                                 VerticalAlignment="Center">
+                                        <!-- Unterpunkte noch enger: zwei uebereinander sollen
+                                             die Kachel nur so hoch machen wie noetig. -->
+                                        <StackPanel.Resources>
+                                            <x:Double x:Key="CheckBoxMinHeight">21</x:Double>
+                                        </StackPanel.Resources>
                                         <CheckBox Classes="subCard"
                                                   Content="{Binding TgUserAppData}"
                                                   IsChecked="{Binding SelUserAppData}"

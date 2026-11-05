@@ -146,10 +146,13 @@
 
                  Der Wert muss klein genug bleiben, dass die Summe aller Zeilen
                  bei der Vorgabegroesse (1200x720) unter die Sichthoehe passt -
-                 sonst erscheint beim Start ein Rollbalken, obwohl Platz da ist.
-                 Mit 30 bleibt Luft; gerendert werden die Kacheln trotzdem
-                 hoeher, weil sie sich den freien Platz teilen. -->
-            <Setter Property="MinHeight" Value="30"/>
+                 und zwar AUCH dann, wenn die Speicherpruefung ihre Zeile unter
+                 den Schaltflaechen einblendet (32 px). Die eigentliche Bremse
+                 sitzt aber in der Checkbox: siehe CheckBoxMinHeight in
+                 MainWindow.axaml.
+                 Gerendert werden die Kacheln trotzdem hoeher, weil sie sich den
+                 freien Platz teilen. -->
+            <Setter Property="MinHeight" Value="28"/>
             <Setter Property="Margin" Value="3,2"/>
             <Setter Property="Padding" Value="14,0"/>
             <Setter Property="Cursor" Value="Hand"/>
