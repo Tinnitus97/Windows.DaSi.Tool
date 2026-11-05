@@ -13,10 +13,17 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Zeitlimits: Ohne Angabe darf ein Job bis zu 6 Stunden laufen. Bleibt ein
+# Läufer hängen (schon vorgekommen: der Schritt stand, selbst der Abbruch kam
+# nicht an), blockiert er sonst einen halben Tag lang den Status des Zweigs.
+# Die Grenzen liegen weit über der üblichen Dauer (Linux ~30 s, Windows
+# ~2 min), damit ein langsamer Paketabruf nicht schon als Fehler gilt.
+
 jobs:
   # Die Dienste ohne Oberfläche - läuft auf Linux und ist in Sekunden durch.
   pruefungen:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -31,12 +38,20 @@ jobs:
   # Windows-Läufer.
   uebersetzen:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+
+      # Dieselben Prüfungen wie unter Linux - und zusätzlich die, die nur hier
+      # gehen: Das Austauschskript der Selbstaktualisierung wird wirklich von
+      # cmd.exe ausgeführt, mit Umlauten im Pfad. Wie cmd eine Batchdatei
+      # liest, lässt sich nur auf einem echten Windows prüfen.
+      - name: Prüfungen unter Windows
+        run: dotnet run --project tests/DaSiTests -c Release
 
       # Bewusst OHNE --warnaserror: Eine neue Avalonia-Fassung bringt gelegentlich
       # eine zusätzliche Warnung mit. Das soll auffallen, aber nicht den Zweig

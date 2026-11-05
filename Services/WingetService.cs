@@ -184,8 +184,98 @@ public sealed class WingetService
     {
         var launcher = await ResolveLauncher();
         if (launcher is null)
-            return new ProcessResult(-1, "", "winget ist in dieser Umgebung nicht ausfuehrbar (Details siehe Log).");
+            return new ProcessResult(-1, "", "winget ist in dieser Umgebung nicht ausführbar (Details siehe Log).");
         return await RunWingetRaw(launcher.Value.Exe, launcher.Value.Mode, args, timeoutMs);
+    }
+
+    // ------------------------------------------------------- Bereitschaft
+
+    /// <summary>
+    /// Ergebnis der Bereitschaftspruefung. <paramref name="Problem"/> und
+    /// <paramref name="Hint"/> sind nur gesetzt, wenn es nicht geht - der Text
+    /// ist dann fuer den Benutzer gedacht, nicht fuers Protokoll.
+    /// </summary>
+    public sealed record WingetReadiness(bool Ready, string? Version, string? Problem, string? Hint)
+    {
+        public static WingetReadiness Ok(string version) => new(true, version, null, null);
+        public static WingetReadiness Fail(string problem, string hint) => new(false, null, problem, hint);
+    }
+
+    /// <summary>
+    /// Prueft, ob winget vorhanden, fuer diesen Benutzer registriert UND
+    /// benutzbar ist - BEVOR ein Export oder Import startet.
+    ///
+    /// Warum nicht einfach loslaufen: Ohne Pruefung bricht erst der eigentliche
+    /// Vorgang ab, und zwar mitten in einer Warteschlange, in der davor schon
+    /// Profile kopiert wurden. Der Benutzer sieht dann einen Fehler an einer
+    /// Stelle, an der er nichts mehr tun kann. Hier faellt es vorher auf.
+    ///
+    /// Geprueft wird in zwei Stufen, weil "vorhanden" und "funktionsfaehig"
+    /// zweierlei sind:
+    ///   1. Laesst sich winget ueberhaupt starten ("--version")? Schlaegt das
+    ///      fehl, versucht <see cref="ResolveLauncher"/> zuvor noch, das
+    ///      App-Installer-Paket fuer diesen Benutzer zu registrieren.
+    ///   2. Antwortet die Paketquelle ("source list")? winget kann startbar
+    ///      sein, waehrend die Quelle fehlt oder die Nutzungsbedingungen nie
+    ///      bestaetigt wurden - dann liefert ein Export eine leere Liste,
+    ///      ohne dass irgendwo ein Fehler steht.
+    /// </summary>
+    public async Task<WingetReadiness> CheckReadinessAsync()
+    {
+        _log(Loc.Tr("[INFO] Prüfe, ob winget einsatzbereit ist...", "[INFO] Checking whether winget is ready..."));
+
+        var launcher = await ResolveLauncher();
+        if (_cancel.IsCancelled)
+            return WingetReadiness.Fail(
+                Loc.Tr("Abgebrochen.", "Cancelled."),
+                Loc.Tr("Die Prüfung wurde abgebrochen.", "The check was cancelled."));
+
+        if (launcher is null)
+            return WingetReadiness.Fail(
+                Loc.Tr("winget lässt sich auf diesem Rechner nicht starten.",
+                       "winget cannot be started on this machine."),
+                Loc.Tr("Der Paket-Manager ist nicht installiert oder für diesen Benutzer nicht registriert. "
+                       + "Öffne eine Konsole als dieser Benutzer und führe 'winget --version' aus. "
+                       + "Meldet Windows den Befehl als unbekannt, installiere oder aktualisiere den "
+                       + "'App-Installer' im Microsoft Store und starte das Tool neu.\n\n"
+                       + "Die versuchten Wege stehen ausführlich im Protokoll.",
+                       "The package manager is not installed or not registered for this user. "
+                       + "Open a console as this user and run 'winget --version'. "
+                       + "If Windows reports the command as unknown, install or update the "
+                       + "'App Installer' from the Microsoft Store and restart the tool.\n\n"
+                       + "The attempted paths are listed in detail in the log."));
+
+        // Stufe 2: Antwortet die Paketquelle?
+        var quellen = await InvokeWinget("source list --disable-interactivity", 60000);
+        if (_cancel.IsCancelled)
+            return WingetReadiness.Fail(
+                Loc.Tr("Abgebrochen.", "Cancelled."),
+                Loc.Tr("Die Prüfung wurde abgebrochen.", "The check was cancelled."));
+
+        if (!quellen.Started || quellen.ExitCode != 0)
+            return WingetReadiness.Fail(
+                Loc.Tr("winget startet, kann aber seine Paketquellen nicht lesen.",
+                       "winget starts but cannot read its package sources."),
+                Loc.Tr("Ohne Paketquelle liefert ein Export eine leere Liste und ein Import findet nichts. "
+                       + "Führe in einer Konsole 'winget source reset --force' und danach "
+                       + "'winget source update' aus.",
+                       "Without a package source an export returns an empty list and an import finds nothing. "
+                       + "Run 'winget source reset --force' and then 'winget source update' in a console."));
+
+        if (!quellen.Output.Contains("winget", StringComparison.OrdinalIgnoreCase))
+            return WingetReadiness.Fail(
+                Loc.Tr("Die Paketquelle 'winget' ist nicht eingerichtet.",
+                       "The 'winget' package source is not set up."),
+                Loc.Tr("winget läuft, aber die offizielle Quelle fehlt - Programme lassen sich so weder "
+                       + "zuverlässig erfassen noch installieren. Führe in einer Konsole "
+                       + "'winget source reset --force' aus.",
+                       "winget runs, but the official source is missing - programs can neither be captured "
+                       + "nor installed reliably. Run 'winget source reset --force' in a console."));
+
+        var version = await InvokeWinget("--version", 20000);
+        var nummer = version.Started && version.ExitCode == 0 ? version.Output.Trim() : "?";
+        _log(Loc.Tr($"[INFO] winget ist einsatzbereit ({nummer}).", $"[INFO] winget is ready ({nummer})."));
+        return WingetReadiness.Ok(nummer);
     }
 
     private async Task<bool> PackageExists(string id)
@@ -260,14 +350,33 @@ public sealed class WingetService
         Directory.CreateDirectory(wingetDir);
         var exportFile = Path.Combine(wingetDir, "Export.json");
         var unresolvedFile = Path.Combine(wingetDir, "Nicht-zugeordnete-Programme.txt");
-        SafeDelete(exportFile);
-        SafeDelete(unresolvedFile);
 
+        // winget schreibt in eine Zwischendatei. Die bisherige Export.json wird
+        // erst ersetzt, wenn die neue vollstaendig und brauchbar ist.
+        //
+        // Frueher wurde die alte Liste hier als Erstes GELOESCHT - noch bevor
+        // feststand, ob winget ueberhaupt startet. Brach der Export ab, war
+        // die alte Liste weg und keine neue da. Genau an dieser Datei haengt
+        // aber die spaetere Neuinstallation aller Programme.
+        var neuFile = exportFile + ".neu";
+        SafeDelete(neuFile);
+        try
+        {
+            await ExportInto(neuFile, exportFile, unresolvedFile);
+        }
+        finally
+        {
+            SafeDelete(neuFile);
+        }
+    }
+
+    private async Task ExportInto(string neuFile, string exportFile, string unresolvedFile)
+    {
         if (await ResolveLauncher() is null) return;
         _log(Loc.Tr("[INFO] Starte nativen Winget-Export (das kann einen Moment dauern)...", "[INFO] Starting native winget export (this may take a moment)..."));
 
         var result = await InvokeWinget(
-            $"export -o {Quote(exportFile)} --source winget --accept-source-agreements --disable-interactivity");
+            $"export -o {Quote(neuFile)} --source winget --accept-source-agreements --disable-interactivity");
         if (_cancel.IsCancelled) { _log(Loc.Tr("[ABBRUCH] Winget-Export durch Benutzer abgebrochen.", "[CANCELLED] Winget export cancelled by user.")); return; }
         if (!result.Started) { _log(Loc.Tr($"[FEHLER] winget konnte nicht gestartet werden: {result.StartError}", $"[ERROR] winget could not be started: {result.StartError}")); return; }
 
@@ -288,7 +397,7 @@ public sealed class WingetService
             }
         }
 
-        if (!File.Exists(exportFile))
+        if (!File.Exists(neuFile))
         {
             _log(Loc.Tr($"[FEHLER] 'winget export' hat keine Datei erzeugt (ExitCode: {result.ExitCode}).", $"[ERROR] 'winget export' did not produce a file (ExitCode: {result.ExitCode})."));
             if (!string.IsNullOrWhiteSpace(result.Output)) _log(Loc.Tr("[INFO] Winget-Ausgabe: ", "[INFO] Winget output: ") + result.Output.Trim());
@@ -298,7 +407,7 @@ public sealed class WingetService
         WingetExport? json;
         try
         {
-            json = JsonSerializer.Deserialize<WingetExport>(await File.ReadAllTextAsync(exportFile));
+            json = JsonSerializer.Deserialize<WingetExport>(await File.ReadAllTextAsync(neuFile));
         }
         catch (Exception ex)
         {
@@ -312,7 +421,6 @@ public sealed class WingetService
         {
             _log(Loc.Tr($"[FEHLER] Der Winget-Export enthält keine Pakete (ExitCode: {result.ExitCode}).", $"[ERROR] The winget export contains no packages (ExitCode: {result.ExitCode})."));
             _log(Loc.Tr("[INFO] Mögliche Ursache: winget kann im erhöhten Kontext die Paketliste nicht lesen. Bitte einmal 'winget list' in einer Administrator-Konsole ausführen und die Quellvereinbarung bestätigen, danach erneut versuchen.", "[INFO] Possible cause: winget cannot read the package list in the elevated context. Please run 'winget list' once in an administrator console and accept the source agreement, then try again."));
-            SafeDelete(exportFile);
             return;
         }
 
@@ -372,13 +480,25 @@ public sealed class WingetService
         if (keptTotal == 0)
         {
             _log(Loc.Tr("[FEHLER] Nach dem Herausfiltern der Zusatzpakete sind keine Programme übrig geblieben.", "[ERROR] After filtering out companion packages, no programs remain."));
-            SafeDelete(exportFile);
             return;
         }
 
         json.CreationDate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-        var opts = new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
-        await File.WriteAllTextAsync(exportFile, JsonSerializer.Serialize(json, opts));
+        // Lesbar fuer Menschen: Ohne den Encoder stuende "Notepad++" als
+        // "Notepad\u002B\u002B" in der Datei. Gueltig waere beides - aber wer
+        // die Liste vor einer Neuinstallation durchsieht, soll sie lesen koennen.
+        var opts = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+        // Fertige Liste zuerst vollstaendig in die Zwischendatei, dann in einem
+        // Schritt an die Stelle der alten. Schlaegt schon das Schreiben fehl
+        // (Platte voll), bleibt die alte Export.json unangetastet.
+        await File.WriteAllTextAsync(neuFile, JsonSerializer.Serialize(json, opts));
+        File.Move(neuFile, exportFile, overwrite: true);
+        SafeDelete(unresolvedFile);   // gehoert zum alten Stand
         _log(Loc.Tr($"[ERFOLG] {keptTotal} Programme exportiert nach: {exportFile} ({skipped.Count} Zusatzpakete herausgefiltert)", $"[SUCCESS] {keptTotal} programs exported to: {exportFile} ({skipped.Count} companion packages filtered out)"));
 
         if (stillUnresolved.Count > 0)
@@ -452,7 +572,11 @@ public sealed class WingetService
             }
         }
 
-        _log(Loc.Tr($"[ERFOLG] Winget-Import abgeschlossen: {ok} installiert, {skip} übersprungen (bereits vorhanden), {fail} fehlgeschlagen.", $"[SUCCESS] Winget import finished: {ok} installed, {skip} skipped (already present), {fail} failed."));
+        // Die Bilanzzeile traegt nur dann [ERFOLG], wenn wirklich nichts
+        // fehlgeschlagen ist. Frueher stand dort immer [ERFOLG] - auch bei
+        // "0 installiert, 5 fehlgeschlagen".
+        var kennung = fail > 0 ? Loc.Tr("[WARNUNG]", "[WARNING]") : Loc.Tr("[ERFOLG]", "[SUCCESS]");
+        _log(Loc.Tr($"{kennung} Winget-Import abgeschlossen: {ok} installiert, {skip} übersprungen (bereits vorhanden), {fail} fehlgeschlagen.", $"{kennung} Winget import finished: {ok} installed, {skip} skipped (already present), {fail} failed."));
     }
 
     // ---------------------------------------------------------------- Helpers

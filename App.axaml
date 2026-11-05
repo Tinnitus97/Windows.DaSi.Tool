@@ -139,9 +139,22 @@
             <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="5"/>
-            <Setter Property="MinHeight" Value="34"/>
+            <!-- MinHeight ist die UNTERGRENZE, nicht die Hoehe: Die Kachelflaeche
+                 bekommt ueber "*" den restlichen Platz der linken Spalte, und die
+                 UniformGrid verteilt ihn gleichmaessig auf ihre Zeilen. Die
+                 Kacheln sind dadurch so gross, wie das Fenster es hergibt.
+
+                 Der Wert muss klein genug bleiben, dass die Summe aller Zeilen
+                 bei der Vorgabegroesse (1200x720) unter die Sichthoehe passt -
+                 und zwar AUCH dann, wenn die Speicherpruefung ihre Zeile unter
+                 den Schaltflaechen einblendet (32 px). Die eigentliche Bremse
+                 sitzt aber in der Checkbox: siehe CheckBoxMinHeight in
+                 MainWindow.axaml.
+                 Gerendert werden die Kacheln trotzdem hoeher, weil sie sich den
+                 freien Platz teilen. -->
+            <Setter Property="MinHeight" Value="28"/>
             <Setter Property="Margin" Value="3,2"/>
-            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="Padding" Value="14,0"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style Selector="Border.cardHost:pointerover">
@@ -150,7 +163,7 @@
 
         <Style Selector="CheckBox.card">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -162,6 +175,24 @@
         </Style>
         <Style Selector="CheckBox.card:checked">
             <Setter Property="Background" Value="{DynamicResource Surface0Brush}"/>
+        </Style>
+
+        <!-- Unterpunkte einer Kachel (AppData, Cloud-Anbieter). Kleiner und
+             blasser als die Kachel selbst, damit auf einen Blick erkennbar
+             bleibt, dass sie zu ihr gehoeren und nicht gleichrangig sind. -->
+        <Style Selector="CheckBox.subCard">
+            <Setter Property="Foreground" Value="{DynamicResource SubtextBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="CheckBox.subCard TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style Selector="CheckBox.subCard:checked">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
         </Style>
         <Style Selector="CheckBox.card:disabled">
             <Setter Property="Opacity" Value="0.35"/>

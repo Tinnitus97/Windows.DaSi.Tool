@@ -46,7 +46,7 @@ public sealed class ProcessRunner
         if (!string.IsNullOrEmpty(workingDirectory))
             psi.WorkingDirectory = workingDirectory;
 
-        var proc = new Process { StartInfo = psi };
+        using var proc = new Process { StartInfo = psi };
         try
         {
             if (!proc.Start())
@@ -114,7 +114,7 @@ public sealed class ProcessRunner
             CreateNoWindow = true
         };
 
-        var proc = new Process { StartInfo = psi };
+        using var proc = new Process { StartInfo = psi };
         try
         {
             if (!proc.Start())
@@ -158,10 +158,6 @@ public sealed class ProcessRunner
     }
 
     /// <summary>
-    /// Robocopy-Lauf mit fortlaufender Ausgabe ins Log.
-    /// Rueckgabe ist der Robocopy-ExitCode (>=8 = Fehler).
-    /// </summary>
-    /// <summary>
     /// Erkennt eine von Robocopy ausgegebene Datei-Zeile (fuer den Zaehler).
     /// Datei-Zeilen sind mit Tab/Whitespace eingerueckt und enthalten einen
     /// Pfad. Kopf-, Options- und Zusammenfassungszeilen werden ausgeschlossen.
@@ -189,6 +185,10 @@ public sealed class ProcessRunner
         return true;
     }
 
+    /// <summary>
+    /// Robocopy-Lauf mit fortlaufender Ausgabe ins Log.
+    /// Rueckgabe ist der Robocopy-ExitCode (>=8 = Fehler).
+    /// </summary>
     public async Task<int> RunRobocopyAsync(string arguments, Action<string> onLine, Action<int>? onFileCounted = null)
     {
         if (_cancel.IsCancelled) return 999;
@@ -209,7 +209,7 @@ public sealed class ProcessRunner
         bool countOnly = _cancel.FastMode && onFileCounted != null;
         int fileCount = 0;
 
-        var proc = new Process { StartInfo = psi };
+        using var proc = new Process { StartInfo = psi };
         var queue = new ConcurrentQueue<string>();
         proc.OutputDataReceived += (_, e) =>
         {
@@ -226,7 +226,12 @@ public sealed class ProcessRunner
         proc.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) queue.Enqueue("[STDERR] " + e.Data); };
 
         try { proc.Start(); }
-        catch (Exception ex) { onLine($"[FEHLER] Robocopy konnte nicht gestartet werden: {ex.Message}"); return 999; }
+        catch (Exception ex)
+        {
+            onLine(Loc.Tr($"[FEHLER] Robocopy konnte nicht gestartet werden: {ex.Message}",
+                          $"[ERROR] Robocopy could not be started: {ex.Message}"));
+            return 999;
+        }
 
         // Robocopy-Prozess hoeher priorisieren. Das ist der Prozess, der die
         // eigentliche Kopierarbeit macht - anders als die App selbst. Bringt

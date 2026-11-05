@@ -24,6 +24,9 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="../../Services/UpdateService.cs" />
+    <Compile Include="../../Services/CloudProviders.cs" />
+    <Compile Include="../../Services/ProfileExcludes.cs" />
+    <Compile Include="../../Services/ActionOutcome.cs" />
   </ItemGroup>
 
 </Project>

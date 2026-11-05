@@ -7,6 +7,72 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [1.1.0] - 2026-11-05
+
+### Hinzugefügt
+
+- **Winget-Bereitschaftsprüfung.** Vor jedem Export und jedem Import wird
+  geprüft, ob winget startet *und* seine Paketquelle antwortet. Fehlt eines
+  von beidem, sagt das Tool vorher Bescheid und nennt den Weg zur Behebung —
+  statt mitten in der Warteschlange abzubrechen. Stehen andere Aktionen an,
+  lässt sich der winget-Schritt überspringen, ohne den Rest zu verlieren.
+- **AppData optional mitsichern** (Vorgabe: aus). Zwischenspeicher wie
+  `Temp`, `INetCache` und die Browser-Caches bleiben dabei ausgenommen. Vor
+  dem *Wiederherstellen* kommt eine Rückfrage mit Warnung, weil in AppData
+  maschinengebundene Angaben liegen.
+- **Cloud-Anbieter optional mitsichern** (Vorgabe: aus), mit Warnung zu
+  Laufzeit und möglichen Konflikten — in beide Richtungen.
+- **Cloud-Ordner werden selbst erkannt**: OneDrive (auch mit angehängtem
+  Firmennamen), Dropbox, Google Drive, iCloud, STRATO HiDrive, Nextcloud,
+  ownCloud, MagentaCLOUD, pCloud, MEGA, Box, Tresorit, Seafile, Proton
+  Drive, Jottacloud und Sync.com.
+
+### Geändert
+
+- **Avalonia 12.1.5** (bisher 12.1.3) — Avalonia, Avalonia.Desktop,
+  Avalonia.Fonts.Inter und Avalonia.Themes.Fluent; dazu
+  `Tmds.DBus.Protocol` 0.95.2 (bisher 0.95.1).
+- Die Kacheln füllen den verfügbaren Platz der linken Spalte aus. Das
+  Benutzerprofil steht über die volle Breite und trägt seine beiden
+  Zusatzoptionen untereinander bei sich, bündig mit der rechten
+  Kachelspalte. Alles ist beim Start ohne Rollbalken sichtbar — auch dann,
+  wenn die Zeile der Speicherprüfung eingeblendet wird.
+- Beide Zusatzoptionen wirken auch beim Wiederherstellen: Ohne Haken bleibt
+  AppData bzw. der Cloud-Ordner aus dem Rückschreiben heraus, selbst wenn die
+  Sicherung ihn enthält.
+
+### Behoben
+
+- **Selbstaktualisierung bei Umlaut im Benutzernamen.** Das Austauschskript
+  lag unter `C:\Users\<Name>` und enthielt die Pfade als UTF-8 mit BOM;
+  cmd liest Batchdateien aber in der OEM-Codepage. Aus jedem Umlaut wurde
+  Zeichensalat, der Austausch scheiterte — in einem Fenster, das nie
+  erschien, mit einem `pause`, das ewig wartete. Jetzt: Pfade als
+  Argumente, reines ASCII, im Fehlerfall eine Erklärung im Editor und die
+  bisherige Fassung startet wieder. Außerdem wartete jedes Update rund
+  60 Sekunden, weil die Warteschleife nie vorzeitig ausstieg; jetzt dient
+  die Dateisperre als Signal. Unter echtem Windows geprüft.
+- **Bilanz und Protokolldatei meldeten Fehlschläge als Erfolg.** Gezählt
+  wurden nur Abstürze, nicht die `[FEHLER]`-Zeilen der Aktionen.
+- Ein Backup-Ziel wie `C:\Users\Maximilian\Backup` galt beim Profil `Max`
+  als „im Quellverzeichnis“ und wurde verweigert.
+- Ließ sich ein Browserprofil beim Wiederherstellen nicht beiseitelegen,
+  wurde es rekursiv gelöscht. Jetzt bleibt es unverändert, mit Meldung.
+- Der Winget-Export löschte die alte Programmliste, bevor feststand, ob
+  eine neue entsteht. Die Liste ist jetzt außerdem lesbar (`Notepad++`
+  statt `Notepad\u002B\u002B`), und die Import-Bilanz trägt `[WARNUNG]`
+  statt `[ERFOLG]`, sobald ein Programm scheitert.
+- Die Speicherprüfung verwarf Neuberechnungen, die während einer laufenden
+  Berechnung angestoßen wurden, und schätzte beim Wiederherstellen AppData
+  und Cloud-Ordner mit ein, obwohl sie ausgespart werden.
+- Speicherzeile und Update-Hinweis wechseln die Sprache jetzt sofort mit.
+- WLAN-Export/-Import und die Einzelinstallation per winget meldeten
+  Erfolg, auch wenn das Werkzeug dahinter scheiterte.
+- Das Hintergrundbild wurde aus der ersten statt der passenden Datei
+  wiederhergestellt.
+
+---
+
 ## [1.0.8] - 2026-10-11
 
 ### Geändert
@@ -224,6 +290,7 @@ PowerShell/WPF-Skripts als native C#-Anwendung mit Avalonia.
 
 ---
 
+[1.1.0]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.1.0
 [1.0.8]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.8
 [1.0.7]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.7
 [1.0.6]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.6

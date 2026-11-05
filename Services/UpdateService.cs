@@ -283,6 +283,15 @@ public static class UpdateService
     // ------------------------------------------------------------ Austauschen
 
     /// <summary>
+    /// Wie oft das Skript den Austausch versucht, etwa eine Sekunde Abstand.
+    /// Reicht, damit sich das Programm in Ruhe beendet.
+    /// </summary>
+    public const int MaxReplaceAttempts = 60;
+
+    /// <summary>Name der Erklaerung, die bei einem gescheiterten Austausch erscheint.</summary>
+    public const string FailureNoteFileName = "update-fehler.txt";
+
+    /// <summary>
     /// Schreibt das Skript, das die laufende EXE ersetzt.
     ///
     /// Warum ueberhaupt ein Skript: Eine laufende EXE kann sich unter Windows
@@ -290,63 +299,136 @@ public static class UpdateService
     /// Vorgang laeuft. Das Skript wartet deshalb auf dessen Ende, verschiebt
     /// die neue Fassung an die alte Stelle und startet sie.
     ///
+    /// DIE PFADE STEHEN NICHT IN DER DATEI, sie kommen als Argumente (%~1,
+    /// %~2). Frueher standen sie als "set NEU=..." im Skript, und das Skript
+    /// wurde als UTF-8 geschrieben. cmd.exe liest eine Batchdatei aber in der
+    /// OEM-Codepage (850): Aus jedem Umlaut wurde beim Lesen Zeichensalat,
+    /// der Pfad stimmte nicht mehr, move scheiterte. Das Skript liegt in
+    /// %TEMP%, also unter C:\Users\[Name] - fuer jeden Benutzer mit Umlaut
+    /// im Namen war die Selbstaktualisierung damit kaputt. Argumente reicht
+    /// cmd dagegen als Unicode durch. Die Datei selbst enthaelt nur noch
+    /// ASCII und wird ohne BOM geschrieben.
+    ///
+    /// GEWARTET WIRD UEBER DIE DATEISPERRE, nicht ueber die Prozessnummer.
+    /// Solange die alte Fassung laeuft, haelt Windows ihre Datei fest, und
+    /// move scheitert - also wird move einfach wiederholt, bis es klappt.
+    /// Frueher fragte eine for-Schleife per "tasklist | find" nach der
+    /// Prozessnummer und sollte per goto aussteigen. Auf einem echten
+    /// Windows lief sie trotzdem alle 30 Durchgaenge durch (im Test: 60 s,
+    /// fuer eine Prozessnummer, die es gar nicht gab). Jedes Update stand so
+    /// rund eine Minute still - und wer das Programm in der Zeit erneut
+    /// startete, sperrte die Datei. Die Schleife hier kommt ohne for, ohne
+    /// tasklist und ohne find aus; "ping" statt "timeout" wartet auch dann,
+    /// wenn keine Konsole zum Lesen da ist.
+    ///
     /// Schlaegt das Verschieben fehl - fehlende Schreibrechte, oder das
     /// Programm laeuft an einem anderen Arbeitsplatz aus demselben Ordner -,
-    /// bleibt ein Fenster mit dem Grund und dem Pfad zur neuen Fassung stehen,
-    /// statt kommentarlos nichts zu tun.
+    /// oeffnet sich eine Erklaerung im Editor, und die bisherige Fassung
+    /// startet wieder. Frueher stand dort "pause": in einem Fenster, das
+    /// wegen CreateNoWindow nie erschien. Das Programm war dann einfach weg,
+    /// und ein unsichtbares cmd wartete fuer immer.
     /// </summary>
-    public static string WriteUpdateScript(string newExe, string currentExe, int processId)
+    public static string WriteUpdateScript(string newExe, string currentExe)
     {
         Directory.CreateDirectory(WorkFolder);
         var skript = Path.Combine(WorkFolder, "austausch.cmd");
 
         var text = $"""
             @echo off
-            rem Wartet auf das Ende des Windows DaSi Tools und ersetzt dann die Datei.
+            rem Ersetzt das Windows DaSi Tool durch die neue Fassung.
+            rem Aufruf: austausch.cmd "<neue Fassung>" "<Ziel>"
+            rem Die Pfade kommen bewusst als Argumente und stehen NICHT in dieser
+            rem Datei: cmd liest Batchdateien in der OEM-Codepage, Argumente aber
+            rem als Unicode. Nur so bleibt ein Pfad mit Umlaut heil.
             setlocal
-            set "NEU={newExe}"
-            set "ZIEL={currentExe}"
-
-            for /l %%i in (1,1,30) do (
-              tasklist /fi "PID eq {processId}" 2>nul | find "{processId}" >nul || goto ersetzen
-              timeout /t 1 /nobreak >nul
-            )
+            set /a versuch=0
 
             :ersetzen
-            move /y "%NEU%" "%ZIEL%" >nul
-            if errorlevel 1 (
-              echo.
-              echo Die Datei konnte nicht ersetzt werden.
-              echo Neue Fassung liegt hier: %NEU%
-              echo Ziel: %ZIEL%
-              echo.
-              echo Moegliche Gruende: fehlende Schreibrechte, oder das Programm
-              echo laeuft an einem anderen Arbeitsplatz aus demselben Ordner.
-              echo.
-              pause
-              exit /b 1
-            )
+            move /y "%~1" "%~2" >nul 2>&1
+            if not errorlevel 1 goto fertig
+            rem Die alte Fassung laeuft noch und haelt ihre Datei fest.
+            set /a versuch+=1
+            if %versuch% geq {MaxReplaceAttempts} goto fehler
+            ping -n 2 127.0.0.1 >nul
+            goto ersetzen
 
-            start "" "%ZIEL%"
-            del "%~f0" >nul 2>&1
+            :fertig
+            start "" "%~2"
+            rem Sich selbst loeschen: "(goto)" ohne Sprungziel beendet den Batch
+            rem sofort, der Rest dieser bereits eingelesenen Zeile laeuft danach
+            rem ohne Rueckgriff auf die Datei. Mit "del" und darunter "exit /b"
+            rem suchte cmd die gerade geloeschte Datei und meldete "The batch
+            rem file cannot be found." (Exit-Code 1) - so gesehen unter Windows.
+            (goto) 2>nul & del "%~f0" >nul 2>&1 & exit /b 0
+
+            :fehler
+            rem Kein "pause": Dieses Skript laeuft ohne sichtbares Fenster.
+            start "" notepad.exe "%~dp0{FailureNoteFileName}"
+            start "" "%~2"
+            exit /b 1
             """;
 
-        File.WriteAllText(skript, text, Encoding.UTF8);
+        // Nur ASCII, ohne BOM - ein BOM machte aus "@echo off" einen
+        // unbekannten Befehl.
+        File.WriteAllText(skript, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        // Die Erklaerung fuer den Fehlerfall: mit BOM, damit der Editor die
+        // Umlaute in den Pfaden richtig zeigt. Zweisprachig, weil das Skript
+        // die Spracheinstellung des Programms nicht kennt.
+        var notiz = $"""
+            Windows DaSi Tool - Die Aktualisierung konnte nicht abgeschlossen werden
+            =========================================================================
+
+            Die bisherige Fassung wurde nicht verändert und wieder gestartet.
+
+            Neue Fassung (heruntergeladen und geprüft):
+              {newExe}
+
+            Sollte ersetzt werden:
+              {currentExe}
+
+            Mögliche Gründe:
+              - Es fehlen Schreibrechte im Programmordner.
+              - Das Programm läuft an einem anderen Arbeitsplatz aus demselben Ordner.
+
+            Abhilfe: Das Programm überall schließen und die neue Fassung von Hand an
+            die Stelle der alten kopieren.
+
+            -------------------------------------------------------------------------
+            The update could not be completed. The previous version was left
+            unchanged and restarted. New version: see first path above; it was meant
+            to replace the second. Possible causes: no write permission in the
+            program folder, or the program is running elsewhere from the same folder.
+            """;
+        File.WriteAllText(Path.Combine(WorkFolder, FailureNoteFileName), notiz,
+                          new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
         return skript;
     }
+
+    /// <summary>
+    /// Baut den Aufruf des Austauschskripts. Eigene Methode, damit der Test
+    /// unter Windows genau diesen Aufruf ausfuehren kann.
+    ///
+    /// Die aeusseren Anfuehrungszeichen nach /c entfernt cmd, uebrig bleibt
+    /// "skript" "neu" "ziel" - die uebliche, robuste Form fuer Pfade mit
+    /// Leerzeichen.
+    /// </summary>
+    public static ProcessStartInfo BuildUpdateStart(string script, string newExe, string currentExe)
+        => new("cmd.exe", $"/c \"\"{script}\" \"{newExe}\" \"{currentExe}\"\"")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = WorkFolder
+        };
 
     /// <summary>
     /// Startet das Austauschskript. Danach muss sich das Programm beenden -
     /// solange es laeuft, wartet das Skript.
     /// </summary>
-    public static void StartUpdateScript(string script)
+    public static void StartUpdateScript(string script, string newExe, string currentExe)
     {
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{script}\"")
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = WorkFolder
-        });
+        using var _ = Process.Start(BuildUpdateStart(script, newExe, currentExe));
     }
 
     /// <summary>

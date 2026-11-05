@@ -37,13 +37,19 @@
             <!-- ============ Linke Spalte: Bedienung ============ -->
             <Grid Grid.Column="0" Margin="0,0,12,0" RowDefinitions="*,Auto">
 
-                <!-- Scrollbarer Bereich: passt sich kleinen Fensterhoehen an -->
-                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                <!-- Scrollbarer Bereich: passt sich kleinen Fensterhoehen an.
+                     Der Inhalt ist ueber MinHeight an die Hoehe des Sichtfensters
+                     gebunden. Dadurch kann die Kachelflaeche darunter mit "*" den
+                     verbleibenden Platz ausfuellen - ohne die Bindung bekaeme sie
+                     im ScrollViewer unendlich viel Hoehe angeboten und fiele auf
+                     ihre Inhaltsgroesse zurueck. Wird der Inhalt hoeher als das
+                     Fenster, greift wie bisher der Rollbalken. -->
+                <ScrollViewer Name="LeftScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled" Padding="0,0,4,0">
-                    <StackPanel Spacing="12">
+                    <Grid RowDefinitions="Auto,*" MinHeight="{Binding #LeftScroll.Bounds.Height}">
 
                 <!-- Optionen & Verzeichnisse -->
-                <Border Classes="panel">
+                <Border Grid.Row="0" Classes="panel" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Classes="section" Text="{Binding SectionOptions}"/>
 
@@ -98,10 +104,19 @@
                 </Border>
 
                 <!-- Aktionen: umschaltbar zwischen Sichern und Wiederherstellen -->
-                <Border Classes="panel">
-                    <StackPanel>
+                <Border Grid.Row="1" Classes="panel">
+                    <!-- Das Fluent-Design gibt dem Kaestchen jeder Checkbox einen Kasten
+                         mit fester Hoehe aus der Ressource CheckBoxMinHeight (32 px) -
+                         nicht ueber MinHeight, sondern als Height in der Vorlage. Deshalb
+                         wirkt nur das Ueberschreiben der Ressource. Bewusst hier und nicht
+                         in App.axaml: So gilt es nur fuer die Kacheln, und die Checkboxen
+                         in anderen Fenstern (etwa der Winget-Auswahl) bleiben, wie sie sind. -->
+                    <Border.Resources>
+                        <x:Double x:Key="CheckBoxMinHeight">24</x:Double>
+                    </Border.Resources>
+                    <Grid RowDefinitions="Auto,Auto,*">
                             <!-- Umschalter -->
-                            <Border Classes="segmentBar">
+                            <Border Grid.Row="0" Classes="segmentBar">
                                 <Grid ColumnDefinitions="*,*">
                                     <RadioButton Grid.Column="0" Classes="segment" GroupName="mode"
                                                  Content="{Binding TabBackup}"
@@ -114,9 +129,43 @@
                                 </Grid>
                             </Border>
 
-                            <TextBlock Classes="section" Text="{Binding ModeTitle}" IsVisible="False"/>
-                            <UniformGrid Columns="2" Margin="0,4,0,0">
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgUserProfile}"  IsChecked="{Binding SelUser}"        IsEnabled="{Binding UiEnabled}"/></Border>
+                            <!-- Das Benutzerprofil steht ueber voller Breite und traegt seine
+                                 beiden Zusatzoptionen gleich bei sich. Sie gehoeren fachlich dazu
+                                 und waeren als eigene Kacheln in der Reihe nicht als Unterpunkte
+                                 erkennbar. Beide sind nur bedienbar, wenn das Profil gewaehlt ist,
+                                 und stehen bewusst auf AUS. -->
+                            <!-- Ausrichtung: Margin 3 + Rahmen 1 + Padding 14 sind dieselben 18 px
+                                 wie bei den Kacheln darunter, und "*,*" teilt die Kachel genau in
+                                 der Mitte. Dadurch steht das Profil-Kaestchen buendig ueber der
+                                 linken Spalte und - mit nochmals 18 px Einzug - die Unterpunkte
+                                 buendig ueber der rechten. -->
+                            <Border Grid.Row="1" Classes="cardHost" Margin="3,2,3,2" Padding="14,3">
+                                <Grid ColumnDefinitions="*,*">
+                                    <CheckBox Grid.Column="0" Classes="card" VerticalAlignment="Center"
+                                              Content="{Binding TgUserProfile}"
+                                              IsChecked="{Binding SelUser}" IsEnabled="{Binding UiEnabled}"/>
+                                    <!-- Die beiden Unterpunkte untereinander, buendig mit den
+                                         Kaestchen der rechten Kachelspalte. -->
+                                    <StackPanel Grid.Column="1" Spacing="2" Margin="18,0,0,0"
+                                                VerticalAlignment="Center">
+                                        <!-- Unterpunkte noch enger: zwei uebereinander sollen
+                                             die Kachel nur so hoch machen wie noetig. -->
+                                        <StackPanel.Resources>
+                                            <x:Double x:Key="CheckBoxMinHeight">21</x:Double>
+                                        </StackPanel.Resources>
+                                        <CheckBox Classes="subCard"
+                                                  Content="{Binding TgUserAppData}"
+                                                  IsChecked="{Binding SelUserAppData}"
+                                                  IsEnabled="{Binding UserOptionsEnabled}"/>
+                                        <CheckBox Classes="subCard"
+                                                  Content="{Binding TgUserCloud}"
+                                                  IsChecked="{Binding SelUserCloud}"
+                                                  IsEnabled="{Binding UserOptionsEnabled}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <UniformGrid Grid.Row="2" Columns="2">
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgFirefox}"      IsChecked="{Binding SelFirefox}"     IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgEdge}"         IsChecked="{Binding SelEdge}"        IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgChrome}"       IsChecked="{Binding SelChrome}"      IsEnabled="{Binding UiEnabled}"/></Border>
@@ -127,10 +176,10 @@
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgPrinter}"      IsChecked="{Binding SelPrinter}"     IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWallpaper}"    IsChecked="{Binding SelWallpaper}"   IsEnabled="{Binding UiEnabled}"/></Border>
                             </UniformGrid>
-                        </StackPanel>
-                    </Border>
+                    </Grid>
+                </Border>
 
-                    </StackPanel>
+                    </Grid>
                 </ScrollViewer>
 
                 <StackPanel Grid.Row="1" Margin="0,12,0,0">
