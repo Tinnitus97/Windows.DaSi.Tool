@@ -7,7 +7,7 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
-## [Unveröffentlicht]
+## [1.1.10] - 2026-11-05
 
 ### Hinzugefügt
 
@@ -29,6 +29,9 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Geändert
 
+- **Avalonia 12.1.5** (bisher 12.1.3) — Avalonia, Avalonia.Desktop,
+  Avalonia.Fonts.Inter und Avalonia.Themes.Fluent; dazu
+  `Tmds.DBus.Protocol` 0.95.2 (bisher 0.95.1).
 - Die Kacheln füllen den verfügbaren Platz der linken Spalte aus. Das
   Benutzerprofil steht über die volle Breite und trägt seine beiden
   Zusatzoptionen untereinander bei sich, bündig mit der rechten
@@ -287,6 +290,7 @@ PowerShell/WPF-Skripts als native C#-Anwendung mit Avalonia.
 
 ---
 
+[1.1.10]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.1.10
 [1.0.8]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.8
 [1.0.7]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.7
 [1.0.6]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.6
