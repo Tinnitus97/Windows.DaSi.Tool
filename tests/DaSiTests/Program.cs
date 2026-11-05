@@ -234,6 +234,45 @@ internal static class Program
         Check("leere Zeile ist kein Fehlschlag",
             !ActionOutcome.IsErrorLine("") && !ActionOutcome.IsErrorLine(null));
 
+        // ================================================================
+        // Austauschskript WIRKLICH ausfuehren - nur unter Windows moeglich
+        // ================================================================
+        if (OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("\n== Austauschskript echt ausführen (Umlaute im Pfad) ==");
+
+            // Wie im echten Leben: Der Benutzername steckt im Pfad, und er hat Umlaute.
+            var heim = Path.Combine(root, "Jürgen Müller");
+            var ziel2 = Path.Combine(heim, "Programme", "WindowsDaSiTool.exe");
+            var neu2 = Path.Combine(heim, "Neu", "WindowsDaSiTool.exe");
+            Directory.CreateDirectory(Path.GetDirectoryName(ziel2)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(neu2)!);
+
+            // Als "neue Fassung" dient hostname.exe: echte EXE, startet, endet sofort.
+            File.Copy(Path.Combine(Environment.SystemDirectory, "hostname.exe"), neu2);
+            File.WriteAllText(ziel2, "alte Fassung");
+            var erwartet = File.ReadAllBytes(neu2);
+
+            // Eine PID, die es nicht gibt - das Skript soll nicht warten.
+            var skript2 = UpdateService.WriteUpdateScript(neu2, ziel2, 999_996);
+            var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c \"\"{skript2}\"\"")
+            {
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
+            };
+            using (var proc = System.Diagnostics.Process.Start(psi)!)
+            {
+                proc.StandardInput.Close();   // ein "pause" darf den Test nicht aufhalten
+                var fertig = proc.WaitForExit(60_000);
+                var ausgabe = proc.StandardOutput.ReadToEnd() + proc.StandardError.ReadToEnd();
+                Check("Skript endet von selbst", fertig);
+                Check("die neue Fassung steht danach am Ziel",
+                    File.Exists(ziel2) && File.ReadAllBytes(ziel2).AsSpan().SequenceEqual(erwartet),
+                    ausgabe.Trim().Replace("\r\n", " | "));
+            }
+            UpdateService.CleanUp();
+        }
+
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
         try { Directory.Delete(root, true); } catch { }
         return _failed == 0 ? 0 : 1;

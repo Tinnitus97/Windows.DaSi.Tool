@@ -38,6 +38,13 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # Dieselben Prüfungen wie unter Linux - und zusätzlich die, die nur hier
+      # gehen: Das Austauschskript der Selbstaktualisierung wird wirklich von
+      # cmd.exe ausgeführt, mit Umlauten im Pfad. Wie cmd eine Batchdatei
+      # liest, lässt sich nur auf einem echten Windows prüfen.
+      - name: Prüfungen unter Windows
+        run: dotnet run --project tests/DaSiTests -c Release
+
       # Bewusst OHNE --warnaserror: Eine neue Avalonia-Fassung bringt gelegentlich
       # eine zusätzliche Warnung mit. Das soll auffallen, aber nicht den Zweig
       # blockieren. Warnungen stehen im Protokoll dieses Schrittes.
