@@ -125,21 +125,26 @@
                                  und waeren als eigene Kacheln in der Reihe nicht als Unterpunkte
                                  erkennbar. Beide sind nur bedienbar, wenn das Profil gewaehlt ist,
                                  und stehen bewusst auf AUS. -->
-                            <Border Grid.Row="1" Classes="cardHost" Margin="3,2,3,6" Padding="12,8">
-                                <StackPanel Spacing="6">
-                                    <CheckBox Classes="card" Content="{Binding TgUserProfile}"
+                            <Border Grid.Row="1" Classes="cardHost" Margin="3,2,3,4" Padding="12,6">
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <CheckBox Grid.Column="0" Classes="card" VerticalAlignment="Center"
+                                              Content="{Binding TgUserProfile}"
                                               IsChecked="{Binding SelUser}" IsEnabled="{Binding UiEnabled}"/>
-                                    <Grid ColumnDefinitions="*,*" Margin="24,0,0,0">
-                                        <CheckBox Grid.Column="0" Classes="subCard"
+                                    <!-- Die beiden Unterpunkte untereinander, rechts neben dem
+                                         Profil - so bleibt die Kachel nur zwei Zeilen hoch und
+                                         die uebrigen Kacheln passen ohne Rollbalken darunter. -->
+                                    <StackPanel Grid.Column="1" Spacing="2" Margin="18,0,0,0"
+                                                VerticalAlignment="Center">
+                                        <CheckBox Classes="subCard"
                                                   Content="{Binding TgUserAppData}"
                                                   IsChecked="{Binding SelUserAppData}"
                                                   IsEnabled="{Binding UserOptionsEnabled}"/>
-                                        <CheckBox Grid.Column="1" Classes="subCard"
+                                        <CheckBox Classes="subCard"
                                                   Content="{Binding TgUserCloud}"
                                                   IsChecked="{Binding SelUserCloud}"
                                                   IsEnabled="{Binding UserOptionsEnabled}"/>
-                                    </Grid>
-                                </StackPanel>
+                                    </StackPanel>
+                                </Grid>
                             </Border>
 
                             <UniformGrid Grid.Row="2" Columns="2">

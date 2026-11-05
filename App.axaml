@@ -139,12 +139,18 @@
             <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="5"/>
-            <!-- Groesser als frueher (34): Die Kachelflaeche bekommt jetzt den
-                 restlichen Platz der linken Spalte, und die UniformGrid verteilt
-                 ihn gleichmaessig auf die Zeilen. MinHeight ist dabei die
-                 Untergrenze fuer kleine Fenster, nicht die feste Hoehe. -->
-            <Setter Property="MinHeight" Value="52"/>
-            <Setter Property="Margin" Value="3,3"/>
+            <!-- MinHeight ist die UNTERGRENZE, nicht die Hoehe: Die Kachelflaeche
+                 bekommt ueber "*" den restlichen Platz der linken Spalte, und die
+                 UniformGrid verteilt ihn gleichmaessig auf ihre Zeilen. Die
+                 Kacheln sind dadurch so gross, wie das Fenster es hergibt.
+
+                 Der Wert muss klein genug bleiben, dass die Summe aller Zeilen
+                 bei der Vorgabegroesse (1200x720) unter die Sichthoehe passt -
+                 sonst erscheint beim Start ein Rollbalken, obwohl Platz da ist.
+                 Mit 30 bleibt Luft; gerendert werden die Kacheln trotzdem
+                 hoeher, weil sie sich den freien Platz teilen. -->
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Margin" Value="3,2"/>
             <Setter Property="Padding" Value="14,0"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
