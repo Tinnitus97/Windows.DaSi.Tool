@@ -15,12 +15,13 @@
 
 ---
 
-Entwickelt fuer IT-Administratoren und Power-User. Das Tool vereint die Robustheit
-von **Robocopy** mit einer modernen, zweisprachigen Oberflaeche und sichert in einem
-Durchgang Benutzerprofile, Browserdaten, installierte Programme und WLAN-Zugaenge.
+Entwickelt für IT-Administratoren und Power-User. Das Tool vereint die Robustheit
+von **Robocopy** mit einer modernen, zweisprachigen Oberfläche und sichert in einem
+Durchgang Benutzerprofile, Browserdaten, installierte Programme, WLAN-Zugänge,
+Drucker und das Hintergrundbild — und stellt sie auf dem neuen Rechner wieder her.
 
 <div align="center">
-<img src="docs/images/hauptfenster.png" alt="Hauptfenster des Windows DaSi Tool" width="850">
+<img src="docs/images/hauptfenster.png" alt="Hauptfenster des Windows DaSi Tool nach einer Sicherung" width="850">
 </div>
 
 ---
@@ -29,13 +30,18 @@ Durchgang Benutzerprofile, Browserdaten, installierte Programme und WLAN-Zugaeng
 
 | Bereich | Inhalt |
 | --- | --- |
-| **Windows-Benutzerprofil** | Vollstaendige Sicherung mit intelligentem Ausschluss von Cache-, Temp- und OneDrive-Ordnern |
+| **Windows-Benutzerprofil** | Dokumente, Bilder, Desktop, Downloads und alles Weitere im Profil. Zwischenspeicher, Temp-Ordner und Windows-Altlasten (Verknüpfungspunkte wie *Anwendungsdaten*) bleiben draußen. **AppData** und **Cloud-Ordner** wahlweise — Vorgabe: aus |
 | **Browser-Profile** | Firefox, Edge, Chrome und Brave — inklusive Lesezeichen, Verlauf und Einstellungen |
 | **E-Mail** | Thunderbird-Profil mit Konten und lokalen Ordnern |
-| **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog |
+| **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog. Programme ohne Winget-Paket landen in einer eigenen Liste |
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
-| **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen ueber PrintBRM in einer Datei |
+| **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen über PrintBRM in einer Datei |
 | **Hintergrundbild** | Sichert das Desktop-Hintergrundbild und stellt es am Originalpfad wieder her |
+
+> **WLAN-Schlüssel liegen im Klartext in der Sicherung.** Damit sie auf einem anderen
+> Rechner funktionieren, exportiert das Tool sie mit `key=clear` — verschlüsselt wären
+> sie an den alten Rechner gebunden. Das Backup-Ziel deshalb wie ein
+> Passwortverzeichnis behandeln.
 
 ---
 
@@ -45,10 +51,74 @@ Durchgang Benutzerprofile, Browserdaten, installierte Programme und WLAN-Zugaeng
 
 Sichern und Wiederherstellen teilen sich eine Ansicht. Der Umschalter oben wechselt
 die Richtung, die Beschriftungen passen sich automatisch an — aus *Programme
-exportieren* wird *Programme installieren*.
+exportieren* wird *Programme installieren*, aus *AppData mit sichern* wird *AppData
+mit wiederherstellen*. Die Auswahl bleibt beim Umschalten erhalten.
 
 <div align="center">
-<img src="docs/images/modus-umschalter.png" alt="Umschalter zwischen Sichern und Wiederherstellen" width="700">
+<img src="docs/images/modus-umschalter.png" alt="Dieselbe Auswahl im Modus Sichern und im Modus Wiederherstellen" width="640">
+</div>
+
+### AppData und Cloud-Ordner: bewusst entscheiden
+
+Beide gehören zum Benutzerprofil, werden aber **nur auf ausdrücklichen Wunsch**
+mitgenommen — die Haken sitzen direkt in der Profilkachel und sind nur aktiv, wenn
+das Profil gewählt ist.
+
+- **AppData** enthält Programmeinstellungen, aber auch maschinengebundene Lizenzen,
+  Gerätekennungen und Anmeldesitzungen. Vor dem *Zurückschreiben* fragt das Tool
+  deshalb nach. Zwischenspeicher wie `Temp`, `INetCache` und die Browser-Caches
+  bleiben auch mit Haken draußen.
+- **Cloud-Ordner** erkennt das Tool selbst: OneDrive (auch mit angehängtem
+  Firmennamen wie *OneDrive - Muster GmbH*), Dropbox, Google Drive, iCloud, STRATO
+  HiDrive, Nextcloud, ownCloud, MagentaCLOUD, pCloud, MEGA, Box, Tresorit, Seafile,
+  Proton Drive, Jottacloud und Sync.com. Wer sie mitsichern will, bekommt vorher die
+  gefundenen Anbieter genannt und eine Warnung: Dateien, die nur online liegen, werden
+  dabei vollständig heruntergeladen.
+
+Beide Schalter wirken in beide Richtungen: Ohne Haken wird AppData bzw. ein
+Cloud-Ordner auch dann nicht zurückgeschrieben, wenn die Sicherung ihn enthält.
+
+<div align="center">
+<img src="docs/images/cloud-rueckfrage.png" alt="Rückfrage mit den erkannten Cloud-Anbietern" width="440">
+</div>
+
+### Speicherprüfung mit Ampel
+
+Noch vor dem Start schätzt das Tool die Datenmenge — mit genau denselben
+Ausschlüssen wie beim Kopieren — und vergleicht sie mit dem freien Platz am Ziel,
+inklusive 10 % Reserve:
+
+| Anzeige | Bedeutung |
+| --- | --- |
+| 🟢 grün | passt, mit Angabe, wie viel danach frei bleibt |
+| 🟡 gelb | passt, aber knapp |
+| 🔴 rot | reicht nicht — mit Angabe, wie viel fehlt |
+
+Bei eingeschalteter *Auto-Berechnung* rechnet das Tool nach jeder Änderung der
+Auswahl neu. Eine laufende Berechnung wird dabei abgebrochen und mit dem neuen Stand
+wiederholt.
+
+### Winget: erst prüfen, dann arbeiten
+
+Vor jedem Export und jedem Import prüft das Tool, ob winget **startet** *und* ob
+seine **Paketquelle antwortet** — „vorhanden“ heißt noch nicht „funktionsfähig“.
+Fehlt etwas, kommt die Meldung vor der ersten Kopie und nicht nach zwanzig Minuten
+Profilsicherung, mit dem konkreten Weg zur Behebung. Stehen weitere Aktionen an,
+lässt sich der winget-Schritt überspringen, ohne den Rest zu verlieren.
+
+<div align="center">
+<img src="docs/images/winget-pruefung.png" alt="Hinweis, dass winget nicht einsatzbereit ist, mit Lösungsweg" width="440">
+</div>
+
+Beim **Export** wird die Liste um Zusatz- und Laufzeitpakete bereinigt (etwa die
+Visual-C++-Laufzeiten); Programme, die es bei Winget nicht gibt — Firmensoftware,
+Eigenentwicklungen —, landen in `Winget\Nicht-zugeordnete-Programme.txt`. Eine
+vorhandene Liste wird erst ersetzt, wenn die neue vollständig ist.
+
+Beim **Wiederherstellen** wird gezielt ausgewählt, was installiert werden soll:
+
+<div align="center">
+<img src="docs/images/winget-auswahl.png" alt="Auswahldialog für die Winget-Wiederherstellung" width="460">
 </div>
 
 ### Schnellauswahl der Benutzerprofile
@@ -59,26 +129,34 @@ erscheinen.
 
 ### Zweisprachig und mit Hell-/Dunkelmodus
 
-Die gesamte Oberflaeche inklusive Aktivitaetsprotokoll laesst sich zwischen
+Die gesamte Oberfläche inklusive Aktivitätsprotokoll lässt sich zwischen
 **Deutsch** und **Englisch** umschalten. Sprache und Farbschema werden beim Start
-aus den Windows-Einstellungen uebernommen und lassen sich jederzeit ueber das
-Sonne-/Mond-Symbol und das Sprach-Dropdown aendern.
-
-### Nachvollziehbares Protokoll
-
-Jeder Schritt wird in Echtzeit protokolliert — inklusive der vollstaendigen
-Robocopy-Ausgabe. Das Protokoll scrollt automatisch mit, haelt aber an, sobald
-man zum Nachlesen nach oben scrollt.
-
-### Winget-Integration
-
-Beim Export wird `winget export` verwendet und die Liste um Zusatz- und
-Laufzeitpakete bereinigt. Beim Wiederherstellen kann gezielt ausgewaehlt werden,
-was installiert werden soll.
+aus den Windows-Einstellungen übernommen und lassen sich jederzeit über das
+Sonne-/Mond-Symbol und das Sprach-Dropdown ändern.
 
 <div align="center">
-<img src="docs/images/winget-auswahl.png" alt="Auswahldialog fuer die Winget-Wiederherstellung" width="600">
+<img src="docs/images/hell-englisch.png" alt="Hauptfenster im hellen Design auf Englisch, nach einer Wiederherstellung" width="850">
 </div>
+
+### Nachvollziehbares Protokoll und ehrliche Bilanz
+
+Jeder Schritt wird in Echtzeit protokolliert. Das Protokoll scrollt automatisch mit,
+hält aber an, sobald man zum Nachlesen nach oben scrollt. Mit **Log: an** erscheint
+zusätzlich die vollständige Robocopy-Ausgabe Datei für Datei.
+
+Am Ende steht eine Bilanz — *4 von 4 erfolgreich, 0 Fehler* —, und dieselbe Übersicht
+landet als Datei im Backup-Ziel: `Sicherung-Protokoll_<Rechner>_<Datum>.txt` bzw.
+`Wiederherstellung-Protokoll_…`. Eine Aktion zählt nur dann als erfolgreich, wenn sie
+ohne einen einzigen Fehler durchlief.
+
+### Für lange Sicherungen gerüstet
+
+- Läuft ein Notebook im **Akkubetrieb**, warnt das Tool vor dem Start und fragt nach.
+- Während des Laufs geht der Rechner **nicht in den Standby**, und das Tool arbeitet
+  mit erhöhter Priorität. Beides wird danach vollständig zurückgesetzt — an den
+  Energieeinstellungen von Windows ändert sich nichts.
+- Browser und Thunderbird werden vor dem Kopieren **automatisch geschlossen**, damit
+  keine Datei mitten im Schreiben gesichert wird.
 
 ---
 
@@ -100,9 +178,18 @@ verglichen; stimmt sie nicht, wird die Datei verworfen.
 
 Eine laufende EXE kann sich unter Windows nicht selbst überschreiben. Deshalb
 schreibt das Programm ein kleines Skript nach `%TEMP%\WindowsDaSiTool-Update`,
-das auf sein Ende wartet, die Datei ersetzt und neu startet. Schlägt das fehl
-(fehlende Schreibrechte, oder das Programm läuft anderswo aus demselben Ordner),
-bleibt ein Fenster mit dem Grund und dem Pfad zur neuen Fassung stehen.
+das die Datei ersetzt, sobald sich das Programm beendet hat, und die neue Fassung
+startet. Schlägt das fehl — fehlende Schreibrechte, oder das Programm läuft anderswo
+aus demselben Ordner —, öffnet sich eine Erklärung mit beiden Pfaden im Editor, und
+die bisherige Fassung startet wieder. Umlaute im Benutzernamen (`C:\Users\Jürgen`)
+sind kein Hindernis.
+
+> **Umstieg von 1.0.x auf 1.1.0:** Diesen einen Austausch erledigt noch das
+> Austauschskript der alten Fassung. Das Programm braucht dabei rund eine Minute, bis
+> es neu startet. Bei einem **Umlaut im Benutzernamen** scheitert das alte Skript —
+> dort die neue EXE einmal von Hand aus den
+> [Releases](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases) holen. Ab 1.1.0
+> ist beides behoben.
 
 Für ein internes Spiegelverzeichnis lässt sich in `Update-Url.txt` **neben der
 EXE** eine abweichende Adresse hinterlegen — eine Zeile, vollständige
@@ -125,21 +212,25 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | **Berechtigungen** | Administratorrechte — die UAC-Abfrage erfolgt automatisch beim Start |
 | **Dateisystem** | Das Backup-Ziel muss auf einem **NTFS**-Laufwerk liegen (Robocopy-Voraussetzung) |
 | **.NET** | Nicht erforderlich — die Laufzeit ist in der EXE enthalten |
+| **Winget** | Nur für *Programme exportieren/installieren*: der *App-Installer* aus dem Microsoft Store (unter Windows 11 vorinstalliert) |
 
 ---
 
 ## Nutzung
 
 1. Aktuelle `WindowsDaSiTool.exe` aus dem [Releases-Bereich](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases) herunterladen.
-2. EXE starten und die UAC-Abfrage mit **Ja** bestaetigen.
-3. Ueber die **Schnellauswahl** das Benutzerprofil waehlen (oder per `...` manuell suchen).
+2. EXE starten und die UAC-Abfrage mit **Ja** bestätigen.
+3. Über die **Schnellauswahl** das Benutzerprofil wählen (oder per `...` manuell suchen).
 4. Das **Backup-Ziel** festlegen — ein Ordner auf einem NTFS-Laufwerk.
-5. Modus **Sichern** oder **Wiederherstellen** waehlen und die gewuenschten Punkte ankreuzen.
-6. **Ausgewaehlte Aktionen starten** — der Fortschritt erscheint im Protokoll.
+5. Modus **Sichern** oder **Wiederherstellen** wählen und die gewünschten Punkte ankreuzen.
+   *AppData* und *Cloud-Anbieter* nur bei Bedarf dazunehmen.
+6. Auf die **Speicherzeile** achten: Grün heißt, der Platz reicht.
+7. **Ausgewählte Aktionen starten** — der Fortschritt erscheint im Protokoll, die
+   Bilanz am Ende zusätzlich als Datei im Backup-Ziel.
 
-> **Hinweis zu Passwoertern:** Gespeicherte Browser-Passwoerter sind im Profil-Backup
-> verschluesselt enthalten und funktionieren nach der Wiederherstellung auf demselben
-> Rechner und Benutzerkonto wieder. Fuer einen Wechsel auf einen anderen Rechner nutze
+> **Hinweis zu Passwörtern:** Gespeicherte Browser-Passwörter sind im Profil-Backup
+> verschlüsselt enthalten und funktionieren nach der Wiederherstellung auf demselben
+> Rechner und Benutzerkonto wieder. Für einen Wechsel auf einen anderen Rechner nutze
 > den Export-Dialog des jeweiligen Browsers (z. B. `edge://settings/passwords`).
 
 ---
@@ -154,6 +245,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | **Dateioperationen** | Robocopy mit Spiegelung, Ausschlusslisten und Multithreading |
 | **Prozess-Handling** | Browser und Thunderbird werden vor dem Backup automatisch geschlossen, um Dateikonflikte zu vermeiden |
 | **Fehlerbehandlung** | Unerwartete Fehler landen in `%USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log` |
+| **Prüfungen** | `tests/DaSiTests` — Ausschlusslisten, Cloud-Erkennung, Bilanz, Update-Logik. Läuft bei jedem Push unter Linux und Windows; unter Windows wird das Austauschskript der Selbstaktualisierung dabei echt ausgeführt |
 
 ### Selbst bauen
 
@@ -165,29 +257,35 @@ cd Windows.DaSi.Tool
 .\build.ps1
 ```
 
-Die fertige EXE liegt anschliessend im Ordner `publish`.
+Die fertige EXE liegt anschließend im Ordner `publish`.
 
 | Parameter | Wirkung |
 | --- | --- |
-| `.\build.ps1` | Self-contained Build (Standard) — laeuft ohne installiertes .NET |
+| `.\build.ps1` | Self-contained Build (Standard) — läuft ohne installiertes .NET |
 | `.\build.ps1 -Mode framework` | Deutlich kleinere EXE, setzt .NET 10 Desktop Runtime voraus |
 | `.\build.ps1 -Sign` | Signiert die EXE, um SmartScreen-Warnungen zu reduzieren |
+
+Die Prüfungen laufen ohne Oberfläche und auf jedem System:
+
+```powershell
+dotnet run --project tests/DaSiTests -c Release
+```
 
 ---
 
 ## Hinweis zu SmartScreen
 
 Die EXE ist nicht mit einem kostenpflichtigen Zertifikat signiert. Windows zeigt
-beim ersten Start daher moeglicherweise eine SmartScreen-Warnung. Ueber
-**Weitere Informationen -> Trotzdem ausfuehren** laesst sie sich starten. Wer die
-Warnung vermeiden moechte, kann das Projekt selbst bauen und mit einem eigenen
+beim ersten Start daher möglicherweise eine SmartScreen-Warnung. Über
+**Weitere Informationen → Trotzdem ausführen** lässt sie sich starten. Wer die
+Warnung vermeiden möchte, kann das Projekt selbst bauen und mit einem eigenen
 Zertifikat signieren.
 
 ---
 
 ## Changelog
 
-Alle Aenderungen sind in der [CHANGELOG.md](CHANGELOG.md) dokumentiert.
+Alle Änderungen sind in der [CHANGELOG.md](CHANGELOG.md) dokumentiert.
 
 ---
 
