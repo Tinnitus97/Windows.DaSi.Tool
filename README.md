@@ -19,6 +19,7 @@ Entwickelt für IT-Administratoren und Power-User. Das Tool vereint die Robusthe
 von **Robocopy** mit einer modernen, zweisprachigen Oberfläche und sichert in einem
 Durchgang Benutzerprofile, Browserdaten, installierte Programme, WLAN-Zugänge,
 Drucker und das Hintergrundbild — und stellt sie auf dem neuen Rechner wieder her.
+Ein Foto des Desktops hält fest, wo welche Symbole lagen.
 
 <div align="center">
 <img src="docs/images/hauptfenster.png" alt="Hauptfenster des Windows DaSi Tool nach einer Sicherung" width="850">
@@ -37,6 +38,7 @@ Drucker und das Hintergrundbild — und stellt sie auf dem neuen Rechner wieder 
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
 | **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen über PrintBRM in einer Datei |
 | **Hintergrundbild** | Sichert das Desktop-Hintergrundbild und stellt es am Originalpfad wieder her |
+| **Desktop-Anordnung** | Ein Foto des Desktops über alle Monitore — zeigt nach der Neuinstallation, wo welche Symbole lagen |
 
 > **WLAN-Schlüssel liegen im Klartext in der Sicherung.** Damit sie auf einem anderen
 > Rechner funktionieren, exportiert das Tool sie mit `key=clear` — verschlüsselt wären
@@ -51,8 +53,8 @@ Drucker und das Hintergrundbild — und stellt sie auf dem neuen Rechner wieder 
 
 Sichern und Wiederherstellen teilen sich eine Ansicht. Der Umschalter oben wechselt
 die Richtung, die Beschriftungen passen sich automatisch an — aus *Programme
-exportieren* wird *Programme installieren*, aus *AppData mit sichern* wird *AppData
-mit wiederherstellen*. Die Auswahl bleibt beim Umschalten erhalten.
+exportieren* wird *Programme installieren*, aus *Desktop-Screenshot erstellen* wird
+*Desktop-Screenshot anzeigen*. Die Auswahl bleibt beim Umschalten erhalten.
 
 <div align="center">
 <img src="docs/images/modus-umschalter.png" alt="Dieselbe Auswahl im Modus Sichern und im Modus Wiederherstellen" width="640">
@@ -81,6 +83,23 @@ Cloud-Ordner auch dann nicht zurückgeschrieben, wenn die Sicherung ihn enthält
 <div align="center">
 <img src="docs/images/cloud-rueckfrage.png" alt="Rückfrage mit den erkannten Cloud-Anbietern" width="440">
 </div>
+
+### Desktop-Screenshot: Wo lag was?
+
+Nach einer Neuinstallation ist der Desktop leer, und kaum jemand weiß noch, wo seine
+Verknüpfungen lagen. Auf Wunsch fotografiert das Tool deshalb den Desktop — **alle
+Monitore in einem Bild**, in ihrer echten Anordnung und in voller Auflösung, auch bei
+skalierten Bildschirmen. Damit die Symbole frei liegen, blendet es dafür für einen
+Moment alle Fenster aus (wie Win+D) und holt sie danach zurück.
+
+Das Foto landet als `Desktop-Screenshot\Desktop.png` im Backup-Ziel. Beim
+**Wiederherstellen** öffnet derselbe Punkt dieses Foto, damit sich die Symbole danach
+von Hand anordnen lassen — automatisch zurückstellen lässt sich die Anordnung nicht
+verlässlich, der Explorer überschreibt sie mit seinem eigenen Stand.
+
+> Fotografiert wird, was auf dem Bildschirm zu sehen ist. Ist ein anderer Benutzer
+> angemeldet als der, dessen Profil gesichert wird — etwa der Techniker —, macht das
+> Tool kein Foto und sagt das im Protokoll: Es zeigte den falschen Desktop.
 
 ### Speicherprüfung mit Ampel
 

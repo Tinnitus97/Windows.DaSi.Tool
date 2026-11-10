@@ -7,6 +7,20 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [Unveröffentlicht]
+
+### Hinzugefügt
+
+- **Desktop-Screenshot.** Beim Sichern fotografiert das Tool den Desktop samt
+  Symbolen — alle Monitore in einem Bild, in ihrer echten Anordnung und in voller
+  Auflösung. Für die Aufnahme werden alle Fenster kurz ausgeblendet (wie Win+D) und
+  danach zurückgeholt. Beim Wiederherstellen öffnet derselbe Punkt das Foto, damit
+  sich die Symbole von Hand wieder anordnen lassen. Ist ein anderer Benutzer
+  angemeldet als der des gesicherten Profils, wird kein Foto gemacht — es zeigte
+  den falschen Desktop.
+
+---
+
 ## [1.1.0] - 2026-11-05
 
 ### Hinzugefügt
