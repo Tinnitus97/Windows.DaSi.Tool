@@ -46,6 +46,15 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   auf dem Zielrechner muss nichts installiert werden. Zum Selbstbauen wird jetzt
   das .NET 11 SDK gebraucht (`build.ps1` prüft das und nennt den Download).
 
+### Behoben
+
+- **`build.ps1` scheiterte auf manchen Rechnern schon beim Restore** mit
+  `MSB4236 … "Microsoft.NET.SDK.WorkloadAutoImportPropsLocator" wurde nicht gefunden`,
+  weil die .NET-Installation dort ihre Workloads nicht auflösen kann. Das Skript
+  erkennt genau diesen Fehler und baut ohne Workload-Auflösung weiter. Das Projekt
+  braucht keine Workloads, die EXE ist bytegenau dieselbe. Die Einstellung gilt nur
+  für diesen Lauf.
+
 ---
 
 ## [1.1.0] - 2026-11-05

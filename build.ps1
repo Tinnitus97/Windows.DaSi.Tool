@@ -109,38 +109,61 @@ if ($Clean) {
 
 # ---------------------------------------------------------------------
 # 4. Restore
+#    Manche .NET-Installationen koennen ihre Workloads nicht aufloesen und
+#    brechen schon hier ab:
+#      MSB4236: Das angegebene SDK
+#      "Microsoft.NET.SDK.WorkloadAutoImportPropsLocator" wurde nicht gefunden.
+#    Dieses Projekt braucht keine Workloads; ohne die Workload-Aufloesung
+#    entsteht bytegenau dieselbe EXE. Tritt genau dieser Fehler auf, wird sie
+#    deshalb fuer Restore und Publish abgeschaltet - nur in diesem Lauf, die
+#    Variable wird danach in jedem Fall (auch bei Abbruch) zurueckgesetzt.
 # ---------------------------------------------------------------------
-Write-Step "Stelle NuGet-Pakete wieder her (restore)..."
-& dotnet restore $projectFile.FullName
-if ($LASTEXITCODE -ne 0) { Fail "dotnet restore fehlgeschlagen." }
-Write-Ok "Restore abgeschlossen."
+$workloadVorher = $env:MSBuildEnableWorkloadResolver
+try {
+    Write-Step "Stelle NuGet-Pakete wieder her (restore)..."
+    & dotnet restore $projectFile.FullName | Tee-Object -Variable restoreAusgabe
+    if ($LASTEXITCODE -ne 0 -and ($restoreAusgabe -match 'WorkloadAutoImportPropsLocator')) {
+        Write-Warn "Die .NET-Installation kann ihre Workloads nicht aufloesen (MSB4236)."
+        Write-Warn "Dieses Projekt braucht keine - zweiter Versuch ohne Workload-Aufloesung..."
+        $env:MSBuildEnableWorkloadResolver = 'false'
+        & dotnet restore $projectFile.FullName
+        if ($LASTEXITCODE -eq 0) {
+            Write-Warn "Ohne Workload-Aufloesung geklappt; die EXE ist dieselbe. Dauerhaft beheben: siehe README, 'Selbst bauen'."
+        }
+    }
+    if ($LASTEXITCODE -ne 0) { Fail "dotnet restore fehlgeschlagen." }
+    Write-Ok "Restore abgeschlossen."
 
-# ---------------------------------------------------------------------
-# 5. Publish
-# ---------------------------------------------------------------------
-$selfContained = ($Mode -eq 'selfcontained')
+    # -----------------------------------------------------------------
+    # 5. Publish
+    # -----------------------------------------------------------------
+    $selfContained = ($Mode -eq 'selfcontained')
 
-$publishArgs = @(
-    'publish', $projectFile.FullName,
-    '-c', $Configuration,
-    '-r', $Runtime,
-    '-o', $OutputDir,
-    "--self-contained", $selfContained.ToString().ToLower(),
-    "-p:PublishSingleFile=true",
-    "-p:IncludeNativeLibrariesForSelfExtract=true",
-    "-p:DebugType=none",
-    "-p:DebugSymbols=false"
-)
-# Kompression der eingebetteten Laufzeit lohnt nur im self-contained-Modus
-# (verkleinert die EXE deutlich; erster Start dauert minimal laenger).
-if ($selfContained) {
-    $publishArgs += "-p:EnableCompressionInSingleFile=true"
+    $publishArgs = @(
+        'publish', $projectFile.FullName,
+        '-c', $Configuration,
+        '-r', $Runtime,
+        '-o', $OutputDir,
+        "--self-contained", $selfContained.ToString().ToLower(),
+        "-p:PublishSingleFile=true",
+        "-p:IncludeNativeLibrariesForSelfExtract=true",
+        "-p:DebugType=none",
+        "-p:DebugSymbols=false"
+    )
+    # Kompression der eingebetteten Laufzeit lohnt nur im self-contained-Modus
+    # (verkleinert die EXE deutlich; erster Start dauert minimal laenger).
+    if ($selfContained) {
+        $publishArgs += "-p:EnableCompressionInSingleFile=true"
+    }
+
+    Write-Step "Kompiliere ($Mode, $Runtime, $Configuration)..."
+    Write-Host "    dotnet $($publishArgs -join ' ')" -ForegroundColor DarkGray
+    & dotnet @publishArgs
+    if ($LASTEXITCODE -ne 0) { Fail "dotnet publish fehlgeschlagen." }
+} finally {
+    # Zuweisen von $null entfernt die Variable wieder ganz.
+    $env:MSBuildEnableWorkloadResolver = $workloadVorher
 }
-
-Write-Step "Kompiliere ($Mode, $Runtime, $Configuration)..."
-Write-Host "    dotnet $($publishArgs -join ' ')" -ForegroundColor DarkGray
-& dotnet @publishArgs
-if ($LASTEXITCODE -ne 0) { Fail "dotnet publish fehlgeschlagen." }
 
 # ---------------------------------------------------------------------
 # 5b. Aufraeumen: native Debug-Symbole (.pdb) entfernen

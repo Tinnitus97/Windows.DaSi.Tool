@@ -326,6 +326,14 @@ Die fertige EXE liegt anschließend im Ordner `publish`.
 | `.\build.ps1 -Mode framework` | Deutlich kleinere EXE, setzt .NET 11 Desktop Runtime voraus |
 | `.\build.ps1 -Sign` | Signiert die EXE, um SmartScreen-Warnungen zu reduzieren |
 
+> **Fehler `MSB4236 … "Microsoft.NET.SDK.WorkloadAutoImportPropsLocator" wurde nicht gefunden`?**
+> Dann kann die .NET-Installation des Rechners ihre Workloads nicht auflösen.
+> `build.ps1` erkennt das und baut ohne Workload-Auflösung weiter. Das Projekt
+> braucht keine Workloads, die EXE ist bytegenau dieselbe. Wer `dotnet` direkt
+> aufruft (etwa für die Prüfungen unten), setzt vorher in derselben PowerShell
+> `$env:MSBuildEnableWorkloadResolver = 'false'`. Dauerhaft beheben lässt es sich
+> durch Reparieren oder Neuinstallieren des .NET 11 SDK.
+
 Die Prüfungen laufen ohne Oberfläche und auf jedem System:
 
 ```powershell
