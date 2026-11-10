@@ -95,9 +95,54 @@ public sealed class BackupService
         }
 
         _log(Loc.Tr("[INFO] Starte Backup Benutzerprofil...", "[INFO] Starting user profile backup..."));
-        var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+        var skips = IncludeAppData ? new RobocopySkips(Path.Combine(userDir, "AppData")) : null;
+        var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress, skips);
         if (_cancel.IsCancelled) return;
-        _log(code < 8 ? Loc.Tr("[ERFOLG] Benutzerprofil gesichert.", "[SUCCESS] User profile backed up.") : Loc.Tr($"[FEHLER] Robocopy Fehlercode: {code}", $"[ERROR] Robocopy error code: {code}"));
+        var nurUebersprungen = skips != null && ReportAppDataSkips(skips, code);
+        if (code < 8)
+            _log(Loc.Tr("[ERFOLG] Benutzerprofil gesichert.", "[SUCCESS] User profile backed up."));
+        else if (nurUebersprungen)
+            _log(Loc.Tr("[ERFOLG] Benutzerprofil gesichert - bis auf die oben genannten gesperrten bzw. verschwundenen Dateien in AppData.",
+                        "[SUCCESS] User profile backed up - except for the locked or vanished files in AppData listed above."));
+        else
+            _log(Loc.Tr($"[FEHLER] Robocopy Fehlercode: {code}", $"[ERROR] Robocopy error code: {code}"));
+    }
+
+    /// <summary>
+    /// Schluss einer Sicherung mit AppData: Zusammenfassung ins Protokoll,
+    /// vollstaendige Liste neben die Sicherung (Wurzel des Sicherungsordners,
+    /// NICHT in "Benutzerprofil" - sonst landete sie beim Wiederherstellen im
+    /// Profil).
+    ///
+    /// Rueckgabe true: robocopy meldete zwar einen Fehlschlag (Code 8), aber
+    /// ausschliesslich gesperrte oder verschwundene Dateien in AppData. Die
+    /// Sicherung hat dann alles gesichert, was sich sichern liess.
+    /// </summary>
+    private bool ReportAppDataSkips(RobocopySkips skips, int code)
+    {
+        var liste = Path.Combine(BackupPath, RobocopySkips.ListFileName);
+        if (skips.Count == 0)
+        {
+            // Eine Liste von frueher (gleicher Ordner, "Eigener Ordner" aus) waere jetzt falsch.
+            try { if (File.Exists(liste)) File.Delete(liste); } catch { /* bleibt eben liegen */ }
+            return false;
+        }
+
+        string? geschrieben = liste;
+        try
+        {
+            File.WriteAllText(liste, skips.ListText("AppData", DateTime.Now, Loc.Tr), new System.Text.UTF8Encoding(true));
+        }
+        catch (Exception ex)
+        {
+            geschrieben = null;
+            _log(Loc.Tr($"[WARNUNG] Die Liste der nicht gesicherten AppData-Dateien ließ sich nicht schreiben: {ex.Message}",
+                        $"[WARNING] The list of AppData files not backed up could not be written: {ex.Message}"));
+        }
+        _log(skips.Summary("AppData", geschrieben, Loc.Tr));
+
+        // Bit 16 = robocopy selbst ist gescheitert; dann ist nichts "nur uebersprungen".
+        return skips.AllExpected && skips.OtherErrors == 0 && (code & 16) == 0;
     }
 
     public async Task RestoreUserProfile()
@@ -218,10 +263,17 @@ public sealed class BackupService
 
         _log(Loc.Tr("[INFO] Sichere AppData (ohne den Rest des Profils, Zwischenspeicher bleiben ausgenommen)...",
                     "[INFO] Backing up AppData (without the rest of the profile, caches remain excluded)..."));
-        var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+        var skips = new RobocopySkips(quelle);
+        var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress, skips);
         if (_cancel.IsCancelled) return;
-        _log(code < 8 ? Loc.Tr("[ERFOLG] AppData gesichert.", "[SUCCESS] AppData backed up.")
-                      : Loc.Tr($"[FEHLER] AppData: Robocopy Fehlercode {code}", $"[ERROR] AppData: Robocopy error code {code}"));
+        var nurUebersprungen = ReportAppDataSkips(skips, code);
+        if (code < 8)
+            _log(Loc.Tr("[ERFOLG] AppData gesichert.", "[SUCCESS] AppData backed up."));
+        else if (nurUebersprungen)
+            _log(Loc.Tr("[ERFOLG] AppData gesichert - bis auf die oben genannten gesperrten bzw. verschwundenen Dateien.",
+                        "[SUCCESS] AppData backed up - except for the locked or vanished files listed above."));
+        else
+            _log(Loc.Tr($"[FEHLER] AppData: Robocopy Fehlercode {code}", $"[ERROR] AppData: Robocopy error code {code}"));
     }
 
     /// <summary>Sichert nur die erkannten Cloud-Ordner, jeden fuer sich.</summary>

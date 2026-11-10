@@ -48,6 +48,16 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Behoben
 
+- **AppData-Sicherung: Protokoll ging in Meldungen unter, Bilanz zeigte Fehler.**
+  Gesperrte oder während der Sicherung gelöschte Dateien (Discord, Teams, Browser …)
+  meldete robocopy einzeln mit je drei Zeilen. Dazu kam „maximale Anzahl von
+  Wiederholungsversuchen überschritten“, obwohl jede Datei ohnehin nur einen Versuch
+  bekommt. Schon eine solche Datei ließ die ganze Aktion als Fehler zählen. Jetzt
+  steht im Protokoll eine Zeile je Fehlerart (z. B. `1.000 × Fehler 32: … von einem
+  anderen Prozess verwendet`). Die vollständige Liste liegt als
+  `AppData-nicht-gesichert.txt` im Sicherungsordner, und die Aktion gilt als gelungen.
+  *Zugriff verweigert*, ein volles Ziel und Fehler außerhalb von AppData bleiben
+  Fehler und stehen wie bisher im Protokoll.
 - **`build.ps1` scheiterte auf manchen Rechnern schon beim Restore** mit
   `MSB4236 … "Microsoft.NET.SDK.WorkloadAutoImportPropsLocator" wurde nicht gefunden`,
   weil die .NET-Installation dort ihre Workloads nicht auflösen kann. Das Skript

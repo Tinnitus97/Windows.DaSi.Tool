@@ -475,6 +475,98 @@ internal static class Program
         Check("Fenster ohne Flaeche: nein", !DesktopScreenshot.ShouldHide(normal with { Width = 0 }));
 
         // ================================================================
+        Console.WriteLine("\n== robocopy-Meldungen aus AppData zusammenfassen ==");
+        static string De(string de, string en) => de;
+        static string En(string de, string en) => en;
+        {
+            var s = new RobocopySkips(@"C:\Users\Anwender\AppData");
+            // Genau die Zeilen aus der Meldung des Benutzers (deutsches Windows).
+            var deutsch = new[]
+            {
+                @"2026/11/10 20:15:31 FEHLER 2 (0x00000002) Datei wird kopiert C:\Users\Anwender\AppData\Roaming\discord\Local Storage\leveldb\012884.log",
+                "Das System kann die angegebene Datei nicht finden.",
+                "Fehler: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.",
+            };
+            Check("deutscher Block: alle drei Zeilen bleiben aus dem Protokoll", deutsch.All(s.Swallow));
+            Check("die Datei ist gezaehlt, mit Pfad", s.Count == 1 && s.Paths[0].Path.EndsWith(@"leveldb\012884.log"), s.Count.ToString());
+            Check("der Grund ist zu Fehler 2 gemerkt", s.ReasonByCode.TryGetValue(2, out var g2) && g2 == "Das System kann die angegebene Datei nicht finden.");
+
+            var englisch = new[]
+            {
+                @"2026/11/10 20:15:32 ERROR 32 (0x00000020) Copying File C:\Users\Anwender\AppData\Local\Discord\app.log",
+                "The process cannot access the file because it is being used by another process.",
+                "ERROR: RETRY LIMIT EXCEEDED.",
+            };
+            Check("englischer Block: ebenso", englisch.All(s.Swallow));
+
+            // Bei /MT rutscht die Dateizeile eines anderen Threads dazwischen.
+            Check("Kopfzeile eines weiteren Blocks wird geschluckt",
+                s.Swallow(@"2026/11/10 20:15:33 FEHLER 32 (0x00000020) Datei wird kopiert C:\Users\Anwender\AppData\Roaming\Teams\x.db"));
+            Check("eingerueckte Dateizeile mittendrin bleibt im Protokoll",
+                !s.Swallow("\t    Neue Datei  \t\t  1234\tC:\\Users\\Anwender\\AppData\\Roaming\\y.json"));
+            Check("Grund und Abschluss dahinter werden trotzdem geschluckt",
+                s.Swallow("Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird.")
+                && s.Swallow("FEHLER: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten."));
+            Check("Grund je Fehlerart nur einmal (der erste)", s.ReasonByCode[32].StartsWith("The process cannot"), s.ReasonByCode[32]);
+            Check("Zaehlung je Fehlerart", s.Count == 3 && s.CountByCode[2] == 1 && s.CountByCode[32] == 2);
+            Check("gesperrt/verschwunden: alles erwartbar", s.AllExpected && s.OtherErrors == 0);
+
+            // Ausserhalb von AppData: alles bleibt, wie es war.
+            Check("Fehler in Dokumente bleibt im Protokoll",
+                !s.Swallow(@"2026/11/10 20:15:34 FEHLER 32 (0x00000020) Datei wird kopiert C:\Users\Anwender\Documents\Brief.docx"));
+            Check("samt Grund und Abschluss",
+                !s.Swallow("Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird.")
+                && !s.Swallow("FEHLER: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten."));
+            Check("und zaehlt als anderer Fehler", s.OtherErrors == 1 && s.Count == 3);
+            Check("\"AppDataAlt\" liegt nicht in \"AppData\"",
+                !s.Swallow(@"2026/11/10 20:15:35 FEHLER 2 (0x00000002) Datei wird kopiert C:\Users\Anwender\AppDataAlt\z.txt"));
+
+            Check("gewoehnliche Zeilen bleiben im Protokoll",
+                !s.Swallow("   ROBOCOPY     ::     Robustes Dateikopieren für Windows")
+                && !s.Swallow("Dateien :      1200      1197         0         0         3         0")
+                && !s.Swallow("  Quelle : C:\\Users\\Anwender\\"));
+            Check("Nummer und Hexzahl muessen zusammenpassen",
+                !RobocopySkips.TryParseHeader(@"2026/11/10 20:15:36 FEHLER 5 (0x00000020) Datei wird kopiert C:\Users\Anwender\AppData\a", out _, out _));
+            Check("Kopfzeile wird in jeder Sprache erkannt",
+                RobocopySkips.TryParseHeader(@"2026/11/10 20:15:36 ERREUR 5 (0x00000005) Copie du fichier C:\Users\A\AppData\a b.txt", out var c5, out var p5)
+                && c5 == 5 && p5 == @"C:\Users\A\AppData\a b.txt", p5);
+            Check("Schreibweise des Ordners spielt keine Rolle",
+                new RobocopySkips(@"c:\users\anwender\appdata\").Swallow(@"2026/11/10 20:15:31 FEHLER 2 (0x00000002) Datei wird kopiert C:\Users\Anwender\AppData\x"));
+
+            // Zugriff verweigert ist KEIN normaler AppData-Fall.
+            s.Swallow(@"2026/11/10 20:15:37 FEHLER 5 (0x00000005) Datei wird kopiert C:\Users\Anwender\AppData\Local\geschuetzt.dat");
+            s.Swallow("Zugriff verweigert");
+            s.Swallow("FEHLER: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.");
+            Check("Zugriff verweigert macht es zum echten Fehler", !s.AllExpected);
+
+            var kurz = s.Summary("AppData", @"G:\DASI_PC\AppData-nicht-gesichert.txt", De);
+            Check("Zusammenfassung: Kopfzeile mit Anzahl", kurz.StartsWith("[WARNUNG] AppData: 4 Dateien nicht gesichert"), kurz.Split('\n')[0]);
+            Check("Zusammenfassung: eine Zeile je Fehlerart, haeufigste zuerst",
+                kurz.Split('\n').Length == 5 && kurz.Split('\n')[1].Contains("2 × Fehler 32"), kurz);
+            Check("Zusammenfassung: nennt die Liste", kurz.Contains(@"G:\DASI_PC\AppData-nicht-gesichert.txt"));
+            Check("Zusammenfassung zaehlt nicht als Fehlschlag", !ActionOutcome.IsErrorLine(kurz));
+            Check("englisch: [WARNING]", s.Summary("AppData", null, En).StartsWith("[WARNING] AppData: 4 files not backed up"));
+
+            var liste = s.ListText("AppData", new DateTime(2026, 11, 10, 20, 15, 0), De);
+            Check("Liste: jede Datei steht drin",
+                s.Paths.All(p => liste.Contains(p.Path)) && liste.Contains(@"leveldb\012884.log"));
+            Check("Liste: nach Fehlerart, mit Grund und Anzahl",
+                liste.Contains("Fehler 32 - The process cannot access the file") && liste.Contains("(2 Dateien)"));
+            Check("Liste: Datum und Quelle", liste.Contains("10.11.2026 20:15") && liste.Contains(@"C:\Users\Anwender\AppData"));
+
+            // Viele Dateien: Tausendertrennung, Obergrenze fuer die gemerkten Pfade.
+            var viele = new RobocopySkips(@"C:\U\AppData");
+            for (int i = 0; i < 1234; i++)
+            {
+                viele.Swallow($@"2026/11/10 20:16:00 FEHLER 32 (0x00000020) Datei wird kopiert C:\U\AppData\f{i}.log");
+                viele.Swallow("Der Prozess kann nicht auf die Datei zugreifen.");
+                viele.Swallow("FEHLER: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.");
+            }
+            Check("1.234 Dateien: deutsch mit Punkt", viele.Summary("AppData", null, De).Contains("1.234 Dateien"));
+            Check("1,234 files: englisch mit Komma", viele.Summary("AppData", null, En).Contains("1,234 files"));
+        }
+
+        // ================================================================
         // Austauschskript WIRKLICH ausfuehren - nur unter Windows moeglich
         // ================================================================
         if (OperatingSystem.IsWindows())
@@ -616,6 +708,57 @@ internal static class Program
                 Check("zurueckholen kehrt zuegig zurueck", uhrZurueck.Elapsed.TotalSeconds < 12, $"{uhrZurueck.Elapsed.TotalSeconds:F1} s");
             }
             try { editor?.Kill(); } catch { }
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("\n== echtes robocopy: gesperrte Datei in AppData ==");
+            var roboProfil = Path.Combine(root, "robo", "Anwender");
+            var appdata = Path.Combine(roboProfil, "AppData");
+            var leveldb = Path.Combine(appdata, "Roaming", "discord", "Local Storage", "leveldb");
+            Directory.CreateDirectory(leveldb);
+            File.WriteAllText(Path.Combine(leveldb, "000003.log"), "frei");
+            File.WriteAllText(Path.Combine(appdata, "einstellungen.json"), "{}");
+            var gesperrt = Path.Combine(leveldb, "012884.log");
+            File.WriteAllText(gesperrt, "gesperrt");
+            var zielRobo = Path.Combine(root, "robo", "Sicherung", "AppData");
+
+            using (var sperre = new FileStream(gesperrt, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                // Dieselben Schalter wie die AppData-Sicherung des Programms.
+                var psiRobo = new System.Diagnostics.ProcessStartInfo("robocopy.exe",
+                    $"\"{appdata}\" \"{zielRobo}\" /MIR /ZB /SL /R:0 /W:0 /MT:32 /XJ /XA:SH /NP /NDL")
+                {
+                    RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true,
+                };
+                var skips = new RobocopySkips(appdata);
+                var durch = new System.Collections.Generic.List<string>();
+                using var robo = System.Diagnostics.Process.Start(psiRobo)!;
+                string? zeile;
+                while ((zeile = robo.StandardOutput.ReadLine()) is not null)
+                {
+                    if (string.IsNullOrWhiteSpace(zeile)) continue;   // wie im Programm
+                    if (!skips.Swallow(zeile)) durch.Add(zeile);
+                }
+                robo.WaitForExit();
+                Console.WriteLine($"         robocopy endete mit {robo.ExitCode}, geschluckt: {skips.Count} Datei(en), "
+                                  + $"Fehlerart(en): {string.Join(", ", skips.CountByCode.Keys)}");
+
+                Check("robocopy meldet den Fehlschlag (Bit 8)", (robo.ExitCode & 8) != 0, robo.ExitCode.ToString());
+                Check("genau die gesperrte Datei ist erfasst", skips.Count == 1 && skips.Paths[0].Path.EndsWith("012884.log"),
+                      string.Join(" | ", skips.Paths.Select(p => p.Path)));
+                Check("als Fehler 32 (gesperrt), also erwartbar", skips.CountByCode.ContainsKey(32) && skips.AllExpected);
+                Check("mit dem Grund aus robocopy", skips.ReasonByCode.TryGetValue(32, out var grund) && grund.Length > 10, grund);
+                Check("im Protokoll steht nichts mehr davon",
+                      !durch.Any(z => z.Contains("012884.log") || z.Contains("0x00000020")
+                                      || z.Contains("RETRY", StringComparison.OrdinalIgnoreCase)
+                                      || z.Contains("Wiederholungsversuch", StringComparison.OrdinalIgnoreCase)),
+                      string.Join(" | ", durch.Where(z => z.Contains("0x") || z.Contains("RETRY"))));
+                Check("kein anderer Fehler", skips.OtherErrors == 0);
+                Check("die freien Dateien sind gesichert",
+                      File.Exists(Path.Combine(zielRobo, "einstellungen.json"))
+                      && File.Exists(Path.Combine(zielRobo, "Roaming", "discord", "Local Storage", "leveldb", "000003.log")));
+            }
         }
 
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");

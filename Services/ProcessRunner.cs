@@ -189,7 +189,12 @@ public sealed class ProcessRunner
     /// Robocopy-Lauf mit fortlaufender Ausgabe ins Log.
     /// Rueckgabe ist der Robocopy-ExitCode (>=8 = Fehler).
     /// </summary>
-    public async Task<int> RunRobocopyAsync(string arguments, Action<string> onLine, Action<int>? onFileCounted = null)
+    /// <param name="skips">
+    /// Optional: Fehlermeldungen zu Dateien in diesem Ordner werden nicht ins
+    /// Log geschrieben, sondern dort gesammelt (siehe <see cref="RobocopySkips"/>).
+    /// </param>
+    public async Task<int> RunRobocopyAsync(string arguments, Action<string> onLine, Action<int>? onFileCounted = null,
+                                            RobocopySkips? skips = null)
     {
         if (_cancel.IsCancelled) return 999;
 
@@ -214,6 +219,9 @@ public sealed class ProcessRunner
         proc.OutputDataReceived += (_, e) =>
         {
             if (string.IsNullOrWhiteSpace(e.Data)) return;
+            // Die Zeilen kommen der Reihe nach (ein Ereignis nach dem anderen),
+            // wie es RobocopySkips fuer seine dreizeiligen Meldungen braucht.
+            if (skips != null && skips.Swallow(e.Data)) return;
             if (countOnly && IsRobocopyFileLine(e.Data))
             {
                 // Nur zaehlen, nicht ins Log. Anzeige gedrosselt (alle 25 Dateien).

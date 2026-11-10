@@ -30,6 +30,7 @@
     <Compile Include="../../Services/PngWriter.cs" />
     <Compile Include="../../Services/BackupTarget.cs" />
     <Compile Include="../../Services/DesktopScreenshot.cs" />
+    <Compile Include="../../Services/RobocopySkips.cs" />
   </ItemGroup>
 
 </Project>

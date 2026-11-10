@@ -73,6 +73,13 @@ Wiederherstellung sie findet.
   Gerätekennungen und Anmeldesitzungen. Vor dem *Zurückschreiben* fragt das Tool
   deshalb nach. Zwischenspeicher wie `Temp`, `INetCache` und die Browser-Caches
   bleiben auch mit Haken draußen.
+  Programme wie Discord, Teams oder Browser schreiben ständig in AppData, viele
+  Dateien sind deshalb gesperrt oder verschwinden während der Sicherung. Jede Datei
+  bekommt genau einen Versuch. Statt drei Protokollzeilen je Datei steht am Ende
+  eine kurze Zusammenfassung je Fehlerart im Protokoll. Die vollständige Liste liegt
+  als `AppData-nicht-gesichert.txt` im Sicherungsordner. Sind nur solche gesperrten
+  oder verschwundenen Dateien betroffen, gilt die Sicherung als gelungen. Echte
+  Fehler wie *Zugriff verweigert* oder ein volles Ziellaufwerk bleiben Fehler.
 - **Cloud-Ordner** erkennt das Tool selbst: OneDrive (auch mit angehängtem
   Firmennamen wie *OneDrive - Muster GmbH*), Dropbox, Google Drive, iCloud, STRATO
   HiDrive, Nextcloud, ownCloud, MagentaCLOUD, pCloud, MEGA, Box, Tresorit, Seafile,
