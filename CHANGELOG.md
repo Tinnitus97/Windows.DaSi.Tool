@@ -19,6 +19,16 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   angemeldet als der des gesicherten Profils, wird kein Foto gemacht — es zeigte
   den falschen Desktop.
 
+### Geändert
+
+- **Cloud-Ordner werden neben das Original zurückgeschrieben.** Mit dem Haken
+  *Cloud-Anbieter mit wiederherstellen* landet zum Beispiel `OneDrive` jetzt in
+  `OneDrive_wiederhergestellt` (ebenso `HiDrive_wiederhergestellt`,
+  `Dropbox_wiederhergestellt` …) statt im laufenden Cloud-Ordner. Dort hielte der
+  Cloud-Client jede Datei für geändert und lüde sie erneut hoch, in geteilten Ordnern
+  mit Dubletten und Konflikten. Solche Kopien gelten bei späteren Sicherungen als
+  gewöhnliche Ordner und werden mitgesichert.
+
 ---
 
 ## [1.1.0] - 2026-11-05

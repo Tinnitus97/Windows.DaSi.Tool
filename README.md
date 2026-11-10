@@ -80,6 +80,21 @@ das Profil gewählt ist.
 Beide Schalter wirken in beide Richtungen: Ohne Haken wird AppData bzw. ein
 Cloud-Ordner auch dann nicht zurückgeschrieben, wenn die Sicherung ihn enthält.
 
+**Cloud-Ordner landen beim Zurückschreiben neben dem Original**, nicht darin:
+
+| In der Sicherung | Wird zurückgeschrieben nach |
+| --- | --- |
+| `C:\Users\<Name>\OneDrive` | `C:\Users\<Name>\OneDrive_wiederhergestellt` |
+| `C:\Users\<Name>\OneDrive - Muster GmbH` | `C:\Users\<Name>\OneDrive - Muster GmbH_wiederhergestellt` |
+| `C:\Users\<Name>\HiDrive` | `C:\Users\<Name>\HiDrive_wiederhergestellt` |
+
+Im echten Cloud-Ordner arbeitet der Cloud-Client: Er hielte jede zurückgeschriebene
+Datei für geändert und lüde sie erneut hoch, in geteilten Ordnern entstünden
+Dubletten und Konflikte. Daneben abgelegt lässt sich in Ruhe vergleichen und von
+Hand übernehmen, was noch fehlt. Bei einer späteren Sicherung gilt eine solche
+`…_wiederhergestellt`-Kopie als gewöhnlicher Ordner und wird mitgesichert — sie wird
+ja nicht synchronisiert.
+
 <div align="center">
 <img src="docs/images/cloud-rueckfrage.png" alt="Rückfrage mit den erkannten Cloud-Anbietern" width="440">
 </div>

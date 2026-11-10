@@ -119,17 +119,57 @@ public sealed class BackupService
         //
         // Ausgeschlossen wird relativ zum SICHERUNGSORDNER, nicht zum Profil:
         // /XD vergleicht gegen die Quelle.
-        foreach (var ex in GetProfileExcludes(backupSourceDir, IncludeAppData, IncludeCloud))
+        //
+        // Cloud-Ordner bleiben in diesem Lauf IMMER draussen - auch mit Haken.
+        // Mit Haken folgen sie danach einzeln, aber nicht an ihren alten Platz.
+        foreach (var ex in GetProfileExcludes(backupSourceDir, IncludeAppData, includeCloud: false))
             if (Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
 
         if (IncludeAppData)
             _log(Loc.Tr("[INFO] AppData wird mit wiederhergestellt.", "[INFO] AppData is included in the restore."));
-        if (IncludeCloud)
-            _log(Loc.Tr("[INFO] Cloud-Ordner werden mit wiederhergestellt.", "[INFO] Cloud folders are included in the restore."));
 
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
         if (_cancel.IsCancelled) return;
         _log(code < 8 ? Loc.Tr("[ERFOLG] Benutzerprofil wiederhergestellt.", "[SUCCESS] User profile restored.") : Loc.Tr($"[FEHLER] Robocopy Fehlercode: {code}", $"[ERROR] Robocopy error code: {code}"));
+
+        if (IncludeCloud) await RestoreCloudFolders(backupSourceDir, destDir);
+    }
+
+    /// <summary>
+    /// Schreibt die Cloud-Ordner der Sicherung zurueck - jeden NEBEN seinen
+    /// alten Platz: "OneDrive" landet in "OneDrive_wiederhergestellt".
+    /// Warum, steht bei <see cref="CloudProviders.RestoredFolderName"/>.
+    /// </summary>
+    private async Task RestoreCloudFolders(string backupSourceDir, string destDir)
+    {
+        var ordner = CloudProviders.Detect(backupSourceDir);
+        if (ordner.Count == 0)
+        {
+            _log(Loc.Tr("[INFO] Die Sicherung enthält keine Cloud-Ordner.", "[INFO] The backup contains no cloud folders."));
+            return;
+        }
+
+        foreach (var cloud in ordner)
+        {
+            if (_cancel.IsCancelled) return;
+            var name = Path.GetFileName(cloud.Path);
+            var ziel = Path.Combine(destDir, CloudProviders.RestoredFolderName(name));
+
+            _log(Loc.Tr($"[INFO] {cloud.Provider}: \"{name}\" wird nach \"{ziel}\" zurückgeschrieben - nicht in den laufenden Cloud-Ordner, damit der Cloud-Client nichts doppelt hochlädt.",
+                        $"[INFO] {cloud.Provider}: \"{name}\" is restored to \"{ziel}\" - not into the live cloud folder, so the cloud client does not upload anything twice."));
+            if (Directory.Exists(ziel))
+                _log(Loc.Tr("[INFO] Der Ordner besteht schon (frühere Wiederherstellung) und wird ergänzt.",
+                            "[INFO] The folder already exists (earlier restore) and is updated."));
+
+            var args = new List<string> { Quote(cloud.Path), Quote(ziel), "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32" };
+            if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+
+            var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+            if (_cancel.IsCancelled) return;
+            _log(code < 8
+                ? Loc.Tr($"[ERFOLG] {cloud.Provider} wiederhergestellt nach: {ziel}", $"[SUCCESS] {cloud.Provider} restored to: {ziel}")
+                : Loc.Tr($"[FEHLER] {cloud.Provider}: Robocopy Fehlercode {code}", $"[ERROR] {cloud.Provider}: Robocopy error code {code}"));
+        }
     }
 
     // ------------------------------------------------------------ Browser-Profile

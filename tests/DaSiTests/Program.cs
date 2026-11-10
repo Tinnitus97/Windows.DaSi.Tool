@@ -247,6 +247,31 @@ internal static class Program
         Check("ein leerer Pfad liefert eine leere Liste",
             CloudProviders.Detect("").Count == 0);
 
+        Console.WriteLine("\n== Cloud-Ordner zurueckschreiben: neben den Original-Ordner ==");
+        Check("OneDrive -> OneDrive_wiederhergestellt",
+            CloudProviders.RestoredFolderName("OneDrive") == "OneDrive_wiederhergestellt");
+        Check("Firmenkonto behaelt seinen vollen Namen",
+            CloudProviders.RestoredFolderName("OneDrive - Muster GmbH") == "OneDrive - Muster GmbH_wiederhergestellt");
+        Check("HiDrive -> HiDrive_wiederhergestellt",
+            CloudProviders.RestoredFolderName("HiDrive") == "HiDrive_wiederhergestellt");
+
+        // Nach einer Wiederherstellung liegen Original und Kopie nebeneinander.
+        var nachher = Path.Combine(root, "ProfilNachWiederherstellung");
+        foreach (var d in new[] { "OneDrive", "OneDrive_wiederhergestellt", "HiDrive_WIEDERHERGESTELLT", "Dropbox_wiederhergestellt", "Dokumente" })
+            Directory.CreateDirectory(Path.Combine(nachher, d));
+        var nachherClouds = CloudProviders.Detect(nachher).Select(c => Path.GetFileName(c.Path)).ToArray();
+        Check("die wiederhergestellte Kopie gilt NICHT als Cloud-Ordner",
+            !nachherClouds.Any(CloudProviders.IsRestoredCopy), string.Join(", ", nachherClouds));
+        Check("Gross-/Kleinschreibung des Zusatzes spielt keine Rolle",
+            !nachherClouds.Contains("HiDrive_WIEDERHERGESTELLT"));
+        Check("der echte Cloud-Ordner daneben wird weiter erkannt",
+            nachherClouds.SequenceEqual(new[] { "OneDrive" }), string.Join(", ", nachherClouds));
+        var nachherAus = ProfileExcludes.Build(nachher);
+        Check("naechste Sicherung: Kopie wird mitgesichert, nur der Cloud-Ordner bleibt draussen",
+            nachherAus.Contains(Path.Combine(nachher, "OneDrive"))
+            && !nachherAus.Contains(Path.Combine(nachher, "OneDrive_wiederhergestellt"))
+            && !nachherAus.Contains(Path.Combine(nachher, "Dropbox_wiederhergestellt")));
+
         // ================================================================
         // Was beim Profil-Backup ausgelassen wird
         // ================================================================

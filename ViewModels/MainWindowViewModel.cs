@@ -770,30 +770,38 @@ public partial class MainWindowViewModel : ObservableObject
             ? CloudProviders.Summarize(gefunden)
             : Tr("keine erkannt", "none detected");
 
+        // Am echten Ordnernamen ist leichter zu erkennen, was gleich passiert.
+        var beispielName = gefunden.Count > 0 ? Path.GetFileName(gefunden[0].Path) : "OneDrive";
+        var beispiel = CloudProviders.RestoredFolderName(beispielName);
+
         var frage = IsRestoreMode
             ? Tr($"Cloud-Anbieter in der Sicherung: {liste}\n\n"
-                 + "Das Zurückschreiben von Cloud-Ordnern dauert sehr lange und kann Probleme machen: "
-                 + "Der Cloud-Client hält die zurückgeschriebenen Dateien für geändert und lädt sie "
-                 + "erneut hoch. In geteilten Ordnern entstehen dabei Dubletten und Konflikte.\n\n"
-                 + "Empfehlung: Cloud-Ordner nicht zurückschreiben, sondern den Cloud-Client auf dem "
-                 + "neuen Rechner neu anmelden - er holt die Daten dann selbst.\n\nTrotzdem fortfahren?",
+                 + "Die Cloud-Ordner werden NICHT in die laufenden Cloud-Ordner zurückgeschrieben, sondern "
+                 + $"daneben: \"{beispielName}\" landet in \"{beispiel}\". So lädt der Cloud-Client nichts "
+                 + "doppelt hoch, und in geteilten Ordnern entstehen keine Konflikte. Was noch fehlt, lässt "
+                 + "sich danach in Ruhe vergleichen und von Hand übernehmen.\n\n"
+                 + "Das Zurückschreiben dauert entsprechend lange. Oft reicht es, den Cloud-Client auf dem "
+                 + "neuen Rechner neu anzumelden - er holt die Daten dann selbst.\n\nTrotzdem fortfahren?",
                  $"Cloud providers in the backup: {liste}\n\n"
-                 + "Restoring cloud folders takes a very long time and can cause problems: "
-                 + "the cloud client considers the restored files changed and uploads them again. "
-                 + "In shared folders this creates duplicates and conflicts.\n\n"
-                 + "Recommendation: do not restore cloud folders - sign in to the cloud client on the "
-                 + "new machine instead and let it fetch the data itself.\n\nContinue anyway?")
+                 + "The cloud folders are NOT restored into the live cloud folders but next to them: "
+                 + $"\"{beispielName}\" goes to \"{beispiel}\". This way the cloud client does not upload "
+                 + "anything twice and shared folders do not get conflicts. Anything still missing can be "
+                 + "compared and copied over by hand afterwards.\n\n"
+                 + "Restoring takes correspondingly long. Often it is enough to sign in to the cloud client "
+                 + "on the new machine - it then fetches the data itself.\n\nContinue anyway?")
             : Tr($"Erkannte Cloud-Anbieter: {liste}\n\n"
                  + "Das Mitsichern dauert sehr lange. Dateien, die nur online liegen, werden dabei "
                  + "vollständig heruntergeladen - das Backup kann dadurch um ein Vielfaches größer "
                  + "werden, als die Anzeige im Explorer vermuten lässt.\n\n"
-                 + "Auch das spätere Zurückschreiben dauert entsprechend lange und kann beim "
-                 + "Cloud-Client zu Konflikten führen.\n\nTrotzdem mitsichern?",
+                 + "Beim späteren Zurückschreiben landen sie neben den Cloud-Ordnern "
+                 + $"(\"{beispielName}\" -> \"{beispiel}\"), damit der Cloud-Client nichts doppelt "
+                 + "hochlädt.\n\nTrotzdem mitsichern?",
                  $"Detected cloud providers: {liste}\n\n"
                  + "Including them takes a very long time. Files that exist only online are downloaded "
                  + "in full - the backup can therefore become many times larger than Explorer suggests.\n\n"
-                 + "Restoring them later takes just as long and can cause conflicts in the cloud "
-                 + "client.\n\nInclude them anyway?");
+                 + "When restored later, they go next to the cloud folders "
+                 + $"(\"{beispielName}\" -> \"{beispiel}\"), so the cloud client does not upload "
+                 + "anything twice.\n\nInclude them anyway?");
 
         var weiter = await ShowYesNo(Tr("Cloud-Ordner", "Cloud folders"), frage);
         if (!weiter)
