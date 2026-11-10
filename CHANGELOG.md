@@ -7,6 +7,69 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [1.2.0] - 2026-11-10
+
+### Hinzugefügt
+
+- **Desktop-Screenshot.** Beim Sichern fotografiert das Tool den Desktop samt
+  Symbolen, **ein Bild pro Monitor** (`Bildschirm-1.png`, `Bildschirm-2.png` …).
+  Jedes Bild hat genau die Größe und volle Auflösung seines Monitors, auch bei
+  Skalierung. Alle Monitore werden im selben Moment aufgenommen, die Nummern folgen
+  Windows, und bei mehreren Monitoren trägt das Bild des Hauptbildschirms das im Namen.
+  Für die Aufnahme werden alle Programmfenster kurz beiseitegelegt und danach genau so
+  zurückgeholt, wie sie waren: in derselben Reihenfolge, maximierte wieder maximiert,
+  das aktive Fenster wieder vorn. Beim Wiederherstellen öffnet derselbe Punkt jedes
+  Bild in einem eigenen Fenster, damit sich die Symbole von Hand wieder anordnen
+  lassen. Ist ein anderer Benutzer angemeldet als der des gesicherten Profils, wird
+  kein Foto gemacht, denn es zeigte den falschen Desktop.
+- **Eigener Ordner je Sicherung** (abschaltbar, Vorgabe: an). Als Ziel genügt das
+  Laufwerk: Nach der Auswahl von `G:\` zeigt das Feld sofort
+  `G:\DASI_<Rechnername>_TT_MM_JJJJ_HH_MM`, und genau dorthin wird gesichert.
+  Mehrere Rechner und Stände liegen so nebeneinander, statt sich zu überschreiben.
+  Profil, winget-Liste, Desktop-Foto und Protokolldatei landen alle in diesem
+  Ordner. Ist das Gewählte schon ein `DASI_…`-Ordner, kommt der neue daneben — in
+  eine bestehende Sicherung wird nie hineingeschrieben. Beim Wiederherstellen ist der
+  Schalter gesperrt.
+
+### Geändert
+
+- **AppData und Cloud-Ordner gehen auch ohne das Benutzerprofil.** Bisher waren die
+  beiden Haken an das Profil gekoppelt und ohne es gesperrt. Jetzt lassen sie sich
+  einzeln sichern und wiederherstellen; sie heißen deshalb *AppData sichern* und
+  *Cloud-Anbieter sichern* (bzw. *… wiederherstellen*). Abgelegt wird an derselben
+  Stelle wie bei einer Profilsicherung.
+- **Cloud-Ordner werden neben das Original zurückgeschrieben.** Mit dem Haken
+  *Cloud-Anbieter wiederherstellen* landet zum Beispiel `OneDrive` jetzt in
+  `OneDrive_wiederhergestellt` (ebenso `HiDrive_wiederhergestellt`,
+  `Dropbox_wiederhergestellt` …) statt im laufenden Cloud-Ordner. Dort hielte der
+  Cloud-Client jede Datei für geändert und lüde sie erneut hoch, in geteilten Ordnern
+  mit Dubletten und Konflikten. Solche Kopien gelten bei späteren Sicherungen als
+  gewöhnliche Ordner und werden mitgesichert.
+- **Auf .NET 11 umgestellt.** Die EXE bringt ihre Laufzeit weiterhin selbst mit;
+  auf dem Zielrechner muss nichts installiert werden. Zum Selbstbauen wird jetzt
+  das .NET 11 SDK gebraucht (`build.ps1` prüft das und nennt den Download).
+
+### Behoben
+
+- **AppData-Sicherung: Protokoll ging in Meldungen unter, Bilanz zeigte Fehler.**
+  Gesperrte oder während der Sicherung gelöschte Dateien (Discord, Teams, Browser …)
+  meldete robocopy einzeln mit je drei Zeilen. Dazu kam „maximale Anzahl von
+  Wiederholungsversuchen überschritten“, obwohl jede Datei ohnehin nur einen Versuch
+  bekommt. Schon eine solche Datei ließ die ganze Aktion als Fehler zählen. Jetzt
+  steht im Protokoll eine Zeile je Fehlerart (z. B. `1.000 × Fehler 32: … von einem
+  anderen Prozess verwendet`). Die vollständige Liste liegt als
+  `AppData-nicht-gesichert.txt` im Sicherungsordner, und die Aktion gilt als gelungen.
+  *Zugriff verweigert*, ein volles Ziel und Fehler außerhalb von AppData bleiben
+  Fehler und stehen wie bisher im Protokoll.
+- **`build.ps1` scheiterte auf manchen Rechnern schon beim Restore** mit
+  `MSB4236 … "Microsoft.NET.SDK.WorkloadAutoImportPropsLocator" wurde nicht gefunden`,
+  weil die .NET-Installation dort ihre Workloads nicht auflösen kann. Das Skript
+  erkennt genau diesen Fehler und baut ohne Workload-Auflösung weiter. Das Projekt
+  braucht keine Workloads, die EXE ist bytegenau dieselbe. Die Einstellung gilt nur
+  für diesen Lauf.
+
+---
+
 ## [1.1.0] - 2026-11-05
 
 ### Hinzugefügt
@@ -290,6 +353,7 @@ PowerShell/WPF-Skripts als native C#-Anwendung mit Avalonia.
 
 ---
 
+[1.2.0]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.0
 [1.1.0]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.1.0
 [1.0.8]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.8
 [1.0.7]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.0.7

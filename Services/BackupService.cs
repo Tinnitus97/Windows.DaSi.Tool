@@ -95,9 +95,54 @@ public sealed class BackupService
         }
 
         _log(Loc.Tr("[INFO] Starte Backup Benutzerprofil...", "[INFO] Starting user profile backup..."));
-        var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+        var skips = IncludeAppData ? new RobocopySkips(Path.Combine(userDir, "AppData")) : null;
+        var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress, skips);
         if (_cancel.IsCancelled) return;
-        _log(code < 8 ? Loc.Tr("[ERFOLG] Benutzerprofil gesichert.", "[SUCCESS] User profile backed up.") : Loc.Tr($"[FEHLER] Robocopy Fehlercode: {code}", $"[ERROR] Robocopy error code: {code}"));
+        var nurUebersprungen = skips != null && ReportAppDataSkips(skips, code);
+        if (code < 8)
+            _log(Loc.Tr("[ERFOLG] Benutzerprofil gesichert.", "[SUCCESS] User profile backed up."));
+        else if (nurUebersprungen)
+            _log(Loc.Tr("[ERFOLG] Benutzerprofil gesichert - bis auf die oben genannten gesperrten bzw. verschwundenen Dateien in AppData.",
+                        "[SUCCESS] User profile backed up - except for the locked or vanished files in AppData listed above."));
+        else
+            _log(Loc.Tr($"[FEHLER] Robocopy Fehlercode: {code}", $"[ERROR] Robocopy error code: {code}"));
+    }
+
+    /// <summary>
+    /// Schluss einer Sicherung mit AppData: Zusammenfassung ins Protokoll,
+    /// vollstaendige Liste neben die Sicherung (Wurzel des Sicherungsordners,
+    /// NICHT in "Benutzerprofil" - sonst landete sie beim Wiederherstellen im
+    /// Profil).
+    ///
+    /// Rueckgabe true: robocopy meldete zwar einen Fehlschlag (Code 8), aber
+    /// ausschliesslich gesperrte oder verschwundene Dateien in AppData. Die
+    /// Sicherung hat dann alles gesichert, was sich sichern liess.
+    /// </summary>
+    private bool ReportAppDataSkips(RobocopySkips skips, int code)
+    {
+        var liste = Path.Combine(BackupPath, RobocopySkips.ListFileName);
+        if (skips.Count == 0)
+        {
+            // Eine Liste von frueher (gleicher Ordner, "Eigener Ordner" aus) waere jetzt falsch.
+            try { if (File.Exists(liste)) File.Delete(liste); } catch { /* bleibt eben liegen */ }
+            return false;
+        }
+
+        string? geschrieben = liste;
+        try
+        {
+            File.WriteAllText(liste, skips.ListText("AppData", DateTime.Now, Loc.Tr), new System.Text.UTF8Encoding(true));
+        }
+        catch (Exception ex)
+        {
+            geschrieben = null;
+            _log(Loc.Tr($"[WARNUNG] Die Liste der nicht gesicherten AppData-Dateien ließ sich nicht schreiben: {ex.Message}",
+                        $"[WARNING] The list of AppData files not backed up could not be written: {ex.Message}"));
+        }
+        _log(skips.Summary("AppData", geschrieben, Loc.Tr));
+
+        // Bit 16 = robocopy selbst ist gescheitert; dann ist nichts "nur uebersprungen".
+        return skips.AllExpected && skips.OtherErrors == 0 && (code & 16) == 0;
     }
 
     public async Task RestoreUserProfile()
@@ -119,17 +164,178 @@ public sealed class BackupService
         //
         // Ausgeschlossen wird relativ zum SICHERUNGSORDNER, nicht zum Profil:
         // /XD vergleicht gegen die Quelle.
-        foreach (var ex in GetProfileExcludes(backupSourceDir, IncludeAppData, IncludeCloud))
+        //
+        // Cloud-Ordner bleiben in diesem Lauf IMMER draussen - auch mit Haken.
+        // Mit Haken folgen sie danach einzeln, aber nicht an ihren alten Platz.
+        foreach (var ex in GetProfileExcludes(backupSourceDir, IncludeAppData, includeCloud: false))
             if (Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
 
         if (IncludeAppData)
             _log(Loc.Tr("[INFO] AppData wird mit wiederhergestellt.", "[INFO] AppData is included in the restore."));
-        if (IncludeCloud)
-            _log(Loc.Tr("[INFO] Cloud-Ordner werden mit wiederhergestellt.", "[INFO] Cloud folders are included in the restore."));
 
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
         if (_cancel.IsCancelled) return;
         _log(code < 8 ? Loc.Tr("[ERFOLG] Benutzerprofil wiederhergestellt.", "[SUCCESS] User profile restored.") : Loc.Tr($"[FEHLER] Robocopy Fehlercode: {code}", $"[ERROR] Robocopy error code: {code}"));
+
+        if (IncludeCloud) await RestoreCloudFolders(backupSourceDir, destDir);
+    }
+
+    /// <summary>
+    /// Schreibt die Cloud-Ordner der Sicherung zurueck - jeden NEBEN seinen
+    /// alten Platz: "OneDrive" landet in "OneDrive_wiederhergestellt".
+    /// Warum, steht bei <see cref="CloudProviders.RestoredFolderName"/>.
+    /// </summary>
+    private async Task RestoreCloudFolders(string backupSourceDir, string destDir)
+    {
+        var ordner = CloudProviders.Detect(backupSourceDir);
+        if (ordner.Count == 0)
+        {
+            _log(Loc.Tr("[INFO] Die Sicherung enthält keine Cloud-Ordner.", "[INFO] The backup contains no cloud folders."));
+            return;
+        }
+
+        foreach (var cloud in ordner)
+        {
+            if (_cancel.IsCancelled) return;
+            var name = Path.GetFileName(cloud.Path);
+            var ziel = Path.Combine(destDir, CloudProviders.RestoredFolderName(name));
+
+            _log(Loc.Tr($"[INFO] {cloud.Provider}: \"{name}\" wird nach \"{ziel}\" zurückgeschrieben - nicht in den laufenden Cloud-Ordner, damit der Cloud-Client nichts doppelt hochlädt.",
+                        $"[INFO] {cloud.Provider}: \"{name}\" is restored to \"{ziel}\" - not into the live cloud folder, so the cloud client does not upload anything twice."));
+            if (Directory.Exists(ziel))
+                _log(Loc.Tr("[INFO] Der Ordner besteht schon (frühere Wiederherstellung) und wird ergänzt.",
+                            "[INFO] The folder already exists (earlier restore) and is updated."));
+
+            var args = new List<string> { Quote(cloud.Path), Quote(ziel), "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32" };
+            if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+
+            var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+            if (_cancel.IsCancelled) return;
+            _log(code < 8
+                ? Loc.Tr($"[ERFOLG] {cloud.Provider} wiederhergestellt nach: {ziel}", $"[SUCCESS] {cloud.Provider} restored to: {ziel}")
+                : Loc.Tr($"[FEHLER] {cloud.Provider}: Robocopy Fehlercode {code}", $"[ERROR] {cloud.Provider}: Robocopy error code {code}"));
+        }
+    }
+
+    // ------------------------------------------------------------ AppData / Cloud ohne Profil
+    //
+    // AppData und Cloud-Ordner lassen sich auch einzeln sichern, ohne den Rest
+    // des Profils. Sie landen an DERSELBEN Stelle wie bei der Profilsicherung
+    // (Benutzerprofil\AppData, Benutzerprofil\<Cloud-Ordner>) - so findet jede
+    // spaetere Wiederherstellung sie, egal auf welchem Weg gesichert wurde.
+
+    /// <summary>Gemeinsame robocopy-Schalter fuer das Sichern aus dem Profil.</summary>
+    private List<string> ProfileBackupArgs(string quelle, string ziel)
+    {
+        var args = new List<string> { Quote(quelle), Quote(ziel), "/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XA:SH" };
+        if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+        return args;
+    }
+
+    /// <summary>Gemeinsame robocopy-Schalter fuer das Zurueckschreiben ins Profil.</summary>
+    private List<string> ProfileRestoreArgs(string quelle, string ziel)
+    {
+        var args = new List<string> { Quote(quelle), Quote(ziel), "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32" };
+        if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+        return args;
+    }
+
+    /// <summary>Sichert nur AppData - die Zwischenspeicher bleiben wie immer draussen.</summary>
+    public async Task BackupAppDataOnly()
+    {
+        var quelle = Path.Combine(SourcePath, "AppData");
+        if (!Directory.Exists(quelle))
+        {
+            _log(Loc.Tr($"[FEHLER] AppData nicht gefunden: {quelle}", $"[ERROR] AppData not found: {quelle}"));
+            return;
+        }
+        var ziel = Path.Combine(BackupPath, "Benutzerprofil", "AppData");
+        if (ProfileExcludes.IsInside(ziel, quelle))
+        {
+            _log(Loc.Tr("[FEHLER] Ziel liegt im Quellverzeichnis. Abbruch.", "[ERROR] Target is inside the source directory. Aborting."));
+            return;
+        }
+
+        var args = ProfileBackupArgs(quelle, ziel);
+        // Dieselbe Liste wie bei der Profilsicherung, davon nur, was in AppData liegt.
+        foreach (var ex in ProfileExcludes.Build(SourcePath, includeAppData: true, includeCloud: true))
+            if (ProfileExcludes.IsInside(ex, quelle) && Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
+
+        _log(Loc.Tr("[INFO] Sichere AppData (ohne den Rest des Profils, Zwischenspeicher bleiben ausgenommen)...",
+                    "[INFO] Backing up AppData (without the rest of the profile, caches remain excluded)..."));
+        var skips = new RobocopySkips(quelle);
+        var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress, skips);
+        if (_cancel.IsCancelled) return;
+        var nurUebersprungen = ReportAppDataSkips(skips, code);
+        if (code < 8)
+            _log(Loc.Tr("[ERFOLG] AppData gesichert.", "[SUCCESS] AppData backed up."));
+        else if (nurUebersprungen)
+            _log(Loc.Tr("[ERFOLG] AppData gesichert - bis auf die oben genannten gesperrten bzw. verschwundenen Dateien.",
+                        "[SUCCESS] AppData backed up - except for the locked or vanished files listed above."));
+        else
+            _log(Loc.Tr($"[FEHLER] AppData: Robocopy Fehlercode {code}", $"[ERROR] AppData: Robocopy error code {code}"));
+    }
+
+    /// <summary>Sichert nur die erkannten Cloud-Ordner, jeden fuer sich.</summary>
+    public async Task BackupCloudOnly()
+    {
+        var ordner = CloudProviders.Detect(SourcePath);
+        if (ordner.Count == 0)
+        {
+            _log(Loc.Tr("[WARNUNG] Im Profil wurde kein Cloud-Ordner gefunden - nichts zu sichern.",
+                        "[WARNING] No cloud folder was found in the profile - nothing to back up."));
+            return;
+        }
+        _log(Loc.Tr($"[INFO] Sichere Cloud-Ordner (ohne den Rest des Profils): {CloudProviders.Summarize(ordner)}",
+                    $"[INFO] Backing up cloud folders (without the rest of the profile): {CloudProviders.Summarize(ordner)}"));
+
+        foreach (var cloud in ordner)
+        {
+            if (_cancel.IsCancelled) return;
+            var name = Path.GetFileName(cloud.Path);
+            var ziel = Path.Combine(BackupPath, "Benutzerprofil", name);
+            if (ProfileExcludes.IsInside(ziel, cloud.Path))
+            {
+                _log(Loc.Tr($"[FEHLER] {cloud.Provider}: Ziel liegt im Cloud-Ordner selbst. Übersprungen.",
+                            $"[ERROR] {cloud.Provider}: target is inside the cloud folder itself. Skipped."));
+                continue;
+            }
+            var code = await _runner.RunRobocopyAsync(string.Join(" ", ProfileBackupArgs(cloud.Path, ziel)), _log, OnFilesProgress);
+            if (_cancel.IsCancelled) return;
+            _log(code < 8
+                ? Loc.Tr($"[ERFOLG] {cloud.Provider} gesichert: \"{name}\"", $"[SUCCESS] {cloud.Provider} backed up: \"{name}\"")
+                : Loc.Tr($"[FEHLER] {cloud.Provider}: Robocopy Fehlercode {code}", $"[ERROR] {cloud.Provider}: Robocopy error code {code}"));
+        }
+    }
+
+    /// <summary>Schreibt nur AppData zurueck - aus der Sicherung, wie auch immer sie entstand.</summary>
+    public async Task RestoreAppDataOnly()
+    {
+        var quelle = Path.Combine(BackupPath, "Benutzerprofil", "AppData");
+        if (!Directory.Exists(quelle))
+        {
+            _log(Loc.Tr($"[FEHLER] In der Sicherung liegt kein AppData: {quelle}", $"[ERROR] The backup contains no AppData: {quelle}"));
+            return;
+        }
+        var ziel = Path.Combine(SourcePath, "AppData");
+        _log(Loc.Tr("[INFO] Schreibe AppData zurück (ohne den Rest des Profils)...",
+                    "[INFO] Restoring AppData (without the rest of the profile)..."));
+        var code = await _runner.RunRobocopyAsync(string.Join(" ", ProfileRestoreArgs(quelle, ziel)), _log, OnFilesProgress);
+        if (_cancel.IsCancelled) return;
+        _log(code < 8 ? Loc.Tr("[ERFOLG] AppData wiederhergestellt.", "[SUCCESS] AppData restored.")
+                      : Loc.Tr($"[FEHLER] AppData: Robocopy Fehlercode {code}", $"[ERROR] AppData: Robocopy error code {code}"));
+    }
+
+    /// <summary>Schreibt nur die Cloud-Ordner zurueck - wie immer neben das Original.</summary>
+    public async Task RestoreCloudOnly()
+    {
+        var sicherung = Path.Combine(BackupPath, "Benutzerprofil");
+        if (!Directory.Exists(sicherung))
+        {
+            _log(Loc.Tr("[FEHLER] Backup-Ordner nicht gefunden.", "[ERROR] Backup folder not found."));
+            return;
+        }
+        await RestoreCloudFolders(sicherung, SourcePath);
     }
 
     // ------------------------------------------------------------ Browser-Profile
@@ -556,6 +762,180 @@ public sealed class BackupService
             _log(Loc.Tr($"[FEHLER] Hintergrundbild konnte nicht wiederhergestellt werden: {ex.Message}",
                         $"[ERROR] Wallpaper could not be restored: {ex.Message}"));
         }
+    }
+
+    // ------------------------------------------------------------ Desktop-Screenshot
+
+    /// <summary>
+    /// Fotografiert den Desktop samt Symbolen, damit sich nach einer
+    /// Neuinstallation nachsehen laesst, was wo lag.
+    /// </summary>
+    public async Task CaptureDesktop()
+    {
+        // Wessen Desktop ist zu sehen? Gesichert wird oft ein fremdes Profil,
+        // waehrend der Techniker selbst angemeldet ist - dann zeigte das Foto
+        // den falschen Desktop, und das fiele erst beim Wiederherstellen auf.
+        var angemeldet = DesktopScreenshot.GetInteractiveUser();
+        if (angemeldet?.ProfilePath is { } eigenesProfil && !ProfileExcludes.SameFolder(eigenesProfil, SourcePath))
+        {
+            _log(Loc.Tr($"[FEHLER] Kein Desktop-Screenshot: Zu sehen ist der Desktop von {angemeldet.Name} ({eigenesProfil}), "
+                        + $"gesichert wird aber {SourcePath}. Das Foto zeigte den falschen Desktop - bitte als dieser Benutzer anmelden und das Tool dort starten.",
+                        $"[ERROR] No desktop screenshot: the visible desktop belongs to {angemeldet.Name} ({eigenesProfil}), "
+                        + $"but {SourcePath} is being backed up. The picture would show the wrong desktop - please sign in as that user and run the tool there."));
+            return;
+        }
+        if (angemeldet is null)
+            _log(Loc.Tr("[INFO] Der angemeldete Benutzer ließ sich nicht ermitteln - aufgenommen wird der Desktop, der gerade zu sehen ist.",
+                        "[INFO] The signed-in user could not be determined - the desktop currently on screen is captured."));
+
+        // Fenster beiseitelegen - und sich genau merken, welche, in welcher
+        // Reihenfolge und welches aktiv war. Nur so kommen sie danach alle
+        // wieder so zurueck, wie sie waren.
+        DesktopScreenshot.HiddenWindows? beiseite = null;
+        try
+        {
+            beiseite = DesktopScreenshot.HideWindows();
+            _log(Loc.Tr($"[INFO] {beiseite.TopToBottom.Count} Fenster werden für einen Moment beiseitegelegt, damit die Desktop-Symbole frei liegen...",
+                        $"[INFO] {beiseite.TopToBottom.Count} windows are moved aside for a moment so the desktop icons are visible..."));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[WARNUNG] Die Fenster ließen sich nicht ausblenden ({ex.Message}) - offene Fenster verdecken auf dem Foto evtl. Symbole.",
+                        $"[WARNING] The windows could not be hidden ({ex.Message}) - open windows may cover icons in the picture."));
+        }
+
+        ScreenCapture bild;
+        try
+        {
+            // Windows minimiert mit einer kurzen Animation.
+            await Task.Delay(beiseite is null ? 300 : 1200);
+            bild = await Task.Run(DesktopScreenshot.CaptureVirtualScreen);
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Der Bildschirm ließ sich nicht aufnehmen: {ex.Message}",
+                        $"[ERROR] The screen could not be captured: {ex.Message}"));
+            return;
+        }
+        finally
+        {
+            // In jedem Fall zurueckholen - auch wenn die Aufnahme scheitert.
+            if (beiseite is not null)
+            {
+                try
+                {
+                    await Task.Run(() => DesktopScreenshot.RestoreWindows(beiseite));
+                    _log(Loc.Tr($"[INFO] {beiseite.TopToBottom.Count} Fenster wieder an ihrem Platz, in der alten Reihenfolge.",
+                                $"[INFO] {beiseite.TopToBottom.Count} windows back in place, in their previous order."));
+                }
+                catch (Exception ex)
+                {
+                    _log(Loc.Tr($"[WARNUNG] Nicht alle Fenster ließen sich zurückholen ({ex.Message}) - sie liegen minimiert in der Taskleiste.",
+                                $"[WARNING] Not all windows could be brought back ({ex.Message}) - they are minimized in the taskbar."));
+                }
+            }
+        }
+
+        if (DesktopScreenshot.IsBlank(bild.Bgra))
+            _log(Loc.Tr("[WARNUNG] Das Foto ist schwarz - war der Bildschirm gesperrt oder eine UAC-Abfrage offen? Es wird trotzdem gespeichert.",
+                        "[WARNING] The picture is black - was the screen locked or a UAC prompt open? It is saved anyway."));
+
+        var ordner = Path.Combine(BackupPath, DesktopScreenshot.FolderName);
+        var plan = DesktopScreenshot.PlanImages(bild.Areas);
+        var gespeichert = new List<string>();
+        string? neu = null;
+        try
+        {
+            Directory.CreateDirectory(ordner);
+            foreach (var m in plan)
+            {
+                var ziel = Path.Combine(ordner, m.FileName);
+                // Erst vollstaendig in eine Zwischendatei, dann an ihren Platz -
+                // ein Abbruch beim Schreiben hinterlaesst kein halbes Bild.
+                neu = ziel + ".neu";
+                var pfad = neu;
+                await Task.Run(() =>
+                {
+                    var teil = DesktopScreenshot.Crop(bild.Bgra, bild.Width, bild.Height,
+                        m.Area.Left - bild.Left, m.Area.Top - bild.Top, m.Area.Width, m.Area.Height,
+                        out var w, out var h);
+                    using (var datei = File.Create(pfad)) PngWriter.WriteBgra(datei, w, h, teil);
+                    File.Move(pfad, ziel, overwrite: true);
+                });
+                neu = null;
+                gespeichert.Add(Loc.Tr(
+                    $"    {m.FileName} ({m.Area.Width} × {m.Area.Height} Pixel{(m.Area.Primary && plan.Count > 1 ? ", Hauptbildschirm" : "")})",
+                    $"    {m.FileName} ({m.Area.Width} × {m.Area.Height} pixels{(m.Area.Primary && plan.Count > 1 ? ", main screen" : "")})"));
+            }
+
+            // Bilder einer frueheren Sicherung in denselben Ordner ("Eigener
+            // Ordner" aus) gehen weg - erst jetzt, da die neuen sicher liegen.
+            // Sonst laege bei inzwischen weniger Monitoren ein altes Bild daneben.
+            var neueNamen = plan.Select(m => m.FileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var alt in DesktopScreenshot.FindImages(ordner)
+                         .Append(Path.Combine(ordner, DesktopScreenshot.LegacyFileName)))
+            {
+                if (neueNamen.Contains(Path.GetFileName(alt))) continue;
+                try { if (File.Exists(alt)) File.Delete(alt); } catch { /* bleibt eben liegen */ }
+            }
+        }
+        catch (Exception ex)
+        {
+            try { if (neu != null && File.Exists(neu)) File.Delete(neu); } catch { /* egal */ }
+            _log(Loc.Tr($"[FEHLER] Desktop-Screenshot konnte nicht gespeichert werden: {ex.Message}",
+                        $"[ERROR] Desktop screenshot could not be saved: {ex.Message}"));
+            return;
+        }
+
+        var kopf = plan.Count == 1
+            ? Loc.Tr($"[ERFOLG] Desktop-Screenshot gespeichert in {ordner}:", $"[SUCCESS] Desktop screenshot saved in {ordner}:")
+            : Loc.Tr($"[ERFOLG] Desktop-Screenshot gespeichert, ein Bild pro Bildschirm ({plan.Count}) in {ordner}:",
+                     $"[SUCCESS] Desktop screenshot saved, one picture per screen ({plan.Count}) in {ordner}:");
+        _log(kopf + "\n" + string.Join("\n", gespeichert));
+    }
+
+    /// <summary>
+    /// Oeffnet das gesicherte Desktop-Foto, damit sich die Symbole danach von
+    /// Hand wieder anordnen lassen. Automatisch zurueckstellen laesst sich die
+    /// Anordnung nicht verlaesslich: Der Explorer ueberschreibt sie beim
+    /// naechsten Abmelden mit seinem eigenen Stand.
+    /// </summary>
+    public Task ShowDesktopScreenshot()
+    {
+        var ordner = Path.Combine(BackupPath, DesktopScreenshot.FolderName);
+        var bilder = DesktopScreenshot.FindImages(ordner);
+        if (bilder.Count == 0)
+        {
+            _log(Loc.Tr($"[FEHLER] In der Sicherung liegt kein Desktop-Screenshot: {ordner}",
+                        $"[ERROR] The backup contains no desktop screenshot: {ordner}"));
+            return Task.CompletedTask;
+        }
+
+        // Jedes Bild in seinem eigenen Fenster - so laesst sich jedes auf
+        // "seinen" Monitor ziehen und die Symbole daneben anordnen.
+        int offen = 0;
+        foreach (var datei in bilder)
+        {
+            try
+            {
+                // Ueber explorer.exe statt direkt: Das Tool laeuft mit
+                // Administratorrechten, und die Fotos-App startet nicht mit
+                // erhoehten Rechten. explorer.exe gibt die Datei an den laufenden
+                // Explorer des Benutzers weiter, der sie mit normalen Rechten oeffnet.
+                using var _ = System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo("explorer.exe", Quote(datei)) { UseShellExecute = false });
+                offen++;
+            }
+            catch (Exception ex)
+            {
+                _log(Loc.Tr($"[FEHLER] Desktop-Screenshot konnte nicht geöffnet werden ({ex.Message}). Er liegt hier: {datei}",
+                            $"[ERROR] Desktop screenshot could not be opened ({ex.Message}). It is located here: {datei}"));
+            }
+        }
+        if (offen > 0)
+            _log(Loc.Tr($"[ERFOLG] Desktop-Screenshot geöffnet ({offen} {(offen == 1 ? "Bild" : "Bilder")}): {ordner} - daran lassen sich die Symbole wieder anordnen.",
+                        $"[SUCCESS] Desktop screenshot opened ({offen} {(offen == 1 ? "picture" : "pictures")}): {ordner} - use it to arrange the icons again."));
+        return Task.CompletedTask;
     }
 
     /// <summary>Vergleicht zwei Dateien inhaltlich (Groesse, dann Bytes).</summary>

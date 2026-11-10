@@ -88,6 +88,12 @@ public static class CloudProviders
             foreach (var name in unterordner)
             {
                 if (schonGemeldet.Contains(name)) continue;
+                // "OneDrive_wiederhergestellt" passt auf das Muster "OneDrive*",
+                // ist aber eine gewoehnliche, NICHT synchronisierte Kopie. Als
+                // Cloud-Ordner erkannt, bliebe sie bei der naechsten Sicherung
+                // standardmaessig draussen - und mit ihr womoeglich die einzige
+                // Kopie dieser Dateien.
+                if (IsRestoredCopy(name)) continue;
                 if (!muster.Any(m => Matches(name, m))) continue;
 
                 schonGemeldet.Add(name);
@@ -124,4 +130,30 @@ public static class CloudProviders
     /// </summary>
     public static string Summarize(IEnumerable<CloudFolder> folders)
         => string.Join(", ", folders.Select(f => f.Provider).Distinct());
+
+    // ------------------------------------------------------------ Zurueckschreiben
+
+    /// <summary>
+    /// Zusatz fuer zurueckgeschriebene Cloud-Ordner. Bewusst immer deutsch,
+    /// wie alle Ordnernamen, die das Tool anlegt ("Benutzerprofil",
+    /// "Hintergrundbild"): Die Sprache der Oberflaeche soll nicht bestimmen,
+    /// wie ein Ordner auf der Platte heisst.
+    /// </summary>
+    public const string RestoredSuffix = "_wiederhergestellt";
+
+    /// <summary>
+    /// Name, unter dem ein Cloud-Ordner zurueckgeschrieben wird:
+    /// "OneDrive" -> "OneDrive_wiederhergestellt".
+    ///
+    /// Warum nicht an den Originalplatz: Dort arbeitet der Cloud-Client. Er
+    /// hielte jede zurueckgeschriebene Datei fuer geaendert und luede sie
+    /// erneut hoch - in geteilten Ordnern entstuenden Dubletten und
+    /// Konflikte bei allen, die den Ordner nutzen. Daneben abgelegt laesst
+    /// sich in Ruhe vergleichen und von Hand uebernehmen, was fehlt.
+    /// </summary>
+    public static string RestoredFolderName(string folderName) => folderName + RestoredSuffix;
+
+    /// <summary>true fuer einen Ordner, den das Tool beim Zurueckschreiben angelegt hat.</summary>
+    public static bool IsRestoredCopy(string folderName)
+        => folderName.EndsWith(RestoredSuffix, StringComparison.OrdinalIgnoreCase);
 }

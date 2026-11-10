@@ -3,7 +3,7 @@
   <!--
     Prueft die Dienste ohne Oberflaeche.
 
-    Bewusst KEIN Testframework und KEIN net10.0-windows: Die geprueften Dateien
+    Bewusst KEIN Testframework und KEIN net11.0-windows: Die geprueften Dateien
     kommen ohne Avalonia aus, dadurch laeuft die Pruefung auf einem
     Linux-Laeufer in wenigen Sekunden.
 
@@ -12,7 +12,7 @@
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <RootNamespace>DaSiTests</RootNamespace>
@@ -27,6 +27,10 @@
     <Compile Include="../../Services/CloudProviders.cs" />
     <Compile Include="../../Services/ProfileExcludes.cs" />
     <Compile Include="../../Services/ActionOutcome.cs" />
+    <Compile Include="../../Services/PngWriter.cs" />
+    <Compile Include="../../Services/BackupTarget.cs" />
+    <Compile Include="../../Services/DesktopScreenshot.cs" />
+    <Compile Include="../../Services/RobocopySkips.cs" />
   </ItemGroup>
 
 </Project>

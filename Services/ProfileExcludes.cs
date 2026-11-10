@@ -107,4 +107,10 @@ public static class ProfileExcludes
         return string.Equals(pfad, basis, System.StringComparison.OrdinalIgnoreCase)
                || pfad.StartsWith(basis + Path.DirectorySeparatorChar, System.StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// true, wenn beide Angaben denselben Ordner meinen - unabhaengig von
+    /// Gross-/Kleinschreibung und abschliessendem Trennzeichen.
+    /// </summary>
+    public static bool SameFolder(string a, string b) => IsInside(a, b) && IsInside(b, a);
 }

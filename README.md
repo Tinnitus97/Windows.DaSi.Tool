@@ -6,9 +6,9 @@
 
 **Datensicherung und Wiederherstellung von Windows-Benutzerprofilen — portabel, schnell, ohne Installation.**
 
-[![Version](https://img.shields.io/badge/Version-1.1.0-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.0-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)](https://github.com/Tinnitus97/Windows.DaSi.Tool)
-[![.NET](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
+[![.NET](https://img.shields.io/badge/.NET-11-512BD4)](https://dotnet.microsoft.com/download/dotnet/11.0)
 [![License](https://img.shields.io/badge/Lizenz-MIT-green)](LICENSE)
 
 </div>
@@ -19,6 +19,7 @@ Entwickelt für IT-Administratoren und Power-User. Das Tool vereint die Robusthe
 von **Robocopy** mit einer modernen, zweisprachigen Oberfläche und sichert in einem
 Durchgang Benutzerprofile, Browserdaten, installierte Programme, WLAN-Zugänge,
 Drucker und das Hintergrundbild — und stellt sie auf dem neuen Rechner wieder her.
+Ein Foto des Desktops hält fest, wo welche Symbole lagen.
 
 <div align="center">
 <img src="docs/images/hauptfenster.png" alt="Hauptfenster des Windows DaSi Tool nach einer Sicherung" width="850">
@@ -30,13 +31,14 @@ Drucker und das Hintergrundbild — und stellt sie auf dem neuen Rechner wieder 
 
 | Bereich | Inhalt |
 | --- | --- |
-| **Windows-Benutzerprofil** | Dokumente, Bilder, Desktop, Downloads und alles Weitere im Profil. Zwischenspeicher, Temp-Ordner und Windows-Altlasten (Verknüpfungspunkte wie *Anwendungsdaten*) bleiben draußen. **AppData** und **Cloud-Ordner** wahlweise — Vorgabe: aus |
+| **Windows-Benutzerprofil** | Dokumente, Bilder, Desktop, Downloads und alles Weitere im Profil. Zwischenspeicher, Temp-Ordner und Windows-Altlasten (Verknüpfungspunkte wie *Anwendungsdaten*) bleiben draußen. **AppData** und **Cloud-Ordner** wahlweise, auch einzeln ohne den Rest des Profils — Vorgabe: aus |
 | **Browser-Profile** | Firefox, Edge, Chrome und Brave — inklusive Lesezeichen, Verlauf und Einstellungen |
 | **E-Mail** | Thunderbird-Profil mit Konten und lokalen Ordnern |
 | **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog. Programme ohne Winget-Paket landen in einer eigenen Liste |
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
 | **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen über PrintBRM in einer Datei |
 | **Hintergrundbild** | Sichert das Desktop-Hintergrundbild und stellt es am Originalpfad wieder her |
+| **Desktop-Anordnung** | Ein Foto des Desktops über alle Monitore — zeigt nach der Neuinstallation, wo welche Symbole lagen |
 
 > **WLAN-Schlüssel liegen im Klartext in der Sicherung.** Damit sie auf einem anderen
 > Rechner funktionieren, exportiert das Tool sie mit `key=clear` — verschlüsselt wären
@@ -51,8 +53,8 @@ Drucker und das Hintergrundbild — und stellt sie auf dem neuen Rechner wieder 
 
 Sichern und Wiederherstellen teilen sich eine Ansicht. Der Umschalter oben wechselt
 die Richtung, die Beschriftungen passen sich automatisch an — aus *Programme
-exportieren* wird *Programme installieren*, aus *AppData mit sichern* wird *AppData
-mit wiederherstellen*. Die Auswahl bleibt beim Umschalten erhalten.
+exportieren* wird *Programme installieren*, aus *Desktop-Screenshot erstellen* wird
+*Desktop-Screenshot anzeigen*. Die Auswahl bleibt beim Umschalten erhalten.
 
 <div align="center">
 <img src="docs/images/modus-umschalter.png" alt="Dieselbe Auswahl im Modus Sichern und im Modus Wiederherstellen" width="640">
@@ -61,13 +63,23 @@ mit wiederherstellen*. Die Auswahl bleibt beim Umschalten erhalten.
 ### AppData und Cloud-Ordner: bewusst entscheiden
 
 Beide gehören zum Benutzerprofil, werden aber **nur auf ausdrücklichen Wunsch**
-mitgenommen — die Haken sitzen direkt in der Profilkachel und sind nur aktiv, wenn
-das Profil gewählt ist.
+mitgenommen — die Haken sitzen direkt in der Profilkachel. Sie gehen auch **ohne** das
+Profil: Dann sichert bzw. stellt das Tool nur AppData bzw. nur die Cloud-Ordner wieder
+her. Abgelegt werden sie an derselben Stelle wie bei einer Profilsicherung
+(`Benutzerprofil\AppData`, `Benutzerprofil\OneDrive` …), sodass jede spätere
+Wiederherstellung sie findet.
 
 - **AppData** enthält Programmeinstellungen, aber auch maschinengebundene Lizenzen,
   Gerätekennungen und Anmeldesitzungen. Vor dem *Zurückschreiben* fragt das Tool
   deshalb nach. Zwischenspeicher wie `Temp`, `INetCache` und die Browser-Caches
   bleiben auch mit Haken draußen.
+  Programme wie Discord, Teams oder Browser schreiben ständig in AppData, viele
+  Dateien sind deshalb gesperrt oder verschwinden während der Sicherung. Jede Datei
+  bekommt genau einen Versuch. Statt drei Protokollzeilen je Datei steht am Ende
+  eine kurze Zusammenfassung je Fehlerart im Protokoll. Die vollständige Liste liegt
+  als `AppData-nicht-gesichert.txt` im Sicherungsordner. Sind nur solche gesperrten
+  oder verschwundenen Dateien betroffen, gilt die Sicherung als gelungen. Echte
+  Fehler wie *Zugriff verweigert* oder ein volles Ziellaufwerk bleiben Fehler.
 - **Cloud-Ordner** erkennt das Tool selbst: OneDrive (auch mit angehängtem
   Firmennamen wie *OneDrive - Muster GmbH*), Dropbox, Google Drive, iCloud, STRATO
   HiDrive, Nextcloud, ownCloud, MagentaCLOUD, pCloud, MEGA, Box, Tresorit, Seafile,
@@ -78,9 +90,52 @@ das Profil gewählt ist.
 Beide Schalter wirken in beide Richtungen: Ohne Haken wird AppData bzw. ein
 Cloud-Ordner auch dann nicht zurückgeschrieben, wenn die Sicherung ihn enthält.
 
+**Cloud-Ordner landen beim Zurückschreiben neben dem Original**, nicht darin:
+
+| In der Sicherung | Wird zurückgeschrieben nach |
+| --- | --- |
+| `C:\Users\<Name>\OneDrive` | `C:\Users\<Name>\OneDrive_wiederhergestellt` |
+| `C:\Users\<Name>\OneDrive - Muster GmbH` | `C:\Users\<Name>\OneDrive - Muster GmbH_wiederhergestellt` |
+| `C:\Users\<Name>\HiDrive` | `C:\Users\<Name>\HiDrive_wiederhergestellt` |
+
+Im echten Cloud-Ordner arbeitet der Cloud-Client: Er hielte jede zurückgeschriebene
+Datei für geändert und lüde sie erneut hoch, in geteilten Ordnern entstünden
+Dubletten und Konflikte. Daneben abgelegt lässt sich in Ruhe vergleichen und von
+Hand übernehmen, was noch fehlt. Bei einer späteren Sicherung gilt eine solche
+`…_wiederhergestellt`-Kopie als gewöhnlicher Ordner und wird mitgesichert — sie wird
+ja nicht synchronisiert.
+
 <div align="center">
 <img src="docs/images/cloud-rueckfrage.png" alt="Rückfrage mit den erkannten Cloud-Anbietern" width="440">
 </div>
+
+### Desktop-Screenshot: Wo lag was?
+
+Nach einer Neuinstallation ist der Desktop leer, und kaum jemand weiß noch, wo seine
+Verknüpfungen lagen. Auf Wunsch fotografiert das Tool deshalb den Desktop, und zwar
+**ein Bild pro Monitor**: alle im selben Moment, jedes in Größe und voller Auflösung
+seines Monitors, auch bei skalierten Bildschirmen. Damit die Symbole frei liegen, legt es dafür für einen Moment
+alle Programmfenster beiseite und holt sie danach **genau so zurück, wie sie waren**:
+in derselben Reihenfolge, maximierte wieder maximiert, das zuletzt aktive Fenster
+wieder vorn.
+
+Die Bilder landen im Ordner `Desktop-Screenshot` im Backup-Ziel:
+
+| Monitore | Bilder |
+| --- | --- |
+| einer | `Bildschirm-1.png` |
+| mehrere | `Bildschirm-1-Hauptbildschirm.png`, `Bildschirm-2.png` … |
+
+Die Nummern folgen Windows (`\\.\DISPLAY2` → `Bildschirm-2.png`) und stimmen meist mit
+denen unter *Einstellungen → Anzeige → Identifizieren* überein. Beim
+**Wiederherstellen** öffnet derselbe Punkt jedes Bild in einem eigenen Fenster. So
+lässt sich jedes auf „seinen“ Monitor ziehen und die Symbole von Hand daneben
+anordnen. Automatisch zurückstellen lässt sich die Anordnung nicht verlässlich, weil
+der Explorer sie mit seinem eigenen Stand überschreibt.
+
+> Fotografiert wird, was auf dem Bildschirm zu sehen ist. Ist ein anderer Benutzer
+> angemeldet als der, dessen Profil gesichert wird — etwa der Techniker —, macht das
+> Tool kein Foto und sagt das im Protokoll: Es zeigte den falschen Desktop.
 
 ### Speicherprüfung mit Ampel
 
@@ -120,6 +175,26 @@ Beim **Wiederherstellen** wird gezielt ausgewählt, was installiert werden soll:
 <div align="center">
 <img src="docs/images/winget-auswahl.png" alt="Auswahldialog für die Winget-Wiederherstellung" width="460">
 </div>
+
+### Ein eigener Ordner je Sicherung
+
+Als Ziel genügt das Laufwerk: Wer `G:\` wählt, sieht im Feld sofort einen eigenen
+Ordner mit Rechnername und Zeitpunkt —
+
+```
+G:\DASI_DESKTOP-7K4Q2M_10_11_2026_18_45
+```
+
+So liegen mehrere Rechner und mehrere Stände sauber nebeneinander, statt sich im
+Wurzelverzeichnis gegenseitig zu überschreiben. Gesichert wird genau dorthin, wo das
+Feld zeigt; angelegt wird der Ordner beim Start. Der Schalter **Eigener Ordner**
+(Vorgabe: an) lässt sich abschalten — dann zeigt das Feld wieder `G:\`, und die
+Sicherung geht direkt dorthin.
+
+In eine bestehende Sicherung wird nie hineingeschrieben: Ist das Gewählte selbst schon
+ein `DASI_…`-Ordner — etwa die Sicherung, die gerade als Quelle zum Wiederherstellen
+diente —, kommt der neue Ordner daneben. Beim **Wiederherstellen** wirkt der Schalter
+nicht; dort zeigt das Feld genau den gewählten `DASI_…`-Ordner.
 
 ### Schnellauswahl der Benutzerprofile
 
@@ -221,7 +296,9 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 1. Aktuelle `WindowsDaSiTool.exe` aus dem [Releases-Bereich](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases) herunterladen.
 2. EXE starten und die UAC-Abfrage mit **Ja** bestätigen.
 3. Über die **Schnellauswahl** das Benutzerprofil wählen (oder per `...` manuell suchen).
-4. Das **Backup-Ziel** festlegen — ein Ordner auf einem NTFS-Laufwerk.
+4. Das **Backup-Ziel** festlegen — ein Ordner auf einem NTFS-Laufwerk. Mit *Eigener
+   Ordner: AN* genügt das Laufwerk (`G:\`) — das Feld zeigt dann sofort `G:\DASI_…`.
+   Zum Wiederherstellen den gewünschten `DASI_…`-Ordner wählen.
 5. Modus **Sichern** oder **Wiederherstellen** wählen und die gewünschten Punkte ankreuzen.
    *AppData* und *Cloud-Anbieter* nur bei Bedarf dazunehmen.
 6. Auf die **Speicherzeile** achten: Grün heißt, der Platz reicht.
@@ -241,7 +318,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | --- | --- |
 | **Sprache** | C# |
 | **UI-Framework** | [Avalonia](https://avaloniaui.net/) 12.1 |
-| **Zielplattform** | .NET 10 (LTS), `win-x64`, self-contained |
+| **Zielplattform** | .NET 11, `win-x64`, self-contained |
 | **Dateioperationen** | Robocopy mit Spiegelung, Ausschlusslisten und Multithreading |
 | **Prozess-Handling** | Browser und Thunderbird werden vor dem Backup automatisch geschlossen, um Dateikonflikte zu vermeiden |
 | **Fehlerbehandlung** | Unerwartete Fehler landen in `%USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log` |
@@ -249,7 +326,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 
 ### Selbst bauen
 
-Voraussetzung ist das [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+Voraussetzung ist das [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0).
 
 ```powershell
 git clone https://github.com/Tinnitus97/Windows.DaSi.Tool.git
@@ -262,8 +339,16 @@ Die fertige EXE liegt anschließend im Ordner `publish`.
 | Parameter | Wirkung |
 | --- | --- |
 | `.\build.ps1` | Self-contained Build (Standard) — läuft ohne installiertes .NET |
-| `.\build.ps1 -Mode framework` | Deutlich kleinere EXE, setzt .NET 10 Desktop Runtime voraus |
+| `.\build.ps1 -Mode framework` | Deutlich kleinere EXE, setzt .NET 11 Desktop Runtime voraus |
 | `.\build.ps1 -Sign` | Signiert die EXE, um SmartScreen-Warnungen zu reduzieren |
+
+> **Fehler `MSB4236 … "Microsoft.NET.SDK.WorkloadAutoImportPropsLocator" wurde nicht gefunden`?**
+> Dann kann die .NET-Installation des Rechners ihre Workloads nicht auflösen.
+> `build.ps1` erkennt das und baut ohne Workload-Auflösung weiter. Das Projekt
+> braucht keine Workloads, die EXE ist bytegenau dieselbe. Wer `dotnet` direkt
+> aufruft (etwa für die Prüfungen unten), setzt vorher in derselben PowerShell
+> `$env:MSBuildEnableWorkloadResolver = 'false'`. Dauerhaft beheben lässt es sich
+> durch Reparieren oder Neuinstallieren des .NET 11 SDK.
 
 Die Prüfungen laufen ohne Oberfläche und auf jedem System:
 

@@ -7,8 +7,8 @@ name: .NET-Version prüfen
 # Release Candidate ist. Geprüft wird jede Stelle, die beim Bauen die Version
 # festlegt:
 #
-#   <TargetFramework> in jeder .csproj / .props    net10.0, net10.0-windows
-#   dotnet-version in den Workflows                10.0.x
+#   <TargetFramework> in jeder .csproj / .props    net11.0, net11.0-windows
+#   dotnet-version in den Workflows                11.0.x
 #   sdk.version in global.json                     falls vorhanden
 #   die SDK-Prüfung in build.ps1                   falls vorhanden
 #
@@ -111,7 +111,7 @@ jobs:
                       stellen.append((pfad, nr, version, '.'.join(version.split('.')[:2]), 'SDK in global.json'))
 
               elif pfad.name == 'build.ps1':
-                  # Die SDK-Prüfung des Bauskripts:  $_ -match '^\s*10\.'
+                  # Die SDK-Prüfung des Bauskripts:  $_ -match '^\s*11\.'
                   for nr, zeile in zeilen(pfad):
                       v = re.search(r"-match\s+'\^\\s\*(\d+)\\\.'", zeile)
                       if v:

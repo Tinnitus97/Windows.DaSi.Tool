@@ -15,6 +15,61 @@ internal static class Program
         else { _failed++; Console.WriteLine($"  [FAIL] {name}{(detail is null ? "" : $"  -> {detail}")}"); }
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr h, int cmd);
+    private static void MaximizeForTest(IntPtr h) => ShowWindow(h, 3);   // SW_MAXIMIZE
+
+    // ---- Hilfen zum Zuruecklesen der selbst geschriebenen PNG-Dateien ----
+
+    private sealed record Chunk(string Type, byte[] Data, bool CrcOk);
+
+    private static uint BigEndian(byte[] b, int o) => (uint)(b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]);
+
+    private static System.Collections.Generic.List<Chunk> ReadChunks(byte[] png)
+    {
+        var liste = new System.Collections.Generic.List<Chunk>();
+        for (int o = 8; o + 12 <= png.Length;)
+        {
+            int len = (int)BigEndian(png, o);
+            var typ = System.Text.Encoding.ASCII.GetString(png, o + 4, 4);
+            var daten = png.AsSpan(o + 8, len).ToArray();
+            var crc = BigEndian(png, o + 8 + len);
+            liste.Add(new Chunk(typ, daten, PngWriter.Crc32(png.AsSpan(o + 4, 4 + len)) == crc));
+            o += 12 + len;
+        }
+        return liste;
+    }
+
+    /// <summary>Liest genau das Format, das PngWriter schreibt: RGB, 8 Bit, Filter je Zeile.</summary>
+    private static byte[] DecodeOwnPng(byte[] png, out int width, out int height)
+    {
+        var chunks = ReadChunks(png);
+        width = (int)BigEndian(chunks[0].Data, 0); height = (int)BigEndian(chunks[0].Data, 4);
+        using var gepackt = new MemoryStream(chunks.Where(c => c.Type == "IDAT").SelectMany(c => c.Data).ToArray());
+        using var zlib = new System.IO.Compression.ZLibStream(gepackt, System.IO.Compression.CompressionMode.Decompress);
+        using var roh = new MemoryStream(); zlib.CopyTo(roh);
+        var daten = roh.ToArray();
+        int zeile = width * 3; var rgb = new byte[zeile * height];
+        for (int y = 0; y < height; y++)
+        {
+            int filter = daten[y * (zeile + 1)];
+            for (int x = 0; x < zeile; x++)
+            {
+                byte wert = daten[y * (zeile + 1) + 1 + x];
+                byte links = x >= 3 ? rgb[y * zeile + x - 3] : (byte)0;
+                byte oben = y > 0 ? rgb[(y - 1) * zeile + x] : (byte)0;
+                rgb[y * zeile + x] = filter switch
+                {
+                    0 => wert,
+                    1 => (byte)(wert + links),
+                    2 => (byte)(wert + oben),
+                    _ => throw new InvalidDataException($"Filter {filter} wird hier nicht erwartet")
+                };
+            }
+        }
+        return rgb;
+    }
+
     public static int Main()
     {
         var root = Path.Combine(Path.GetTempPath(), "dasi-test-" + Guid.NewGuid().ToString("N"));
@@ -196,6 +251,31 @@ internal static class Program
         Check("ein leerer Pfad liefert eine leere Liste",
             CloudProviders.Detect("").Count == 0);
 
+        Console.WriteLine("\n== Cloud-Ordner zurueckschreiben: neben den Original-Ordner ==");
+        Check("OneDrive -> OneDrive_wiederhergestellt",
+            CloudProviders.RestoredFolderName("OneDrive") == "OneDrive_wiederhergestellt");
+        Check("Firmenkonto behaelt seinen vollen Namen",
+            CloudProviders.RestoredFolderName("OneDrive - Muster GmbH") == "OneDrive - Muster GmbH_wiederhergestellt");
+        Check("HiDrive -> HiDrive_wiederhergestellt",
+            CloudProviders.RestoredFolderName("HiDrive") == "HiDrive_wiederhergestellt");
+
+        // Nach einer Wiederherstellung liegen Original und Kopie nebeneinander.
+        var nachher = Path.Combine(root, "ProfilNachWiederherstellung");
+        foreach (var d in new[] { "OneDrive", "OneDrive_wiederhergestellt", "HiDrive_WIEDERHERGESTELLT", "Dropbox_wiederhergestellt", "Dokumente" })
+            Directory.CreateDirectory(Path.Combine(nachher, d));
+        var nachherClouds = CloudProviders.Detect(nachher).Select(c => Path.GetFileName(c.Path)).ToArray();
+        Check("die wiederhergestellte Kopie gilt NICHT als Cloud-Ordner",
+            !nachherClouds.Any(CloudProviders.IsRestoredCopy), string.Join(", ", nachherClouds));
+        Check("Gross-/Kleinschreibung des Zusatzes spielt keine Rolle",
+            !nachherClouds.Contains("HiDrive_WIEDERHERGESTELLT"));
+        Check("der echte Cloud-Ordner daneben wird weiter erkannt",
+            nachherClouds.SequenceEqual(new[] { "OneDrive" }), string.Join(", ", nachherClouds));
+        var nachherAus = ProfileExcludes.Build(nachher);
+        Check("naechste Sicherung: Kopie wird mitgesichert, nur der Cloud-Ordner bleibt draussen",
+            nachherAus.Contains(Path.Combine(nachher, "OneDrive"))
+            && !nachherAus.Contains(Path.Combine(nachher, "OneDrive_wiederhergestellt"))
+            && !nachherAus.Contains(Path.Combine(nachher, "Dropbox_wiederhergestellt")));
+
         // ================================================================
         // Was beim Profil-Backup ausgelassen wird
         // ================================================================
@@ -280,6 +360,290 @@ internal static class Program
             !ActionOutcome.IsErrorLine("") && !ActionOutcome.IsErrorLine(null));
 
         // ================================================================
+        // Desktop-Screenshot: PNG schreiben, Profil vergleichen, Schwarzbild
+        // ================================================================
+        Console.WriteLine("\n== Eigener Sicherungsordner ==");
+        var zeitpunkt = new DateTime(2026, 11, 10, 8, 5, 0);
+        Check("Name: DASI_<Rechner>_TT_MM_JJJJ_HH_MM, mit fuehrenden Nullen",
+            BackupTarget.FolderName("DESKTOP-7K4Q2M", zeitpunkt) == "DASI_DESKTOP-7K4Q2M_10_11_2026_08_05",
+            BackupTarget.FolderName("DESKTOP-7K4Q2M", zeitpunkt));
+        Check("unzulaessige Zeichen im Rechnernamen werden zu _",
+            BackupTarget.FolderName("PC:1/2*?", zeitpunkt) == "DASI_PC_1_2___10_11_2026_08_05",
+            BackupTarget.FolderName("PC:1/2*?", zeitpunkt));
+        Check("ohne Rechnernamen: PC",
+            BackupTarget.FolderName("  ", zeitpunkt) == "DASI_PC_10_11_2026_08_05");
+        Check("24-Stunden-Format (18 Uhr, nicht 6)",
+            BackupTarget.FolderName("PC", new DateTime(2026, 11, 10, 18, 45, 0)).EndsWith("_10_11_2026_18_45"));
+
+        var laufwerk = Path.Combine(root, "G");
+        Check("eingeschaltet: Ordner unter dem gewaehlten Ziel",
+            BackupTarget.Resolve(laufwerk, true, "PC", zeitpunkt) == Path.Combine(laufwerk, "DASI_PC_10_11_2026_08_05"));
+        Check("ausgeschaltet: direkt ins gewaehlte Ziel",
+            BackupTarget.Resolve(laufwerk, false, "PC", zeitpunkt) == laufwerk);
+        var schonDasi = Path.Combine(laufwerk, "DASI_ALTPC_01_10_2026_12_00");
+        Check("ist das Ziel schon ein DASI-Ordner, kommt der neue DANEBEN (nicht hinein, nicht an seine Stelle)",
+            BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt) == Path.Combine(laufwerk, "DASI_PC_10_11_2026_08_05"),
+            BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt));
+        Check("ausgeschaltet bleibt auch ein DASI-Ordner, wie er ist",
+            BackupTarget.Resolve(schonDasi, false, "PC", zeitpunkt) == schonDasi);
+        Check("auch mit abschliessendem Trennzeichen und Kleinschreibung",
+            BackupTarget.IsOwnFolder(@"G:\dasi_pc_10_11_2026_08_05\") && BackupTarget.IsOwnFolder("/mnt/g/DASI_PC_x/"));
+        Check("Laufwerkswurzel ist kein DASI-Ordner",
+            !BackupTarget.IsOwnFolder(@"G:\") && !BackupTarget.IsOwnFolder(""));
+        Check("ein Ordner, der DASI nur enthaelt, zaehlt nicht",
+            !BackupTarget.IsOwnFolder(@"G:\Backup_DASI_alt"));
+        Check("leeres Ziel bleibt leer", BackupTarget.Resolve("", true, "PC", zeitpunkt) == "");
+
+        Console.WriteLine("\n== PNG schreiben ==");
+        Check("CRC-32 stimmt mit dem Normwert ueberein (\"123456789\" -> CBF43926)",
+            PngWriter.Crc32("123456789"u8) == 0xCBF43926u, PngWriter.Crc32("123456789"u8).ToString("X8"));
+
+        // 3 x 2 Bildpunkte, Windows-Reihenfolge B, G, R, A.
+        byte[] klein =
+        {
+            0, 0, 255, 255,    0, 255, 0, 255,    255, 0, 0, 255,      // rot, gruen, blau
+            255, 255, 255, 255, 10, 20, 30, 0,    128, 128, 128, 255   // weiss, (30,20,10), grau
+        };
+        var png = PngWriter.EncodeBgra(3, 2, klein);
+        Check("beginnt mit der PNG-Kennung",
+            png.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }));
+        var chunks = ReadChunks(png);
+        Check("Bausteine in der richtigen Reihenfolge (IHDR, IDAT, IEND)",
+            string.Join(",", chunks.Select(c => c.Type)) == "IHDR,IDAT,IEND", string.Join(",", chunks.Select(c => c.Type)));
+        Check("jede Pruefsumme stimmt", chunks.All(c => c.CrcOk));
+        var kopf = chunks[0].Data;
+        Check("Kopf: 3 x 2, 8 Bit, RGB",
+            BigEndian(kopf, 0) == 3 && BigEndian(kopf, 4) == 2 && kopf[8] == 8 && kopf[9] == 2);
+        var rgb = DecodeOwnPng(png, out var bw, out var bh);
+        Check("zurueckgelesen: jeder Bildpunkt stimmt (Kanalreihenfolge gedreht, Alpha entfallen)",
+            bw == 3 && bh == 2 && rgb.SequenceEqual(new byte[]
+            {
+                255, 0, 0,    0, 255, 0,    0, 0, 255,
+                255, 255, 255, 30, 20, 10,  128, 128, 128
+            }), string.Join(" ", rgb));
+
+        // Ein groesseres Bild mit Verlauf: prueft den Filter ueber viele Zeilen.
+        int gw = 257, gh = 64;
+        var verlauf = new byte[gw * gh * 4];
+        for (int i = 0; i < gw * gh; i++) { verlauf[i * 4] = (byte)i; verlauf[i * 4 + 1] = (byte)(i / 7); verlauf[i * 4 + 2] = (byte)(255 - i); }
+        var rgb2 = DecodeOwnPng(PngWriter.EncodeBgra(gw, gh, verlauf), out _, out _);
+        bool alleGleich = true;
+        for (int i = 0; i < gw * gh && alleGleich; i++)
+            alleGleich = rgb2[i * 3] == verlauf[i * 4 + 2] && rgb2[i * 3 + 1] == verlauf[i * 4 + 1] && rgb2[i * 3 + 2] == verlauf[i * 4];
+        Check("257 x 64 mit Verlauf: verlustfrei", alleGleich);
+
+        bool zuKurz = false;
+        try { PngWriter.EncodeBgra(3, 2, new byte[10]); } catch (ArgumentException) { zuKurz = true; }
+        Check("zu wenige Bildpunkte werden abgelehnt", zuKurz);
+
+        Console.WriteLine("\n== Desktop-Screenshot: ein Bild pro Monitor ==");
+        {
+            Check("Windows-Nummer aus dem Geraetenamen", DesktopScreenshot.DisplayNumber(@"\\.\DISPLAY2") == 2
+                && DesktopScreenshot.DisplayNumber(@"\\.\DISPLAY12") == 12 && DesktopScreenshot.DisplayNumber("") == 0
+                && DesktopScreenshot.DisplayNumber("Monitor") == 0);
+
+            // Wie beim Benutzer: 4K-Hauptbildschirm und daneben ein kleinerer.
+            var haupt = new MonitorArea(0, 0, 3840, 2160, true, @"\\.\DISPLAY1");
+            var neben = new MonitorArea(3840, 0, 1920, 1080, false, @"\\.\DISPLAY2");
+            var zwei = DesktopScreenshot.PlanImages(new[] { neben, haupt });
+            Check("zwei Monitore: zwei Bilder, nach Windows-Nummer",
+                zwei.Select(p => p.FileName).SequenceEqual(new[] { "Bildschirm-1-Hauptbildschirm.png", "Bildschirm-2.png" }),
+                string.Join(", ", zwei.Select(p => p.FileName)));
+            Check("jedes Bild hat genau die Groesse seines Monitors",
+                zwei[0].Area.Width == 3840 && zwei[0].Area.Height == 2160 && zwei[1].Area.Width == 1920 && zwei[1].Area.Height == 1080);
+
+            var einer = DesktopScreenshot.PlanImages(new[] { haupt });
+            Check("ein Monitor: Bildschirm-1.png (ohne Zusatz)", einer.Single().FileName == "Bildschirm-1.png", einer.Single().FileName);
+
+            var hauptRechts = DesktopScreenshot.PlanImages(new[]
+            {
+                new MonitorArea(0, 0, 1920, 1080, true, @"\\.\DISPLAY2"),
+                new MonitorArea(-1920, 0, 1920, 1080, false, @"\\.\DISPLAY1"),
+            });
+            Check("Hauptbildschirm muss nicht Nummer 1 sein",
+                hauptRechts.Select(p => p.FileName).SequenceEqual(new[] { "Bildschirm-1.png", "Bildschirm-2-Hauptbildschirm.png" }),
+                string.Join(", ", hauptRechts.Select(p => p.FileName)));
+
+            var ohneNummern = DesktopScreenshot.PlanImages(new[]
+            {
+                new MonitorArea(1920, 0, 1280, 1024, false, ""),
+                new MonitorArea(-1280, 0, 1280, 1024, false, "x"),
+                new MonitorArea(0, 0, 1920, 1080, true, ""),
+            });
+            Check("ohne Windows-Nummern: Hauptbildschirm zuerst, dann von links nach rechts",
+                ohneNummern[0].Area.Primary && ohneNummern[1].Area.Left == -1280 && ohneNummern[2].Area.Left == 1920
+                && ohneNummern[0].FileName == "Bildschirm-1-Hauptbildschirm.png",
+                string.Join(", ", ohneNummern.Select(p => $"{p.FileName}@{p.Area.Left}")));
+            var doppelt = DesktopScreenshot.PlanImages(new[]
+            {
+                new MonitorArea(0, 0, 10, 10, true, @"\\.\DISPLAY1"), new MonitorArea(10, 0, 10, 10, false, @"\\.\DISPLAY1"),
+            });
+            Check("doppelte Nummer: es wird gezaehlt, kein Name doppelt",
+                doppelt.Select(p => p.FileName).Distinct().Count() == 2);
+
+            // Ausschneiden: virtueller Bildschirm 7 x 3 ab (-3, 0); Hauptbildschirm
+            // 4 x 3 bei (0, 0), links daneben ein flacher 3 x 1 bei (-3, 2).
+            int vw = 7, vh = 3;
+            var pix = new byte[vw * vh * 4];
+            for (int i = 0; i < vw * vh; i++) { pix[i * 4] = (byte)i; pix[i * 4 + 1] = (byte)(100 + i); pix[i * 4 + 3] = 255; }
+            var rechts = DesktopScreenshot.Crop(pix, vw, vh, 0 - (-3), 0, 4, 3, out var rw, out var rh);
+            Check("Ausschnitt Hauptbildschirm: 4 x 3", rw == 4 && rh == 3 && rechts.Length == 4 * 3 * 4);
+            Check("Ausschnitt Hauptbildschirm: richtige Bildpunkte",
+                rechts[0] == 3 && rechts[4 * 4] == 10 && rechts[(2 * 4 + 3) * 4] == 20 && rechts[1] == 103);
+            var links = DesktopScreenshot.Crop(pix, vw, vh, 0, 2, 3, 1, out var lw, out var lh);
+            Check("Ausschnitt flacher Monitor: 3 x 1, ohne die Flaeche darueber",
+                lw == 3 && lh == 1 && links[0] == 14 && links[4] == 15 && links[8] == 16);
+            var rand = DesktopScreenshot.Crop(pix, vw, vh, 5, 1, 10, 10, out var randW, out var randH);
+            Check("ueber den Rand Ragendes wird abgeschnitten", randW == 2 && randH == 2 && rand[0] == 12);
+            DesktopScreenshot.Crop(pix, vw, vh, 50, 50, 5, 5, out var nw, out var nh);
+            Check("ganz ausserhalb: leeres Bild", nw == 0 && nh == 0);
+
+            // Wiederherstellen: welche Bilder werden gezeigt?
+            var bo = Path.Combine(root, "bilder-finden");
+            Directory.CreateDirectory(bo);
+            Check("leerer Ordner: kein Bild", DesktopScreenshot.FindImages(bo).Count == 0
+                && DesktopScreenshot.FindImages(Path.Combine(root, "gibt-es-nicht")).Count == 0);
+            File.WriteAllText(Path.Combine(bo, "Desktop.png"), "alt");
+            Check("aeltere Sicherung: das fruehere Gesamtbild", DesktopScreenshot.FindImages(bo).Select(Path.GetFileName).SequenceEqual(new[] { "Desktop.png" }));
+            foreach (var n in new[] { "Bildschirm-10.png", "Bildschirm-2.png", "Bildschirm-1-Hauptbildschirm.png", "Bildschirm-x.png", "Notiz.png" })
+                File.WriteAllText(Path.Combine(bo, n), "");
+            Check("neue Sicherung: nur die Monitorbilder, nach Nummer (1, 2, 10)",
+                DesktopScreenshot.FindImages(bo).Select(Path.GetFileName)
+                    .SequenceEqual(new[] { "Bildschirm-1-Hauptbildschirm.png", "Bildschirm-2.png", "Bildschirm-10.png" }),
+                string.Join(", ", DesktopScreenshot.FindImages(bo).Select(Path.GetFileName)));
+        }
+
+        Console.WriteLine("\n== Desktop-Screenshot: Profil und Schwarzbild ==");
+        var sep = Path.DirectorySeparatorChar;
+        var anwender = Path.Combine(root, "Users", "Anwender");
+        Check("gleiches Profil wird erkannt (Gross-/Kleinschreibung, Trennzeichen)",
+            ProfileExcludes.SameFolder(anwender, anwender.ToUpperInvariant() + sep));
+        Check("anderes Profil wird erkannt",
+            !ProfileExcludes.SameFolder(anwender, Path.Combine(root, "Users", "Techniker")));
+        Check("Unterordner ist NICHT dasselbe Profil",
+            !ProfileExcludes.SameFolder(anwender, Path.Combine(anwender, "Desktop")));
+        Check("Max ist nicht Maximilian",
+            !ProfileExcludes.SameFolder(Path.Combine(root, "Users", "Max"), Path.Combine(root, "Users", "Maximilian")));
+        Check("leere Angabe ist kein Profil", !ProfileExcludes.SameFolder("", anwender));
+
+        Check("schwarzes Bild wird erkannt", DesktopScreenshot.IsBlank(new byte[4 * 5000]));
+        var fastSchwarz = new byte[4 * 5000]; fastSchwarz[2] = 200;    // ein roter Bildpunkt
+        Check("ein einziger heller Bildpunkt genuegt, wenn er in der Stichprobe liegt",
+            !DesktopScreenshot.IsBlank(fastSchwarz));
+        Check("Rauschen knapp ueber Schwarz zaehlt noch als schwarz",
+            DesktopScreenshot.IsBlank(Enumerable.Repeat((byte)5, 4 * 100).ToArray()));
+        Check("gewoehnliches Bild ist nicht schwarz", !DesktopScreenshot.IsBlank(klein));
+
+        Console.WriteLine("\n== Welche Fenster fuer das Foto beiseitegehen ==");
+        var normal = new DesktopScreenshot.WindowInfo("Chrome_WidgetWin_1", true, false, false, false, false, false, 1600, 900);
+        Check("gewoehnliches Programmfenster: ja", DesktopScreenshot.ShouldHide(normal));
+        Check("schon minimiert: nein (bleibt, wie es ist)", !DesktopScreenshot.ShouldHide(normal with { Minimized = true }));
+        Check("unsichtbar: nein", !DesktopScreenshot.ShouldHide(normal with { Visible = false }));
+        Check("auf einem anderen virtuellen Desktop (cloaked): nein", !DesktopScreenshot.ShouldHide(normal with { Cloaked = true }));
+        Check("Dialog mit Hauptfenster (owned): nein - folgt dem Hauptfenster",
+            !DesktopScreenshot.ShouldHide(normal with { HasOwner = true }));
+        Check("Werkzeugfenster (Tray-Menue): nein", !DesktopScreenshot.ShouldHide(normal with { ToolWindow = true }));
+        Check("Werkzeugfenster mit eigenem Taskleisten-Eintrag: ja",
+            DesktopScreenshot.ShouldHide(normal with { ToolWindow = true, AppWindow = true }));
+        Check("Desktop und Taskleiste: nein",
+            !DesktopScreenshot.ShouldHide(normal with { ClassName = "Progman" })
+            && !DesktopScreenshot.ShouldHide(normal with { ClassName = "Shell_TrayWnd" })
+            && !DesktopScreenshot.ShouldHide(normal with { ClassName = "shell_secondarytraywnd" }));
+        Check("Fenster ohne Flaeche: nein", !DesktopScreenshot.ShouldHide(normal with { Width = 0 }));
+
+        // ================================================================
+        Console.WriteLine("\n== robocopy-Meldungen aus AppData zusammenfassen ==");
+        static string De(string de, string en) => de;
+        static string En(string de, string en) => en;
+        {
+            var s = new RobocopySkips(@"C:\Users\Anwender\AppData");
+            // Genau die Zeilen aus der Meldung des Benutzers (deutsches Windows).
+            var deutsch = new[]
+            {
+                @"2026/11/10 20:15:31 FEHLER 2 (0x00000002) Datei wird kopiert C:\Users\Anwender\AppData\Roaming\discord\Local Storage\leveldb\012884.log",
+                "Das System kann die angegebene Datei nicht finden.",
+                "Fehler: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.",
+            };
+            Check("deutscher Block: alle drei Zeilen bleiben aus dem Protokoll", deutsch.All(s.Swallow));
+            Check("die Datei ist gezaehlt, mit Pfad", s.Count == 1 && s.Paths[0].Path.EndsWith(@"leveldb\012884.log"), s.Count.ToString());
+            Check("der Grund ist zu Fehler 2 gemerkt", s.ReasonByCode.TryGetValue(2, out var g2) && g2 == "Das System kann die angegebene Datei nicht finden.");
+
+            var englisch = new[]
+            {
+                @"2026/11/10 20:15:32 ERROR 32 (0x00000020) Copying File C:\Users\Anwender\AppData\Local\Discord\app.log",
+                "The process cannot access the file because it is being used by another process.",
+                "ERROR: RETRY LIMIT EXCEEDED.",
+            };
+            Check("englischer Block: ebenso", englisch.All(s.Swallow));
+
+            // Bei /MT rutscht die Dateizeile eines anderen Threads dazwischen.
+            Check("Kopfzeile eines weiteren Blocks wird geschluckt",
+                s.Swallow(@"2026/11/10 20:15:33 FEHLER 32 (0x00000020) Datei wird kopiert C:\Users\Anwender\AppData\Roaming\Teams\x.db"));
+            Check("eingerueckte Dateizeile mittendrin bleibt im Protokoll",
+                !s.Swallow("\t    Neue Datei  \t\t  1234\tC:\\Users\\Anwender\\AppData\\Roaming\\y.json"));
+            Check("Grund und Abschluss dahinter werden trotzdem geschluckt",
+                s.Swallow("Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird.")
+                && s.Swallow("FEHLER: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten."));
+            Check("Grund je Fehlerart nur einmal (der erste)", s.ReasonByCode[32].StartsWith("The process cannot"), s.ReasonByCode[32]);
+            Check("Zaehlung je Fehlerart", s.Count == 3 && s.CountByCode[2] == 1 && s.CountByCode[32] == 2);
+            Check("gesperrt/verschwunden: alles erwartbar", s.AllExpected && s.OtherErrors == 0);
+
+            // Ausserhalb von AppData: alles bleibt, wie es war.
+            Check("Fehler in Dokumente bleibt im Protokoll",
+                !s.Swallow(@"2026/11/10 20:15:34 FEHLER 32 (0x00000020) Datei wird kopiert C:\Users\Anwender\Documents\Brief.docx"));
+            Check("samt Grund und Abschluss",
+                !s.Swallow("Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird.")
+                && !s.Swallow("FEHLER: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten."));
+            Check("und zaehlt als anderer Fehler", s.OtherErrors == 1 && s.Count == 3);
+            Check("\"AppDataAlt\" liegt nicht in \"AppData\"",
+                !s.Swallow(@"2026/11/10 20:15:35 FEHLER 2 (0x00000002) Datei wird kopiert C:\Users\Anwender\AppDataAlt\z.txt"));
+
+            Check("gewoehnliche Zeilen bleiben im Protokoll",
+                !s.Swallow("   ROBOCOPY     ::     Robustes Dateikopieren für Windows")
+                && !s.Swallow("Dateien :      1200      1197         0         0         3         0")
+                && !s.Swallow("  Quelle : C:\\Users\\Anwender\\"));
+            Check("Nummer und Hexzahl muessen zusammenpassen",
+                !RobocopySkips.TryParseHeader(@"2026/11/10 20:15:36 FEHLER 5 (0x00000020) Datei wird kopiert C:\Users\Anwender\AppData\a", out _, out _));
+            Check("Kopfzeile wird in jeder Sprache erkannt",
+                RobocopySkips.TryParseHeader(@"2026/11/10 20:15:36 ERREUR 5 (0x00000005) Copie du fichier C:\Users\A\AppData\a b.txt", out var c5, out var p5)
+                && c5 == 5 && p5 == @"C:\Users\A\AppData\a b.txt", p5);
+            Check("Schreibweise des Ordners spielt keine Rolle",
+                new RobocopySkips(@"c:\users\anwender\appdata\").Swallow(@"2026/11/10 20:15:31 FEHLER 2 (0x00000002) Datei wird kopiert C:\Users\Anwender\AppData\x"));
+
+            // Zugriff verweigert ist KEIN normaler AppData-Fall.
+            s.Swallow(@"2026/11/10 20:15:37 FEHLER 5 (0x00000005) Datei wird kopiert C:\Users\Anwender\AppData\Local\geschuetzt.dat");
+            s.Swallow("Zugriff verweigert");
+            s.Swallow("FEHLER: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.");
+            Check("Zugriff verweigert macht es zum echten Fehler", !s.AllExpected);
+
+            var kurz = s.Summary("AppData", @"G:\DASI_PC\AppData-nicht-gesichert.txt", De);
+            Check("Zusammenfassung: Kopfzeile mit Anzahl", kurz.StartsWith("[WARNUNG] AppData: 4 Dateien nicht gesichert"), kurz.Split('\n')[0]);
+            Check("Zusammenfassung: eine Zeile je Fehlerart, haeufigste zuerst",
+                kurz.Split('\n').Length == 5 && kurz.Split('\n')[1].Contains("2 × Fehler 32"), kurz);
+            Check("Zusammenfassung: nennt die Liste", kurz.Contains(@"G:\DASI_PC\AppData-nicht-gesichert.txt"));
+            Check("Zusammenfassung zaehlt nicht als Fehlschlag", !ActionOutcome.IsErrorLine(kurz));
+            Check("englisch: [WARNING]", s.Summary("AppData", null, En).StartsWith("[WARNING] AppData: 4 files not backed up"));
+
+            var liste = s.ListText("AppData", new DateTime(2026, 11, 10, 20, 15, 0), De);
+            Check("Liste: jede Datei steht drin",
+                s.Paths.All(p => liste.Contains(p.Path)) && liste.Contains(@"leveldb\012884.log"));
+            Check("Liste: nach Fehlerart, mit Grund und Anzahl",
+                liste.Contains("Fehler 32 - The process cannot access the file") && liste.Contains("(2 Dateien)"));
+            Check("Liste: Datum und Quelle", liste.Contains("10.11.2026 20:15") && liste.Contains(@"C:\Users\Anwender\AppData"));
+
+            // Viele Dateien: Tausendertrennung, Obergrenze fuer die gemerkten Pfade.
+            var viele = new RobocopySkips(@"C:\U\AppData");
+            for (int i = 0; i < 1234; i++)
+            {
+                viele.Swallow($@"2026/11/10 20:16:00 FEHLER 32 (0x00000020) Datei wird kopiert C:\U\AppData\f{i}.log");
+                viele.Swallow("Der Prozess kann nicht auf die Datei zugreifen.");
+                viele.Swallow("FEHLER: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.");
+            }
+            Check("1.234 Dateien: deutsch mit Punkt", viele.Summary("AppData", null, De).Contains("1.234 Dateien"));
+            Check("1,234 files: englisch mit Komma", viele.Summary("AppData", null, En).Contains("1,234 files"));
+        }
+
+        // ================================================================
         // Austauschskript WIRKLICH ausfuehren - nur unter Windows moeglich
         // ================================================================
         if (OperatingSystem.IsWindows())
@@ -357,6 +721,150 @@ internal static class Program
                     $"ExitCode {proc.ExitCode}: {ausgabe.Trim().Replace("\r\n", " | ")}");
             }
             UpdateService.CleanUp();
+        }
+
+        // ================================================================
+        // Desktop-Screenshot WIRKLICH aufnehmen - nur unter Windows moeglich
+        // ================================================================
+        if (OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("\n== Bildschirm echt aufnehmen ==");
+            ScreenCapture? aufnahme = null;
+            try { aufnahme = DesktopScreenshot.CaptureVirtualScreen(); }
+            catch (Exception ex) { Check("Aufnahme gelingt", false, ex.Message); }
+            if (aufnahme is not null)
+            {
+                Console.WriteLine($"         {aufnahme.Width} x {aufnahme.Height} ab ({aufnahme.Left},{aufnahme.Top}), {aufnahme.Monitors} Bildschirm(e)");
+                Check("Aufnahme liefert Masse", aufnahme.Width > 0 && aufnahme.Height > 0);
+                Check("Puffer passt zu den Massen", aufnahme.Bgra.Length == (long)aufnahme.Width * aufnahme.Height * 4);
+
+                foreach (var a in aufnahme.Areas)
+                    Console.WriteLine($"         Monitor {a.Device}: {a.Width} x {a.Height} ab ({a.Left},{a.Top}){(a.Primary ? ", Hauptbildschirm" : "")}");
+                Check("Monitore werden einzeln erkannt", aufnahme.Areas.Count >= 1 && aufnahme.Areas.Count(a => a.Primary) == 1);
+                Check("jeder Monitor liegt im aufgenommenen Bild",
+                    aufnahme.Areas.All(a => a.Left >= aufnahme.Left && a.Top >= aufnahme.Top
+                                            && a.Left + a.Width <= aufnahme.Left + aufnahme.Width
+                                            && a.Top + a.Height <= aufnahme.Top + aufnahme.Height));
+                var plan = DesktopScreenshot.PlanImages(aufnahme.Areas);
+                Check("ein Bild pro Monitor geplant", plan.Count == aufnahme.Areas.Count,
+                    string.Join(", ", plan.Select(p => p.FileName)));
+
+                // Wie im Programm: je Monitor ausschneiden und als PNG speichern.
+                var bildOrdner = Path.Combine(root, "Desktop-Screenshot");
+                Directory.CreateDirectory(bildOrdner);
+                bool monitorBilderOk = true;
+                foreach (var mon in plan)
+                {
+                    var teil = DesktopScreenshot.Crop(aufnahme.Bgra, aufnahme.Width, aufnahme.Height,
+                        mon.Area.Left - aufnahme.Left, mon.Area.Top - aufnahme.Top, mon.Area.Width, mon.Area.Height, out var tw, out var th);
+                    var pngDatei = Path.Combine(bildOrdner, mon.FileName);
+                    using (var fs = File.Create(pngDatei)) PngWriter.WriteBgra(fs, tw, th, teil);
+                    var gelesen = DecodeOwnPng(File.ReadAllBytes(pngDatei), out var dw, out var dh);
+                    bool stichprobe = dw == mon.Area.Width && dh == mon.Area.Height;
+                    for (long i = 0; stichprobe && i < (long)dw * dh; i += 997)
+                        stichprobe = gelesen[i * 3] == teil[i * 4 + 2] && gelesen[i * 3 + 2] == teil[i * 4];
+                    Console.WriteLine($"         {mon.FileName}: {dw} x {dh}, {new FileInfo(pngDatei).Length / 1024} KB");
+                    monitorBilderOk &= stichprobe;
+                }
+                Check("je Monitor als PNG gespeichert, in Monitorgroesse und verlustfrei", monitorBilderOk);
+                Check("beim Wiederherstellen werden genau diese Bilder gefunden",
+                    DesktopScreenshot.FindImages(bildOrdner).Select(Path.GetFileName).SequenceEqual(plan.Select(p => p.FileName)));
+            }
+
+            var sitzung = DesktopScreenshot.GetInteractiveUser();
+            Console.WriteLine($"         angemeldet: {sitzung?.Name ?? "(unbekannt)"}, Profil: {sitzung?.ProfilePath ?? "(unbekannt)"}");
+            Check("angemeldeter Benutzer wird ermittelt (oder sauber null)", true);
+
+            Console.WriteLine("\n== Fenster beiseite und zurueck (echt) ==");
+            System.Diagnostics.Process? editor = null;
+            try { editor = System.Diagnostics.Process.Start("notepad.exe"); } catch (Exception ex) { Console.WriteLine($"         Editor nicht startbar: {ex.Message}"); }
+            var hEditor = IntPtr.Zero;
+            for (int i = 0; editor is not null && i < 50 && hEditor == IntPtr.Zero; i++)
+            {
+                System.Threading.Thread.Sleep(200);
+                try { editor.Refresh(); hEditor = editor.MainWindowHandle; } catch { }
+            }
+            if (hEditor == IntPtr.Zero)
+            {
+                Console.WriteLine("         (kein Editor-Fenster auf diesem Laeufer - Test uebersprungen)");
+            }
+            else
+            {
+                MaximizeForTest(hEditor);
+                System.Threading.Thread.Sleep(800);
+                Check("vorher: Editor maximiert", DesktopScreenshot.State(hEditor).Maximiert);
+                var beiseite = DesktopScreenshot.HideWindows();
+                System.Threading.Thread.Sleep(1200);
+                Console.WriteLine($"         beiseitegelegt: {beiseite.TopToBottom.Count} Fenster");
+                Check("der Editor ist unter den beiseitegelegten Fenstern", beiseite.TopToBottom.Contains(hEditor));
+                Check("waehrend der Aufnahme ist der Editor minimiert", DesktopScreenshot.State(hEditor).Minimiert);
+                var uhrZurueck = System.Diagnostics.Stopwatch.StartNew();
+                DesktopScreenshot.RestoreWindows(beiseite);
+                uhrZurueck.Stop();
+                System.Threading.Thread.Sleep(500);
+                var zustandNachher = DesktopScreenshot.State(hEditor);
+                Check("danach ist er wieder da (nicht minimiert)", !zustandNachher.Minimiert);
+                Check("und wieder maximiert, wie vorher", zustandNachher.Maximiert);
+                Check("zurueckholen kehrt zuegig zurueck", uhrZurueck.Elapsed.TotalSeconds < 12, $"{uhrZurueck.Elapsed.TotalSeconds:F1} s");
+            }
+            try { editor?.Kill(); } catch { }
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("\n== echtes robocopy: gesperrte Datei in AppData ==");
+            var roboProfil = Path.Combine(root, "robo", "Anwender");
+            var appdata = Path.Combine(roboProfil, "AppData");
+            var leveldb = Path.Combine(appdata, "Roaming", "discord", "Local Storage", "leveldb");
+            Directory.CreateDirectory(leveldb);
+            File.WriteAllText(Path.Combine(leveldb, "000003.log"), "frei");
+            File.WriteAllText(Path.Combine(appdata, "einstellungen.json"), "{}");
+            var gesperrt = Path.Combine(leveldb, "012884.log");
+            File.WriteAllText(gesperrt, "gesperrt");
+            var zielRobo = Path.Combine(root, "robo", "Sicherung", "AppData");
+
+            using (var sperre = new FileStream(gesperrt, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                // Dieselben Schalter wie die AppData-Sicherung des Programms.
+                var psiRobo = new System.Diagnostics.ProcessStartInfo("robocopy.exe",
+                    $"\"{appdata}\" \"{zielRobo}\" /MIR /ZB /SL /R:0 /W:0 /MT:32 /XJ /XA:SH /NP /NDL")
+                {
+                    RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true,
+                };
+                var skips = new RobocopySkips(appdata);
+                var durch = new System.Collections.Generic.List<string>();
+                using var robo = System.Diagnostics.Process.Start(psiRobo)!;
+                string? zeile;
+                while ((zeile = robo.StandardOutput.ReadLine()) is not null)
+                {
+                    if (string.IsNullOrWhiteSpace(zeile)) continue;   // wie im Programm
+                    if (!skips.Swallow(zeile)) durch.Add(zeile);
+                }
+                robo.WaitForExit();
+                Console.WriteLine($"         robocopy endete mit {robo.ExitCode}, geschluckt: {skips.Count} Datei(en), "
+                                  + $"Fehlerart(en): {string.Join(", ", skips.CountByCode.Keys)}");
+
+                Check("robocopy meldet den Fehlschlag (Bit 8)", (robo.ExitCode & 8) != 0, robo.ExitCode.ToString());
+                Check("genau die gesperrte Datei ist erfasst", skips.Count == 1 && skips.Paths[0].Path.EndsWith("012884.log"),
+                      string.Join(" | ", skips.Paths.Select(p => p.Path)));
+                Check("als Fehler 32 (gesperrt), also erwartbar", skips.CountByCode.ContainsKey(32) && skips.AllExpected);
+                Check("mit dem Grund aus robocopy", skips.ReasonByCode.TryGetValue(32, out var grund) && grund.Length > 10, grund);
+                foreach (var z in durch.Where(z => z.Contains("012884")))
+                    Console.WriteLine($"         uebrig: [{z.Replace("\t", "\\t")}]");
+                // Eingerueckte Dateizeilen ("New File ... 012884.log") schreibt robocopy
+                // fuer JEDE Datei vor dem Kopierversuch; das Programm zaehlt sie im
+                // Normalfall nur (Fortschritt) und schreibt sie nicht ins Protokoll.
+                var meldungen = durch.Where(z => z[0] != ' ' && z[0] != '\t').ToList();
+                Check("im Protokoll steht keine Meldung mehr dazu",
+                      !meldungen.Any(z => z.Contains("012884.log") || z.Contains("0x00000020")
+                                          || z.Contains("RETRY", StringComparison.OrdinalIgnoreCase)
+                                          || z.Contains("Wiederholungsversuch", StringComparison.OrdinalIgnoreCase)),
+                      string.Join(" | ", meldungen.Where(z => z.Contains("012884") || z.Contains("0x") || z.Contains("RETRY"))));
+                Check("kein anderer Fehler", skips.OtherErrors == 0);
+                Check("die freien Dateien sind gesichert",
+                      File.Exists(Path.Combine(zielRobo, "einstellungen.json"))
+                      && File.Exists(Path.Combine(zielRobo, "Roaming", "discord", "Local Storage", "leveldb", "000003.log")));
+            }
         }
 
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");

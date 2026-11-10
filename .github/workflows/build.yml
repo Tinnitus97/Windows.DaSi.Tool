@@ -29,7 +29,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - name: Prüfungen ausführen
         run: dotnet run --project tests/DaSiTests -c Release
@@ -44,7 +44,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       # Dieselben Prüfungen wie unter Linux - und zusätzlich die, die nur hier
       # gehen: Das Austauschskript der Selbstaktualisierung wird wirklich von

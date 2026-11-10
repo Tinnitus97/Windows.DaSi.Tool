@@ -1,14 +1,14 @@
 #Requires -Version 5.1
 <#
 ======================================================================
- Build-Skript fuer das Windows DaSi Tool (Avalonia / .NET 10)
+ Build-Skript fuer das Windows DaSi Tool (Avalonia / .NET 11)
 ----------------------------------------------------------------------
  Erzeugt eine native Windows-EXE aus dem C#/Avalonia-Projekt.
 
  AUFRUF (normale PowerShell, KEINE Admin-Rechte noetig):
 
    .\build.ps1                          # Standard: self-contained SingleFile-EXE
-   .\build.ps1 -Mode framework          # kleine EXE, benoetigt .NET 10 Runtime
+   .\build.ps1 -Mode framework          # kleine EXE, benoetigt .NET 11 Runtime
    .\build.ps1 -Mode selfcontained      # explizit self-contained (= Standard)
    .\build.ps1 -Clean                   # vorher bin/ und obj/ loeschen
    .\build.ps1 -Sign -PfxPath cert.pfx  # nach dem Build signieren (PFX)
@@ -21,7 +21,7 @@
 param(
     # Publish-Variante:
     #   selfcontained = eigenstaendige EXE inkl. .NET (groesser, laeuft ueberall)
-    #   framework     = kleine EXE, benoetigt installiertes .NET 10 Desktop Runtime
+    #   framework     = kleine EXE, benoetigt installiertes .NET 11 Desktop Runtime
     [ValidateSet('selfcontained', 'framework')]
     [string]$Mode = 'selfcontained',
 
@@ -55,26 +55,26 @@ if (-not $projectFile) {
 Write-Step "Projekt: $($projectFile.Name)"
 
 # ---------------------------------------------------------------------
-# 2. .NET SDK pruefen (mind. 10.0)
+# 2. .NET SDK pruefen (11.0)
 # ---------------------------------------------------------------------
 Write-Step "Pruefe .NET SDK..."
 $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
 if (-not $dotnet) {
     Fail @"
 .NET SDK wurde nicht gefunden.
-Bitte das .NET 10 SDK installieren: https://dotnet.microsoft.com/download/dotnet/10.0
+Bitte das .NET 11 SDK installieren: https://dotnet.microsoft.com/download/dotnet/11.0
 (Nach der Installation eine neue PowerShell oeffnen, damit 'dotnet' im PATH ist.)
 "@
 }
 
 $sdks = (& dotnet --list-sdks) 2>$null
-$has10 = $sdks | Where-Object { $_ -match '^\s*10\.' }
-if (-not $has10) {
+$hasSdk = $sdks | Where-Object { $_ -match '^\s*11\.' }
+if (-not $hasSdk) {
     Write-Warn "Installierte SDKs:"
     $sdks | ForEach-Object { Write-Host "    $_" }
-    Fail ".NET 10 SDK nicht gefunden. Bitte .NET 10 SDK installieren: https://dotnet.microsoft.com/download/dotnet/10.0"
+    Fail ".NET 11 SDK nicht gefunden. Bitte .NET 11 SDK installieren: https://dotnet.microsoft.com/download/dotnet/11.0"
 }
-Write-Ok "SDK vorhanden: $(($has10 | Select-Object -First 1).Trim())"
+Write-Ok "SDK vorhanden: $(($hasSdk | Select-Object -First 1).Trim())"
 
 # ---------------------------------------------------------------------
 # 3b. Paketquellen pruefen (Ursache von NU1100 = keine nuget.org-Quelle)
@@ -109,38 +109,61 @@ if ($Clean) {
 
 # ---------------------------------------------------------------------
 # 4. Restore
+#    Manche .NET-Installationen koennen ihre Workloads nicht aufloesen und
+#    brechen schon hier ab:
+#      MSB4236: Das angegebene SDK
+#      "Microsoft.NET.SDK.WorkloadAutoImportPropsLocator" wurde nicht gefunden.
+#    Dieses Projekt braucht keine Workloads; ohne die Workload-Aufloesung
+#    entsteht bytegenau dieselbe EXE. Tritt genau dieser Fehler auf, wird sie
+#    deshalb fuer Restore und Publish abgeschaltet - nur in diesem Lauf, die
+#    Variable wird danach in jedem Fall (auch bei Abbruch) zurueckgesetzt.
 # ---------------------------------------------------------------------
-Write-Step "Stelle NuGet-Pakete wieder her (restore)..."
-& dotnet restore $projectFile.FullName
-if ($LASTEXITCODE -ne 0) { Fail "dotnet restore fehlgeschlagen." }
-Write-Ok "Restore abgeschlossen."
+$workloadVorher = $env:MSBuildEnableWorkloadResolver
+try {
+    Write-Step "Stelle NuGet-Pakete wieder her (restore)..."
+    & dotnet restore $projectFile.FullName | Tee-Object -Variable restoreAusgabe
+    if ($LASTEXITCODE -ne 0 -and ($restoreAusgabe -match 'WorkloadAutoImportPropsLocator')) {
+        Write-Warn "Die .NET-Installation kann ihre Workloads nicht aufloesen (MSB4236)."
+        Write-Warn "Dieses Projekt braucht keine - zweiter Versuch ohne Workload-Aufloesung..."
+        $env:MSBuildEnableWorkloadResolver = 'false'
+        & dotnet restore $projectFile.FullName
+        if ($LASTEXITCODE -eq 0) {
+            Write-Warn "Ohne Workload-Aufloesung geklappt; die EXE ist dieselbe. Dauerhaft beheben: siehe README, 'Selbst bauen'."
+        }
+    }
+    if ($LASTEXITCODE -ne 0) { Fail "dotnet restore fehlgeschlagen." }
+    Write-Ok "Restore abgeschlossen."
 
-# ---------------------------------------------------------------------
-# 5. Publish
-# ---------------------------------------------------------------------
-$selfContained = ($Mode -eq 'selfcontained')
+    # -----------------------------------------------------------------
+    # 5. Publish
+    # -----------------------------------------------------------------
+    $selfContained = ($Mode -eq 'selfcontained')
 
-$publishArgs = @(
-    'publish', $projectFile.FullName,
-    '-c', $Configuration,
-    '-r', $Runtime,
-    '-o', $OutputDir,
-    "--self-contained", $selfContained.ToString().ToLower(),
-    "-p:PublishSingleFile=true",
-    "-p:IncludeNativeLibrariesForSelfExtract=true",
-    "-p:DebugType=none",
-    "-p:DebugSymbols=false"
-)
-# Kompression der eingebetteten Laufzeit lohnt nur im self-contained-Modus
-# (verkleinert die EXE deutlich; erster Start dauert minimal laenger).
-if ($selfContained) {
-    $publishArgs += "-p:EnableCompressionInSingleFile=true"
+    $publishArgs = @(
+        'publish', $projectFile.FullName,
+        '-c', $Configuration,
+        '-r', $Runtime,
+        '-o', $OutputDir,
+        "--self-contained", $selfContained.ToString().ToLower(),
+        "-p:PublishSingleFile=true",
+        "-p:IncludeNativeLibrariesForSelfExtract=true",
+        "-p:DebugType=none",
+        "-p:DebugSymbols=false"
+    )
+    # Kompression der eingebetteten Laufzeit lohnt nur im self-contained-Modus
+    # (verkleinert die EXE deutlich; erster Start dauert minimal laenger).
+    if ($selfContained) {
+        $publishArgs += "-p:EnableCompressionInSingleFile=true"
+    }
+
+    Write-Step "Kompiliere ($Mode, $Runtime, $Configuration)..."
+    Write-Host "    dotnet $($publishArgs -join ' ')" -ForegroundColor DarkGray
+    & dotnet @publishArgs
+    if ($LASTEXITCODE -ne 0) { Fail "dotnet publish fehlgeschlagen." }
+} finally {
+    # Zuweisen von $null entfernt die Variable wieder ganz.
+    $env:MSBuildEnableWorkloadResolver = $workloadVorher
 }
-
-Write-Step "Kompiliere ($Mode, $Runtime, $Configuration)..."
-Write-Host "    dotnet $($publishArgs -join ' ')" -ForegroundColor DarkGray
-& dotnet @publishArgs
-if ($LASTEXITCODE -ne 0) { Fail "dotnet publish fehlgeschlagen." }
 
 # ---------------------------------------------------------------------
 # 5b. Aufraeumen: native Debug-Symbole (.pdb) entfernen
@@ -208,7 +231,7 @@ Write-Host ""
 Write-Ok "Fertig."
 Write-Host "Ausgabe: $exePath" -ForegroundColor Green
 if ($Mode -eq 'framework') {
-    Write-Warn "Framework-abhaengig: Zielrechner benoetigt das .NET 10 Desktop Runtime."
+    Write-Warn "Framework-abhaengig: Zielrechner benoetigt das .NET 11 Desktop Runtime."
 } else {
     Write-Host "Self-contained: laeuft auch ohne installiertes .NET." -ForegroundColor DarkGray
 }
