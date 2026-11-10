@@ -841,30 +841,57 @@ public sealed class BackupService
                         "[WARNING] The picture is black - was the screen locked or a UAC prompt open? It is saved anyway."));
 
         var ordner = Path.Combine(BackupPath, DesktopScreenshot.FolderName);
-        var ziel = Path.Combine(ordner, DesktopScreenshot.FileName);
-        // Erst vollstaendig in eine Zwischendatei, dann an die Stelle des alten
-        // Fotos - ein Abbruch beim Schreiben hinterlaesst kein halbes Bild.
-        var neu = ziel + ".neu";
+        var plan = DesktopScreenshot.PlanImages(bild.Areas);
+        var gespeichert = new List<string>();
+        string? neu = null;
         try
         {
             Directory.CreateDirectory(ordner);
-            await Task.Run(() =>
+            foreach (var m in plan)
             {
-                using (var datei = File.Create(neu)) PngWriter.WriteBgra(datei, bild.Width, bild.Height, bild.Bgra);
-                File.Move(neu, ziel, overwrite: true);
-            });
+                var ziel = Path.Combine(ordner, m.FileName);
+                // Erst vollstaendig in eine Zwischendatei, dann an ihren Platz -
+                // ein Abbruch beim Schreiben hinterlaesst kein halbes Bild.
+                neu = ziel + ".neu";
+                var pfad = neu;
+                await Task.Run(() =>
+                {
+                    var teil = DesktopScreenshot.Crop(bild.Bgra, bild.Width, bild.Height,
+                        m.Area.Left - bild.Left, m.Area.Top - bild.Top, m.Area.Width, m.Area.Height,
+                        out var w, out var h);
+                    using (var datei = File.Create(pfad)) PngWriter.WriteBgra(datei, w, h, teil);
+                    File.Move(pfad, ziel, overwrite: true);
+                });
+                neu = null;
+                gespeichert.Add(Loc.Tr(
+                    $"    {m.FileName} ({m.Area.Width} × {m.Area.Height} Pixel{(m.Area.Primary && plan.Count > 1 ? ", Hauptbildschirm" : "")})",
+                    $"    {m.FileName} ({m.Area.Width} × {m.Area.Height} pixels{(m.Area.Primary && plan.Count > 1 ? ", main screen" : "")})"));
+            }
+
+            // Bilder einer frueheren Sicherung in denselben Ordner ("Eigener
+            // Ordner" aus) gehen weg - erst jetzt, da die neuen sicher liegen.
+            // Sonst laege bei inzwischen weniger Monitoren ein altes Bild daneben.
+            var neueNamen = plan.Select(m => m.FileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var alt in DesktopScreenshot.FindImages(ordner)
+                         .Append(Path.Combine(ordner, DesktopScreenshot.LegacyFileName)))
+            {
+                if (neueNamen.Contains(Path.GetFileName(alt))) continue;
+                try { if (File.Exists(alt)) File.Delete(alt); } catch { /* bleibt eben liegen */ }
+            }
         }
         catch (Exception ex)
         {
-            try { if (File.Exists(neu)) File.Delete(neu); } catch { /* egal */ }
+            try { if (neu != null && File.Exists(neu)) File.Delete(neu); } catch { /* egal */ }
             _log(Loc.Tr($"[FEHLER] Desktop-Screenshot konnte nicht gespeichert werden: {ex.Message}",
                         $"[ERROR] Desktop screenshot could not be saved: {ex.Message}"));
             return;
         }
 
-        var monitore = bild.Monitors == 1 ? Loc.Tr("1 Bildschirm", "1 screen") : Loc.Tr($"{bild.Monitors} Bildschirme", $"{bild.Monitors} screens");
-        _log(Loc.Tr($"[ERFOLG] Desktop-Screenshot gespeichert: {ziel} ({bild.Width} × {bild.Height} Pixel, {monitore}).",
-                    $"[SUCCESS] Desktop screenshot saved: {ziel} ({bild.Width} × {bild.Height} pixels, {monitore})."));
+        var kopf = plan.Count == 1
+            ? Loc.Tr($"[ERFOLG] Desktop-Screenshot gespeichert in {ordner}:", $"[SUCCESS] Desktop screenshot saved in {ordner}:")
+            : Loc.Tr($"[ERFOLG] Desktop-Screenshot gespeichert, ein Bild pro Bildschirm ({plan.Count}) in {ordner}:",
+                     $"[SUCCESS] Desktop screenshot saved, one picture per screen ({plan.Count}) in {ordner}:");
+        _log(kopf + "\n" + string.Join("\n", gespeichert));
     }
 
     /// <summary>
@@ -875,30 +902,39 @@ public sealed class BackupService
     /// </summary>
     public Task ShowDesktopScreenshot()
     {
-        var datei = Path.Combine(BackupPath, DesktopScreenshot.FolderName, DesktopScreenshot.FileName);
-        if (!File.Exists(datei))
+        var ordner = Path.Combine(BackupPath, DesktopScreenshot.FolderName);
+        var bilder = DesktopScreenshot.FindImages(ordner);
+        if (bilder.Count == 0)
         {
-            _log(Loc.Tr($"[FEHLER] In der Sicherung liegt kein Desktop-Screenshot: {datei}",
-                        $"[ERROR] The backup contains no desktop screenshot: {datei}"));
+            _log(Loc.Tr($"[FEHLER] In der Sicherung liegt kein Desktop-Screenshot: {ordner}",
+                        $"[ERROR] The backup contains no desktop screenshot: {ordner}"));
             return Task.CompletedTask;
         }
 
-        try
+        // Jedes Bild in seinem eigenen Fenster - so laesst sich jedes auf
+        // "seinen" Monitor ziehen und die Symbole daneben anordnen.
+        int offen = 0;
+        foreach (var datei in bilder)
         {
-            // Ueber explorer.exe statt direkt: Das Tool laeuft mit
-            // Administratorrechten, und die Fotos-App startet nicht mit
-            // erhoehten Rechten. explorer.exe gibt die Datei an den laufenden
-            // Explorer des Benutzers weiter, der sie mit normalen Rechten oeffnet.
-            using var _ = System.Diagnostics.Process.Start(
-                new System.Diagnostics.ProcessStartInfo("explorer.exe", Quote(datei)) { UseShellExecute = false });
-            _log(Loc.Tr($"[ERFOLG] Desktop-Screenshot geöffnet: {datei} - daran lassen sich die Symbole wieder anordnen.",
-                        $"[SUCCESS] Desktop screenshot opened: {datei} - use it to arrange the icons again."));
+            try
+            {
+                // Ueber explorer.exe statt direkt: Das Tool laeuft mit
+                // Administratorrechten, und die Fotos-App startet nicht mit
+                // erhoehten Rechten. explorer.exe gibt die Datei an den laufenden
+                // Explorer des Benutzers weiter, der sie mit normalen Rechten oeffnet.
+                using var _ = System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo("explorer.exe", Quote(datei)) { UseShellExecute = false });
+                offen++;
+            }
+            catch (Exception ex)
+            {
+                _log(Loc.Tr($"[FEHLER] Desktop-Screenshot konnte nicht geöffnet werden ({ex.Message}). Er liegt hier: {datei}",
+                            $"[ERROR] Desktop screenshot could not be opened ({ex.Message}). It is located here: {datei}"));
+            }
         }
-        catch (Exception ex)
-        {
-            _log(Loc.Tr($"[FEHLER] Desktop-Screenshot konnte nicht geöffnet werden ({ex.Message}). Er liegt hier: {datei}",
-                        $"[ERROR] Desktop screenshot could not be opened ({ex.Message}). It is located here: {datei}"));
-        }
+        if (offen > 0)
+            _log(Loc.Tr($"[ERFOLG] Desktop-Screenshot geöffnet ({offen} {(offen == 1 ? "Bild" : "Bilder")}): {ordner} - daran lassen sich die Symbole wieder anordnen.",
+                        $"[SUCCESS] Desktop screenshot opened ({offen} {(offen == 1 ? "picture" : "pictures")}): {ordner} - use it to arrange the icons again."));
         return Task.CompletedTask;
     }
 

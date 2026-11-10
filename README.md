@@ -112,17 +112,26 @@ ja nicht synchronisiert.
 ### Desktop-Screenshot: Wo lag was?
 
 Nach einer Neuinstallation ist der Desktop leer, und kaum jemand weiß noch, wo seine
-Verknüpfungen lagen. Auf Wunsch fotografiert das Tool deshalb den Desktop — **alle
-Monitore in einem Bild**, in ihrer echten Anordnung und in voller Auflösung, auch bei
-skalierten Bildschirmen. Damit die Symbole frei liegen, legt es dafür für einen Moment
+Verknüpfungen lagen. Auf Wunsch fotografiert das Tool deshalb den Desktop, und zwar
+**ein Bild pro Monitor**: alle im selben Moment, jedes in Größe und voller Auflösung
+seines Monitors, auch bei skalierten Bildschirmen. Damit die Symbole frei liegen, legt es dafür für einen Moment
 alle Programmfenster beiseite und holt sie danach **genau so zurück, wie sie waren**:
 in derselben Reihenfolge, maximierte wieder maximiert, das zuletzt aktive Fenster
 wieder vorn.
 
-Das Foto landet als `Desktop-Screenshot\Desktop.png` im Backup-Ziel. Beim
-**Wiederherstellen** öffnet derselbe Punkt dieses Foto, damit sich die Symbole danach
-von Hand anordnen lassen — automatisch zurückstellen lässt sich die Anordnung nicht
-verlässlich, der Explorer überschreibt sie mit seinem eigenen Stand.
+Die Bilder landen im Ordner `Desktop-Screenshot` im Backup-Ziel:
+
+| Monitore | Bilder |
+| --- | --- |
+| einer | `Bildschirm-1.png` |
+| mehrere | `Bildschirm-1-Hauptbildschirm.png`, `Bildschirm-2.png` … |
+
+Die Nummern folgen Windows (`\\.\DISPLAY2` → `Bildschirm-2.png`) und stimmen meist mit
+denen unter *Einstellungen → Anzeige → Identifizieren* überein. Beim
+**Wiederherstellen** öffnet derselbe Punkt jedes Bild in einem eigenen Fenster. So
+lässt sich jedes auf „seinen“ Monitor ziehen und die Symbole von Hand daneben
+anordnen. Automatisch zurückstellen lässt sich die Anordnung nicht verlässlich, weil
+der Explorer sie mit seinem eigenen Stand überschreibt.
 
 > Fotografiert wird, was auf dem Bildschirm zu sehen ist. Ist ein anderer Benutzer
 > angemeldet als der, dessen Profil gesichert wird — etwa der Techniker —, macht das

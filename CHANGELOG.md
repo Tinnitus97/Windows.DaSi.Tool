@@ -12,13 +12,16 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 ### Hinzugefügt
 
 - **Desktop-Screenshot.** Beim Sichern fotografiert das Tool den Desktop samt
-  Symbolen — alle Monitore in einem Bild, in ihrer echten Anordnung und in voller
-  Auflösung. Für die Aufnahme werden alle Programmfenster kurz beiseitegelegt und
-  danach genau so zurückgeholt, wie sie waren — in derselben Reihenfolge, maximierte
-  wieder maximiert, das aktive Fenster wieder vorn. Beim Wiederherstellen öffnet derselbe Punkt das Foto, damit
-  sich die Symbole von Hand wieder anordnen lassen. Ist ein anderer Benutzer
-  angemeldet als der des gesicherten Profils, wird kein Foto gemacht — es zeigte
-  den falschen Desktop.
+  Symbolen, **ein Bild pro Monitor** (`Bildschirm-1.png`, `Bildschirm-2.png` …).
+  Jedes Bild hat genau die Größe und volle Auflösung seines Monitors, auch bei
+  Skalierung. Alle Monitore werden im selben Moment aufgenommen, die Nummern folgen
+  Windows, und bei mehreren Monitoren trägt das Bild des Hauptbildschirms das im Namen.
+  Für die Aufnahme werden alle Programmfenster kurz beiseitegelegt und danach genau so
+  zurückgeholt, wie sie waren: in derselben Reihenfolge, maximierte wieder maximiert,
+  das aktive Fenster wieder vorn. Beim Wiederherstellen öffnet derselbe Punkt jedes
+  Bild in einem eigenen Fenster, damit sich die Symbole von Hand wieder anordnen
+  lassen. Ist ein anderer Benutzer angemeldet als der des gesicherten Profils, wird
+  kein Foto gemacht, denn es zeigte den falschen Desktop.
 - **Eigener Ordner je Sicherung** (abschaltbar, Vorgabe: an). Als Ziel genügt das
   Laufwerk: Nach der Auswahl von `G:\` zeigt das Feld sofort
   `G:\DASI_<Rechnername>_TT_MM_JJJJ_HH_MM`, und genau dorthin wird gesichert.

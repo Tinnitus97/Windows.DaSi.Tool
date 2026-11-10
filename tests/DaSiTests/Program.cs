@@ -436,6 +436,83 @@ internal static class Program
         try { PngWriter.EncodeBgra(3, 2, new byte[10]); } catch (ArgumentException) { zuKurz = true; }
         Check("zu wenige Bildpunkte werden abgelehnt", zuKurz);
 
+        Console.WriteLine("\n== Desktop-Screenshot: ein Bild pro Monitor ==");
+        {
+            Check("Windows-Nummer aus dem Geraetenamen", DesktopScreenshot.DisplayNumber(@"\\.\DISPLAY2") == 2
+                && DesktopScreenshot.DisplayNumber(@"\\.\DISPLAY12") == 12 && DesktopScreenshot.DisplayNumber("") == 0
+                && DesktopScreenshot.DisplayNumber("Monitor") == 0);
+
+            // Wie beim Benutzer: 4K-Hauptbildschirm und daneben ein kleinerer.
+            var haupt = new MonitorArea(0, 0, 3840, 2160, true, @"\\.\DISPLAY1");
+            var neben = new MonitorArea(3840, 0, 1920, 1080, false, @"\\.\DISPLAY2");
+            var zwei = DesktopScreenshot.PlanImages(new[] { neben, haupt });
+            Check("zwei Monitore: zwei Bilder, nach Windows-Nummer",
+                zwei.Select(p => p.FileName).SequenceEqual(new[] { "Bildschirm-1-Hauptbildschirm.png", "Bildschirm-2.png" }),
+                string.Join(", ", zwei.Select(p => p.FileName)));
+            Check("jedes Bild hat genau die Groesse seines Monitors",
+                zwei[0].Area.Width == 3840 && zwei[0].Area.Height == 2160 && zwei[1].Area.Width == 1920 && zwei[1].Area.Height == 1080);
+
+            var einer = DesktopScreenshot.PlanImages(new[] { haupt });
+            Check("ein Monitor: Bildschirm-1.png (ohne Zusatz)", einer.Single().FileName == "Bildschirm-1.png", einer.Single().FileName);
+
+            var hauptRechts = DesktopScreenshot.PlanImages(new[]
+            {
+                new MonitorArea(0, 0, 1920, 1080, true, @"\\.\DISPLAY2"),
+                new MonitorArea(-1920, 0, 1920, 1080, false, @"\\.\DISPLAY1"),
+            });
+            Check("Hauptbildschirm muss nicht Nummer 1 sein",
+                hauptRechts.Select(p => p.FileName).SequenceEqual(new[] { "Bildschirm-1.png", "Bildschirm-2-Hauptbildschirm.png" }),
+                string.Join(", ", hauptRechts.Select(p => p.FileName)));
+
+            var ohneNummern = DesktopScreenshot.PlanImages(new[]
+            {
+                new MonitorArea(1920, 0, 1280, 1024, false, ""),
+                new MonitorArea(-1280, 0, 1280, 1024, false, "x"),
+                new MonitorArea(0, 0, 1920, 1080, true, ""),
+            });
+            Check("ohne Windows-Nummern: Hauptbildschirm zuerst, dann von links nach rechts",
+                ohneNummern[0].Area.Primary && ohneNummern[1].Area.Left == -1280 && ohneNummern[2].Area.Left == 1920
+                && ohneNummern[0].FileName == "Bildschirm-1-Hauptbildschirm.png",
+                string.Join(", ", ohneNummern.Select(p => $"{p.FileName}@{p.Area.Left}")));
+            var doppelt = DesktopScreenshot.PlanImages(new[]
+            {
+                new MonitorArea(0, 0, 10, 10, true, @"\\.\DISPLAY1"), new MonitorArea(10, 0, 10, 10, false, @"\\.\DISPLAY1"),
+            });
+            Check("doppelte Nummer: es wird gezaehlt, kein Name doppelt",
+                doppelt.Select(p => p.FileName).Distinct().Count() == 2);
+
+            // Ausschneiden: virtueller Bildschirm 7 x 3 ab (-3, 0); Hauptbildschirm
+            // 4 x 3 bei (0, 0), links daneben ein flacher 3 x 1 bei (-3, 2).
+            int vw = 7, vh = 3;
+            var pix = new byte[vw * vh * 4];
+            for (int i = 0; i < vw * vh; i++) { pix[i * 4] = (byte)i; pix[i * 4 + 1] = (byte)(100 + i); pix[i * 4 + 3] = 255; }
+            var rechts = DesktopScreenshot.Crop(pix, vw, vh, 0 - (-3), 0, 4, 3, out var rw, out var rh);
+            Check("Ausschnitt Hauptbildschirm: 4 x 3", rw == 4 && rh == 3 && rechts.Length == 4 * 3 * 4);
+            Check("Ausschnitt Hauptbildschirm: richtige Bildpunkte",
+                rechts[0] == 3 && rechts[4 * 4] == 10 && rechts[(2 * 4 + 3) * 4] == 20 && rechts[1] == 103);
+            var links = DesktopScreenshot.Crop(pix, vw, vh, 0, 2, 3, 1, out var lw, out var lh);
+            Check("Ausschnitt flacher Monitor: 3 x 1, ohne die Flaeche darueber",
+                lw == 3 && lh == 1 && links[0] == 14 && links[4] == 15 && links[8] == 16);
+            var rand = DesktopScreenshot.Crop(pix, vw, vh, 5, 1, 10, 10, out var randW, out var randH);
+            Check("ueber den Rand Ragendes wird abgeschnitten", randW == 2 && randH == 2 && rand[0] == 12);
+            DesktopScreenshot.Crop(pix, vw, vh, 50, 50, 5, 5, out var nw, out var nh);
+            Check("ganz ausserhalb: leeres Bild", nw == 0 && nh == 0);
+
+            // Wiederherstellen: welche Bilder werden gezeigt?
+            var bo = Path.Combine(root, "bilder-finden");
+            Directory.CreateDirectory(bo);
+            Check("leerer Ordner: kein Bild", DesktopScreenshot.FindImages(bo).Count == 0
+                && DesktopScreenshot.FindImages(Path.Combine(root, "gibt-es-nicht")).Count == 0);
+            File.WriteAllText(Path.Combine(bo, "Desktop.png"), "alt");
+            Check("aeltere Sicherung: das fruehere Gesamtbild", DesktopScreenshot.FindImages(bo).Select(Path.GetFileName).SequenceEqual(new[] { "Desktop.png" }));
+            foreach (var n in new[] { "Bildschirm-10.png", "Bildschirm-2.png", "Bildschirm-1-Hauptbildschirm.png", "Bildschirm-x.png", "Notiz.png" })
+                File.WriteAllText(Path.Combine(bo, n), "");
+            Check("neue Sicherung: nur die Monitorbilder, nach Nummer (1, 2, 10)",
+                DesktopScreenshot.FindImages(bo).Select(Path.GetFileName)
+                    .SequenceEqual(new[] { "Bildschirm-1-Hauptbildschirm.png", "Bildschirm-2.png", "Bildschirm-10.png" }),
+                string.Join(", ", DesktopScreenshot.FindImages(bo).Select(Path.GetFileName)));
+        }
+
         Console.WriteLine("\n== Desktop-Screenshot: Profil und Schwarzbild ==");
         var sep = Path.DirectorySeparatorChar;
         var anwender = Path.Combine(root, "Users", "Anwender");
@@ -661,14 +738,37 @@ internal static class Program
                 Check("Aufnahme liefert Masse", aufnahme.Width > 0 && aufnahme.Height > 0);
                 Check("Puffer passt zu den Massen", aufnahme.Bgra.Length == (long)aufnahme.Width * aufnahme.Height * 4);
 
-                var pngDatei = Path.Combine(root, "Desktop-Screenshot", DesktopScreenshot.FileName);
-                Directory.CreateDirectory(Path.GetDirectoryName(pngDatei)!);
-                using (var fs = File.Create(pngDatei)) PngWriter.WriteBgra(fs, aufnahme.Width, aufnahme.Height, aufnahme.Bgra);
-                var gelesen = DecodeOwnPng(File.ReadAllBytes(pngDatei), out var dw, out var dh);
-                bool stichprobe = dw == aufnahme.Width && dh == aufnahme.Height;
-                for (long i = 0; stichprobe && i < (long)dw * dh; i += 997)
-                    stichprobe = gelesen[i * 3] == aufnahme.Bgra[i * 4 + 2] && gelesen[i * 3 + 2] == aufnahme.Bgra[i * 4];
-                Check("als PNG gespeichert und verlustfrei zurueckgelesen", stichprobe, $"{new FileInfo(pngDatei).Length / 1024} KB");
+                foreach (var a in aufnahme.Areas)
+                    Console.WriteLine($"         Monitor {a.Device}: {a.Width} x {a.Height} ab ({a.Left},{a.Top}){(a.Primary ? ", Hauptbildschirm" : "")}");
+                Check("Monitore werden einzeln erkannt", aufnahme.Areas.Count >= 1 && aufnahme.Areas.Count(a => a.Primary) == 1);
+                Check("jeder Monitor liegt im aufgenommenen Bild",
+                    aufnahme.Areas.All(a => a.Left >= aufnahme.Left && a.Top >= aufnahme.Top
+                                            && a.Left + a.Width <= aufnahme.Left + aufnahme.Width
+                                            && a.Top + a.Height <= aufnahme.Top + aufnahme.Height));
+                var plan = DesktopScreenshot.PlanImages(aufnahme.Areas);
+                Check("ein Bild pro Monitor geplant", plan.Count == aufnahme.Areas.Count,
+                    string.Join(", ", plan.Select(p => p.FileName)));
+
+                // Wie im Programm: je Monitor ausschneiden und als PNG speichern.
+                var bildOrdner = Path.Combine(root, "Desktop-Screenshot");
+                Directory.CreateDirectory(bildOrdner);
+                bool monitorBilderOk = true;
+                foreach (var mon in plan)
+                {
+                    var teil = DesktopScreenshot.Crop(aufnahme.Bgra, aufnahme.Width, aufnahme.Height,
+                        mon.Area.Left - aufnahme.Left, mon.Area.Top - aufnahme.Top, mon.Area.Width, mon.Area.Height, out var tw, out var th);
+                    var pngDatei = Path.Combine(bildOrdner, mon.FileName);
+                    using (var fs = File.Create(pngDatei)) PngWriter.WriteBgra(fs, tw, th, teil);
+                    var gelesen = DecodeOwnPng(File.ReadAllBytes(pngDatei), out var dw, out var dh);
+                    bool stichprobe = dw == mon.Area.Width && dh == mon.Area.Height;
+                    for (long i = 0; stichprobe && i < (long)dw * dh; i += 997)
+                        stichprobe = gelesen[i * 3] == teil[i * 4 + 2] && gelesen[i * 3 + 2] == teil[i * 4];
+                    Console.WriteLine($"         {mon.FileName}: {dw} x {dh}, {new FileInfo(pngDatei).Length / 1024} KB");
+                    monitorBilderOk &= stichprobe;
+                }
+                Check("je Monitor als PNG gespeichert, in Monitorgroesse und verlustfrei", monitorBilderOk);
+                Check("beim Wiederherstellen werden genau diese Bilder gefunden",
+                    DesktopScreenshot.FindImages(bildOrdner).Select(Path.GetFileName).SequenceEqual(plan.Select(p => p.FileName)));
             }
 
             var sitzung = DesktopScreenshot.GetInteractiveUser();

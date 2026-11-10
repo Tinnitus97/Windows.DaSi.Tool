@@ -9,8 +9,24 @@ using Microsoft.Win32;
 
 namespace WindowsDaSiTool.Services;
 
-/// <summary>Ein Bildschirmfoto als rohe Bildpunkte (B, G, R, A; Zeilen von oben).</summary>
-public sealed record ScreenCapture(int Left, int Top, int Width, int Height, int Monitors, byte[] Bgra);
+/// <summary>
+/// Ein Bildschirmfoto als rohe Bildpunkte (B, G, R, A; Zeilen von oben) -
+/// der ganze virtuelle Bildschirm, dazu die Flaechen der einzelnen Monitore.
+/// </summary>
+public sealed record ScreenCapture(int Left, int Top, int Width, int Height, IReadOnlyList<MonitorArea> Areas, byte[] Bgra)
+{
+    public int Monitors => Areas.Count;
+}
+
+/// <summary>
+/// Ein Monitor, in Bildpunkten des virtuellen Bildschirms (kann links oder
+/// oberhalb des Hauptbildschirms liegen, dann sind Left/Top negativ).
+/// </summary>
+/// <param name="Device">Windows-Geraetename, z. B. "\\.\DISPLAY2".</param>
+public sealed record MonitorArea(int Left, int Top, int Width, int Height, bool Primary, string Device);
+
+/// <summary>Ein Monitor und der Name seines Bildes.</summary>
+public sealed record MonitorImage(MonitorArea Area, int Number, string FileName);
 
 /// <summary>Der an diesem Bildschirm angemeldete Benutzer.</summary>
 public sealed record InteractiveUser(string Name, string? ProfilePath);
@@ -22,8 +38,10 @@ public sealed record InteractiveUser(string Name, string? ProfilePath);
 /// Drei Dinge, an denen ein schlichtes "Bildschirm kopieren" scheitern wuerde:
 ///
 /// 1. MEHRERE MONITORE. Aufgenommen wird der ganze virtuelle Bildschirm in
-///    seiner echten Anordnung - ein Bild, auf dem man sieht, was auf welchem
-///    Monitor lag.
+///    einem Zug - alle Monitore zeigen denselben Moment. Gespeichert wird
+///    daraus ein Bild PRO MONITOR, genau auf dessen Flaeche zugeschnitten.
+///    Ein Gesamtbild hatte bei unterschiedlich grossen Monitoren schwarze
+///    Flaechen, wo kein Monitor ist, und war zum Nachsehen unhandlich.
 ///
 /// 2. SKALIERUNG. Ist ein Monitor auf 150 % gestellt, liefert Windows einem
 ///    nicht DPI-bewussten Thread verkleinerte Masse: Das Foto waere unscharf
@@ -39,12 +57,102 @@ public static class DesktopScreenshot
     /// <summary>Unterordner im Backup-Ziel.</summary>
     public const string FolderName = "Desktop-Screenshot";
 
-    /// <summary>Dateiname des Fotos. Eine neue Sicherung ersetzt das alte Foto.</summary>
-    public const string FileName = "Desktop.png";
+    /// <summary>
+    /// Fruehere Fassung: alle Monitore in einem Bild. Wird beim Wiederherstellen
+    /// noch gezeigt, wenn eine Sicherung nur dieses enthaelt.
+    /// </summary>
+    public const string LegacyFileName = "Desktop.png";
+
+    /// <summary>Anfang der Bildnamen: "Bildschirm-1.png", "Bildschirm-2.png" ...</summary>
+    public const string FilePrefix = "Bildschirm-";
+
+    // ------------------------------------------------------------ Ein Bild pro Monitor
+
+    /// <summary>
+    /// Nummer und Dateiname je Monitor, nach Nummer sortiert.
+    ///
+    /// Die Nummer ist die von Windows ("\\.\DISPLAY2" -> 2) - meist dieselbe,
+    /// die "Identifizieren" in den Anzeigeeinstellungen zeigt. Fehlt sie oder
+    /// kommt sie doppelt vor, wird gezaehlt: Hauptbildschirm zuerst, dann von
+    /// links nach rechts. Bei mehreren Monitoren traegt das Bild des
+    /// Hauptbildschirms das im Namen.
+    /// </summary>
+    public static IReadOnlyList<MonitorImage> PlanImages(IReadOnlyList<MonitorArea> areas)
+    {
+        var nummern = areas.Select(a => DisplayNumber(a.Device)).ToList();
+        bool windowsNummern = nummern.All(n => n > 0) && nummern.Distinct().Count() == nummern.Count;
+
+        var reihe = windowsNummern
+            ? areas.Select((a, i) => (a, nr: nummern[i])).ToList()
+            : areas.OrderByDescending(a => a.Primary).ThenBy(a => a.Left).ThenBy(a => a.Top)
+                   .Select((a, i) => (a, nr: i + 1)).ToList();
+
+        bool mehrere = areas.Count > 1;
+        return reihe.OrderBy(x => x.nr)
+            .Select(x => new MonitorImage(x.a, x.nr,
+                FilePrefix + x.nr.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + (mehrere && x.a.Primary ? "-Hauptbildschirm" : "") + ".png"))
+            .ToList();
+    }
+
+    /// <summary>"\\.\DISPLAY2" -> 2; 0, wenn keine Nummer darin steht.</summary>
+    public static int DisplayNumber(string? device)
+    {
+        if (string.IsNullOrEmpty(device)) return 0;
+        int ende = device.Length;
+        while (ende > 0 && char.IsAsciiDigit(device[ende - 1])) ende--;
+        return ende < device.Length
+               && int.TryParse(device.AsSpan(ende), System.Globalization.NumberStyles.None,
+                               System.Globalization.CultureInfo.InvariantCulture, out var n)
+            ? n : 0;
+    }
+
+    /// <summary>
+    /// Schneidet ein Rechteck aus einem BGRA-Bild. Was ueber den Rand ragt,
+    /// faellt weg; liegt nichts im Bild, ist das Ergebnis leer (0 x 0).
+    /// </summary>
+    public static byte[] Crop(ReadOnlySpan<byte> bgra, int width, int height,
+                              int x, int y, int w, int h, out int outWidth, out int outHeight)
+    {
+        int x0 = Math.Max(0, x), y0 = Math.Max(0, y);
+        int x1 = Math.Min(width, x + w), y1 = Math.Min(height, y + h);
+        outWidth = Math.Max(0, x1 - x0);
+        outHeight = Math.Max(0, y1 - y0);
+        var ziel = new byte[(long)outWidth * outHeight * 4];
+        int zeile = outWidth * 4;
+        for (int r = 0; r < outHeight; r++)
+            bgra.Slice(((y0 + r) * width + x0) * 4, zeile).CopyTo(ziel.AsSpan(r * zeile, zeile));
+        return ziel;
+    }
+
+    /// <summary>
+    /// Die Bilder eines gesicherten Desktop-Screenshots, in Nummernfolge.
+    /// Enthaelt der Ordner nur das fruehere Gesamtbild, ist es das.
+    /// </summary>
+    public static IReadOnlyList<string> FindImages(string folder)
+    {
+        if (!System.IO.Directory.Exists(folder)) return Array.Empty<string>();
+        var bilder = System.IO.Directory.GetFiles(folder, FilePrefix + "*.png")
+            .Select(p => (p, nr: LeadingNumber(System.IO.Path.GetFileName(p)[FilePrefix.Length..])))
+            .Where(x => x.nr > 0)
+            .OrderBy(x => x.nr).ThenBy(x => x.p, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.p).ToList();
+        if (bilder.Count > 0) return bilder;
+        var alt = System.IO.Path.Combine(folder, LegacyFileName);
+        return System.IO.File.Exists(alt) ? new[] { alt } : Array.Empty<string>();
+    }
+
+    private static int LeadingNumber(string s)
+    {
+        int i = 0;
+        while (i < s.Length && char.IsAsciiDigit(s[i])) i++;
+        return i > 0 && int.TryParse(s.AsSpan(0, i), System.Globalization.NumberStyles.None,
+                                     System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0;
+    }
 
     // ------------------------------------------------------------ Aufnahme
 
-    /// <summary>Nimmt alle Monitore als ein Bild auf.</summary>
+    /// <summary>Nimmt alle Monitore in einem Zug auf und merkt sich ihre Flaechen.</summary>
     [SupportedOSPlatform("windows")]
     public static ScreenCapture CaptureVirtualScreen()
     {
@@ -56,9 +164,14 @@ public static class DesktopScreenshot
         {
             int left = GetSystemMetrics(SM_XVIRTUALSCREEN), top = GetSystemMetrics(SM_YVIRTUALSCREEN);
             int width = GetSystemMetrics(SM_CXVIRTUALSCREEN), height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-            int monitors = Math.Max(1, GetSystemMetrics(SM_CMONITORS));
             if (width <= 0 || height <= 0)
                 throw new InvalidOperationException("Windows meldet keinen Bildschirm (kein angemeldeter Desktop?).");
+
+            // Im selben DPI-Zustand wie die Aufnahme - sonst passten die
+            // Flaechen bei skalierten Monitoren nicht zu den Bildpunkten.
+            var monitore = EnumMonitors();
+            if (monitore.Count == 0)
+                monitore.Add(new MonitorArea(left, top, width, height, true, ""));
 
             var screenDc = GetDC(IntPtr.Zero);
             if (screenDc == IntPtr.Zero) throw new InvalidOperationException("Kein Zugriff auf den Bildschirm.");
@@ -89,7 +202,7 @@ public static class DesktopScreenshot
 
                 var pixel = new byte[(long)width * height * 4];
                 Marshal.Copy(bits, pixel, 0, pixel.Length);
-                return new ScreenCapture(left, top, width, height, monitors, pixel);
+                return new ScreenCapture(left, top, width, height, monitore, pixel);
             }
             finally
             {
@@ -106,6 +219,26 @@ public static class DesktopScreenshot
                 try { SetThreadDpiAwarenessContext(vorher); } catch { /* egal */ }
             }
         }
+    }
+
+    /// <summary>Alle Monitore mit Flaeche, Hauptbildschirm-Kennung und Geraetenamen.</summary>
+    [SupportedOSPlatform("windows")]
+    private static List<MonitorArea> EnumMonitors()
+    {
+        var liste = new List<MonitorArea>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr h, IntPtr _, ref RECT __, IntPtr ___) =>
+        {
+            var info = new MONITORINFOEX { cbSize = Marshal.SizeOf<MONITORINFOEX>() };
+            if (GetMonitorInfoW(h, ref info))
+            {
+                var r = info.rcMonitor;
+                if (r.Right > r.Left && r.Bottom > r.Top)
+                    liste.Add(new MonitorArea(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top,
+                                              (info.dwFlags & MONITORINFOF_PRIMARY) != 0, info.szDevice ?? ""));
+            }
+            return true;
+        }, IntPtr.Zero);
+        return liste;
     }
 
     /// <summary>
@@ -299,7 +432,19 @@ public static class DesktopScreenshot
     // ------------------------------------------------------------ Win32
 
     private const int SM_XVIRTUALSCREEN = 76, SM_YVIRTUALSCREEN = 77,
-                      SM_CXVIRTUALSCREEN = 78, SM_CYVIRTUALSCREEN = 79, SM_CMONITORS = 80;
+                      SM_CXVIRTUALSCREEN = 78, SM_CYVIRTUALSCREEN = 79;
+    private const uint MONITORINFOF_PRIMARY = 1;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFOEX
+    {
+        public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szDevice;
+    }
+
+    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, ref RECT rect, IntPtr data);
+    [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc callback, IntPtr data);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool GetMonitorInfoW(IntPtr hMonitor, ref MONITORINFOEX info);
     private const uint SRCCOPY = 0x00CC0020, CAPTUREBLT = 0x40000000;
     private static readonly IntPtr DpiAwarenessPerMonitorV2 = new(-4);
     private const int WTS_CURRENT_SESSION = -1, WTSUserName = 5, WTSDomainName = 7;
