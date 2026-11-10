@@ -749,11 +749,17 @@ internal static class Program
                       string.Join(" | ", skips.Paths.Select(p => p.Path)));
                 Check("als Fehler 32 (gesperrt), also erwartbar", skips.CountByCode.ContainsKey(32) && skips.AllExpected);
                 Check("mit dem Grund aus robocopy", skips.ReasonByCode.TryGetValue(32, out var grund) && grund.Length > 10, grund);
-                Check("im Protokoll steht nichts mehr davon",
-                      !durch.Any(z => z.Contains("012884.log") || z.Contains("0x00000020")
-                                      || z.Contains("RETRY", StringComparison.OrdinalIgnoreCase)
-                                      || z.Contains("Wiederholungsversuch", StringComparison.OrdinalIgnoreCase)),
-                      string.Join(" | ", durch.Where(z => z.Contains("0x") || z.Contains("RETRY"))));
+                foreach (var z in durch.Where(z => z.Contains("012884")))
+                    Console.WriteLine($"         uebrig: [{z.Replace("\t", "\\t")}]");
+                // Eingerueckte Dateizeilen ("New File ... 012884.log") schreibt robocopy
+                // fuer JEDE Datei vor dem Kopierversuch; das Programm zaehlt sie im
+                // Normalfall nur (Fortschritt) und schreibt sie nicht ins Protokoll.
+                var meldungen = durch.Where(z => z[0] != ' ' && z[0] != '\t').ToList();
+                Check("im Protokoll steht keine Meldung mehr dazu",
+                      !meldungen.Any(z => z.Contains("012884.log") || z.Contains("0x00000020")
+                                          || z.Contains("RETRY", StringComparison.OrdinalIgnoreCase)
+                                          || z.Contains("Wiederholungsversuch", StringComparison.OrdinalIgnoreCase)),
+                      string.Join(" | ", meldungen.Where(z => z.Contains("012884") || z.Contains("0x") || z.Contains("RETRY"))));
                 Check("kein anderer Fehler", skips.OtherErrors == 0);
                 Check("die freien Dateien sind gesichert",
                       File.Exists(Path.Combine(zielRobo, "einstellungen.json"))
