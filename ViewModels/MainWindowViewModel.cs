@@ -286,6 +286,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _selWlan;
     [ObservableProperty] private bool _selPrinter;
     [ObservableProperty] private bool _selWallpaper;
+    [ObservableProperty] private bool _selDesktopShot;
 
     // ---- Zusatzoptionen zum Benutzerprofil ----
     //
@@ -345,6 +346,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TgWlan));
         OnPropertyChanged(nameof(TgPrinter));
         OnPropertyChanged(nameof(TgWallpaper));
+        OnPropertyChanged(nameof(TgDesktopShot));
         OnPropertyChanged(nameof(ModeTitle));
         ScheduleAutoStorageCheck();
     }
@@ -362,6 +364,11 @@ public partial class MainWindowViewModel : ObservableObject
     public string TgWallpaper => IsRestoreMode
         ? Tr("Hintergrundbild wiederherstellen", "Restore wallpaper")
         : Tr("Hintergrundbild sichern", "Back up wallpaper");
+    // Sichern: Foto des Desktops. Wiederherstellen: dieses Foto oeffnen, damit
+    // sich die Symbole von Hand wieder anordnen lassen.
+    public string TgDesktopShot => IsRestoreMode
+        ? Tr("Desktop-Screenshot anzeigen", "Show desktop screenshot")
+        : Tr("Desktop-Screenshot erstellen", "Take desktop screenshot");
     public string ModeTitle => IsRestoreMode
         ? Tr("Wiederherstellen", "Restore")
         : Tr("Sichern", "Backup");
@@ -1004,9 +1011,16 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelWlan)        t.Add("Import-Wlan");
             if (SelPrinter)     t.Add("Import-Printer");
             if (SelWallpaper)   t.Add("Import-Wallpaper");
+            // Zuletzt: Das Foto soll offen sein, wenn alles andere fertig ist
+            // und es ans Anordnen der Symbole geht.
+            if (SelDesktopShot) t.Add("Show-DesktopShot");
         }
         else
         {
+            // Zuerst: Das Foto zeigt den Desktop, wie er VOR der Sicherung war,
+            // und das kurze Ausblenden der Fenster faellt direkt nach dem Klick
+            // auf "Starten" nicht als Stoerung auf.
+            if (SelDesktopShot) t.Add("Capture-DesktopShot");
             if (SelUser)        t.Add("Backup-User");
             if (SelFirefox)     t.Add("Backup-Firefox");
             if (SelEdge)        t.Add("Backup-Edge");
@@ -1057,6 +1071,10 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Export-Wlan":        await _backup.ExportWlan(); break;
                     case "Export-Printer":     await _backup.ExportPrinters(); break;
                     case "Export-Wallpaper":   await _backup.ExportWallpaper(); break;
+                    case "Capture-DesktopShot":
+                        await _backup.CaptureDesktop();
+                        await BringMainWindowToFront();
+                        break;
 
                     case "Restore-User":        await _backup.RestoreUserProfile(); break;
                     case "Restore-Firefox":     await _backup.RestoreAppProfile("Firefox", @"AppData\Roaming\Mozilla\Firefox", "firefox"); break;
@@ -1068,6 +1086,7 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Import-Wlan":         await _backup.ImportWlan(); break;
                     case "Import-Printer":      await _backup.ImportPrinters(); break;
                     case "Import-Wallpaper":    await _backup.ImportWallpaper(); break;
+                    case "Show-DesktopShot":    await _backup.ShowDesktopScreenshot(); break;
                 }
             }
             catch (Exception ex)
@@ -1174,6 +1193,7 @@ public partial class MainWindowViewModel : ObservableObject
             "Export-Wlan" or "Import-Wlan"                => Tr("WLAN-Profile", "WiFi profiles"),
             "Export-Printer" or "Import-Printer"          => Tr("Drucker & Treiber", "Printers & drivers"),
             "Export-Wallpaper" or "Import-Wallpaper"      => Tr("Hintergrundbild", "Wallpaper"),
+            "Capture-DesktopShot" or "Show-DesktopShot"   => Tr("Desktop-Screenshot", "Desktop screenshot"),
             _ => choice
         };
     }
@@ -1311,6 +1331,23 @@ public partial class MainWindowViewModel : ObservableObject
 
     private static Window? GetMainWindow()
         => (Avalonia.Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+
+    /// <summary>
+    /// Holt das Hauptfenster nach dem Desktop-Foto sicher wieder nach vorn.
+    /// "Desktop anzeigen" stellt die Fenster zwar selbst zurueck - klickt der
+    /// Benutzer in der Zwischenzeit aber etwas an, bliebe das Tool sonst
+    /// minimiert, und die laufende Sicherung waere nicht mehr zu sehen.
+    /// </summary>
+    private static async Task BringMainWindowToFront()
+    {
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var w = GetMainWindow();
+            if (w is null) return;
+            if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
+            w.Activate();
+        });
+    }
 
     private async Task<string?> PickFolder(string title)
     {

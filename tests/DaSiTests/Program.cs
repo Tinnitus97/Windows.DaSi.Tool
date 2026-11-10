@@ -15,6 +15,57 @@ internal static class Program
         else { _failed++; Console.WriteLine($"  [FAIL] {name}{(detail is null ? "" : $"  -> {detail}")}"); }
     }
 
+    // ---- Hilfen zum Zuruecklesen der selbst geschriebenen PNG-Dateien ----
+
+    private sealed record Chunk(string Type, byte[] Data, bool CrcOk);
+
+    private static uint BigEndian(byte[] b, int o) => (uint)(b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]);
+
+    private static System.Collections.Generic.List<Chunk> ReadChunks(byte[] png)
+    {
+        var liste = new System.Collections.Generic.List<Chunk>();
+        for (int o = 8; o + 12 <= png.Length;)
+        {
+            int len = (int)BigEndian(png, o);
+            var typ = System.Text.Encoding.ASCII.GetString(png, o + 4, 4);
+            var daten = png.AsSpan(o + 8, len).ToArray();
+            var crc = BigEndian(png, o + 8 + len);
+            liste.Add(new Chunk(typ, daten, PngWriter.Crc32(png.AsSpan(o + 4, 4 + len)) == crc));
+            o += 12 + len;
+        }
+        return liste;
+    }
+
+    /// <summary>Liest genau das Format, das PngWriter schreibt: RGB, 8 Bit, Filter je Zeile.</summary>
+    private static byte[] DecodeOwnPng(byte[] png, out int width, out int height)
+    {
+        var chunks = ReadChunks(png);
+        width = (int)BigEndian(chunks[0].Data, 0); height = (int)BigEndian(chunks[0].Data, 4);
+        using var gepackt = new MemoryStream(chunks.Where(c => c.Type == "IDAT").SelectMany(c => c.Data).ToArray());
+        using var zlib = new System.IO.Compression.ZLibStream(gepackt, System.IO.Compression.CompressionMode.Decompress);
+        using var roh = new MemoryStream(); zlib.CopyTo(roh);
+        var daten = roh.ToArray();
+        int zeile = width * 3; var rgb = new byte[zeile * height];
+        for (int y = 0; y < height; y++)
+        {
+            int filter = daten[y * (zeile + 1)];
+            for (int x = 0; x < zeile; x++)
+            {
+                byte wert = daten[y * (zeile + 1) + 1 + x];
+                byte links = x >= 3 ? rgb[y * zeile + x - 3] : (byte)0;
+                byte oben = y > 0 ? rgb[(y - 1) * zeile + x] : (byte)0;
+                rgb[y * zeile + x] = filter switch
+                {
+                    0 => wert,
+                    1 => (byte)(wert + links),
+                    2 => (byte)(wert + oben),
+                    _ => throw new InvalidDataException($"Filter {filter} wird hier nicht erwartet")
+                };
+            }
+        }
+        return rgb;
+    }
+
     public static int Main()
     {
         var root = Path.Combine(Path.GetTempPath(), "dasi-test-" + Guid.NewGuid().ToString("N"));
@@ -280,6 +331,72 @@ internal static class Program
             !ActionOutcome.IsErrorLine("") && !ActionOutcome.IsErrorLine(null));
 
         // ================================================================
+        // Desktop-Screenshot: PNG schreiben, Profil vergleichen, Schwarzbild
+        // ================================================================
+        Console.WriteLine("\n== PNG schreiben ==");
+        Check("CRC-32 stimmt mit dem Normwert ueberein (\"123456789\" -> CBF43926)",
+            PngWriter.Crc32("123456789"u8) == 0xCBF43926u, PngWriter.Crc32("123456789"u8).ToString("X8"));
+
+        // 3 x 2 Bildpunkte, Windows-Reihenfolge B, G, R, A.
+        byte[] klein =
+        {
+            0, 0, 255, 255,    0, 255, 0, 255,    255, 0, 0, 255,      // rot, gruen, blau
+            255, 255, 255, 255, 10, 20, 30, 0,    128, 128, 128, 255   // weiss, (30,20,10), grau
+        };
+        var png = PngWriter.EncodeBgra(3, 2, klein);
+        Check("beginnt mit der PNG-Kennung",
+            png.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }));
+        var chunks = ReadChunks(png);
+        Check("Bausteine in der richtigen Reihenfolge (IHDR, IDAT, IEND)",
+            string.Join(",", chunks.Select(c => c.Type)) == "IHDR,IDAT,IEND", string.Join(",", chunks.Select(c => c.Type)));
+        Check("jede Pruefsumme stimmt", chunks.All(c => c.CrcOk));
+        var kopf = chunks[0].Data;
+        Check("Kopf: 3 x 2, 8 Bit, RGB",
+            BigEndian(kopf, 0) == 3 && BigEndian(kopf, 4) == 2 && kopf[8] == 8 && kopf[9] == 2);
+        var rgb = DecodeOwnPng(png, out var bw, out var bh);
+        Check("zurueckgelesen: jeder Bildpunkt stimmt (Kanalreihenfolge gedreht, Alpha entfallen)",
+            bw == 3 && bh == 2 && rgb.SequenceEqual(new byte[]
+            {
+                255, 0, 0,    0, 255, 0,    0, 0, 255,
+                255, 255, 255, 30, 20, 10,  128, 128, 128
+            }), string.Join(" ", rgb));
+
+        // Ein groesseres Bild mit Verlauf: prueft den Filter ueber viele Zeilen.
+        int gw = 257, gh = 64;
+        var verlauf = new byte[gw * gh * 4];
+        for (int i = 0; i < gw * gh; i++) { verlauf[i * 4] = (byte)i; verlauf[i * 4 + 1] = (byte)(i / 7); verlauf[i * 4 + 2] = (byte)(255 - i); }
+        var rgb2 = DecodeOwnPng(PngWriter.EncodeBgra(gw, gh, verlauf), out _, out _);
+        bool alleGleich = true;
+        for (int i = 0; i < gw * gh && alleGleich; i++)
+            alleGleich = rgb2[i * 3] == verlauf[i * 4 + 2] && rgb2[i * 3 + 1] == verlauf[i * 4 + 1] && rgb2[i * 3 + 2] == verlauf[i * 4];
+        Check("257 x 64 mit Verlauf: verlustfrei", alleGleich);
+
+        bool zuKurz = false;
+        try { PngWriter.EncodeBgra(3, 2, new byte[10]); } catch (ArgumentException) { zuKurz = true; }
+        Check("zu wenige Bildpunkte werden abgelehnt", zuKurz);
+
+        Console.WriteLine("\n== Desktop-Screenshot: Profil und Schwarzbild ==");
+        var sep = Path.DirectorySeparatorChar;
+        var anwender = Path.Combine(root, "Users", "Anwender");
+        Check("gleiches Profil wird erkannt (Gross-/Kleinschreibung, Trennzeichen)",
+            ProfileExcludes.SameFolder(anwender, anwender.ToUpperInvariant() + sep));
+        Check("anderes Profil wird erkannt",
+            !ProfileExcludes.SameFolder(anwender, Path.Combine(root, "Users", "Techniker")));
+        Check("Unterordner ist NICHT dasselbe Profil",
+            !ProfileExcludes.SameFolder(anwender, Path.Combine(anwender, "Desktop")));
+        Check("Max ist nicht Maximilian",
+            !ProfileExcludes.SameFolder(Path.Combine(root, "Users", "Max"), Path.Combine(root, "Users", "Maximilian")));
+        Check("leere Angabe ist kein Profil", !ProfileExcludes.SameFolder("", anwender));
+
+        Check("schwarzes Bild wird erkannt", DesktopScreenshot.IsBlank(new byte[4 * 5000]));
+        var fastSchwarz = new byte[4 * 5000]; fastSchwarz[2] = 200;    // ein roter Bildpunkt
+        Check("ein einziger heller Bildpunkt genuegt, wenn er in der Stichprobe liegt",
+            !DesktopScreenshot.IsBlank(fastSchwarz));
+        Check("Rauschen knapp ueber Schwarz zaehlt noch als schwarz",
+            DesktopScreenshot.IsBlank(Enumerable.Repeat((byte)5, 4 * 100).ToArray()));
+        Check("gewoehnliches Bild ist nicht schwarz", !DesktopScreenshot.IsBlank(klein));
+
+        // ================================================================
         // Austauschskript WIRKLICH ausfuehren - nur unter Windows moeglich
         // ================================================================
         if (OperatingSystem.IsWindows())
@@ -357,6 +474,43 @@ internal static class Program
                     $"ExitCode {proc.ExitCode}: {ausgabe.Trim().Replace("\r\n", " | ")}");
             }
             UpdateService.CleanUp();
+        }
+
+        // ================================================================
+        // Desktop-Screenshot WIRKLICH aufnehmen - nur unter Windows moeglich
+        // ================================================================
+        if (OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("\n== Bildschirm echt aufnehmen ==");
+            ScreenCapture? aufnahme = null;
+            try { aufnahme = DesktopScreenshot.CaptureVirtualScreen(); }
+            catch (Exception ex) { Check("Aufnahme gelingt", false, ex.Message); }
+            if (aufnahme is not null)
+            {
+                Console.WriteLine($"         {aufnahme.Width} x {aufnahme.Height} ab ({aufnahme.Left},{aufnahme.Top}), {aufnahme.Monitors} Bildschirm(e)");
+                Check("Aufnahme liefert Masse", aufnahme.Width > 0 && aufnahme.Height > 0);
+                Check("Puffer passt zu den Massen", aufnahme.Bgra.Length == (long)aufnahme.Width * aufnahme.Height * 4);
+
+                var pngDatei = Path.Combine(root, "Desktop-Screenshot", DesktopScreenshot.FileName);
+                Directory.CreateDirectory(Path.GetDirectoryName(pngDatei)!);
+                using (var fs = File.Create(pngDatei)) PngWriter.WriteBgra(fs, aufnahme.Width, aufnahme.Height, aufnahme.Bgra);
+                var gelesen = DecodeOwnPng(File.ReadAllBytes(pngDatei), out var dw, out var dh);
+                bool stichprobe = dw == aufnahme.Width && dh == aufnahme.Height;
+                for (long i = 0; stichprobe && i < (long)dw * dh; i += 997)
+                    stichprobe = gelesen[i * 3] == aufnahme.Bgra[i * 4 + 2] && gelesen[i * 3 + 2] == aufnahme.Bgra[i * 4];
+                Check("als PNG gespeichert und verlustfrei zurueckgelesen", stichprobe, $"{new FileInfo(pngDatei).Length / 1024} KB");
+            }
+
+            var sitzung = DesktopScreenshot.GetInteractiveUser();
+            Console.WriteLine($"         angemeldet: {sitzung?.Name ?? "(unbekannt)"}, Profil: {sitzung?.ProfilePath ?? "(unbekannt)"}");
+            Check("angemeldeter Benutzer wird ermittelt (oder sauber null)", true);
+
+            var uhrDesktop = System.Diagnostics.Stopwatch.StartNew();
+            var hin = DesktopScreenshot.ToggleDesktop();
+            var zurueck = DesktopScreenshot.ToggleDesktop();
+            uhrDesktop.Stop();
+            Console.WriteLine($"         Desktop anzeigen: {hin}/{zurueck} in {uhrDesktop.Elapsed.TotalSeconds:F1} s");
+            Check("\"Desktop anzeigen\" kehrt zurueck, auch ohne Explorer (kein Haenger)", uhrDesktop.Elapsed.TotalSeconds < 25);
         }
 
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");

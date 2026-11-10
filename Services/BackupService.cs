@@ -558,6 +558,122 @@ public sealed class BackupService
         }
     }
 
+    // ------------------------------------------------------------ Desktop-Screenshot
+
+    /// <summary>
+    /// Fotografiert den Desktop samt Symbolen, damit sich nach einer
+    /// Neuinstallation nachsehen laesst, was wo lag.
+    /// </summary>
+    public async Task CaptureDesktop()
+    {
+        // Wessen Desktop ist zu sehen? Gesichert wird oft ein fremdes Profil,
+        // waehrend der Techniker selbst angemeldet ist - dann zeigte das Foto
+        // den falschen Desktop, und das fiele erst beim Wiederherstellen auf.
+        var angemeldet = DesktopScreenshot.GetInteractiveUser();
+        if (angemeldet?.ProfilePath is { } eigenesProfil && !ProfileExcludes.SameFolder(eigenesProfil, SourcePath))
+        {
+            _log(Loc.Tr($"[FEHLER] Kein Desktop-Screenshot: Zu sehen ist der Desktop von {angemeldet.Name} ({eigenesProfil}), "
+                        + $"gesichert wird aber {SourcePath}. Das Foto zeigte den falschen Desktop - bitte als dieser Benutzer anmelden und das Tool dort starten.",
+                        $"[ERROR] No desktop screenshot: the visible desktop belongs to {angemeldet.Name} ({eigenesProfil}), "
+                        + $"but {SourcePath} is being backed up. The picture would show the wrong desktop - please sign in as that user and run the tool there."));
+            return;
+        }
+        if (angemeldet is null)
+            _log(Loc.Tr("[INFO] Der angemeldete Benutzer ließ sich nicht ermitteln - aufgenommen wird der Desktop, der gerade zu sehen ist.",
+                        "[INFO] The signed-in user could not be determined - the desktop currently on screen is captured."));
+
+        _log(Loc.Tr("[INFO] Alle Fenster werden für einen Moment ausgeblendet, damit die Desktop-Symbole frei liegen...",
+                    "[INFO] All windows are hidden for a moment so the desktop icons are visible..."));
+        bool ausgeblendet = DesktopScreenshot.ToggleDesktop();
+        if (!ausgeblendet)
+            _log(Loc.Tr("[WARNUNG] Die Fenster ließen sich nicht ausblenden - offene Fenster verdecken auf dem Foto evtl. Symbole.",
+                        "[WARNING] The windows could not be hidden - open windows may cover icons in the picture."));
+
+        ScreenCapture bild;
+        try
+        {
+            // Windows blendet die Fenster mit einer kurzen Animation aus.
+            await Task.Delay(ausgeblendet ? 1500 : 300);
+            bild = await Task.Run(DesktopScreenshot.CaptureVirtualScreen);
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Der Bildschirm ließ sich nicht aufnehmen: {ex.Message}",
+                        $"[ERROR] The screen could not be captured: {ex.Message}"));
+            return;
+        }
+        finally
+        {
+            // Fenster in jedem Fall zurueckholen - auch wenn die Aufnahme scheitert.
+            if (ausgeblendet) { DesktopScreenshot.ToggleDesktop(); await Task.Delay(400); }
+        }
+
+        if (DesktopScreenshot.IsBlank(bild.Bgra))
+            _log(Loc.Tr("[WARNUNG] Das Foto ist schwarz - war der Bildschirm gesperrt oder eine UAC-Abfrage offen? Es wird trotzdem gespeichert.",
+                        "[WARNING] The picture is black - was the screen locked or a UAC prompt open? It is saved anyway."));
+
+        var ordner = Path.Combine(BackupPath, DesktopScreenshot.FolderName);
+        var ziel = Path.Combine(ordner, DesktopScreenshot.FileName);
+        // Erst vollstaendig in eine Zwischendatei, dann an die Stelle des alten
+        // Fotos - ein Abbruch beim Schreiben hinterlaesst kein halbes Bild.
+        var neu = ziel + ".neu";
+        try
+        {
+            Directory.CreateDirectory(ordner);
+            await Task.Run(() =>
+            {
+                using (var datei = File.Create(neu)) PngWriter.WriteBgra(datei, bild.Width, bild.Height, bild.Bgra);
+                File.Move(neu, ziel, overwrite: true);
+            });
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(neu)) File.Delete(neu); } catch { /* egal */ }
+            _log(Loc.Tr($"[FEHLER] Desktop-Screenshot konnte nicht gespeichert werden: {ex.Message}",
+                        $"[ERROR] Desktop screenshot could not be saved: {ex.Message}"));
+            return;
+        }
+
+        var monitore = bild.Monitors == 1 ? Loc.Tr("1 Bildschirm", "1 screen") : Loc.Tr($"{bild.Monitors} Bildschirme", $"{bild.Monitors} screens");
+        _log(Loc.Tr($"[ERFOLG] Desktop-Screenshot gespeichert: {ziel} ({bild.Width} × {bild.Height} Pixel, {monitore}).",
+                    $"[SUCCESS] Desktop screenshot saved: {ziel} ({bild.Width} × {bild.Height} pixels, {monitore})."));
+    }
+
+    /// <summary>
+    /// Oeffnet das gesicherte Desktop-Foto, damit sich die Symbole danach von
+    /// Hand wieder anordnen lassen. Automatisch zurueckstellen laesst sich die
+    /// Anordnung nicht verlaesslich: Der Explorer ueberschreibt sie beim
+    /// naechsten Abmelden mit seinem eigenen Stand.
+    /// </summary>
+    public Task ShowDesktopScreenshot()
+    {
+        var datei = Path.Combine(BackupPath, DesktopScreenshot.FolderName, DesktopScreenshot.FileName);
+        if (!File.Exists(datei))
+        {
+            _log(Loc.Tr($"[FEHLER] In der Sicherung liegt kein Desktop-Screenshot: {datei}",
+                        $"[ERROR] The backup contains no desktop screenshot: {datei}"));
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            // Ueber explorer.exe statt direkt: Das Tool laeuft mit
+            // Administratorrechten, und die Fotos-App startet nicht mit
+            // erhoehten Rechten. explorer.exe gibt die Datei an den laufenden
+            // Explorer des Benutzers weiter, der sie mit normalen Rechten oeffnet.
+            using var _ = System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo("explorer.exe", Quote(datei)) { UseShellExecute = false });
+            _log(Loc.Tr($"[ERFOLG] Desktop-Screenshot geöffnet: {datei} - daran lassen sich die Symbole wieder anordnen.",
+                        $"[SUCCESS] Desktop screenshot opened: {datei} - use it to arrange the icons again."));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Desktop-Screenshot konnte nicht geöffnet werden ({ex.Message}). Er liegt hier: {datei}",
+                        $"[ERROR] Desktop screenshot could not be opened ({ex.Message}). It is located here: {datei}"));
+        }
+        return Task.CompletedTask;
+    }
+
     /// <summary>Vergleicht zwei Dateien inhaltlich (Groesse, dann Bytes).</summary>
     private static bool FilesAreEqual(string a, string b)
     {

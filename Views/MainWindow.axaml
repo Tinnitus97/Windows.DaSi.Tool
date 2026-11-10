@@ -175,6 +175,7 @@
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWlan}"         IsChecked="{Binding SelWlan}"        IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgPrinter}"      IsChecked="{Binding SelPrinter}"     IsEnabled="{Binding UiEnabled}"/></Border>
                                 <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWallpaper}"    IsChecked="{Binding SelWallpaper}"   IsEnabled="{Binding UiEnabled}"/></Border>
+                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgDesktopShot}"  IsChecked="{Binding SelDesktopShot}" IsEnabled="{Binding UiEnabled}"/></Border>
                             </UniformGrid>
                     </Grid>
                 </Border>
