@@ -622,18 +622,27 @@ public sealed class BackupService
             _log(Loc.Tr("[INFO] Der angemeldete Benutzer ließ sich nicht ermitteln - aufgenommen wird der Desktop, der gerade zu sehen ist.",
                         "[INFO] The signed-in user could not be determined - the desktop currently on screen is captured."));
 
-        _log(Loc.Tr("[INFO] Alle Fenster werden für einen Moment ausgeblendet, damit die Desktop-Symbole frei liegen...",
-                    "[INFO] All windows are hidden for a moment so the desktop icons are visible..."));
-        bool ausgeblendet = DesktopScreenshot.ToggleDesktop();
-        if (!ausgeblendet)
-            _log(Loc.Tr("[WARNUNG] Die Fenster ließen sich nicht ausblenden - offene Fenster verdecken auf dem Foto evtl. Symbole.",
-                        "[WARNING] The windows could not be hidden - open windows may cover icons in the picture."));
+        // Fenster beiseitelegen - und sich genau merken, welche, in welcher
+        // Reihenfolge und welches aktiv war. Nur so kommen sie danach alle
+        // wieder so zurueck, wie sie waren.
+        DesktopScreenshot.HiddenWindows? beiseite = null;
+        try
+        {
+            beiseite = DesktopScreenshot.HideWindows();
+            _log(Loc.Tr($"[INFO] {beiseite.TopToBottom.Count} Fenster werden für einen Moment beiseitegelegt, damit die Desktop-Symbole frei liegen...",
+                        $"[INFO] {beiseite.TopToBottom.Count} windows are moved aside for a moment so the desktop icons are visible..."));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[WARNUNG] Die Fenster ließen sich nicht ausblenden ({ex.Message}) - offene Fenster verdecken auf dem Foto evtl. Symbole.",
+                        $"[WARNING] The windows could not be hidden ({ex.Message}) - open windows may cover icons in the picture."));
+        }
 
         ScreenCapture bild;
         try
         {
-            // Windows blendet die Fenster mit einer kurzen Animation aus.
-            await Task.Delay(ausgeblendet ? 1500 : 300);
+            // Windows minimiert mit einer kurzen Animation.
+            await Task.Delay(beiseite is null ? 300 : 1200);
             bild = await Task.Run(DesktopScreenshot.CaptureVirtualScreen);
         }
         catch (Exception ex)
@@ -644,8 +653,21 @@ public sealed class BackupService
         }
         finally
         {
-            // Fenster in jedem Fall zurueckholen - auch wenn die Aufnahme scheitert.
-            if (ausgeblendet) { DesktopScreenshot.ToggleDesktop(); await Task.Delay(400); }
+            // In jedem Fall zurueckholen - auch wenn die Aufnahme scheitert.
+            if (beiseite is not null)
+            {
+                try
+                {
+                    await Task.Run(() => DesktopScreenshot.RestoreWindows(beiseite));
+                    _log(Loc.Tr($"[INFO] {beiseite.TopToBottom.Count} Fenster wieder an ihrem Platz, in der alten Reihenfolge.",
+                                $"[INFO] {beiseite.TopToBottom.Count} windows back in place, in their previous order."));
+                }
+                catch (Exception ex)
+                {
+                    _log(Loc.Tr($"[WARNUNG] Nicht alle Fenster ließen sich zurückholen ({ex.Message}) - sie liegen minimiert in der Taskleiste.",
+                                $"[WARNING] Not all windows could be brought back ({ex.Message}) - they are minimized in the taskbar."));
+                }
+            }
         }
 
         if (DesktopScreenshot.IsBlank(bild.Bgra))

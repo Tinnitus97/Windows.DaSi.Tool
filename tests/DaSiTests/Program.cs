@@ -15,6 +15,10 @@ internal static class Program
         else { _failed++; Console.WriteLine($"  [FAIL] {name}{(detail is null ? "" : $"  -> {detail}")}"); }
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr h, int cmd);
+    private static void MaximizeForTest(IntPtr h) => ShowWindow(h, 3);   // SW_MAXIMIZE
+
     // ---- Hilfen zum Zuruecklesen der selbst geschriebenen PNG-Dateien ----
 
     private sealed record Chunk(string Type, byte[] Data, bool CrcOk);
@@ -450,6 +454,23 @@ internal static class Program
             DesktopScreenshot.IsBlank(Enumerable.Repeat((byte)5, 4 * 100).ToArray()));
         Check("gewoehnliches Bild ist nicht schwarz", !DesktopScreenshot.IsBlank(klein));
 
+        Console.WriteLine("\n== Welche Fenster fuer das Foto beiseitegehen ==");
+        var normal = new DesktopScreenshot.WindowInfo("Chrome_WidgetWin_1", true, false, false, false, false, false, 1600, 900);
+        Check("gewoehnliches Programmfenster: ja", DesktopScreenshot.ShouldHide(normal));
+        Check("schon minimiert: nein (bleibt, wie es ist)", !DesktopScreenshot.ShouldHide(normal with { Minimized = true }));
+        Check("unsichtbar: nein", !DesktopScreenshot.ShouldHide(normal with { Visible = false }));
+        Check("auf einem anderen virtuellen Desktop (cloaked): nein", !DesktopScreenshot.ShouldHide(normal with { Cloaked = true }));
+        Check("Dialog mit Hauptfenster (owned): nein - folgt dem Hauptfenster",
+            !DesktopScreenshot.ShouldHide(normal with { HasOwner = true }));
+        Check("Werkzeugfenster (Tray-Menue): nein", !DesktopScreenshot.ShouldHide(normal with { ToolWindow = true }));
+        Check("Werkzeugfenster mit eigenem Taskleisten-Eintrag: ja",
+            DesktopScreenshot.ShouldHide(normal with { ToolWindow = true, AppWindow = true }));
+        Check("Desktop und Taskleiste: nein",
+            !DesktopScreenshot.ShouldHide(normal with { ClassName = "Progman" })
+            && !DesktopScreenshot.ShouldHide(normal with { ClassName = "Shell_TrayWnd" })
+            && !DesktopScreenshot.ShouldHide(normal with { ClassName = "shell_secondarytraywnd" }));
+        Check("Fenster ohne Flaeche: nein", !DesktopScreenshot.ShouldHide(normal with { Width = 0 }));
+
         // ================================================================
         // Austauschskript WIRKLICH ausfuehren - nur unter Windows moeglich
         // ================================================================
@@ -559,12 +580,39 @@ internal static class Program
             Console.WriteLine($"         angemeldet: {sitzung?.Name ?? "(unbekannt)"}, Profil: {sitzung?.ProfilePath ?? "(unbekannt)"}");
             Check("angemeldeter Benutzer wird ermittelt (oder sauber null)", true);
 
-            var uhrDesktop = System.Diagnostics.Stopwatch.StartNew();
-            var hin = DesktopScreenshot.ToggleDesktop();
-            var zurueck = DesktopScreenshot.ToggleDesktop();
-            uhrDesktop.Stop();
-            Console.WriteLine($"         Desktop anzeigen: {hin}/{zurueck} in {uhrDesktop.Elapsed.TotalSeconds:F1} s");
-            Check("\"Desktop anzeigen\" kehrt zurueck, auch ohne Explorer (kein Haenger)", uhrDesktop.Elapsed.TotalSeconds < 25);
+            Console.WriteLine("\n== Fenster beiseite und zurueck (echt) ==");
+            System.Diagnostics.Process? editor = null;
+            try { editor = System.Diagnostics.Process.Start("notepad.exe"); } catch (Exception ex) { Console.WriteLine($"         Editor nicht startbar: {ex.Message}"); }
+            var hEditor = IntPtr.Zero;
+            for (int i = 0; editor is not null && i < 50 && hEditor == IntPtr.Zero; i++)
+            {
+                System.Threading.Thread.Sleep(200);
+                try { editor.Refresh(); hEditor = editor.MainWindowHandle; } catch { }
+            }
+            if (hEditor == IntPtr.Zero)
+            {
+                Console.WriteLine("         (kein Editor-Fenster auf diesem Laeufer - Test uebersprungen)");
+            }
+            else
+            {
+                MaximizeForTest(hEditor);
+                System.Threading.Thread.Sleep(800);
+                Check("vorher: Editor maximiert", DesktopScreenshot.State(hEditor).Maximiert);
+                var beiseite = DesktopScreenshot.HideWindows();
+                System.Threading.Thread.Sleep(1200);
+                Console.WriteLine($"         beiseitegelegt: {beiseite.TopToBottom.Count} Fenster");
+                Check("der Editor ist unter den beiseitegelegten Fenstern", beiseite.TopToBottom.Contains(hEditor));
+                Check("waehrend der Aufnahme ist der Editor minimiert", DesktopScreenshot.State(hEditor).Minimiert);
+                var uhrZurueck = System.Diagnostics.Stopwatch.StartNew();
+                DesktopScreenshot.RestoreWindows(beiseite);
+                uhrZurueck.Stop();
+                System.Threading.Thread.Sleep(500);
+                var zustandNachher = DesktopScreenshot.State(hEditor);
+                Check("danach ist er wieder da (nicht minimiert)", !zustandNachher.Minimiert);
+                Check("und wieder maximiert, wie vorher", zustandNachher.Maximiert);
+                Check("zurueckholen kehrt zuegig zurueck", uhrZurueck.Elapsed.TotalSeconds < 12, $"{uhrZurueck.Elapsed.TotalSeconds:F1} s");
+            }
+            try { editor?.Kill(); } catch { }
         }
 
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");

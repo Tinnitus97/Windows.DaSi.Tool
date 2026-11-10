@@ -1,5 +1,6 @@
 using System;
-using System.Reflection;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
@@ -30,8 +31,8 @@ public sealed record InteractiveUser(string Name, string? ProfilePath);
 ///    ausdruecklich auf "pro Monitor" gestellt und danach zurueckgesetzt.
 ///
 /// 3. FENSTER DAVOR. Ohne Weiteres zeigte das Foto vor allem das Tool selbst.
-///    Vorher wird "Desktop anzeigen" ausgeloest (wie Win+D) und danach erneut,
-///    womit alle Fenster an ihren Platz zurueckkehren.
+///    Die Programmfenster werden kurz beiseitegelegt und danach genau so
+///    zurueckgeholt, wie sie waren - siehe HideWindows/RestoreWindows.
 /// </summary>
 public static class DesktopScreenshot
 {
@@ -127,47 +128,124 @@ public static class DesktopScreenshot
 
     // ------------------------------------------------------------ Fenster beiseite
 
-    /// <summary>
-    /// "Desktop anzeigen" (wie Win+D). Ein zweiter Aufruf holt alle Fenster
-    /// zurueck. Laeuft auf einem eigenen STA-Thread, weil Shell.Application ein
-    /// COM-Objekt der Oberflaeche ist; nach 10 s wird aufgegeben.
-    /// </summary>
-    /// <returns>true, wenn der Aufruf bei Windows angekommen ist.</returns>
-    [SupportedOSPlatform("windows")]
-    public static bool ToggleDesktop()
+    /// <summary>Was sich ueber ein Fenster sagen laesst, ohne es anzufassen.</summary>
+    public sealed record WindowInfo(
+        string ClassName, bool Visible, bool Minimized, bool Cloaked,
+        bool HasOwner, bool ToolWindow, bool AppWindow, int Width, int Height);
+
+    /// <summary>Die beiseitegelegten Fenster, von oben nach unten, und welches aktiv war.</summary>
+    public sealed record HiddenWindows(IReadOnlyList<IntPtr> TopToBottom, IntPtr Foreground);
+
+    /// <summary>Fenster der Windows-Oberflaeche selbst - die gehoeren zum Desktop.</summary>
+    private static readonly HashSet<string> ShellClasses = new(StringComparer.OrdinalIgnoreCase)
     {
-        bool ok = false;
+        "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd",
+        "NotifyIconOverflowWindow", "TopLevelWindowForOverflowXamlIsland"
+    };
+
+    /// <summary>
+    /// Soll dieses Fenster fuer das Foto beiseite? Dieselbe Auswahl, die Windows
+    /// fuer Alt+Tab trifft: sichtbare, nicht minimierte Programmfenster.
+    /// Bewusst NICHT dabei:
+    ///  - Fenster anderer virtueller Desktops (Windows "verhuellt" sie, cloaked),
+    ///  - untergeordnete Fenster (Dialoge, Paletten) - sie folgen ihrem Hauptfenster,
+    ///  - Werkzeugfenster ohne eigenen Taskleisten-Eintrag (Tray-Menues u. a.),
+    ///  - Desktop und Taskleiste selbst.
+    /// </summary>
+    public static bool ShouldHide(WindowInfo w)
+    {
+        if (!w.Visible || w.Minimized || w.Cloaked) return false;
+        if (w.Width <= 0 || w.Height <= 0) return false;
+        if (ShellClasses.Contains(w.ClassName)) return false;
+        if (w.AppWindow) return true;
+        if (w.HasOwner || w.ToolWindow) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Legt alle Programmfenster beiseite (minimiert) und merkt sich Reihenfolge
+    /// und aktives Fenster.
+    ///
+    /// Frueher: "Desktop anzeigen" (Win+D) und danach erneut. Das ist ein
+    /// Umschalter - aendert sich zwischendurch der Fokus, holt der zweite Aufruf
+    /// die Fenster nicht zurueck, sondern blendet erneut aus. Hier wird genau
+    /// das zurueckgeholt, was vorher beiseitegelegt wurde.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public static HiddenWindows HideWindows()
+    {
+        var vordergrund = GetForegroundWindow();
+        var liste = new List<IntPtr>();
+        // EnumWindows liefert die Fenster von oben nach unten.
+        EnumWindows((h, _) =>
+        {
+            try { if (ShouldHide(Describe(h)) && !IsHungAppWindow(h)) liste.Add(h); }
+            catch { /* ein seltsames Fenster darf die Aufnahme nicht verhindern */ }
+            return true;
+        }, IntPtr.Zero);
+
+        // Asynchron: Ein haengendes Programm darf das Tool nicht mit anhalten.
+        foreach (var h in liste) ShowWindowAsync(h, SW_MINIMIZE);
+        return new HiddenWindows(liste, vordergrund);
+    }
+
+    /// <summary>
+    /// Holt die Fenster zurueck: maximierte wieder maximiert, in der alten
+    /// Stapelreihenfolge, und das vorher aktive Fenster wieder im Vordergrund.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public static void RestoreWindows(HiddenWindows versteckt)
+    {
+        var fenster = versteckt.TopToBottom;
+
+        // 1. Aufdecken, von unten nach oben. SW_RESTORE stellt ein Fenster so
+        //    wieder her, wie es vor dem Minimieren war - maximiert bleibt maximiert.
+        for (int i = fenster.Count - 1; i >= 0; i--)
+            if (IsWindow(fenster[i]) && IsIconic(fenster[i])) ShowWindowAsync(fenster[i], SW_RESTORE);
+
+        // Die Aufrufe oben laufen in den Programmen selbst, jedes in seinem
+        // Tempo. Kurz warten, sonst kaeme Schritt 2 dem Aufdecken zuvor.
+        var uhr = System.Diagnostics.Stopwatch.StartNew();
+        while (uhr.ElapsedMilliseconds < 3000 && fenster.Any(h => IsWindow(h) && IsIconic(h) && !IsHungAppWindow(h)))
+            Thread.Sleep(50);
+
+        // 2. Stapelreihenfolge wiederherstellen: von unten nach oben jeweils
+        //    nach oben legen - am Ende liegt das oberste wieder oben. Auf einem
+        //    eigenen Thread mit Zeitlimit, falls ein Programm nicht antwortet.
         var t = new Thread(() =>
         {
-            object? shell = null;
-            try
+            for (int i = fenster.Count - 1; i >= 0; i--)
             {
-                var typ = Type.GetTypeFromProgID("Shell.Application");
-                if (typ is null) return;
-                shell = Activator.CreateInstance(typ);
-                if (shell is null) return;
-                typ.InvokeMember("ToggleDesktop", BindingFlags.InvokeMethod, null, shell, null);
-                ok = true;
+                var h = fenster[i];
+                if (!IsWindow(h) || IsHungAppWindow(h)) continue;
+                SetWindowPos(h, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
-            catch { /* ok bleibt false */ }
-            finally
-            {
-                if (shell is not null) { try { Marshal.FinalReleaseComObject(shell); } catch { } }
-            }
-        })
-        { IsBackground = true, Name = "DesktopAnzeigen" };
-        try
-        {
-            t.SetApartmentState(ApartmentState.STA);
-            t.Start();
-            return t.Join(10_000) && ok;
-        }
-        catch
-        {
-            // Ohne COM (oder ohne Thread) bleibt es beim Foto mit Fenstern davor.
-            return false;
-        }
+            // 3. Das vorher aktive Fenster wieder aktiv.
+            if (versteckt.Foreground != IntPtr.Zero && IsWindow(versteckt.Foreground))
+                SetForegroundWindow(versteckt.Foreground);
+        }) { IsBackground = true, Name = "FensterZurueck" };
+        t.Start();
+        t.Join(10_000);
     }
+
+    [SupportedOSPlatform("windows")]
+    private static WindowInfo Describe(IntPtr h)
+    {
+        var klasse = new System.Text.StringBuilder(256);
+        GetClassName(h, klasse, klasse.Capacity);
+        long ex = GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64();
+        bool verhuellt = DwmGetWindowAttribute(h, DWMWA_CLOAKED, out int cloaked, sizeof(int)) == 0 && cloaked != 0;
+        GetWindowRect(h, out var r);
+        return new WindowInfo(
+            klasse.ToString(), IsWindowVisible(h), IsIconic(h), verhuellt,
+            GetWindow(h, GW_OWNER) != IntPtr.Zero,
+            (ex & WS_EX_TOOLWINDOW) != 0, (ex & WS_EX_APPWINDOW) != 0,
+            r.Right - r.Left, r.Bottom - r.Top);
+    }
+
+    /// <summary>Fuer die Pruefungen: Ist das Fenster gerade minimiert / maximiert?</summary>
+    [SupportedOSPlatform("windows")]
+    internal static (bool Minimiert, bool Maximiert) State(IntPtr h) => (IsIconic(h), IsZoomed(h));
 
     // ------------------------------------------------------------ Wessen Desktop?
 
@@ -253,4 +331,28 @@ public static class DesktopScreenshot
     [DllImport("wtsapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool WTSQuerySessionInformationW(IntPtr server, int sessionId, int infoClass, out IntPtr buffer, out int bytes);
     [DllImport("wtsapi32.dll")] private static extern void WTSFreeMemory(IntPtr memory);
+
+    private const int SW_MINIMIZE = 6, SW_RESTORE = 9, GWL_EXSTYLE = -20, GW_OWNER = 4, DWMWA_CLOAKED = 14;
+    private const long WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000;
+    private const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10;
+    private static readonly IntPtr HWND_TOP = IntPtr.Zero;
+
+    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr h);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] private static extern bool IsZoomed(IntPtr h);
+    [DllImport("user32.dll")] private static extern bool IsHungAppWindow(IntPtr h);
+    [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr h, int cmd);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out RECT rect);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr h, System.Text.StringBuilder name, int max);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr h, int index);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out int value, int size);
 }
