@@ -42,6 +42,9 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Cloud-Client jede Datei für geändert und lüde sie erneut hoch, in geteilten Ordnern
   mit Dubletten und Konflikten. Solche Kopien gelten bei späteren Sicherungen als
   gewöhnliche Ordner und werden mitgesichert.
+- **Auf .NET 11 umgestellt.** Die EXE bringt ihre Laufzeit weiterhin selbst mit;
+  auf dem Zielrechner muss nichts installiert werden. Zum Selbstbauen wird jetzt
+  das .NET 11 SDK gebraucht (`build.ps1` prüft das und nennt den Download).
 
 ---
 

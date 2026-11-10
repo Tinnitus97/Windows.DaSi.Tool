@@ -8,7 +8,7 @@
 
 [![Version](https://img.shields.io/badge/Version-1.1.0-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)](https://github.com/Tinnitus97/Windows.DaSi.Tool)
-[![.NET](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
+[![.NET](https://img.shields.io/badge/.NET-11-512BD4)](https://dotnet.microsoft.com/download/dotnet/11.0)
 [![License](https://img.shields.io/badge/Lizenz-MIT-green)](LICENSE)
 
 </div>
@@ -302,7 +302,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | --- | --- |
 | **Sprache** | C# |
 | **UI-Framework** | [Avalonia](https://avaloniaui.net/) 12.1 |
-| **Zielplattform** | .NET 10 (LTS), `win-x64`, self-contained |
+| **Zielplattform** | .NET 11, `win-x64`, self-contained |
 | **Dateioperationen** | Robocopy mit Spiegelung, Ausschlusslisten und Multithreading |
 | **Prozess-Handling** | Browser und Thunderbird werden vor dem Backup automatisch geschlossen, um Dateikonflikte zu vermeiden |
 | **Fehlerbehandlung** | Unerwartete Fehler landen in `%USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log` |
@@ -310,7 +310,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 
 ### Selbst bauen
 
-Voraussetzung ist das [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+Voraussetzung ist das [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0).
 
 ```powershell
 git clone https://github.com/Tinnitus97/Windows.DaSi.Tool.git
@@ -323,7 +323,7 @@ Die fertige EXE liegt anschließend im Ordner `publish`.
 | Parameter | Wirkung |
 | --- | --- |
 | `.\build.ps1` | Self-contained Build (Standard) — läuft ohne installiertes .NET |
-| `.\build.ps1 -Mode framework` | Deutlich kleinere EXE, setzt .NET 10 Desktop Runtime voraus |
+| `.\build.ps1 -Mode framework` | Deutlich kleinere EXE, setzt .NET 11 Desktop Runtime voraus |
 | `.\build.ps1 -Sign` | Signiert die EXE, um SmartScreen-Warnungen zu reduzieren |
 
 Die Prüfungen laufen ohne Oberfläche und auf jedem System:
