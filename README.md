@@ -155,6 +155,22 @@ Beim **Wiederherstellen** wird gezielt ausgewählt, was installiert werden soll:
 <img src="docs/images/winget-auswahl.png" alt="Auswahldialog für die Winget-Wiederherstellung" width="460">
 </div>
 
+### Ein eigener Ordner je Sicherung
+
+Als Ziel genügt das Laufwerk: Wer `G:\` wählt, bekommt für jede Sicherung einen
+eigenen Ordner mit Rechnername und Zeitpunkt —
+
+```
+G:\DASI_DESKTOP-7K4Q2M_10_11_2026_18_45
+```
+
+So liegen mehrere Rechner und mehrere Stände sauber nebeneinander, statt sich im
+Wurzelverzeichnis gegenseitig zu überschreiben. Angelegt wird der Ordner erst beim
+Start, mit dessen Uhrzeit. Der Schalter **Eigener Ordner** (Vorgabe: an) lässt sich
+abschalten; dann geht die Sicherung direkt in das gewählte Ziel. Ist das gewählte Ziel
+selbst schon ein `DASI_…`-Ordner, wird nichts verschachtelt. Beim **Wiederherstellen**
+wirkt der Schalter nicht — dort wird der gewünschte `DASI_…`-Ordner als Quelle gewählt.
+
 ### Schnellauswahl der Benutzerprofile
 
 Alle echten Profile unter `C:\Users` stehen im Dropdown bereit. System- und
@@ -255,7 +271,8 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 1. Aktuelle `WindowsDaSiTool.exe` aus dem [Releases-Bereich](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases) herunterladen.
 2. EXE starten und die UAC-Abfrage mit **Ja** bestätigen.
 3. Über die **Schnellauswahl** das Benutzerprofil wählen (oder per `...` manuell suchen).
-4. Das **Backup-Ziel** festlegen — ein Ordner auf einem NTFS-Laufwerk.
+4. Das **Backup-Ziel** festlegen — ein Ordner auf einem NTFS-Laufwerk. Mit *Eigener
+   Ordner: AN* genügt das Laufwerk (`G:\`); zum Wiederherstellen den `DASI_…`-Ordner wählen.
 5. Modus **Sichern** oder **Wiederherstellen** wählen und die gewünschten Punkte ankreuzen.
    *AppData* und *Cloud-Anbieter* nur bei Bedarf dazunehmen.
 6. Auf die **Speicherzeile** achten: Grün heißt, der Platz reicht.

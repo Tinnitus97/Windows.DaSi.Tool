@@ -18,6 +18,12 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   sich die Symbole von Hand wieder anordnen lassen. Ist ein anderer Benutzer
   angemeldet als der des gesicherten Profils, wird kein Foto gemacht — es zeigte
   den falschen Desktop.
+- **Eigener Ordner je Sicherung** (abschaltbar, Vorgabe: an). Als Ziel genügt das
+  Laufwerk: Aus `G:\` wird beim Start `G:\DASI_<Rechnername>_TT_MM_JJJJ_HH_MM`.
+  Mehrere Rechner und Stände liegen so nebeneinander, statt sich zu überschreiben.
+  Profil, winget-Liste, Desktop-Foto und Protokolldatei landen alle in diesem
+  Ordner. Ist das Ziel schon ein `DASI_…`-Ordner, wird nichts verschachtelt; beim
+  Wiederherstellen ist der Schalter gesperrt.
 
 ### Geändert
 

@@ -76,11 +76,17 @@
                                     Command="{Binding SelectBackupCommand}" IsEnabled="{Binding UiEnabled}"/>
                         </Grid>
 
-                        <Grid ColumnDefinitions="*,*">
-                            <Button Grid.Column="0" Classes="secondary" Margin="0,0,4,0" Content="{Binding BtnClearPaths}"
+                        <!-- Oben drei Knoepfe, unten zwei - auf sechs Spalten verteilt,
+                             damit beide Reihen buendig abschliessen. Eine dritte
+                             Reihe haette wieder einen Rollbalken erzwungen. -->
+                        <Grid ColumnDefinitions="*,*,*,*,*,*" ColumnSpacing="8">
+                            <Button Grid.Column="0" Grid.ColumnSpan="2" Classes="secondary" Content="{Binding BtnClearPaths}"
                                     Command="{Binding ClearPathsCommand}" IsEnabled="{Binding UiEnabled}"/>
-                            <Button Grid.Column="1" Classes="secondary" Margin="4,0,0,0" Content="{Binding LoggingLabel}"
+                            <Button Grid.Column="2" Grid.ColumnSpan="2" Classes="secondary" Content="{Binding LoggingLabel}"
                                     Command="{Binding ToggleLoggingCommand}" IsEnabled="{Binding UiEnabled}"/>
+                            <Button Grid.Column="4" Grid.ColumnSpan="2" Classes="secondary" Content="{Binding OwnFolderLabel}"
+                                    ToolTip.Tip="{Binding OwnFolderTip}"
+                                    Command="{Binding ToggleOwnFolderCommand}" IsEnabled="{Binding OwnFolderToggleEnabled}"/>
                         </Grid>
 
                         <!-- Speicherueberwachung -->

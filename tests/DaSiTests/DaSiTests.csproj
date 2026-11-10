@@ -28,6 +28,7 @@
     <Compile Include="../../Services/ProfileExcludes.cs" />
     <Compile Include="../../Services/ActionOutcome.cs" />
     <Compile Include="../../Services/PngWriter.cs" />
+    <Compile Include="../../Services/BackupTarget.cs" />
     <Compile Include="../../Services/DesktopScreenshot.cs" />
   </ItemGroup>
 

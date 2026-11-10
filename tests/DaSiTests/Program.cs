@@ -358,6 +358,35 @@ internal static class Program
         // ================================================================
         // Desktop-Screenshot: PNG schreiben, Profil vergleichen, Schwarzbild
         // ================================================================
+        Console.WriteLine("\n== Eigener Sicherungsordner ==");
+        var zeitpunkt = new DateTime(2026, 11, 10, 8, 5, 0);
+        Check("Name: DASI_<Rechner>_TT_MM_JJJJ_HH_MM, mit fuehrenden Nullen",
+            BackupTarget.FolderName("DESKTOP-7K4Q2M", zeitpunkt) == "DASI_DESKTOP-7K4Q2M_10_11_2026_08_05",
+            BackupTarget.FolderName("DESKTOP-7K4Q2M", zeitpunkt));
+        Check("unzulaessige Zeichen im Rechnernamen werden zu _",
+            BackupTarget.FolderName("PC:1/2*?", zeitpunkt) == "DASI_PC_1_2___10_11_2026_08_05",
+            BackupTarget.FolderName("PC:1/2*?", zeitpunkt));
+        Check("ohne Rechnernamen: PC",
+            BackupTarget.FolderName("  ", zeitpunkt) == "DASI_PC_10_11_2026_08_05");
+        Check("24-Stunden-Format (18 Uhr, nicht 6)",
+            BackupTarget.FolderName("PC", new DateTime(2026, 11, 10, 18, 45, 0)).EndsWith("_10_11_2026_18_45"));
+
+        var laufwerk = Path.Combine(root, "G");
+        Check("eingeschaltet: Ordner unter dem gewaehlten Ziel",
+            BackupTarget.Resolve(laufwerk, true, "PC", zeitpunkt) == Path.Combine(laufwerk, "DASI_PC_10_11_2026_08_05"));
+        Check("ausgeschaltet: direkt ins gewaehlte Ziel",
+            BackupTarget.Resolve(laufwerk, false, "PC", zeitpunkt) == laufwerk);
+        var schonDasi = Path.Combine(laufwerk, "DASI_ALTPC_01_10_2026_12_00");
+        Check("ist das Ziel schon ein DASI-Ordner, wird nichts verschachtelt",
+            BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt) == schonDasi);
+        Check("auch mit abschliessendem Trennzeichen und Kleinschreibung",
+            BackupTarget.IsOwnFolder(@"G:\dasi_pc_10_11_2026_08_05\") && BackupTarget.IsOwnFolder("/mnt/g/DASI_PC_x/"));
+        Check("Laufwerkswurzel ist kein DASI-Ordner",
+            !BackupTarget.IsOwnFolder(@"G:\") && !BackupTarget.IsOwnFolder(""));
+        Check("ein Ordner, der DASI nur enthaelt, zaehlt nicht",
+            !BackupTarget.IsOwnFolder(@"G:\Backup_DASI_alt"));
+        Check("leeres Ziel bleibt leer", BackupTarget.Resolve("", true, "PC", zeitpunkt) == "");
+
         Console.WriteLine("\n== PNG schreiben ==");
         Check("CRC-32 stimmt mit dem Normwert ueberein (\"123456789\" -> CBF43926)",
             PngWriter.Crc32("123456789"u8) == 0xCBF43926u, PngWriter.Crc32("123456789"u8).ToString("X8"));

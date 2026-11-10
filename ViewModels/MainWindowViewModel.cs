@@ -42,7 +42,11 @@ public partial class MainWindowViewModel : ObservableObject
 
     // Die Zusatzoptionen zum Benutzerprofil haengen ebenfalls daran und muessen
     // mitgesperrt werden, solange eine Aktion laeuft.
-    partial void OnUiEnabledChanged(bool value) => OnPropertyChanged(nameof(UserOptionsEnabled));
+    partial void OnUiEnabledChanged(bool value)
+    {
+        OnPropertyChanged(nameof(UserOptionsEnabled));
+        OnPropertyChanged(nameof(OwnFolderToggleEnabled));
+    }
 
     /// <summary>
     /// Laeuft gerade eine Aktion aus der Warteschlange? Bewusst getrennt von
@@ -127,6 +131,49 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ToggleAutoStorage() => AutoStorageCheck = !AutoStorageCheck;
 
+    // ---- Eigener Sicherungsordner (abschaltbar, Vorgabe: an) ----
+    // Beim Sichern entsteht unter dem gewaehlten Ziel ein eigener Ordner je
+    // Lauf: G:\ -> G:\DASI_<Rechner>_TT_MM_JJJJ_HH_MM. Beim Wiederherstellen
+    // wirkt der Schalter nicht - dort wird ja eine vorhandene Sicherung gewaehlt.
+    [ObservableProperty] private bool _ownBackupFolder = true;
+
+    public string OwnFolderLabel => OwnBackupFolder
+        ? Tr("Eigener Ordner: AN", "Own folder: ON")
+        : Tr("Eigener Ordner: AUS", "Own folder: OFF");
+
+    /// <summary>Zeigt am Beispiel, wo die naechste Sicherung landet.</summary>
+    public string OwnFolderTip
+    {
+        get
+        {
+            var basis = string.IsNullOrWhiteSpace(BackupPath) ? @"G:\" : BackupPath;
+            var beispiel = BackupTarget.Resolve(basis, true, Environment.MachineName, DateTime.Now);
+            return OwnBackupFolder
+                ? Tr($"Beim Sichern wird ein eigener Ordner angelegt, z. B.:\n{beispiel}\n\nAbschalten, um direkt in das gewählte Ziel zu sichern.",
+                     $"When backing up, a separate folder is created, e.g.:\n{beispiel}\n\nTurn off to back up directly into the chosen target.")
+                : Tr($"Gesichert wird direkt in das gewählte Ziel.\n\nEinschalten, um je Sicherung einen eigenen Ordner anzulegen, z. B.:\n{beispiel}",
+                     $"The backup goes directly into the chosen target.\n\nTurn on to create a separate folder per backup, e.g.:\n{beispiel}");
+        }
+    }
+
+    public bool OwnFolderToggleEnabled => UiEnabled && !IsRestoreMode;
+
+    partial void OnOwnBackupFolderChanged(bool value)
+    {
+        OnPropertyChanged(nameof(OwnFolderLabel));
+        OnPropertyChanged(nameof(OwnFolderTip));
+    }
+
+    [RelayCommand]
+    private void ToggleOwnFolder() => OwnBackupFolder = !OwnBackupFolder;
+
+    /// <summary>
+    /// Ziel des laufenden Vorgangs. Beim Sichern mit eigenem Ordner ist das
+    /// der neu angelegte DASI-Ordner, sonst das gewaehlte Ziel. Winget-Export
+    /// und Protokolldatei muessen dorthin - nicht ins gewaehlte Ziel darueber.
+    /// </summary>
+    private string _laufZiel = "";
+
     private System.Threading.CancellationTokenSource? _autoStorageCts;
 
     /// <summary>
@@ -160,6 +207,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     partial void OnBackupPathChanged(string value)
     {
+        OnPropertyChanged(nameof(OwnFolderTip));
         // Freien Platz am Ziellaufwerk sofort anzeigen (leichtgewichtig).
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -348,6 +396,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TgWallpaper));
         OnPropertyChanged(nameof(TgDesktopShot));
         OnPropertyChanged(nameof(ModeTitle));
+        OnPropertyChanged(nameof(OwnFolderToggleEnabled));
         ScheduleAutoStorageCheck();
     }
 
@@ -974,7 +1023,30 @@ public partial class MainWindowViewModel : ObservableObject
         // Die Zusatzoptionen gelten nur zusammen mit dem Benutzerprofil.
         _backup.IncludeAppData = SelUser && SelUserAppData;
         _backup.IncludeCloud = SelUser && SelUserCloud;
-        _backup.BackupPath = BackupPath;
+
+        // Eigener Ordner: erst hier anlegen, mit der Uhrzeit des Starts - nicht
+        // schon beim Waehlen des Ziels. Sonst truege der Ordner die Zeit, zu der
+        // irgendwann das Laufwerk gewaehlt wurde.
+        _laufZiel = IsRestoreMode
+            ? BackupPath
+            : BackupTarget.Resolve(BackupPath, OwnBackupFolder, Environment.MachineName, DateTime.Now);
+        if (!string.Equals(_laufZiel, BackupPath, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                Directory.CreateDirectory(_laufZiel);
+            }
+            catch (Exception ex)
+            {
+                await ShowInfo(Tr("Fehler", "Error"),
+                    Tr($"Der Sicherungsordner konnte nicht angelegt werden:\n{_laufZiel}\n\n{ex.Message}",
+                       $"The backup folder could not be created:\n{_laufZiel}\n\n{ex.Message}"));
+                return;
+            }
+            Log(Tr($"[INFO] Gesichert wird in einen eigenen Ordner: {_laufZiel}",
+                   $"[INFO] Backing up into a separate folder: {_laufZiel}"));
+        }
+        _backup.BackupPath = _laufZiel;
 
         UiEnabled = false;
         IsActionRunning = true;
@@ -1075,7 +1147,7 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Backup-Chrome":      await _backup.BackupAppProfile("Chrome", @"AppData\Local\Google\Chrome\User Data", "chrome", _backup.ChromiumExcludes); break;
                     case "Backup-Brave":       await _backup.BackupAppProfile("Brave", @"AppData\Local\BraveSoftware\Brave-Browser\User Data", "brave", _backup.ChromiumExcludes); break;
                     case "Backup-Thunderbird": await _backup.BackupAppProfile("Thunderbird", @"AppData\Roaming\Thunderbird", "thunderbird"); break;
-                    case "Export-Winget":      await _winget.ExportAsync(BackupPath); break;
+                    case "Export-Winget":      await _winget.ExportAsync(_laufZiel); break;
                     case "Export-Wlan":        await _backup.ExportWlan(); break;
                     case "Export-Printer":     await _backup.ExportPrinters(); break;
                     case "Export-Wallpaper":   await _backup.ExportWallpaper(); break;
@@ -1146,7 +1218,7 @@ public partial class MainWindowViewModel : ObservableObject
         // Protokolldatei schreiben (nur wenn ein gueltiges Ziel existiert).
         try
         {
-            if (string.IsNullOrWhiteSpace(BackupPath) || !Directory.Exists(BackupPath)) return;
+            if (string.IsNullOrWhiteSpace(_laufZiel) || !Directory.Exists(_laufZiel)) return;
 
             var modeStr = restore ? Tr("Wiederherstellung", "Restore") : Tr("Sicherung", "Backup");
             // Computername in den Dateinamen aufnehmen (ungueltige Zeichen entfernen).
@@ -1154,7 +1226,7 @@ public partial class MainWindowViewModel : ObservableObject
             foreach (var ch in Path.GetInvalidFileNameChars())
                 pcName = pcName.Replace(ch, '_');
             var fileName = $"{(restore ? "Wiederherstellung" : "Sicherung")}-Protokoll_{pcName}_{start:yyyy-MM-dd_HH-mm}.txt";
-            var path = Path.Combine(BackupPath, fileName);
+            var path = Path.Combine(_laufZiel, fileName);
 
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("Windows DaSi Tool - " + Tr("Protokoll", "Report"));
@@ -1164,7 +1236,7 @@ public partial class MainWindowViewModel : ObservableObject
             sb.AppendLine($"{Tr("Datum", "Date")}: {start:yyyy-MM-dd HH:mm:ss}");
             sb.AppendLine($"{Tr("Dauer", "Duration")}: {durStr}");
             sb.AppendLine($"{Tr("Benutzerprofil", "User profile")}: {SourcePath}");
-            sb.AppendLine($"{Tr("Backup-Ziel/-Quelle", "Backup target/source")}: {BackupPath}");
+            sb.AppendLine($"{Tr("Backup-Ziel/-Quelle", "Backup target/source")}: {_laufZiel}");
             sb.AppendLine($"{Tr("Version", "Version")}: {VersionString}");
             sb.AppendLine("----------------------------------------");
             sb.AppendLine($"{Tr("Ergebnis", "Result")}: {okCount}/{results.Count} {Tr("erfolgreich", "succeeded")}, {failCount} {Tr("Fehler", "errors")}");
