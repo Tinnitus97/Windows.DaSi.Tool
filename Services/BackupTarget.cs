@@ -34,10 +34,7 @@ public static class BackupTarget
         return Prefix + pc + "_" + when.ToString("dd_MM_yyyy_HH_mm", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>
-    /// true, wenn der Ordner selbst schon ein DASI-Ordner ist. Dann wird nichts
-    /// verschachtelt: Wer "G:\DASI_PC_10_11_2026_18_45" waehlt, will genau dorthin.
-    /// </summary>
+    /// <summary>true, wenn der Ordner selbst schon ein DASI-Ordner ist.</summary>
     public static bool IsOwnFolder(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return false;
@@ -49,12 +46,22 @@ public static class BackupTarget
 
     /// <summary>
     /// Das tatsaechliche Ziel einer Sicherung.
+    ///
+    /// Ist das Gewaehlte selbst schon ein DASI-Ordner - etwa weil er gerade als
+    /// Quelle zum Wiederherstellen diente -, kommt der neue Ordner DANEBEN, nicht
+    /// hinein und nicht an seine Stelle: Das Profil wird mit /MIR gespiegelt,
+    /// in eine aeltere Sicherung geschrieben, loeschte es dort alles, was dieser
+    /// Rechner nicht hat. Wer wirklich in einen bestimmten Ordner sichern will,
+    /// schaltet "Eigener Ordner" ab.
     /// </summary>
     /// <param name="basePath">Was der Benutzer gewaehlt hat, z. B. "G:\".</param>
     /// <param name="enabled">Schalter "Eigener Ordner".</param>
     public static string Resolve(string basePath, bool enabled, string machineName, DateTime when)
     {
-        if (!enabled || string.IsNullOrWhiteSpace(basePath) || IsOwnFolder(basePath)) return basePath;
-        return Path.Combine(basePath, FolderName(machineName, when));
+        if (!enabled || string.IsNullOrWhiteSpace(basePath)) return basePath;
+        var basis = basePath;
+        if (IsOwnFolder(basePath))
+            basis = Path.GetDirectoryName(basePath.TrimEnd('\\', '/')) ?? basePath;
+        return Path.Combine(basis, FolderName(machineName, when));
     }
 }

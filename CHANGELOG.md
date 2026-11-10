@@ -13,22 +13,30 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 - **Desktop-Screenshot.** Beim Sichern fotografiert das Tool den Desktop samt
   Symbolen — alle Monitore in einem Bild, in ihrer echten Anordnung und in voller
-  Auflösung. Für die Aufnahme werden alle Fenster kurz ausgeblendet (wie Win+D) und
-  danach zurückgeholt. Beim Wiederherstellen öffnet derselbe Punkt das Foto, damit
+  Auflösung. Für die Aufnahme werden alle Programmfenster kurz beiseitegelegt und
+  danach genau so zurückgeholt, wie sie waren — in derselben Reihenfolge, maximierte
+  wieder maximiert, das aktive Fenster wieder vorn. Beim Wiederherstellen öffnet derselbe Punkt das Foto, damit
   sich die Symbole von Hand wieder anordnen lassen. Ist ein anderer Benutzer
   angemeldet als der des gesicherten Profils, wird kein Foto gemacht — es zeigte
   den falschen Desktop.
 - **Eigener Ordner je Sicherung** (abschaltbar, Vorgabe: an). Als Ziel genügt das
-  Laufwerk: Aus `G:\` wird beim Start `G:\DASI_<Rechnername>_TT_MM_JJJJ_HH_MM`.
+  Laufwerk: Nach der Auswahl von `G:\` zeigt das Feld sofort
+  `G:\DASI_<Rechnername>_TT_MM_JJJJ_HH_MM`, und genau dorthin wird gesichert.
   Mehrere Rechner und Stände liegen so nebeneinander, statt sich zu überschreiben.
   Profil, winget-Liste, Desktop-Foto und Protokolldatei landen alle in diesem
-  Ordner. Ist das Ziel schon ein `DASI_…`-Ordner, wird nichts verschachtelt; beim
-  Wiederherstellen ist der Schalter gesperrt.
+  Ordner. Ist das Gewählte schon ein `DASI_…`-Ordner, kommt der neue daneben — in
+  eine bestehende Sicherung wird nie hineingeschrieben. Beim Wiederherstellen ist der
+  Schalter gesperrt.
 
 ### Geändert
 
+- **AppData und Cloud-Ordner gehen auch ohne das Benutzerprofil.** Bisher waren die
+  beiden Haken an das Profil gekoppelt und ohne es gesperrt. Jetzt lassen sie sich
+  einzeln sichern und wiederherstellen; sie heißen deshalb *AppData sichern* und
+  *Cloud-Anbieter sichern* (bzw. *… wiederherstellen*). Abgelegt wird an derselben
+  Stelle wie bei einer Profilsicherung.
 - **Cloud-Ordner werden neben das Original zurückgeschrieben.** Mit dem Haken
-  *Cloud-Anbieter mit wiederherstellen* landet zum Beispiel `OneDrive` jetzt in
+  *Cloud-Anbieter wiederherstellen* landet zum Beispiel `OneDrive` jetzt in
   `OneDrive_wiederhergestellt` (ebenso `HiDrive_wiederhergestellt`,
   `Dropbox_wiederhergestellt` …) statt im laufenden Cloud-Ordner. Dort hielte der
   Cloud-Client jede Datei für geändert und lüde sie erneut hoch, in geteilten Ordnern

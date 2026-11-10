@@ -31,7 +31,7 @@ Ein Foto des Desktops hält fest, wo welche Symbole lagen.
 
 | Bereich | Inhalt |
 | --- | --- |
-| **Windows-Benutzerprofil** | Dokumente, Bilder, Desktop, Downloads und alles Weitere im Profil. Zwischenspeicher, Temp-Ordner und Windows-Altlasten (Verknüpfungspunkte wie *Anwendungsdaten*) bleiben draußen. **AppData** und **Cloud-Ordner** wahlweise — Vorgabe: aus |
+| **Windows-Benutzerprofil** | Dokumente, Bilder, Desktop, Downloads und alles Weitere im Profil. Zwischenspeicher, Temp-Ordner und Windows-Altlasten (Verknüpfungspunkte wie *Anwendungsdaten*) bleiben draußen. **AppData** und **Cloud-Ordner** wahlweise, auch einzeln ohne den Rest des Profils — Vorgabe: aus |
 | **Browser-Profile** | Firefox, Edge, Chrome und Brave — inklusive Lesezeichen, Verlauf und Einstellungen |
 | **E-Mail** | Thunderbird-Profil mit Konten und lokalen Ordnern |
 | **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog. Programme ohne Winget-Paket landen in einer eigenen Liste |
@@ -63,8 +63,11 @@ exportieren* wird *Programme installieren*, aus *Desktop-Screenshot erstellen* w
 ### AppData und Cloud-Ordner: bewusst entscheiden
 
 Beide gehören zum Benutzerprofil, werden aber **nur auf ausdrücklichen Wunsch**
-mitgenommen — die Haken sitzen direkt in der Profilkachel und sind nur aktiv, wenn
-das Profil gewählt ist.
+mitgenommen — die Haken sitzen direkt in der Profilkachel. Sie gehen auch **ohne** das
+Profil: Dann sichert bzw. stellt das Tool nur AppData bzw. nur die Cloud-Ordner wieder
+her. Abgelegt werden sie an derselben Stelle wie bei einer Profilsicherung
+(`Benutzerprofil\AppData`, `Benutzerprofil\OneDrive` …), sodass jede spätere
+Wiederherstellung sie findet.
 
 - **AppData** enthält Programmeinstellungen, aber auch maschinengebundene Lizenzen,
   Gerätekennungen und Anmeldesitzungen. Vor dem *Zurückschreiben* fragt das Tool
@@ -104,8 +107,10 @@ ja nicht synchronisiert.
 Nach einer Neuinstallation ist der Desktop leer, und kaum jemand weiß noch, wo seine
 Verknüpfungen lagen. Auf Wunsch fotografiert das Tool deshalb den Desktop — **alle
 Monitore in einem Bild**, in ihrer echten Anordnung und in voller Auflösung, auch bei
-skalierten Bildschirmen. Damit die Symbole frei liegen, blendet es dafür für einen
-Moment alle Fenster aus (wie Win+D) und holt sie danach zurück.
+skalierten Bildschirmen. Damit die Symbole frei liegen, legt es dafür für einen Moment
+alle Programmfenster beiseite und holt sie danach **genau so zurück, wie sie waren**:
+in derselben Reihenfolge, maximierte wieder maximiert, das zuletzt aktive Fenster
+wieder vorn.
 
 Das Foto landet als `Desktop-Screenshot\Desktop.png` im Backup-Ziel. Beim
 **Wiederherstellen** öffnet derselbe Punkt dieses Foto, damit sich die Symbole danach
@@ -157,19 +162,23 @@ Beim **Wiederherstellen** wird gezielt ausgewählt, was installiert werden soll:
 
 ### Ein eigener Ordner je Sicherung
 
-Als Ziel genügt das Laufwerk: Wer `G:\` wählt, bekommt für jede Sicherung einen
-eigenen Ordner mit Rechnername und Zeitpunkt —
+Als Ziel genügt das Laufwerk: Wer `G:\` wählt, sieht im Feld sofort einen eigenen
+Ordner mit Rechnername und Zeitpunkt —
 
 ```
 G:\DASI_DESKTOP-7K4Q2M_10_11_2026_18_45
 ```
 
 So liegen mehrere Rechner und mehrere Stände sauber nebeneinander, statt sich im
-Wurzelverzeichnis gegenseitig zu überschreiben. Angelegt wird der Ordner erst beim
-Start, mit dessen Uhrzeit. Der Schalter **Eigener Ordner** (Vorgabe: an) lässt sich
-abschalten; dann geht die Sicherung direkt in das gewählte Ziel. Ist das gewählte Ziel
-selbst schon ein `DASI_…`-Ordner, wird nichts verschachtelt. Beim **Wiederherstellen**
-wirkt der Schalter nicht — dort wird der gewünschte `DASI_…`-Ordner als Quelle gewählt.
+Wurzelverzeichnis gegenseitig zu überschreiben. Gesichert wird genau dorthin, wo das
+Feld zeigt; angelegt wird der Ordner beim Start. Der Schalter **Eigener Ordner**
+(Vorgabe: an) lässt sich abschalten — dann zeigt das Feld wieder `G:\`, und die
+Sicherung geht direkt dorthin.
+
+In eine bestehende Sicherung wird nie hineingeschrieben: Ist das Gewählte selbst schon
+ein `DASI_…`-Ordner — etwa die Sicherung, die gerade als Quelle zum Wiederherstellen
+diente —, kommt der neue Ordner daneben. Beim **Wiederherstellen** wirkt der Schalter
+nicht; dort zeigt das Feld genau den gewählten `DASI_…`-Ordner.
 
 ### Schnellauswahl der Benutzerprofile
 
@@ -272,7 +281,8 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 2. EXE starten und die UAC-Abfrage mit **Ja** bestätigen.
 3. Über die **Schnellauswahl** das Benutzerprofil wählen (oder per `...` manuell suchen).
 4. Das **Backup-Ziel** festlegen — ein Ordner auf einem NTFS-Laufwerk. Mit *Eigener
-   Ordner: AN* genügt das Laufwerk (`G:\`); zum Wiederherstellen den `DASI_…`-Ordner wählen.
+   Ordner: AN* genügt das Laufwerk (`G:\`) — das Feld zeigt dann sofort `G:\DASI_…`.
+   Zum Wiederherstellen den gewünschten `DASI_…`-Ordner wählen.
 5. Modus **Sichern** oder **Wiederherstellen** wählen und die gewünschten Punkte ankreuzen.
    *AppData* und *Cloud-Anbieter* nur bei Bedarf dazunehmen.
 6. Auf die **Speicherzeile** achten: Grün heißt, der Platz reicht.

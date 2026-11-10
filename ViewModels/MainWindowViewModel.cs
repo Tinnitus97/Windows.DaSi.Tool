@@ -141,16 +141,18 @@ public partial class MainWindowViewModel : ObservableObject
         ? Tr("Eigener Ordner: AN", "Own folder: ON")
         : Tr("Eigener Ordner: AUS", "Own folder: OFF");
 
-    /// <summary>Zeigt am Beispiel, wo die naechste Sicherung landet.</summary>
+    /// <summary>Sagt, wohin die naechste Sicherung geht - am echten Ordner.</summary>
     public string OwnFolderTip
     {
         get
         {
-            var basis = string.IsNullOrWhiteSpace(BackupPath) ? @"G:\" : BackupPath;
-            var beispiel = BackupTarget.Resolve(basis, true, Environment.MachineName, DateTime.Now);
+            var basis = string.IsNullOrWhiteSpace(_zielBasis) ? @"G:\" : _zielBasis;
+            var beispiel = !IsRestoreMode && OwnBackupFolder && !string.IsNullOrWhiteSpace(BackupPath)
+                ? BackupPath
+                : BackupTarget.Resolve(basis, true, Environment.MachineName, DateTime.Now);
             return OwnBackupFolder
-                ? Tr($"Beim Sichern wird ein eigener Ordner angelegt, z. B.:\n{beispiel}\n\nAbschalten, um direkt in das gewählte Ziel zu sichern.",
-                     $"When backing up, a separate folder is created, e.g.:\n{beispiel}\n\nTurn off to back up directly into the chosen target.")
+                ? Tr($"Beim Sichern wird ein eigener Ordner angelegt:\n{beispiel}\n\nAbschalten, um direkt in das gewählte Ziel zu sichern.",
+                     $"When backing up, a separate folder is created:\n{beispiel}\n\nTurn off to back up directly into the chosen target.")
                 : Tr($"Gesichert wird direkt in das gewählte Ziel.\n\nEinschalten, um je Sicherung einen eigenen Ordner anzulegen, z. B.:\n{beispiel}",
                      $"The backup goes directly into the chosen target.\n\nTurn on to create a separate folder per backup, e.g.:\n{beispiel}");
         }
@@ -162,6 +164,30 @@ public partial class MainWindowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(OwnFolderLabel));
         OnPropertyChanged(nameof(OwnFolderTip));
+        ZielAnzeigen();
+    }
+
+    /// <summary>
+    /// Was der Benutzer als Ziel gewaehlt hat, z. B. "G:\". Das Feld zeigt beim
+    /// Sichern mit eigenem Ordner daraus schon den fertigen Ordner
+    /// ("G:\DASI_Rechner_TT_MM_JJJJ_HH_MM") - genau dorthin wird gesichert.
+    /// Gemerkt wird die Auswahl, damit Ausschalten und Moduswechsel wieder auf
+    /// das Gewaehlte zurueckrechnen koennen.
+    /// </summary>
+    private string _zielBasis = "";
+
+    private void SetzeZiel(string basis)
+    {
+        _zielBasis = basis;
+        ZielAnzeigen();
+    }
+
+    private void ZielAnzeigen()
+    {
+        if (string.IsNullOrWhiteSpace(_zielBasis)) return;
+        BackupPath = !IsRestoreMode && OwnBackupFolder
+            ? BackupTarget.Resolve(_zielBasis, true, Environment.MachineName, DateTime.Now)
+            : _zielBasis;
     }
 
     [RelayCommand]
@@ -307,12 +333,13 @@ public partial class MainWindowViewModel : ObservableObject
     // Wie bei den anderen Sonderpunkten folgt die Beschriftung dem Modus - die
     // Haken wirken in beide Richtungen, und "sichern" waere beim
     // Wiederherstellen schlicht falsch.
+    // Bewusst ohne "mit": Beide gehen auch ohne das Profil - dann allein.
     public string TgUserAppData => IsRestoreMode
-        ? Tr("AppData mit wiederherstellen", "Include AppData")
-        : Tr("AppData mit sichern", "Include AppData");
+        ? Tr("AppData wiederherstellen", "Restore AppData")
+        : Tr("AppData sichern", "Back up AppData");
     public string TgUserCloud => IsRestoreMode
-        ? Tr("Cloud-Anbieter mit wiederherstellen", "Include cloud providers")
-        : Tr("Cloud-Anbieter mit sichern", "Include cloud providers");
+        ? Tr("Cloud-Anbieter wiederherstellen", "Restore cloud providers")
+        : Tr("Cloud-Anbieter sichern", "Back up cloud providers");
     public string TgFirefox        => Tr("Firefox-Profil", "Firefox profile");
     public string TgEdge           => Tr("Edge-Profil", "Edge profile");
     public string TgChrome         => Tr("Chrome-Profil", "Chrome profile");
@@ -348,18 +375,13 @@ public partial class MainWindowViewModel : ObservableObject
     /// Die beiden Zusatzoptionen sind nur bedienbar, wenn das Benutzerprofil
     /// ueberhaupt gewaehlt ist - sonst haetten sie keine Wirkung.
     /// </summary>
-    public bool UserOptionsEnabled => UiEnabled && SelUser;
+    // AppData und Cloud gehen auch ohne das Profil - frueher waren sie daran
+    // gekoppelt und ohne Profil-Haken gesperrt.
+    public bool UserOptionsEnabled => UiEnabled;
 
     // Bei Aenderung der groessenrelevanten Auswahl die Auto-Berechnung anstossen.
     partial void OnSelUserChanged(bool value)
     {
-        OnPropertyChanged(nameof(UserOptionsEnabled));
-
-        // Ohne Benutzerprofil sind die Zusatzoptionen gegenstandslos. Sie
-        // hier zurueckzusetzen verhindert, dass sie unsichtbar gesetzt bleiben
-        // und beim naechsten Anhaken des Profils ueberraschend wirken.
-        if (!value) { SelUserAppData = false; SelUserCloud = false; }
-
         ScheduleAutoStorageCheck();
     }
 
@@ -397,6 +419,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TgDesktopShot));
         OnPropertyChanged(nameof(ModeTitle));
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
+        ZielAnzeigen();
         ScheduleAutoStorageCheck();
     }
 
@@ -631,6 +654,17 @@ public partial class MainWindowViewModel : ObservableObject
                             try { size += new System.IO.FileInfo(full).Length; } catch { }
                         }
                     }
+                    // Ohne Profil: AppData und Cloud-Ordner aus der Sicherung einzeln.
+                    if (!selUser)
+                    {
+                        var profilSicherung = System.IO.Path.Combine(backupPath, "Benutzerprofil");
+                        var appData = System.IO.Path.Combine(profilSicherung, "AppData");
+                        if (selAppData && System.IO.Directory.Exists(appData))
+                            size += SystemHelpers.GetDirectorySize(appData, ct: ct);
+                        if (selCloud)
+                            foreach (var cloud in CloudProviders.Detect(profilSicherung))
+                                size += SystemHelpers.GetDirectorySize(cloud.Path, ct: ct);
+                    }
                     var restoreTarget = string.IsNullOrWhiteSpace(sourcePath) ? backupPath : sourcePath;
                     return (size, SystemHelpers.GetFreeSpace(restoreTarget));
                 }
@@ -640,6 +674,18 @@ public partial class MainWindowViewModel : ObservableObject
                     if (selUser && !string.IsNullOrWhiteSpace(sourcePath))
                         size += SystemHelpers.GetDirectorySize(sourcePath,
                                     BackupService.GetProfileExcludes(sourcePath, selAppData, selCloud), ct);
+
+                    // Ohne Profil: AppData (ohne Zwischenspeicher) und Cloud-Ordner einzeln.
+                    if (!selUser && !string.IsNullOrWhiteSpace(sourcePath))
+                    {
+                        var appData = System.IO.Path.Combine(sourcePath, "AppData");
+                        if (selAppData && System.IO.Directory.Exists(appData))
+                            size += SystemHelpers.GetDirectorySize(appData,
+                                        ProfileExcludes.Build(sourcePath, includeAppData: true, includeCloud: true), ct);
+                        if (selCloud)
+                            foreach (var cloud in CloudProviders.Detect(sourcePath))
+                                size += SystemHelpers.GetDirectorySize(cloud.Path, ct: ct);
+                    }
 
                     // Browser-/Mail-Profile einzeln dazurechnen.
                     if (!string.IsNullOrWhiteSpace(sourcePath))
@@ -770,6 +816,7 @@ public partial class MainWindowViewModel : ObservableObject
     private void ClearPaths()
     {
         SourcePath = "";
+        _zielBasis = "";
         BackupPath = "";
         Log(Tr(">> Pfade wurden geleert.", ">> Paths cleared."));
     }
@@ -787,7 +834,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         var folder = await PickFolder(Tr("Backup Basis-Verzeichnis auswählen", "Select backup base directory"));
         if (folder == null) return;
-        if (SystemHelpers.IsNtfsDrive(folder)) BackupPath = folder;
+        if (SystemHelpers.IsNtfsDrive(folder)) SetzeZiel(folder);
         else await ShowInfo(Tr("Fehler", "Error"),
             Tr("Das ausgewählte Laufwerk ist NICHT mit NTFS formatiert!\nRobocopy benötigt zwingend NTFS.",
                "The selected drive is NOT formatted as NTFS!\nRobocopy strictly requires NTFS."));
@@ -869,14 +916,14 @@ public partial class MainWindowViewModel : ObservableObject
     {
         var weiter = await ShowYesNo(
             Tr("AppData wiederherstellen", "Restore AppData"),
-            Tr("AppData wird mit zurückgeschrieben.\n\n"
+            Tr("AppData wird zurückgeschrieben.\n\n"
                + "ACHTUNG: In AppData liegen Einstellungen, die an den Rechner gebunden sind - "
                + "Lizenzen, Gerätekennungen und angemeldete Sitzungen. Auf einem anderen Rechner "
                + "oder über eine neuere Programmfassung geschrieben, können einzelne Programme "
                + "danach nicht mehr starten oder eine Neuanmeldung verlangen.\n\n"
                + "Schließe vorher alle Programme. Dateien, die gerade benutzt werden, werden "
                + "übersprungen.\n\nAppData wirklich wiederherstellen?",
-               "AppData will be restored as well.\n\n"
+               "AppData will be restored.\n\n"
                + "CAUTION: AppData holds settings tied to the machine - licences, device identifiers "
                + "and signed-in sessions. Written on a different machine, or over a newer version of a "
                + "program, individual programs may fail to start afterwards or ask you to sign in "
@@ -985,8 +1032,8 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         // ---- Rueckfragen zu den Zusatzoptionen des Benutzerprofils ----
-        if (SelUser && SelUserCloud && !await ConfirmCloudAsync()) return;
-        if (SelUser && SelUserAppData && IsRestoreMode && !await ConfirmAppDataRestoreAsync()) return;
+        if (SelUserCloud && !await ConfirmCloudAsync()) return;
+        if (SelUserAppData && IsRestoreMode && !await ConfirmAppDataRestoreAsync()) return;
 
         // ---- winget: erst pruefen, dann arbeiten ----
         //
@@ -1020,17 +1067,15 @@ public partial class MainWindowViewModel : ObservableObject
         _cancel.Reset();
         _cancel.FastMode = !DetailedLogging;
         _backup.SourcePath = SourcePath;
-        // Die Zusatzoptionen gelten nur zusammen mit dem Benutzerprofil.
-        _backup.IncludeAppData = SelUser && SelUserAppData;
-        _backup.IncludeCloud = SelUser && SelUserCloud;
+        // Mit Profil laufen AppData und Cloud in der Profilsicherung mit;
+        // ohne Profil als eigene Aktionen (siehe BuildTaskList).
+        _backup.IncludeAppData = SelUserAppData;
+        _backup.IncludeCloud = SelUserCloud;
 
-        // Eigener Ordner: erst hier anlegen, mit der Uhrzeit des Starts - nicht
-        // schon beim Waehlen des Ziels. Sonst truege der Ordner die Zeit, zu der
-        // irgendwann das Laufwerk gewaehlt wurde.
-        _laufZiel = IsRestoreMode
-            ? BackupPath
-            : BackupTarget.Resolve(BackupPath, OwnBackupFolder, Environment.MachineName, DateTime.Now);
-        if (!string.Equals(_laufZiel, BackupPath, StringComparison.OrdinalIgnoreCase))
+        // Gesichert wird genau dorthin, wo das Feld zeigt - mit eigenem Ordner
+        // steht dort schon "G:\DASI_...". Angelegt wird er erst jetzt.
+        _laufZiel = BackupPath;
+        if (!IsRestoreMode && !Directory.Exists(_laufZiel))
         {
             try
             {
@@ -1043,8 +1088,8 @@ public partial class MainWindowViewModel : ObservableObject
                        $"The backup folder could not be created:\n{_laufZiel}\n\n{ex.Message}"));
                 return;
             }
-            Log(Tr($"[INFO] Gesichert wird in einen eigenen Ordner: {_laufZiel}",
-                   $"[INFO] Backing up into a separate folder: {_laufZiel}"));
+            Log(Tr($"[INFO] Sicherungsordner angelegt: {_laufZiel}",
+                   $"[INFO] Backup folder created: {_laufZiel}"));
         }
         _backup.BackupPath = _laufZiel;
 
@@ -1082,6 +1127,12 @@ public partial class MainWindowViewModel : ObservableObject
         if (IsRestoreMode)
         {
             if (SelUser)        t.Add("Restore-User");
+            else
+            {
+                // Ohne Profil: AppData und Cloud einzeln.
+                if (SelUserAppData) t.Add("Restore-AppData");
+                if (SelUserCloud)   t.Add("Restore-Cloud");
+            }
             if (SelFirefox)     t.Add("Restore-Firefox");
             if (SelEdge)        t.Add("Restore-Edge");
             if (SelChrome)      t.Add("Restore-Chrome");
@@ -1102,6 +1153,12 @@ public partial class MainWindowViewModel : ObservableObject
             // auf "Starten" nicht als Stoerung auf.
             if (SelDesktopShot) t.Add("Capture-DesktopShot");
             if (SelUser)        t.Add("Backup-User");
+            else
+            {
+                // Ohne Profil: AppData und Cloud einzeln.
+                if (SelUserAppData) t.Add("Backup-AppData");
+                if (SelUserCloud)   t.Add("Backup-Cloud");
+            }
             if (SelFirefox)     t.Add("Backup-Firefox");
             if (SelEdge)        t.Add("Backup-Edge");
             if (SelChrome)      t.Add("Backup-Chrome");
@@ -1142,6 +1199,8 @@ public partial class MainWindowViewModel : ObservableObject
                 switch (choice)
                 {
                     case "Backup-User":        await _backup.BackupUserProfile(); break;
+                    case "Backup-AppData":     await _backup.BackupAppDataOnly(); break;
+                    case "Backup-Cloud":       await _backup.BackupCloudOnly(); break;
                     case "Backup-Firefox":     await _backup.BackupAppProfile("Firefox", @"AppData\Roaming\Mozilla\Firefox", "firefox"); break;
                     case "Backup-Edge":        await _backup.BackupAppProfile("Edge", @"AppData\Local\Microsoft\Edge\User Data", "msedge", _backup.ChromiumExcludes); break;
                     case "Backup-Chrome":      await _backup.BackupAppProfile("Chrome", @"AppData\Local\Google\Chrome\User Data", "chrome", _backup.ChromiumExcludes); break;
@@ -1157,6 +1216,8 @@ public partial class MainWindowViewModel : ObservableObject
                         break;
 
                     case "Restore-User":        await _backup.RestoreUserProfile(); break;
+                    case "Restore-AppData":     await _backup.RestoreAppDataOnly(); break;
+                    case "Restore-Cloud":       await _backup.RestoreCloudOnly(); break;
                     case "Restore-Firefox":     await _backup.RestoreAppProfile("Firefox", @"AppData\Roaming\Mozilla\Firefox", "firefox"); break;
                     case "Restore-Edge":        await _backup.RestoreAppProfile("Edge", @"AppData\Local\Microsoft\Edge\User Data", "msedge"); break;
                     case "Restore-Chrome":      await _backup.RestoreAppProfile("Chrome", @"AppData\Local\Google\Chrome\User Data", "chrome"); break;
@@ -1264,6 +1325,8 @@ public partial class MainWindowViewModel : ObservableObject
         return choice switch
         {
             "Backup-User" or "Restore-User"               => Tr("Windows Benutzerprofil", "Windows user profile"),
+            "Backup-AppData" or "Restore-AppData"         => Tr("AppData", "AppData"),
+            "Backup-Cloud" or "Restore-Cloud"             => Tr("Cloud-Ordner", "Cloud folders"),
             "Backup-Firefox" or "Restore-Firefox"         => Tr("Firefox-Profil", "Firefox profile"),
             "Backup-Edge" or "Restore-Edge"               => Tr("Edge-Profil", "Edge profile"),
             "Backup-Chrome" or "Restore-Chrome"           => Tr("Chrome-Profil", "Chrome profile"),

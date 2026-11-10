@@ -381,8 +381,11 @@ internal static class Program
         Check("ausgeschaltet: direkt ins gewaehlte Ziel",
             BackupTarget.Resolve(laufwerk, false, "PC", zeitpunkt) == laufwerk);
         var schonDasi = Path.Combine(laufwerk, "DASI_ALTPC_01_10_2026_12_00");
-        Check("ist das Ziel schon ein DASI-Ordner, wird nichts verschachtelt",
-            BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt) == schonDasi);
+        Check("ist das Ziel schon ein DASI-Ordner, kommt der neue DANEBEN (nicht hinein, nicht an seine Stelle)",
+            BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt) == Path.Combine(laufwerk, "DASI_PC_10_11_2026_08_05"),
+            BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt));
+        Check("ausgeschaltet bleibt auch ein DASI-Ordner, wie er ist",
+            BackupTarget.Resolve(schonDasi, false, "PC", zeitpunkt) == schonDasi);
         Check("auch mit abschliessendem Trennzeichen und Kleinschreibung",
             BackupTarget.IsOwnFolder(@"G:\dasi_pc_10_11_2026_08_05\") && BackupTarget.IsOwnFolder("/mnt/g/DASI_PC_x/"));
         Check("Laufwerkswurzel ist kein DASI-Ordner",

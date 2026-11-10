@@ -172,6 +172,120 @@ public sealed class BackupService
         }
     }
 
+    // ------------------------------------------------------------ AppData / Cloud ohne Profil
+    //
+    // AppData und Cloud-Ordner lassen sich auch einzeln sichern, ohne den Rest
+    // des Profils. Sie landen an DERSELBEN Stelle wie bei der Profilsicherung
+    // (Benutzerprofil\AppData, Benutzerprofil\<Cloud-Ordner>) - so findet jede
+    // spaetere Wiederherstellung sie, egal auf welchem Weg gesichert wurde.
+
+    /// <summary>Gemeinsame robocopy-Schalter fuer das Sichern aus dem Profil.</summary>
+    private List<string> ProfileBackupArgs(string quelle, string ziel)
+    {
+        var args = new List<string> { Quote(quelle), Quote(ziel), "/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XA:SH" };
+        if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+        return args;
+    }
+
+    /// <summary>Gemeinsame robocopy-Schalter fuer das Zurueckschreiben ins Profil.</summary>
+    private List<string> ProfileRestoreArgs(string quelle, string ziel)
+    {
+        var args = new List<string> { Quote(quelle), Quote(ziel), "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32" };
+        if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+        return args;
+    }
+
+    /// <summary>Sichert nur AppData - die Zwischenspeicher bleiben wie immer draussen.</summary>
+    public async Task BackupAppDataOnly()
+    {
+        var quelle = Path.Combine(SourcePath, "AppData");
+        if (!Directory.Exists(quelle))
+        {
+            _log(Loc.Tr($"[FEHLER] AppData nicht gefunden: {quelle}", $"[ERROR] AppData not found: {quelle}"));
+            return;
+        }
+        var ziel = Path.Combine(BackupPath, "Benutzerprofil", "AppData");
+        if (ProfileExcludes.IsInside(ziel, quelle))
+        {
+            _log(Loc.Tr("[FEHLER] Ziel liegt im Quellverzeichnis. Abbruch.", "[ERROR] Target is inside the source directory. Aborting."));
+            return;
+        }
+
+        var args = ProfileBackupArgs(quelle, ziel);
+        // Dieselbe Liste wie bei der Profilsicherung, davon nur, was in AppData liegt.
+        foreach (var ex in ProfileExcludes.Build(SourcePath, includeAppData: true, includeCloud: true))
+            if (ProfileExcludes.IsInside(ex, quelle) && Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
+
+        _log(Loc.Tr("[INFO] Sichere AppData (ohne den Rest des Profils, Zwischenspeicher bleiben ausgenommen)...",
+                    "[INFO] Backing up AppData (without the rest of the profile, caches remain excluded)..."));
+        var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+        if (_cancel.IsCancelled) return;
+        _log(code < 8 ? Loc.Tr("[ERFOLG] AppData gesichert.", "[SUCCESS] AppData backed up.")
+                      : Loc.Tr($"[FEHLER] AppData: Robocopy Fehlercode {code}", $"[ERROR] AppData: Robocopy error code {code}"));
+    }
+
+    /// <summary>Sichert nur die erkannten Cloud-Ordner, jeden fuer sich.</summary>
+    public async Task BackupCloudOnly()
+    {
+        var ordner = CloudProviders.Detect(SourcePath);
+        if (ordner.Count == 0)
+        {
+            _log(Loc.Tr("[WARNUNG] Im Profil wurde kein Cloud-Ordner gefunden - nichts zu sichern.",
+                        "[WARNING] No cloud folder was found in the profile - nothing to back up."));
+            return;
+        }
+        _log(Loc.Tr($"[INFO] Sichere Cloud-Ordner (ohne den Rest des Profils): {CloudProviders.Summarize(ordner)}",
+                    $"[INFO] Backing up cloud folders (without the rest of the profile): {CloudProviders.Summarize(ordner)}"));
+
+        foreach (var cloud in ordner)
+        {
+            if (_cancel.IsCancelled) return;
+            var name = Path.GetFileName(cloud.Path);
+            var ziel = Path.Combine(BackupPath, "Benutzerprofil", name);
+            if (ProfileExcludes.IsInside(ziel, cloud.Path))
+            {
+                _log(Loc.Tr($"[FEHLER] {cloud.Provider}: Ziel liegt im Cloud-Ordner selbst. Übersprungen.",
+                            $"[ERROR] {cloud.Provider}: target is inside the cloud folder itself. Skipped."));
+                continue;
+            }
+            var code = await _runner.RunRobocopyAsync(string.Join(" ", ProfileBackupArgs(cloud.Path, ziel)), _log, OnFilesProgress);
+            if (_cancel.IsCancelled) return;
+            _log(code < 8
+                ? Loc.Tr($"[ERFOLG] {cloud.Provider} gesichert: \"{name}\"", $"[SUCCESS] {cloud.Provider} backed up: \"{name}\"")
+                : Loc.Tr($"[FEHLER] {cloud.Provider}: Robocopy Fehlercode {code}", $"[ERROR] {cloud.Provider}: Robocopy error code {code}"));
+        }
+    }
+
+    /// <summary>Schreibt nur AppData zurueck - aus der Sicherung, wie auch immer sie entstand.</summary>
+    public async Task RestoreAppDataOnly()
+    {
+        var quelle = Path.Combine(BackupPath, "Benutzerprofil", "AppData");
+        if (!Directory.Exists(quelle))
+        {
+            _log(Loc.Tr($"[FEHLER] In der Sicherung liegt kein AppData: {quelle}", $"[ERROR] The backup contains no AppData: {quelle}"));
+            return;
+        }
+        var ziel = Path.Combine(SourcePath, "AppData");
+        _log(Loc.Tr("[INFO] Schreibe AppData zurück (ohne den Rest des Profils)...",
+                    "[INFO] Restoring AppData (without the rest of the profile)..."));
+        var code = await _runner.RunRobocopyAsync(string.Join(" ", ProfileRestoreArgs(quelle, ziel)), _log, OnFilesProgress);
+        if (_cancel.IsCancelled) return;
+        _log(code < 8 ? Loc.Tr("[ERFOLG] AppData wiederhergestellt.", "[SUCCESS] AppData restored.")
+                      : Loc.Tr($"[FEHLER] AppData: Robocopy Fehlercode {code}", $"[ERROR] AppData: Robocopy error code {code}"));
+    }
+
+    /// <summary>Schreibt nur die Cloud-Ordner zurueck - wie immer neben das Original.</summary>
+    public async Task RestoreCloudOnly()
+    {
+        var sicherung = Path.Combine(BackupPath, "Benutzerprofil");
+        if (!Directory.Exists(sicherung))
+        {
+            _log(Loc.Tr("[FEHLER] Backup-Ordner nicht gefunden.", "[ERROR] Backup folder not found."));
+            return;
+        }
+        await RestoreCloudFolders(sicherung, SourcePath);
+    }
+
     // ------------------------------------------------------------ Browser-Profile
 
     public async Task BackupAppProfile(string appName, string profileRel, string processName, string[]? excludeDirs = null)
