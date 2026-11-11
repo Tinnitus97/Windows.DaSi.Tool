@@ -502,8 +502,13 @@ internal static class Program
                     string.Join(" | ", gefunden.Select(g => $"{g.Path} -> {g.Target}")));
                 Check("Verknuepfung ins Profil (wie \"Eigene Bilder\") wird nicht gemeldet",
                     !gefunden.Any(g => g.Path.EndsWith("Eigene Bilder")));
+                // Relativ zum Profil: Unter Windows liegt das Pruefverzeichnis selbst
+                // in ...\AppData\Local\Temp - der volle Pfad enthielte "AppData" immer.
                 Check("AppData und ausgelassene Ordner werden nicht durchsucht",
-                    !gefunden.Any(g => g.Path.Contains("AppData") || g.Path.Contains("OneDrive")));
+                    !gefunden.Select(g => Path.GetRelativePath(lp, g.Path))
+                             .Any(r => r.StartsWith("AppData", StringComparison.OrdinalIgnoreCase)
+                                       || r.StartsWith("OneDrive", StringComparison.OrdinalIgnoreCase)),
+                    string.Join(" | ", gefunden.Select(g => Path.GetRelativePath(lp, g.Path))));
                 Check("nicht abgebrochen", !abgebrochen);
             }
             Check("Profil, das es nicht gibt: leere Liste",
