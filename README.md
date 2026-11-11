@@ -70,7 +70,8 @@ Punkte, die nichts zu tun hätten, sind **ausgegraut** und lassen sich nicht ank
   eingerichtet ist, also kein Profil hat. Oben im Bild: Brave.
 - **Wiederherstellen:** Jeder Punkt ist gesperrt, den die gewählte Sicherung nicht
   enthält. Unten im Bild: Gesichert wurden Profil samt AppData, Firefox, Edge,
-  Opera und die Programmliste, alles andere ist grau.
+  Opera, die Programmliste und die Symbolpositionen des Desktops. Alles andere ist
+  grau, auch die Auswahl *Screenshot*.
 
 Fährt man mit der Maus über einen grauen Punkt, nennt der Tooltip den Grund, etwa
 *Chrome ist bei diesem Benutzer nicht eingerichtet - kein Profil unter …* oder *Die
