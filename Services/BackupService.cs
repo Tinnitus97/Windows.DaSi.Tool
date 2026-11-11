@@ -75,8 +75,7 @@ public sealed class BackupService
 
         var excluded = GetProfileExcludes(userDir, IncludeAppData, IncludeCloud);
 
-        var args = new List<string> { Quote(userDir), Quote(backupTargetDir), "/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XA:SH" };
-        if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+        var args = ProfileBackupArgs(userDir, backupTargetDir);
         foreach (var ex in excluded) if (Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
 
         // Im Protokoll festhalten, was mitlaeuft - sonst laesst sich hinterher
@@ -152,8 +151,7 @@ public sealed class BackupService
         if (!Directory.Exists(backupSourceDir)) { _log(Loc.Tr("[FEHLER] Backup-Ordner nicht gefunden.", "[ERROR] Backup folder not found.")); return; }
 
         _log(Loc.Tr("[INFO] Starte Restore Benutzerprofil...", "[INFO] Starting user profile restore..."));
-        var args = new List<string> { Quote(backupSourceDir), Quote(destDir), "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32" };
-        if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+        var args = ProfileRestoreArgs(backupSourceDir, destDir);
 
         // Dieselben zwei Schalter wirken auch hier - sonst waeren sie beim
         // Wiederherstellen wirkungslos: robocopy kopiert mit /E den ganzen
@@ -206,8 +204,7 @@ public sealed class BackupService
                 _log(Loc.Tr("[INFO] Der Ordner besteht schon (frühere Wiederherstellung) und wird ergänzt.",
                             "[INFO] The folder already exists (earlier restore) and is updated."));
 
-            var args = new List<string> { Quote(cloud.Path), Quote(ziel), "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32" };
-            if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+            var args = ProfileRestoreArgs(cloud.Path, ziel);
 
             var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
             if (_cancel.IsCancelled) return;
@@ -227,7 +224,8 @@ public sealed class BackupService
     /// <summary>Gemeinsame robocopy-Schalter fuer das Sichern aus dem Profil.</summary>
     private List<string> ProfileBackupArgs(string quelle, string ziel)
     {
-        var args = new List<string> { Quote(quelle), Quote(ziel), "/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XA:SH" };
+        var args = new List<string> { Quote(quelle), Quote(ziel) };
+        args.AddRange(ProfileExcludes.BackupSwitches());
         if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
         return args;
     }
@@ -235,7 +233,8 @@ public sealed class BackupService
     /// <summary>Gemeinsame robocopy-Schalter fuer das Zurueckschreiben ins Profil.</summary>
     private List<string> ProfileRestoreArgs(string quelle, string ziel)
     {
-        var args = new List<string> { Quote(quelle), Quote(ziel), "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32" };
+        var args = new List<string> { Quote(quelle), Quote(ziel) };
+        args.AddRange(ProfileExcludes.RestoreSwitches());
         if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
         return args;
     }
@@ -625,8 +624,12 @@ public sealed class BackupService
     private const uint SPIF_UPDATEINIFILE   = 0x01;
     private const uint SPIF_SENDCHANGE       = 0x02;
 
-    // Merkt sich neben dem Bild auch dessen Originalpfad.
+    // Merkt sich neben dem Bild auch dessen Originalpfad ...
     private const string WallpaperPathFile = "Hintergrundbild-Pfad.txt";
+    // ... und das gesicherte Profil, damit sich der Pfad beim Zurueckschreiben
+    // in ein ANDERES Profil uebertragen laesst (Besitzer -> Anwender).
+    // Eigene Datei, damit aeltere Fassungen die Pfad-Datei weiter lesen koennen.
+    private const string WallpaperProfileFile = "Hintergrundbild-Profil.txt";
 
     /// <summary>
     /// Liest den Pfad des aktuellen Desktop-Hintergrundbilds aus der Registry.
@@ -665,6 +668,7 @@ public sealed class BackupService
             // Originalpfad merken, damit beim Wiederherstellen die gleiche Stelle
             // verwendet werden kann.
             await File.WriteAllTextAsync(Path.Combine(destDir, WallpaperPathFile), src);
+            await File.WriteAllTextAsync(Path.Combine(destDir, WallpaperProfileFile), SourcePath);
 
             _log(Loc.Tr($"[ERFOLG] Hintergrundbild gesichert. Originalpfad: {src}",
                         $"[SUCCESS] Wallpaper backed up. Original path: {src}"));
@@ -688,10 +692,16 @@ public sealed class BackupService
             return;
         }
 
-        // Originalpfad einlesen (falls vorhanden).
-        string? originalPath = null;
+        // Originalpfad und gesichertes Profil einlesen (falls vorhanden).
+        string? originalPath = null, originalProfile = null;
         try { if (File.Exists(pathFile)) originalPath = (await File.ReadAllTextAsync(pathFile)).Trim(); }
         catch { /* ignore */ }
+        try
+        {
+            var profilDatei = Path.Combine(srcDir, WallpaperProfileFile);
+            if (File.Exists(profilDatei)) originalProfile = (await File.ReadAllTextAsync(profilDatei)).Trim();
+        }
+        catch { /* aeltere Sicherung - dann greift die Regel fuer C:\Users\<Name> */ }
 
         // Das gesicherte Bild im Backup-Ordner finden. Es wird unter seinem
         // Originalnamen abgelegt - nach mehreren Sicherungen mit wechselnden
@@ -703,7 +713,8 @@ public sealed class BackupService
         try
         {
             var bilder = Directory.EnumerateFiles(srcDir)
-                .Where(f => !f.EndsWith(WallpaperPathFile, StringComparison.OrdinalIgnoreCase))
+                .Where(f => !f.EndsWith(WallpaperPathFile, StringComparison.OrdinalIgnoreCase)
+                            && !f.EndsWith(WallpaperProfileFile, StringComparison.OrdinalIgnoreCase))
                 .ToList();
             var originalName = string.IsNullOrWhiteSpace(originalPath) ? null : Path.GetFileName(originalPath);
             backupImage = bilder.FirstOrDefault(f => originalName is not null
@@ -719,14 +730,35 @@ public sealed class BackupService
             return;
         }
 
-        // Zielpfad bestimmen: bevorzugt der Originalpfad, sonst ein Standardordner.
+        // Zielpfad bestimmen - IMMER im gewaehlten Zielprofil.
+        //
+        // Frueher wurde der gespeicherte Originalpfad unveraendert benutzt. Auf
+        // einem Rechner mit anderem Benutzernamen (gesichert: Besitzer,
+        // zurueck zu: Anwender) entstand so ein Ordner "C:\Users\Besitzer" -
+        // ein Profil, das es dort nicht gibt. Und ohne gespeicherten Pfad ging
+        // das Bild in "Bilder" dessen, der das Tool ausfuehrt, nicht des
+        // Zielprofils.
         string targetPath;
-        if (!string.IsNullOrWhiteSpace(originalPath))
+        var imZielprofil = ProfilePaths.MapIntoProfile(originalPath, originalProfile, SourcePath);
+        if (imZielprofil is not null)
+        {
+            targetPath = imZielprofil;
+        }
+        else if (!string.IsNullOrWhiteSpace(originalPath) && File.Exists(originalPath)
+                 && FilesAreEqual(backupImage, originalPath))
+        {
+            // Ein Windows-Hintergrund ausserhalb jedes Profils (C:\Windows\Web\...),
+            // der hier schon genau so liegt: nur setzen, nichts kopieren.
             targetPath = originalPath;
+        }
         else
-            targetPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
-                Path.GetFileName(backupImage));
+        {
+            targetPath = Path.Combine(SourcePath, "Pictures", Path.GetFileName(backupImage));
+        }
+        if (!string.IsNullOrWhiteSpace(originalPath)
+            && !string.Equals(originalPath, targetPath, StringComparison.OrdinalIgnoreCase))
+            _log(Loc.Tr($"[INFO] Gesichert war das Bild unter {originalPath} - es kommt ins gewählte Profil: {targetPath}",
+                        $"[INFO] The image was backed up from {originalPath} - it goes into the selected profile: {targetPath}"));
 
         try
         {

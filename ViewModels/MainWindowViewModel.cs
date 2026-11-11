@@ -1011,6 +1011,28 @@ public partial class MainWindowViewModel : ObservableObject
             await ShowInfo(Tr("Fehler", "Error"), Tr("Bitte lege zuerst das Quell- und Zielverzeichnis fest.", "Please set the source and target directory first."));
             return;
         }
+        // Ein Profil, das es nicht gibt, wird NICHT angelegt. Beim
+        // Wiederherstellen entstuende sonst ein Ordner unter C:\Users, zu dem
+        // kein Benutzer gehoert - Windows legt das echte Profil eines neuen
+        // Benutzers erst bei dessen erster Anmeldung an, und zwar daneben.
+        if (!Directory.Exists(SourcePath))
+        {
+            await ShowInfo(Tr("Fehler", "Error"), IsRestoreMode
+                ? Tr($"Das Zielprofil \"{SourcePath}\" gibt es auf diesem Rechner nicht.\n\n"
+                     + "Bitte das Profil des Benutzers wählen, in das zurückgeschrieben werden soll (z. B. C:\\Users\\Anwender). "
+                     + "Ein neuer Benutzer muss sich dafür einmal angemeldet haben - erst dann legt Windows sein Profil an.",
+                     $"The target profile \"{SourcePath}\" does not exist on this computer.\n\n"
+                     + "Please select the profile of the user to restore into (e.g. C:\\Users\\User). "
+                     + "A new user must have signed in once - only then does Windows create the profile.")
+                : Tr($"Das Benutzerprofil \"{SourcePath}\" gibt es nicht.", $"The user profile \"{SourcePath}\" does not exist."));
+            return;
+        }
+        if (IsRestoreMode && !Directory.Exists(BackupPath))
+        {
+            await ShowInfo(Tr("Fehler", "Error"),
+                Tr($"Den Sicherungsordner \"{BackupPath}\" gibt es nicht.", $"The backup folder \"{BackupPath}\" does not exist."));
+            return;
+        }
 
         // Akkubetrieb pruefen: Bei Notebooks ohne Netzteil warnen und rueckfragen.
         if (SystemHelpers.IsOnBattery(out var battery))

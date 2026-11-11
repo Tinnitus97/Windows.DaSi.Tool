@@ -49,6 +49,51 @@ public static class ProfileExcludes
     };
 
     /// <summary>
+    /// Die Registry-Dateien des Profils. Sie sind fuer das Kopieren gesperrt,
+    /// gehoeren an genau diesen Rechner und duerfen NIE in ein anderes Profil
+    /// geschrieben werden - das ueberschriebe die Einstellungen des Zielbenutzers.
+    /// </summary>
+    public static readonly string[] RegistryHiveFiles = { "NTUSER.DAT*", "ntuser.ini", "ntuser.pol", "UsrClass.dat*" };
+
+    /// <summary>
+    /// robocopy-Schalter fuer das SICHERN aus dem Profil (ohne Quelle, Ziel, /XD).
+    ///
+    /// Frueher stand hier zusaetzlich /XA:SH. Das liess JEDE versteckte oder
+    /// System-Datei aus - ohne Meldung im Protokoll. Betroffen waren nicht nur
+    /// die Registry-Dateien, um die es ging, sondern auch Benutzerdaten:
+    /// versteckte Dateien und Inhalte von Ordnern, die Windows als
+    /// Systemordner kennzeichnet (angepasste Ordner mit eigenem Symbol oder
+    /// eigener Ansicht). Jetzt werden nur die Registry-Dateien gezielt
+    /// ausgelassen.
+    ///
+    /// /XJ bleibt: Verknuepfungspunkte wie "Eigene Bilder" in Dokumente zeigen
+    /// auf andere Stellen des Profils, robocopy liefe sonst im Kreis.
+    /// </summary>
+    public static List<string> BackupSwitches()
+    {
+        var s = new List<string> { "/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XF" };
+        s.AddRange(RegistryHiveFiles);
+        return s;
+    }
+
+    /// <summary>
+    /// robocopy-Schalter fuer das ZURUECKSCHREIBEN ins Profil.
+    ///
+    /// /COPY:DAT statt /COPYALL: Kopiert werden Inhalt, Attribute und
+    /// Zeitstempel - die Zugriffsrechte NICHT. Neue Dateien erben so die Rechte
+    /// des Zielprofils und gehoeren dem Benutzer, in dessen Profil sie landen.
+    /// /COPYALL uebertrug die Rechte des Sicherungsmediums (die Sicherung
+    /// selbst speichert keine) - auf einem anderen Rechner oder fuer einen
+    /// anderen Benutzer sind das fremde Rechte.
+    /// </summary>
+    public static List<string> RestoreSwitches()
+    {
+        var s = new List<string> { "/E", "/ZB", "/COPY:DAT", "/DCOPY:DAT", "/R:1", "/W:1", "/MT:32", "/XJ", "/XF" };
+        s.AddRange(RegistryHiveFiles);
+        return s;
+    }
+
+    /// <summary>
     /// Baut die Liste der ausgeschlossenen Ordner als vollstaendige Pfade.
     /// </summary>
     /// <param name="userDir">Das zu sichernde Benutzerprofil.</param>

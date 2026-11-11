@@ -436,6 +436,47 @@ internal static class Program
         try { PngWriter.EncodeBgra(3, 2, new byte[10]); } catch (ArgumentException) { zuKurz = true; }
         Check("zu wenige Bildpunkte werden abgelehnt", zuKurz);
 
+        Console.WriteLine("\n== Wiederherstellen in ein anderes Profil (Besitzer -> Anwender) ==");
+        {
+            const string zielAnwender = @"C:\Users\Anwender";
+            Check("Pfad im gesicherten Profil kommt ins Zielprofil",
+                ProfilePaths.MapIntoProfile(@"C:\Users\Besitzer\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", @"C:\Users\Besitzer", zielAnwender)
+                == @"C:\Users\Anwender\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper");
+            Check("aeltere Sicherung ohne vermerktes Profil: C:\\Users\\<Name> wird erkannt",
+                ProfilePaths.MapIntoProfile(@"C:\Users\Besitzer\Pictures\Urlaub.jpg", null, zielAnwender) == @"C:\Users\Anwender\Pictures\Urlaub.jpg");
+            Check("Gross-/Kleinschreibung spielt keine Rolle",
+                ProfilePaths.MapIntoProfile(@"c:\users\besitzer\Pictures\a.jpg", @"C:\Users\Besitzer", zielAnwender) == @"C:\Users\Anwender\Pictures\a.jpg");
+            Check("Profil an anderem Ort (D:\\Profile\\Besitzer)",
+                ProfilePaths.MapIntoProfile(@"D:\Profile\Besitzer\Bilder\a.jpg", @"D:\Profile\Besitzer", zielAnwender) == @"C:\Users\Anwender\Bilder\a.jpg");
+            Check("\"Besitzer2\" liegt nicht in \"Besitzer\" - landet trotzdem im Zielprofil",
+                ProfilePaths.MapIntoProfile(@"C:\Users\Besitzer2\x.jpg", @"C:\Users\Besitzer", zielAnwender) == @"C:\Users\Anwender\x.jpg");
+            Check("ausserhalb jedes Profils (C:\\Windows\\Web): kein Profilpfad",
+                ProfilePaths.MapIntoProfile(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg", @"C:\Users\Besitzer", zielAnwender) is null);
+            Check("leere Angaben: kein Profilpfad",
+                ProfilePaths.MapIntoProfile(null, null, zielAnwender) is null && ProfilePaths.MapIntoProfile("", null, zielAnwender) is null
+                && ProfilePaths.MapIntoProfile(@"C:\Users\Besitzer\a", null, "") is null);
+            Check("kein Ergebnis enthaelt je den alten Benutzernamen",
+                new[] { @"C:\Users\Besitzer\Pictures\a.jpg", @"C:\Users\Besitzer\AppData\Local\b", @"C:\Users\Besitzer\Desktop\c.lnk" }
+                    .All(p => ProfilePaths.MapIntoProfile(p, null, zielAnwender)?.Contains("Besitzer") == false));
+
+            var sichern = ProfileExcludes.BackupSwitches();
+            Check("Sichern: kein /XA mehr (liess versteckte und Systemdateien ohne Meldung aus)",
+                !sichern.Any(s => s.StartsWith("/XA", StringComparison.OrdinalIgnoreCase)), string.Join(" ", sichern));
+            Check("Sichern: Registry-Dateien gezielt per /XF ausgelassen",
+                sichern.SkipWhile(s => s != "/XF").Skip(1).Take(ProfileExcludes.RegistryHiveFiles.Length)
+                       .SequenceEqual(ProfileExcludes.RegistryHiveFiles));
+            Check("Sichern: Verknuepfungspunkte bleiben draussen (/XJ), ein Versuch je Datei (/R:0)",
+                sichern.Contains("/XJ") && sichern.Contains("/R:0") && sichern.Contains("/MIR"));
+            var zurueck = ProfileExcludes.RestoreSwitches();
+            Check("Zurueckschreiben: /COPY:DAT statt /COPYALL - Rechte kommen vom Zielprofil",
+                zurueck.Contains("/COPY:DAT") && !zurueck.Any(s => s.StartsWith("/COPYALL", StringComparison.OrdinalIgnoreCase)
+                                                                 || s.StartsWith("/SEC", StringComparison.OrdinalIgnoreCase)),
+                string.Join(" ", zurueck));
+            Check("Zurueckschreiben: Registry-Dateien werden nie ueberschrieben, auch aus alten Sicherungen",
+                zurueck.SkipWhile(s => s != "/XF").Skip(1).Take(ProfileExcludes.RegistryHiveFiles.Length)
+                       .SequenceEqual(ProfileExcludes.RegistryHiveFiles));
+        }
+
         Console.WriteLine("\n== Desktop-Screenshot: ein Bild pro Monitor ==");
         {
             Check("Windows-Nummer aus dem Geraetenamen", DesktopScreenshot.DisplayNumber(@"\\.\DISPLAY2") == 2
@@ -865,6 +906,121 @@ internal static class Program
                       File.Exists(Path.Combine(zielRobo, "einstellungen.json"))
                       && File.Exists(Path.Combine(zielRobo, "Roaming", "discord", "Local Storage", "leveldb", "000003.log")));
             }
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("\n== echtes robocopy: was die Profilsicherung aus Dokumente mitnimmt ==");
+            var besitzer = Path.Combine(root, "profilwechsel", "Besitzer");
+            var doks = Path.Combine(besitzer, "Documents");
+            void Datei(string rel, string inhalt, FileAttributes? attr = null)
+            {
+                var p = Path.Combine(besitzer, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(p)!);
+                File.WriteAllText(p, inhalt);
+                if (attr is { } a) File.SetAttributes(p, a);
+            }
+            Datei(@"Documents\Normal\a.txt", "a");
+            // Ein angepasster Ordner (eigenes Symbol/eigene Ansicht): Windows setzt
+            // dafuer das System-Attribut und legt eine versteckte desktop.ini hinein.
+            Datei(@"Documents\Angepasst\brief.docx", "b");
+            Datei(@"Documents\Angepasst\desktop.ini", "[.ShellClassInfo]\r\nIconResource=C:\\Windows\\System32\\imageres.dll,-3\r\n",
+                  FileAttributes.Hidden | FileAttributes.System);
+            new DirectoryInfo(Path.Combine(doks, "Angepasst")).Attributes |= FileAttributes.System;
+            Datei(@"Documents\Schreibgeschuetzt\c.txt", "c");
+            new DirectoryInfo(Path.Combine(doks, "Schreibgeschuetzt")).Attributes |= FileAttributes.ReadOnly;
+            Datei(@"Documents\Versteckt\d.txt", "d");
+            new DirectoryInfo(Path.Combine(doks, "Versteckt")).Attributes |= FileAttributes.Hidden;
+            Datei(@"Documents\versteckt.txt", "e", FileAttributes.Hidden);
+            Datei(@"Documents\system.dat", "f", FileAttributes.System);
+            Datei(@"Pictures\p.jpg", "p");
+            Datei("NTUSER.DAT", "hive", FileAttributes.Hidden | FileAttributes.System);
+            Datei("ntuser.dat.LOG1", "log", FileAttributes.Hidden | FileAttributes.System);
+            // Verknuepfungspunkt wie "Eigene Bilder" in Dokumente - zeigt auf Pictures.
+            using (var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe",
+                       $"/c mklink /J \"{Path.Combine(doks, "Eigene Bilder")}\" \"{Path.Combine(besitzer, "Pictures")}\"")
+                   { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true }))
+            { mk!.StandardOutput.ReadToEnd(); mk.WaitForExit(); }
+
+            static int Robo(string quelle, string ziel, System.Collections.Generic.IEnumerable<string> schalter)
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("robocopy.exe")
+                { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+                psi.ArgumentList.Add(quelle);
+                psi.ArgumentList.Add(ziel);
+                foreach (var s in schalter) psi.ArgumentList.Add(s);
+                using var p = System.Diagnostics.Process.Start(psi)!;
+                p.StandardOutput.ReadToEnd();
+                p.WaitForExit();
+                return p.ExitCode;
+            }
+            var altSchalter = new[] { "/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XA:SH" };
+            var sicherungAlt = Path.Combine(root, "profilwechsel", "Sicherung-alt");
+            var sicherungNeu = Path.Combine(root, "profilwechsel", "Sicherung-neu");
+            Console.WriteLine($"         robocopy alt: {Robo(besitzer, sicherungAlt, altSchalter)}, neu: {Robo(besitzer, sicherungNeu, ProfileExcludes.BackupSwitches())}");
+
+            var faelle = new (string Was, string Rel, bool Soll)[]
+            {
+                ("gewoehnlicher Ordner", @"Documents\Normal\a.txt", true),
+                ("angepasster Ordner (System-Attribut)", @"Documents\Angepasst\brief.docx", true),
+                ("desktop.ini des angepassten Ordners", @"Documents\Angepasst\desktop.ini", true),
+                ("schreibgeschuetzt markierter Ordner", @"Documents\Schreibgeschuetzt\c.txt", true),
+                ("versteckter Ordner", @"Documents\Versteckt\d.txt", true),
+                ("versteckte Datei", @"Documents\versteckt.txt", true),
+                ("Systemdatei", @"Documents\system.dat", true),
+                ("Bilder", @"Pictures\p.jpg", true),
+                ("Verknuepfungspunkt \"Eigene Bilder\" (nicht verfolgen)", @"Documents\Eigene Bilder\p.jpg", false),
+                ("Registry NTUSER.DAT", "NTUSER.DAT", false),
+                ("Registry ntuser.dat.LOG1", "ntuser.dat.LOG1", false),
+            };
+            Console.WriteLine("         gesichert?                                        alt    neu");
+            foreach (var (was, rel, soll) in faelle)
+            {
+                bool imAlten = File.Exists(Path.Combine(sicherungAlt, rel)), imNeuen = File.Exists(Path.Combine(sicherungNeu, rel));
+                Console.WriteLine($"         {was,-50}{(imAlten ? "ja" : "NEIN"),-7}{(imNeuen ? "ja" : "NEIN")}");
+                Check($"neue Schalter: {was} {(soll ? "wird" : "wird NICHT")} gesichert", imNeuen == soll);
+            }
+
+            Console.WriteLine("\n== echtes robocopy: Zurueckschreiben zu einem anderen Benutzer ==");
+            // In der Sicherung: eine Datei mit eigenen, nicht geerbten Rechten (wie
+            // sie das Sicherungsmedium mitbringen kann), dazu eine NTUSER.DAT aus
+            // einer aelteren Sicherung.
+            var probe = Path.Combine(sicherungNeu, @"Documents\Normal\a.txt");
+            var sec = new FileInfo(probe).GetAccessControl();
+            sec.SetAccessRuleProtection(true, false);
+            sec.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+                new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.WorldSid, null),
+                System.Security.AccessControl.FileSystemRights.FullControl, System.Security.AccessControl.AccessControlType.Allow));
+            new FileInfo(probe).SetAccessControl(sec);
+            File.WriteAllText(Path.Combine(sicherungNeu, "NTUSER.DAT"), "fremde Registry");
+
+            var anwenderAlt = Path.Combine(root, "profilwechsel", "Anwender-alt");
+            var anwenderNeu = Path.Combine(root, "profilwechsel", "Anwender-neu");
+            foreach (var a in new[] { anwenderAlt, anwenderNeu })
+            {
+                Directory.CreateDirectory(a);
+                File.WriteAllText(Path.Combine(a, "NTUSER.DAT"), "eigene Registry");
+            }
+            Robo(sicherungNeu, anwenderAlt, new[] { "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32" });
+            Robo(sicherungNeu, anwenderNeu, ProfileExcludes.RestoreSwitches());
+
+            static (bool Geschuetzt, int Eigene) Rechte(string datei)
+            {
+                var s = new FileInfo(datei).GetAccessControl();
+                return (s.AreAccessRulesProtected,
+                        s.GetAccessRules(true, false, typeof(System.Security.Principal.SecurityIdentifier)).Count);
+            }
+            var rAlt = Rechte(Path.Combine(anwenderAlt, @"Documents\Normal\a.txt"));
+            var rNeu = Rechte(Path.Combine(anwenderNeu, @"Documents\Normal\a.txt"));
+            Console.WriteLine($"         alt (/COPYALL): Vererbung aus = {rAlt.Geschuetzt}, eigene Regeln = {rAlt.Eigene}");
+            Console.WriteLine($"         neu (/COPY:DAT): Vererbung aus = {rNeu.Geschuetzt}, eigene Regeln = {rNeu.Eigene}");
+            Check("neue Schalter: Datei erbt die Rechte des Zielprofils (keine fremden Rechte)",
+                !rNeu.Geschuetzt && rNeu.Eigene == 0, $"geschuetzt={rNeu.Geschuetzt}, eigene={rNeu.Eigene}");
+            Check("neue Schalter: Inhalt kommt an",
+                File.ReadAllText(Path.Combine(anwenderNeu, @"Documents\Angepasst\brief.docx")) == "b");
+            Check("neue Schalter: die Registry des Zielbenutzers bleibt unangetastet",
+                File.ReadAllText(Path.Combine(anwenderNeu, "NTUSER.DAT")) == "eigene Registry");
+            Console.WriteLine($"         (alt: NTUSER.DAT danach \"{File.ReadAllText(Path.Combine(anwenderAlt, "NTUSER.DAT"))}\")");
         }
 
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");

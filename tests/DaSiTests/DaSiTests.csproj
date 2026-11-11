@@ -31,6 +31,7 @@
     <Compile Include="../../Services/BackupTarget.cs" />
     <Compile Include="../../Services/DesktopScreenshot.cs" />
     <Compile Include="../../Services/RobocopySkips.cs" />
+    <Compile Include="../../Services/ProfilePaths.cs" />
   </ItemGroup>
 
 </Project>
