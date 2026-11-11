@@ -253,7 +253,8 @@ erscheinen.
 Die gesamte Oberfläche inklusive Aktivitätsprotokoll lässt sich zwischen
 **Deutsch** und **Englisch** umschalten. Sprache und Farbschema werden beim Start
 aus den Windows-Einstellungen übernommen und lassen sich jederzeit über das
-Sonne-/Mond-Symbol und das Sprach-Dropdown ändern.
+Sonne-/Mond-Symbol und das Sprach-Dropdown ändern. Das Farbschema gilt auch für
+alle Dialoge, etwa Rückfragen und die Winget-Auswahl.
 
 <div align="center">
 <img src="docs/images/hell-englisch.png" alt="Hauptfenster im hellen Design auf Englisch, nach einer Wiederherstellung" width="850">

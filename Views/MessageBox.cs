@@ -8,7 +8,8 @@ namespace WindowsDaSiTool.Views;
 
 /// <summary>
 /// Kleiner Ersatz fuer System.Windows.MessageBox mit Catppuccin-Optik.
-/// Wird immer vom UI-Thread aus aufgerufen.
+/// Die Farben kommen aus den Theme-Stilen (App.axaml, "dialog") und folgen
+/// damit dem hellen bzw. dunklen Modus. Wird immer vom UI-Thread aus aufgerufen.
 /// </summary>
 public static class MessageBox
 {
@@ -26,7 +27,7 @@ public static class MessageBox
         {
             Text = message,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Color.Parse("#CDD6F4")),
+            Classes = { "dialogText" },
             Margin = new Avalonia.Thickness(0, 0, 0, 16)
         };
 
@@ -44,13 +45,13 @@ public static class MessageBox
             SizeToContent = SizeToContent.Height,
             CanResize = false,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Background = new SolidColorBrush(Color.Parse("#1E1E2E"))
+            Classes = { "dialog" }
         };
 
         if (yesNo)
         {
-            var yes = MakeButton(Loc.Tr("Ja","Yes"), "#A6E3A1", "#11111B");
-            var no = MakeButton(Loc.Tr("Nein","No"), "#313244", "#CDD6F4");
+            var yes = MakeButton(Loc.Tr("Ja","Yes"), "yes");
+            var no = MakeButton(Loc.Tr("Nein","No"));
             yes.Click += (_, _) => { tcs.TrySetResult(true); dialog.Close(); };
             no.Click += (_, _) => { tcs.TrySetResult(false); dialog.Close(); };
             buttons.Children.Add(no);
@@ -58,7 +59,7 @@ public static class MessageBox
         }
         else
         {
-            var ok = MakeButton("OK", "#89B4FA", "#11111B");
+            var ok = MakeButton("OK", "ok");
             ok.Click += (_, _) => { tcs.TrySetResult(true); dialog.Close(); };
             buttons.Children.Add(ok);
         }
@@ -75,14 +76,11 @@ public static class MessageBox
         return await tcs.Task;
     }
 
-    private static Button MakeButton(string content, string bg, string fg) => new()
+    /// <param name="art">"yes", "ok", "cancel" oder nichts (neutral) - siehe Button.dialog in App.axaml.</param>
+    private static Button MakeButton(string content, string? art = null)
     {
-        Content = content,
-        Width = 90,
-        Height = 32,
-        Background = new SolidColorBrush(Color.Parse(bg)),
-        Foreground = new SolidColorBrush(Color.Parse(fg)),
-        HorizontalContentAlignment = HorizontalAlignment.Center,
-        CornerRadius = new Avalonia.CornerRadius(5)
-    };
+        var b = new Button { Content = content, Width = 90, Height = 32, Classes = { "dialog" } };
+        if (art is not null) b.Classes.Add(art);
+        return b;
+    }
 }

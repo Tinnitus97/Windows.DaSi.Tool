@@ -27,6 +27,10 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Schalter `/XA:SH` war für die Registry-Dateien gedacht, traf aber jede versteckte
   oder Systemdatei, etwa die `desktop.ini` angepasster Ordner. Jetzt werden nur die
   Registry-Dateien gezielt ausgelassen.
+- **Dialoge blieben im hellen Modus dunkel.** Meldungen, Rückfragen und die
+  Winget-Auswahl hatten fest eingetragene dunkle Farben. Jetzt nutzen sie dieselben
+  Theme-Farben wie das Hauptfenster und folgen Hell/Dunkel. Die Knöpfe zeigen dabei
+  auch beim Überfahren mit der Maus die passenden Farben.
 - **Gesperrte Unterpunkte sahen aus wie freie.** *AppData* und *Cloud-Anbieter* in der
   Profilkachel wurden bei gesperrter Oberfläche nicht blasser dargestellt. Jetzt
   sind sie wie die Kacheln deutlich ausgegraut.

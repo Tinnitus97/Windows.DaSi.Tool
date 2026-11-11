@@ -3,7 +3,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Layout;
-using Avalonia.Media;
 using WindowsDaSiTool.Services;
 
 namespace WindowsDaSiTool.Views;
@@ -11,6 +10,8 @@ namespace WindowsDaSiTool.Views;
 /// <summary>
 /// Auswahlfenster fuer den Winget-Import (entspricht Show-WingetImportSelection).
 /// Liefert die vom Benutzer ausgewaehlten Pakete zurueck, oder null bei Abbruch.
+/// Die Farben kommen aus den Theme-Stilen (App.axaml, "dialog") und folgen
+/// damit dem hellen bzw. dunklen Modus.
 /// </summary>
 public static class WingetSelectionDialog
 {
@@ -27,28 +28,31 @@ public static class WingetSelectionDialog
             {
                 Content = string.IsNullOrWhiteSpace(pkg.PackageIdentifier) ? Loc.Tr("Unbekanntes Paket","Unknown package") : pkg.PackageIdentifier,
                 IsChecked = true,
-                Foreground = new SolidColorBrush(Color.Parse("#CDD6F4")),
+                Classes = { "dialogItem" },
                 Tag = pkg
             };
             checkBoxes.Add(cb);
             stack.Children.Add(cb);
         }
 
-        var scroll = new ScrollViewer
+        var scroll = new Border
         {
-            Content = stack,
-            Background = new SolidColorBrush(Color.Parse("#11111B")),
-            Padding = new Avalonia.Thickness(8),
-            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+            Classes = { "dialogList" },
+            Child = new ScrollViewer
+            {
+                Content = stack,
+                Padding = new Avalonia.Thickness(8),
+                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+            }
         };
 
-        var btnAll = MakeSmall(Loc.Tr("Alle","All"), "#313244", "#CDD6F4");
-        var btnNone = MakeSmall(Loc.Tr("Keine","None"), "#313244", "#CDD6F4");
+        var btnAll = MakeSmall(Loc.Tr("Alle","All"));
+        var btnNone = MakeSmall(Loc.Tr("Keine","None"));
         btnAll.Click += (_, _) => { foreach (var cb in checkBoxes) cb.IsChecked = true; };
         btnNone.Click += (_, _) => { foreach (var cb in checkBoxes) cb.IsChecked = false; };
 
-        var btnCancel = MakeSmall(Loc.Tr("Abbrechen","Cancel"), "#313244", "#F38BA8");
-        var btnInstall = MakeSmall(Loc.Tr("Installieren","Install"), "#A6E3A1", "#11111B");
+        var btnCancel = MakeSmall(Loc.Tr("Abbrechen","Cancel"), "cancel");
+        var btnInstall = MakeSmall(Loc.Tr("Installieren","Install"), "yes");
         btnInstall.Width = 110;
         btnCancel.Width = 100;
 
@@ -58,7 +62,7 @@ public static class WingetSelectionDialog
             Width = 550,
             Height = 600,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Background = new SolidColorBrush(Color.Parse("#1E1E2E"))
+            Classes = { "dialog" }
         };
 
         btnCancel.Click += (_, _) => { tcs.TrySetResult(null); dialog.Close(); };
@@ -97,14 +101,13 @@ public static class WingetSelectionDialog
         var title = new TextBlock
         {
             Text = Loc.Tr("Winget Wiederherstellungsauswahl","Winget restore selection"),
-            Foreground = new SolidColorBrush(Color.Parse("#89B4FA")),
-            FontSize = 16, FontWeight = FontWeight.Bold,
+            Classes = { "dialogTitle" },
             Margin = new Avalonia.Thickness(0, 0, 0, 5)
         };
         var subtitle = new TextBlock
         {
             Text = Loc.Tr("Wähle die Programme, die installiert werden sollen:","Select the programs to install:"),
-            Foreground = new SolidColorBrush(Color.Parse("#CDD6F4")),
+            Classes = { "dialogText" },
             FontSize = 12, Margin = new Avalonia.Thickness(0, 0, 0, 10)
         };
         Grid.SetRow(title, 0);
@@ -123,13 +126,11 @@ public static class WingetSelectionDialog
         return await tcs.Task;
     }
 
-    private static Button MakeSmall(string content, string bg, string fg) => new()
+    /// <param name="art">"yes", "cancel" oder nichts (neutral) - siehe Button.dialog in App.axaml.</param>
+    private static Button MakeSmall(string content, string? art = null)
     {
-        Content = content,
-        Width = 70, Height = 30,
-        Background = new SolidColorBrush(Color.Parse(bg)),
-        Foreground = new SolidColorBrush(Color.Parse(fg)),
-        HorizontalContentAlignment = HorizontalAlignment.Center,
-        CornerRadius = new Avalonia.CornerRadius(4)
-    };
+        var b = new Button { Content = content, Width = 70, Height = 30, CornerRadius = new Avalonia.CornerRadius(4), Classes = { "dialog" } };
+        if (art is not null) b.Classes.Add(art);
+        return b;
+    }
 }
