@@ -515,6 +515,104 @@ internal static class Program
                 ProfileLinks.FindOutsideLinks(Path.Combine(root, "gibt-es-nicht"), Array.Empty<string>(), out _).Count == 0);
         }
 
+        Console.WriteLine("\n== Opera: alle Fassungen ==");
+        {
+            var os = Path.Combine(root, "opera", "Besitzer", "AppData", "Roaming", "Opera Software");
+            void Profil(string ordner, string datei)
+            {
+                var p = Path.Combine(os, ordner, datei);
+                Directory.CreateDirectory(Path.GetDirectoryName(p)!);
+                File.WriteAllText(p, "{}");
+            }
+            Profil("Opera Stable", "Local State");
+            Profil("Opera GX Stable", "Preferences");
+            Profil("Opera Beta", Path.Combine("Default", "Bookmarks"));   // neuere Fassungen: Profil in "Default"
+            Directory.CreateDirectory(Path.Combine(os, "Opera Crash Reports"));  // kein Profil
+            Profil("Fremd", "Local State");                                   // kein Opera-Ordner
+            var gefunden = AppCatalog.Opera.Varianten(os);
+            Check("Opera, Opera Beta und Opera GX werden gefunden, nach Anzeigename",
+                gefunden.SequenceEqual(new[] { "Opera Stable", "Opera Beta", "Opera GX Stable" }), string.Join(", ", gefunden));
+            Check("Ordner ohne Profildateien und fremde Ordner nicht",
+                !gefunden.Contains("Opera Crash Reports") && !gefunden.Contains("Fremd"));
+            Check("Anzeigenamen ohne \"Stable\"",
+                AppCatalog.Opera.Anzeigename("Opera GX Stable") == "Opera GX" && AppCatalog.Opera.Anzeigename("Opera Stable") == "Opera"
+                && AppCatalog.Opera.Anzeigename("Opera Beta") == "Opera Beta");
+            Check("winget-Pakete fuer Opera und Opera GX, sonst keins",
+                AppCatalog.Opera.WingetId("Opera Stable") == "Opera.Opera" && AppCatalog.Opera.WingetId("Opera GX Stable") == "Opera.OperaGX"
+                && AppCatalog.Opera.WingetId("Opera Developer") is null);
+            Check("ohne Ordner: keine Fassung", AppCatalog.Opera.Varianten(Path.Combine(root, "gibt-es-nicht")).Count == 0);
+            Check("Katalogpfad: Teile einzeln angehaengt",
+                AppCatalog.Pfad(Path.Combine(root, "x"), @"AppData\Roaming\Opera Software") == Path.Combine(root, "x", "AppData", "Roaming", "Opera Software"));
+        }
+
+        Console.WriteLine("\n== Verfuegbarkeit der Punkte ==");
+        {
+            // Sichern: Profil mit Firefox und Opera, ohne die anderen Programme.
+            var pr = Path.Combine(root, "verf", "Besitzer");
+            Directory.CreateDirectory(AppCatalog.Pfad(pr, AppCatalog.Firefox.ProfilRel));
+            var gx = Path.Combine(AppCatalog.Pfad(pr, AppCatalog.Opera.Rel), "Opera GX Stable");
+            Directory.CreateDirectory(gx);
+            File.WriteAllText(Path.Combine(gx, "Local State"), "{}");
+
+            Check("Sichern: Firefox und Opera frei",
+                AppCatalog.BeimSichern(Punkt.Firefox, pr) is null && AppCatalog.BeimSichern(Punkt.Opera, pr) is null);
+            var grund = AppCatalog.BeimSichern(Punkt.Chrome, pr);
+            Check("Sichern: Chrome gesperrt, mit Grund und Ort",
+                grund is { } g1 && g1.De.StartsWith("Chrome ist bei diesem Benutzer nicht eingerichtet") && g1.De.Contains("Chrome"), grund?.De);
+            Check("Sichern: Edge, Brave, Thunderbird gesperrt",
+                new[] { Punkt.Edge, Punkt.Brave, Punkt.Thunderbird }.All(p => AppCatalog.BeimSichern(p, pr) is not null));
+            Check("Sichern: alles andere ist nie gesperrt",
+                new[] { Punkt.Profil, Punkt.AppData, Punkt.Cloud, Punkt.Winget, Punkt.Wlan, Punkt.Drucker, Punkt.Hintergrund, Punkt.DesktopShot }
+                    .All(p => AppCatalog.BeimSichern(p, pr) is null));
+            Check("Sichern: ohne (vorhandenes) Profil wird nichts gesperrt",
+                AppCatalog.BeimSichern(Punkt.Chrome, "") is null && AppCatalog.BeimSichern(Punkt.Chrome, Path.Combine(root, "gibt-es-nicht")) is null);
+
+            // Wiederherstellen: leere Sicherung - alles gesperrt.
+            var si = Path.Combine(root, "verf", "Sicherung");
+            Directory.CreateDirectory(si);
+            Check("Wiederherstellen: leere Sicherung sperrt jeden Punkt",
+                Enum.GetValues<Punkt>().All(p => AppCatalog.BeimWiederherstellen(p, si) is not null),
+                string.Join(", ", Enum.GetValues<Punkt>().Where(p => AppCatalog.BeimWiederherstellen(p, si) is null)));
+            Check("Wiederherstellen: Ordner ohne jede Sicherung - ein gemeinsamer Hinweis",
+                Enum.GetValues<Punkt>().All(p => AppCatalog.BeimWiederherstellen(p, si)?.De.StartsWith("Der gewählte Ordner enthält keine Sicherung") == true),
+                AppCatalog.BeimWiederherstellen(Punkt.Wlan, si)?.De);
+            // Typischer Fall: der Ordner ueber den Sicherungen ist gewaehlt.
+            Directory.CreateDirectory(Path.Combine(si, "..", "Ueber", "DASI_PC_11_11_2026_17_55", "Benutzerprofil"));
+            Check("Wiederherstellen: auch der Ordner ueber den Sicherungen ist keine Sicherung",
+                AppCatalog.BeimWiederherstellen(Punkt.Profil, Path.Combine(root, "verf", "Ueber"))?.De.StartsWith("Der gewählte Ordner enthält keine Sicherung") == true);
+
+            // Nach und nach befuellen.
+            Directory.CreateDirectory(Path.Combine(si, "Benutzerprofil", "Documents"));
+            Check("Wiederherstellen: Grund nennt, was fehlt",
+                AppCatalog.BeimWiederherstellen(Punkt.Wlan, si)?.De == "Die gewählte Sicherung enthält keine WLAN-Profile.",
+                AppCatalog.BeimWiederherstellen(Punkt.Wlan, si)?.De);
+            Directory.CreateDirectory(Path.Combine(si, "Firefox-Profil"));
+            Directory.CreateDirectory(Path.Combine(si, "Opera-Profil", "Opera GX Stable"));
+            File.WriteAllText(Path.Combine(si, "Opera-Profil", "Opera GX Stable", "Local State"), "{}");
+            Directory.CreateDirectory(Path.Combine(si, "Winget")); File.WriteAllText(Path.Combine(si, "Winget", "Export.json"), "{}");
+            Directory.CreateDirectory(Path.Combine(si, "WLAN-Profile")); File.WriteAllText(Path.Combine(si, "WLAN-Profile", "WLAN-Heim.xml"), "<x/>");
+            Directory.CreateDirectory(Path.Combine(si, "Drucker")); File.WriteAllText(Path.Combine(si, "Drucker", "Drucker.printerExport"), "x");
+            Directory.CreateDirectory(Path.Combine(si, "Hintergrundbild")); File.WriteAllText(Path.Combine(si, "Hintergrundbild", "Hintergrundbild-Pfad.txt"), "x");
+            Check("Hintergrundbild: nur die Pfad-Datei ist noch kein Bild",
+                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, si) is not null);
+            File.WriteAllText(Path.Combine(si, "Hintergrundbild", "Urlaub.jpg"), "x");
+            Directory.CreateDirectory(Path.Combine(si, "Desktop-Screenshot")); File.WriteAllText(Path.Combine(si, "Desktop-Screenshot", "Bildschirm-1.png"), "x");
+            var frei = new[] { Punkt.Profil, Punkt.Firefox, Punkt.Opera, Punkt.Winget, Punkt.Wlan, Punkt.Drucker, Punkt.Hintergrund, Punkt.DesktopShot };
+            Check("Wiederherstellen: was in der Sicherung liegt, ist frei",
+                frei.All(p => AppCatalog.BeimWiederherstellen(p, si) is null),
+                string.Join(", ", frei.Where(p => AppCatalog.BeimWiederherstellen(p, si) is not null)));
+            Check("Wiederherstellen: was fehlt, bleibt gesperrt (AppData, Cloud, Edge, Chrome, Brave, Thunderbird)",
+                new[] { Punkt.AppData, Punkt.Cloud, Punkt.Edge, Punkt.Chrome, Punkt.Brave, Punkt.Thunderbird }
+                    .All(p => AppCatalog.BeimWiederherstellen(p, si) is not null));
+            Directory.CreateDirectory(Path.Combine(si, "Benutzerprofil", "AppData"));
+            Directory.CreateDirectory(Path.Combine(si, "Benutzerprofil", "OneDrive"));
+            Check("Wiederherstellen: AppData und Cloud frei, sobald sie in der Sicherung liegen",
+                AppCatalog.BeimWiederherstellen(Punkt.AppData, si) is null && AppCatalog.BeimWiederherstellen(Punkt.Cloud, si) is null);
+            Check("Wiederherstellen: ohne (vorhandene) Sicherung wird nichts gesperrt",
+                AppCatalog.BeimWiederherstellen(Punkt.Firefox, "") is null
+                && AppCatalog.BeimWiederherstellen(Punkt.Firefox, Path.Combine(root, "gibt-es-nicht")) is null);
+        }
+
         Console.WriteLine("\n== Desktop-Screenshot: ein Bild pro Monitor ==");
         {
             Check("Windows-Nummer aus dem Geraetenamen", DesktopScreenshot.DisplayNumber(@"\\.\DISPLAY2") == 2

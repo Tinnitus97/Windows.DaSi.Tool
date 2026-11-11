@@ -46,6 +46,9 @@ public partial class MainWindowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(UserOptionsEnabled));
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
+        // Nach einem Lauf neu bewerten: Eine Sicherung hat Ordner angelegt,
+        // eine Wiederherstellung Programme installiert.
+        if (value) VerfuegbarkeitPruefen(); else PunkteNeuMelden();
     }
 
     /// <summary>
@@ -75,6 +78,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (!string.IsNullOrEmpty(value) && UserProfiles.Contains(value) && SelectedProfile != value)
             SelectedProfile = value;
+        VerfuegbarkeitPruefen();
         ScheduleAutoStorageCheck();
     }
 
@@ -234,6 +238,7 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnBackupPathChanged(string value)
     {
         OnPropertyChanged(nameof(OwnFolderTip));
+        VerfuegbarkeitPruefen();
         // Freien Platz am Ziellaufwerk sofort anzeigen (leichtgewichtig).
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -344,6 +349,9 @@ public partial class MainWindowViewModel : ObservableObject
     public string TgEdge           => Tr("Edge-Profil", "Edge profile");
     public string TgChrome         => Tr("Chrome-Profil", "Chrome profile");
     public string TgBrave          => Tr("Brave-Profil", "Brave profile");
+    // Ein Punkt fuer alle Opera-Fassungen (Opera, GX, Beta ...) - welche gefunden
+    // wurden, steht im Tooltip.
+    public string TgOpera          => Tr("Opera-Profil (auch GX)", "Opera profile (incl. GX)");
     public string TgThunderbird    => Tr("Thunderbird-Profil", "Thunderbird profile");
 
     // Umschalter-Beschriftungen
@@ -356,6 +364,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _selEdge;
     [ObservableProperty] private bool _selChrome;
     [ObservableProperty] private bool _selBrave;
+    [ObservableProperty] private bool _selOpera;
     [ObservableProperty] private bool _selThunderbird;
     [ObservableProperty] private bool _selWinget;
     [ObservableProperty] private bool _selWlan;
@@ -392,10 +401,102 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnSelEdgeChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelChromeChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelBraveChanged(bool value) => ScheduleAutoStorageCheck();
+    partial void OnSelOperaChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelThunderbirdChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelWlanChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelPrinterChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelWallpaperChanged(bool value) => ScheduleAutoStorageCheck();
+
+    // ---- Verfuegbarkeit der Punkte ----
+    //
+    // Sichern: Programmsicherungen sind gesperrt, wenn das Programm beim
+    // gewaehlten Benutzer nicht eingerichtet ist. Wiederherstellen: jeder Punkt
+    // ist gesperrt, den die gewaehlte Sicherung nicht enthaelt. Der Grund steht
+    // im Tooltip der gesperrten Kachel. Die Regeln stehen in AppCatalog.
+    private readonly System.Collections.Generic.Dictionary<Punkt, (string De, string En)?> _gesperrt = new();
+    private string? _operaFunde;
+
+    private bool Frei(Punkt p) => !_gesperrt.TryGetValue(p, out var g) || g is null;
+    private string? Grund(Punkt p) => _gesperrt.TryGetValue(p, out var g) && g is { } x ? Tr(x.De, x.En) : null;
+
+    public bool EnUser        => UiEnabled && Frei(Punkt.Profil);
+    public bool EnAppData     => UserOptionsEnabled && Frei(Punkt.AppData);
+    public bool EnCloud       => UserOptionsEnabled && Frei(Punkt.Cloud);
+    public bool EnFirefox     => UiEnabled && Frei(Punkt.Firefox);
+    public bool EnEdge        => UiEnabled && Frei(Punkt.Edge);
+    public bool EnChrome      => UiEnabled && Frei(Punkt.Chrome);
+    public bool EnBrave       => UiEnabled && Frei(Punkt.Brave);
+    public bool EnOpera       => UiEnabled && Frei(Punkt.Opera);
+    public bool EnThunderbird => UiEnabled && Frei(Punkt.Thunderbird);
+    public bool EnWinget      => UiEnabled && Frei(Punkt.Winget);
+    public bool EnWlan        => UiEnabled && Frei(Punkt.Wlan);
+    public bool EnPrinter     => UiEnabled && Frei(Punkt.Drucker);
+    public bool EnWallpaper   => UiEnabled && Frei(Punkt.Hintergrund);
+    public bool EnDesktopShot => UiEnabled && Frei(Punkt.DesktopShot);
+
+    public string? TipUser        => Grund(Punkt.Profil);
+    public string? TipAppData     => Grund(Punkt.AppData);
+    public string? TipCloud       => Grund(Punkt.Cloud);
+    public string? TipFirefox     => Grund(Punkt.Firefox);
+    public string? TipEdge        => Grund(Punkt.Edge);
+    public string? TipChrome      => Grund(Punkt.Chrome);
+    public string? TipBrave       => Grund(Punkt.Brave);
+    public string? TipThunderbird => Grund(Punkt.Thunderbird);
+    public string? TipWinget      => Grund(Punkt.Winget);
+    public string? TipWlan        => Grund(Punkt.Wlan);
+    public string? TipPrinter     => Grund(Punkt.Drucker);
+    public string? TipWallpaper   => Grund(Punkt.Hintergrund);
+    public string? TipDesktopShot => Grund(Punkt.DesktopShot);
+    // Bei Opera auch im freien Zustand: welche Fassungen gefunden wurden.
+    public string? TipOpera => Grund(Punkt.Opera)
+        ?? (_operaFunde is null ? null : Tr($"Gefunden: {_operaFunde}", $"Found: {_operaFunde}"));
+
+    /// <summary>Bewertet alle Punkte neu und waehlt gesperrte ab.</summary>
+    private void VerfuegbarkeitPruefen()
+    {
+        var sicherung = IsRestoreMode ? AppCatalog.BeimWiederherstellen(BackupPath) : null;
+        foreach (var p in Enum.GetValues<Punkt>())
+            _gesperrt[p] = sicherung is not null ? sicherung[p] : AppCatalog.BeimSichern(p, SourcePath);
+
+        // Welche Opera-Fassungen gibt es dort, wo gerade gelesen wird?
+        var operaOrt = IsRestoreMode
+            ? (string.IsNullOrWhiteSpace(BackupPath) ? null : Path.Combine(BackupPath, AppCatalog.Opera.BackupOrdner))
+            : (string.IsNullOrWhiteSpace(SourcePath) ? null : AppCatalog.Pfad(SourcePath, AppCatalog.Opera.Rel));
+        var funde = operaOrt is null ? new System.Collections.Generic.List<string>() : AppCatalog.Opera.Varianten(operaOrt);
+        _operaFunde = funde.Count == 0 ? null : string.Join(", ", funde.Select(AppCatalog.Opera.Anzeigename));
+
+        // Was gesperrt ist, kann nicht gewaehlt bleiben.
+        if (!Frei(Punkt.Profil)) SelUser = false;
+        if (!Frei(Punkt.AppData)) SelUserAppData = false;
+        if (!Frei(Punkt.Cloud)) SelUserCloud = false;
+        if (!Frei(Punkt.Firefox)) SelFirefox = false;
+        if (!Frei(Punkt.Edge)) SelEdge = false;
+        if (!Frei(Punkt.Chrome)) SelChrome = false;
+        if (!Frei(Punkt.Brave)) SelBrave = false;
+        if (!Frei(Punkt.Opera)) SelOpera = false;
+        if (!Frei(Punkt.Thunderbird)) SelThunderbird = false;
+        if (!Frei(Punkt.Winget)) SelWinget = false;
+        if (!Frei(Punkt.Wlan)) SelWlan = false;
+        if (!Frei(Punkt.Drucker)) SelPrinter = false;
+        if (!Frei(Punkt.Hintergrund)) SelWallpaper = false;
+        if (!Frei(Punkt.DesktopShot)) SelDesktopShot = false;
+
+        PunkteNeuMelden();
+    }
+
+    private void PunkteNeuMelden()
+    {
+        foreach (var n in new[]
+                 {
+                     nameof(EnUser), nameof(EnAppData), nameof(EnCloud), nameof(EnFirefox), nameof(EnEdge),
+                     nameof(EnChrome), nameof(EnBrave), nameof(EnOpera), nameof(EnThunderbird), nameof(EnWinget),
+                     nameof(EnWlan), nameof(EnPrinter), nameof(EnWallpaper), nameof(EnDesktopShot),
+                     nameof(TipUser), nameof(TipAppData), nameof(TipCloud), nameof(TipFirefox), nameof(TipEdge),
+                     nameof(TipChrome), nameof(TipBrave), nameof(TipOpera), nameof(TipThunderbird), nameof(TipWinget),
+                     nameof(TipWlan), nameof(TipPrinter), nameof(TipWallpaper), nameof(TipDesktopShot),
+                 })
+            OnPropertyChanged(n);
+    }
 
     // ---- Modus: false = Sichern (Backup), true = Wiederherstellen (Restore) ----
     [ObservableProperty] private bool _isRestoreMode;
@@ -420,6 +521,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(ModeTitle));
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
         ZielAnzeigen();
+        VerfuegbarkeitPruefen();
         ScheduleAutoStorageCheck();
     }
 
@@ -552,11 +654,12 @@ public partial class MainWindowViewModel : ObservableObject
     private System.Collections.Generic.List<string> SelectedProfileRelPaths()
     {
         var list = new System.Collections.Generic.List<string>();
-        if (SelFirefox)     list.Add(@"AppData\Roaming\Mozilla\Firefox");
-        if (SelEdge)        list.Add(@"AppData\Local\Microsoft\Edge\User Data");
-        if (SelChrome)      list.Add(@"AppData\Local\Google\Chrome\User Data");
-        if (SelBrave)       list.Add(@"AppData\Local\BraveSoftware\Brave-Browser\User Data");
-        if (SelThunderbird) list.Add(@"AppData\Roaming\Thunderbird");
+        if (SelFirefox)     list.Add(AppCatalog.Firefox.ProfilRel);
+        if (SelEdge)        list.Add(AppCatalog.Edge.ProfilRel);
+        if (SelChrome)      list.Add(AppCatalog.Chrome.ProfilRel);
+        if (SelBrave)       list.Add(AppCatalog.Brave.ProfilRel);
+        if (SelOpera)       list.Add(AppCatalog.Opera.Rel);
+        if (SelThunderbird) list.Add(AppCatalog.Thunderbird.ProfilRel);
         return list;
     }
 
@@ -570,6 +673,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (SelEdge)        list.Add("Edge-Profil");
         if (SelChrome)      list.Add("Chrome-Profil");
         if (SelBrave)       list.Add("Brave-Profil");
+        if (SelOpera)       list.Add(AppCatalog.Opera.BackupOrdner);
         if (SelThunderbird) list.Add("Thunderbird-Profil");
         if (SelWlan)        list.Add("WLAN-Profile");
         if (SelPrinter)     list.Add("Drucker");
@@ -1159,6 +1263,7 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelEdge)        t.Add("Restore-Edge");
             if (SelChrome)      t.Add("Restore-Chrome");
             if (SelBrave)       t.Add("Restore-Brave");
+            if (SelOpera)       t.Add("Restore-Opera");
             if (SelThunderbird) t.Add("Restore-Thunderbird");
             if (SelWinget)      t.Add("Import-Winget");
             if (SelWlan)        t.Add("Import-Wlan");
@@ -1185,6 +1290,7 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelEdge)        t.Add("Backup-Edge");
             if (SelChrome)      t.Add("Backup-Chrome");
             if (SelBrave)       t.Add("Backup-Brave");
+            if (SelOpera)       t.Add("Backup-Opera");
             if (SelThunderbird) t.Add("Backup-Thunderbird");
             if (SelWinget)      t.Add("Export-Winget");
             if (SelWlan)        t.Add("Export-Wlan");
@@ -1223,11 +1329,12 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Backup-User":        await _backup.BackupUserProfile(); break;
                     case "Backup-AppData":     await _backup.BackupAppDataOnly(); break;
                     case "Backup-Cloud":       await _backup.BackupCloudOnly(); break;
-                    case "Backup-Firefox":     await _backup.BackupAppProfile("Firefox", @"AppData\Roaming\Mozilla\Firefox", "firefox"); break;
-                    case "Backup-Edge":        await _backup.BackupAppProfile("Edge", @"AppData\Local\Microsoft\Edge\User Data", "msedge", _backup.ChromiumExcludes); break;
-                    case "Backup-Chrome":      await _backup.BackupAppProfile("Chrome", @"AppData\Local\Google\Chrome\User Data", "chrome", _backup.ChromiumExcludes); break;
-                    case "Backup-Brave":       await _backup.BackupAppProfile("Brave", @"AppData\Local\BraveSoftware\Brave-Browser\User Data", "brave", _backup.ChromiumExcludes); break;
-                    case "Backup-Thunderbird": await _backup.BackupAppProfile("Thunderbird", @"AppData\Roaming\Thunderbird", "thunderbird"); break;
+                    case "Backup-Firefox":     await _backup.BackupAppProfile(AppCatalog.Firefox); break;
+                    case "Backup-Edge":        await _backup.BackupAppProfile(AppCatalog.Edge); break;
+                    case "Backup-Chrome":      await _backup.BackupAppProfile(AppCatalog.Chrome); break;
+                    case "Backup-Brave":       await _backup.BackupAppProfile(AppCatalog.Brave); break;
+                    case "Backup-Opera":       await _backup.BackupOpera(); break;
+                    case "Backup-Thunderbird": await _backup.BackupAppProfile(AppCatalog.Thunderbird); break;
                     case "Export-Winget":      await _winget.ExportAsync(_laufZiel); break;
                     case "Export-Wlan":        await _backup.ExportWlan(); break;
                     case "Export-Printer":     await _backup.ExportPrinters(); break;
@@ -1240,11 +1347,12 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Restore-User":        await _backup.RestoreUserProfile(); break;
                     case "Restore-AppData":     await _backup.RestoreAppDataOnly(); break;
                     case "Restore-Cloud":       await _backup.RestoreCloudOnly(); break;
-                    case "Restore-Firefox":     await _backup.RestoreAppProfile("Firefox", @"AppData\Roaming\Mozilla\Firefox", "firefox"); break;
-                    case "Restore-Edge":        await _backup.RestoreAppProfile("Edge", @"AppData\Local\Microsoft\Edge\User Data", "msedge"); break;
-                    case "Restore-Chrome":      await _backup.RestoreAppProfile("Chrome", @"AppData\Local\Google\Chrome\User Data", "chrome"); break;
-                    case "Restore-Brave":       await _backup.RestoreAppProfile("Brave", @"AppData\Local\BraveSoftware\Brave-Browser\User Data", "brave"); break;
-                    case "Restore-Thunderbird": await _backup.RestoreAppProfile("Thunderbird", @"AppData\Roaming\Thunderbird", "thunderbird"); break;
+                    case "Restore-Firefox":     await _backup.RestoreAppProfile(AppCatalog.Firefox); break;
+                    case "Restore-Edge":        await _backup.RestoreAppProfile(AppCatalog.Edge); break;
+                    case "Restore-Chrome":      await _backup.RestoreAppProfile(AppCatalog.Chrome); break;
+                    case "Restore-Brave":       await _backup.RestoreAppProfile(AppCatalog.Brave); break;
+                    case "Restore-Opera":       await _backup.RestoreOpera(); break;
+                    case "Restore-Thunderbird": await _backup.RestoreAppProfile(AppCatalog.Thunderbird); break;
                     case "Import-Winget":       await _winget.ImportAsync(wingetSelection ?? new List<WingetPackage>()); break;
                     case "Import-Wlan":         await _backup.ImportWlan(); break;
                     case "Import-Printer":      await _backup.ImportPrinters(); break;
@@ -1353,6 +1461,7 @@ public partial class MainWindowViewModel : ObservableObject
             "Backup-Edge" or "Restore-Edge"               => Tr("Edge-Profil", "Edge profile"),
             "Backup-Chrome" or "Restore-Chrome"           => Tr("Chrome-Profil", "Chrome profile"),
             "Backup-Brave" or "Restore-Brave"             => Tr("Brave-Profil", "Brave profile"),
+            "Backup-Opera" or "Restore-Opera"             => Tr("Opera-Profil", "Opera profile"),
             "Backup-Thunderbird" or "Restore-Thunderbird" => Tr("Thunderbird-Profil", "Thunderbird profile"),
             "Export-Winget" or "Import-Winget"            => Tr("Programme (Winget)", "Programs (winget)"),
             "Export-Wlan" or "Import-Wlan"                => Tr("WLAN-Profile", "WiFi profiles"),

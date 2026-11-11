@@ -32,7 +32,7 @@ Ein Foto des Desktops hält fest, wo welche Symbole lagen.
 | Bereich | Inhalt |
 | --- | --- |
 | **Windows-Benutzerprofil** | Dokumente, Bilder, Desktop, Downloads und alles Weitere im Profil, auch versteckte und Systemdateien. Zwischenspeicher, Temp-Ordner, die Registry-Dateien (`NTUSER.DAT`) und Windows-Altlasten (Verknüpfungspunkte wie *Anwendungsdaten*) bleiben draußen. Zeigt ein Ordner als Verknüpfung aus dem Profil hinaus (z. B. `Dokumente\Spiele` → `D:\Spiele`), steht das als Warnung im Protokoll. **AppData** und **Cloud-Ordner** wahlweise, auch einzeln ohne den Rest des Profils — Vorgabe: aus |
-| **Browser-Profile** | Firefox, Edge, Chrome und Brave — inklusive Lesezeichen, Verlauf und Einstellungen |
+| **Browser-Profile** | Firefox, Edge, Chrome, Brave und Opera — inklusive Lesezeichen, Verlauf und Einstellungen. Bei Opera jede Fassung, die beim Benutzer eingerichtet ist: Opera, Opera GX, Beta, Developer, Air … |
 | **E-Mail** | Thunderbird-Profil mit Konten und lokalen Ordnern |
 | **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog. Programme ohne Winget-Paket landen in einer eigenen Liste |
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
@@ -54,11 +54,42 @@ Ein Foto des Desktops hält fest, wo welche Symbole lagen.
 Sichern und Wiederherstellen teilen sich eine Ansicht. Der Umschalter oben wechselt
 die Richtung, die Beschriftungen passen sich automatisch an — aus *Programme
 exportieren* wird *Programme installieren*, aus *Desktop-Screenshot erstellen* wird
-*Desktop-Screenshot anzeigen*. Die Auswahl bleibt beim Umschalten erhalten.
+*Desktop-Screenshot anzeigen*. Die Auswahl bleibt beim Umschalten erhalten, soweit
+die neue Richtung sie zulässt (siehe nächster Abschnitt).
 
 <div align="center">
-<img src="docs/images/modus-umschalter.png" alt="Dieselbe Auswahl im Modus Sichern und im Modus Wiederherstellen" width="640">
+<img src="docs/images/modus-umschalter.png" alt="Die Auswahl im Modus Sichern und im Modus Wiederherstellen, nicht verfügbare Punkte ausgegraut" width="640">
 </div>
+
+### Nur wählbar, was es auch gibt
+
+Punkte, die nichts zu tun hätten, sind **ausgegraut** und lassen sich nicht ankreuzen:
+
+- **Sichern:** Eine Programmsicherung (Firefox, Edge, Chrome, Brave, Opera,
+  Thunderbird) ist gesperrt, wenn das Programm beim gewählten Benutzer nicht
+  eingerichtet ist, also kein Profil hat. Oben im Bild: Brave.
+- **Wiederherstellen:** Jeder Punkt ist gesperrt, den die gewählte Sicherung nicht
+  enthält. Unten im Bild: Gesichert wurden Profil samt AppData, Firefox, Edge,
+  Opera und die Programmliste, alles andere ist grau.
+
+Fährt man mit der Maus über einen grauen Punkt, nennt der Tooltip den Grund, etwa
+*Chrome ist bei diesem Benutzer nicht eingerichtet - kein Profil unter …* oder *Die
+gewählte Sicherung enthält kein Chrome-Profil.* Ist statt einer Sicherung der Ordner
+darüber gewählt (`D:\DaSi` statt `D:\DaSi\DASI_…`), sagt der Tooltip genau das. Wird ein
+Punkt durch einen Wechsel von Benutzer, Sicherung oder Modus gesperrt, verliert er
+auch seinen Haken. Solange noch kein vorhandenes Profil bzw. kein vorhandener Ordner
+gewählt ist, bleibt alles frei.
+
+### Opera in jeder Fassung
+
+Opera gibt es als Opera, Opera GX, Beta, Developer, Air … Jede Fassung legt ihr Profil
+in einen eigenen Ordner unter `AppData\Roaming\Opera Software`. Das Tool erkennt
+jede davon an ihren Profildateien, auch eine künftige Fassung. In der Sicherung liegt
+jede in einem eigenen Unterordner von `Opera-Profil`, beim Wiederherstellen kommt
+jede an ihren Platz zurück. Welche Fassungen gefunden wurden, zeigt der Tooltip der
+Opera-Kachel. Fehlt eine Fassung auf dem neuen Rechner, installiert das Tool Opera
+und Opera GX per Winget nach. Für die übrigen steht ein Hinweis im Protokoll, das
+Profil wird trotzdem zurückgeschrieben.
 
 ### AppData und Cloud-Ordner: bewusst entscheiden
 
@@ -315,7 +346,8 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
    Ordner: AN* genügt das Laufwerk (`G:\`) — das Feld zeigt dann sofort `G:\DASI_…`.
    Zum Wiederherstellen den gewünschten `DASI_…`-Ordner wählen.
 5. Modus **Sichern** oder **Wiederherstellen** wählen und die gewünschten Punkte ankreuzen.
-   *AppData* und *Cloud-Anbieter* nur bei Bedarf dazunehmen.
+   *AppData* und *Cloud-Anbieter* nur bei Bedarf dazunehmen. Ausgegraute Punkte gibt es
+   beim Benutzer bzw. in der Sicherung nicht — der Tooltip nennt den Grund.
 6. Auf die **Speicherzeile** achten: Grün heißt, der Platz reicht.
 7. **Ausgewählte Aktionen starten** — der Fortschritt erscheint im Protokoll, die
    Bilanz am Ende zusätzlich als Datei im Backup-Ziel.
@@ -337,7 +369,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | **Dateioperationen** | Robocopy mit Spiegelung, Ausschlusslisten und Multithreading |
 | **Prozess-Handling** | Browser und Thunderbird werden vor dem Backup automatisch geschlossen, um Dateikonflikte zu vermeiden |
 | **Fehlerbehandlung** | Unerwartete Fehler landen in `%USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log` |
-| **Prüfungen** | `tests/DaSiTests` — Ausschlusslisten, Cloud-Erkennung, Bilanz, Update-Logik. Läuft bei jedem Push unter Linux und Windows; unter Windows wird das Austauschskript der Selbstaktualisierung dabei echt ausgeführt |
+| **Prüfungen** | `tests/DaSiTests` — Ausschlusslisten, Cloud-Erkennung, Opera-Fassungen, gesperrte Punkte, Bilanz, Update-Logik. Läuft bei jedem Push unter Linux und Windows; unter Windows wird das Austauschskript der Selbstaktualisierung dabei echt ausgeführt |
 
 ### Selbst bauen
 

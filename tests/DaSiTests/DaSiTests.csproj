@@ -33,6 +33,7 @@
     <Compile Include="../../Services/RobocopySkips.cs" />
     <Compile Include="../../Services/ProfilePaths.cs" />
     <Compile Include="../../Services/ProfileLinks.cs" />
+    <Compile Include="../../Services/AppCatalog.cs" />
   </ItemGroup>
 
 </Project>

@@ -357,45 +357,153 @@ public sealed class BackupService
 
     // ------------------------------------------------------------ Browser-Profile
 
-    public async Task BackupAppProfile(string appName, string profileRel, string processName, string[]? excludeDirs = null)
+    /// <summary>Sichert das Profil eines Programms aus dem Katalog (Firefox, Edge, Chrome, Brave, Thunderbird).</summary>
+    public async Task BackupAppProfile(AppEintrag app)
     {
-        var appProfilePath = Path.Combine(SourcePath, profileRel);
-        if (!Directory.Exists(appProfilePath)) { _log(Loc.Tr($"[FEHLER] Pfad nicht gefunden: {appProfilePath}", $"[ERROR] Path not found: {appProfilePath}")); return; }
+        var quelle = AppCatalog.Pfad(SourcePath, app.ProfilRel);
+        if (!Directory.Exists(quelle)) { _log(Loc.Tr($"[FEHLER] Pfad nicht gefunden: {quelle}", $"[ERROR] Path not found: {quelle}")); return; }
 
-        _log(Loc.Tr($"[INFO] Beende {appName}...", $"[INFO] Closing {appName}..."));
-        KillProcess(processName);
+        _log(Loc.Tr($"[INFO] Beende {app.Name}...", $"[INFO] Closing {app.Name}..."));
+        KillProcess(app.Prozess);
         await Task.Delay(2000);
 
-        var targetBackupDir = Path.Combine(BackupPath, $"{appName}-Profil");
-        var args = new List<string> { Quote(appProfilePath), Quote(targetBackupDir), "/MIR", "/R:1", "/W:1", "/MT:32" };
+        await MirrorAppProfile(app.Name, quelle, Path.Combine(BackupPath, app.BackupOrdner), app.Chromium ? ChromiumCacheExcludes : null);
+    }
+
+    /// <summary>Schreibt das Profil eines Programms aus dem Katalog zurueck - vorher wird es bei Bedarf installiert.</summary>
+    public async Task RestoreAppProfile(AppEintrag app)
+    {
+        await InstallApp(app.Name, app.Prozess + ".exe", app.WingetId);
+
+        var quelle = Path.Combine(BackupPath, app.BackupOrdner);
+        if (!Directory.Exists(quelle)) { _log(Loc.Tr($"[FEHLER] {app.Name} Backup nicht gefunden.", $"[ERROR] {app.Name} backup not found.")); return; }
+
+        _log(Loc.Tr($"[INFO] Beende {app.Name}...", $"[INFO] Closing {app.Name}..."));
+        KillProcess(app.Prozess);
+        await Task.Delay(2000);
+
+        await RestoreAppDir(app.Name, quelle, AppCatalog.Pfad(SourcePath, app.ProfilRel));
+    }
+
+    // ------------------------------------------------------------ Opera (alle Fassungen)
+
+    /// <summary>
+    /// Sichert jede Opera-Fassung des Benutzers (Opera, Opera GX, Beta ...) in
+    /// einen eigenen Unterordner von "Opera-Profil".
+    /// </summary>
+    public async Task BackupOpera()
+    {
+        var wurzel = AppCatalog.Pfad(SourcePath, AppCatalog.Opera.Rel);
+        var varianten = AppCatalog.Opera.Varianten(wurzel);
+        if (varianten.Count == 0)
+        {
+            _log(Loc.Tr($"[FEHLER] Kein Opera-Profil gefunden unter: {wurzel}", $"[ERROR] No Opera profile found under: {wurzel}"));
+            return;
+        }
+        var namen = string.Join(", ", varianten.Select(AppCatalog.Opera.Anzeigename));
+        _log(Loc.Tr($"[INFO] Gefundene Opera-Fassungen: {namen}", $"[INFO] Opera editions found: {namen}"));
+
+        // Alle Fassungen laufen als opera.exe - einmal beenden genuegt.
+        _log(Loc.Tr("[INFO] Beende Opera...", "[INFO] Closing Opera..."));
+        KillOpera();
+        await Task.Delay(2000);
+
+        foreach (var v in varianten)
+        {
+            if (_cancel.IsCancelled) return;
+            await MirrorAppProfile(AppCatalog.Opera.Anzeigename(v), Path.Combine(wurzel, v),
+                                   Path.Combine(BackupPath, AppCatalog.Opera.BackupOrdner, v), ChromiumCacheExcludes);
+        }
+    }
+
+    /// <summary>Schreibt jede gesicherte Opera-Fassung zurueck, jede an ihren Platz.</summary>
+    public async Task RestoreOpera()
+    {
+        var quelle = Path.Combine(BackupPath, AppCatalog.Opera.BackupOrdner);
+        var varianten = AppCatalog.Opera.Varianten(quelle);
+        if (varianten.Count == 0)
+        {
+            _log(Loc.Tr("[FEHLER] Opera Backup nicht gefunden.", "[ERROR] Opera backup not found."));
+            return;
+        }
+        var ziel = AppCatalog.Pfad(SourcePath, AppCatalog.Opera.Rel);
+        foreach (var v in varianten)
+        {
+            if (_cancel.IsCancelled) return;
+            var name = AppCatalog.Opera.Anzeigename(v);
+            await InstallOpera(v);
+            _log(Loc.Tr($"[INFO] Beende {name}...", $"[INFO] Closing {name}..."));
+            KillOpera();
+            await Task.Delay(2000);
+            await RestoreAppDir(name, Path.Combine(quelle, v), Path.Combine(ziel, v));
+        }
+    }
+
+    /// <summary>Opera selbst und seine Begleiter, die Dateien im Profil offen halten.</summary>
+    private static void KillOpera()
+    {
+        foreach (var name in new[] { AppCatalog.Opera.Prozess, "opera_autoupdate", "browser_assistant" })
+            KillProcess(name);
+    }
+
+    /// <summary>
+    /// Ist diese Opera-Fassung installiert? Opera installiert sich meist nur
+    /// fuer den Benutzer (AppData\Local\Programs\&lt;Fassung&gt;), seltener fuer alle
+    /// (Programme). Sonst per winget - soweit das Paket bekannt ist.
+    /// </summary>
+    private async Task InstallOpera(string variante)
+    {
+        if (_cancel.IsCancelled) return;
+        var name = AppCatalog.Opera.Anzeigename(variante);
+        var orte = new[]
+        {
+            Path.Combine(SourcePath, "AppData", "Local", "Programs", name, "opera.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), name, "opera.exe"),
+        };
+        if (orte.Any(File.Exists))
+        {
+            _log(Loc.Tr($"[INFO] {name} ist bereits installiert.", $"[INFO] {name} is already installed."));
+            return;
+        }
+        var id = AppCatalog.Opera.WingetId(variante);
+        if (id is null)
+        {
+            _log(Loc.Tr($"[WARNUNG] {name} ist nicht installiert und lässt sich nicht automatisch nachinstallieren. Bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
+                        $"[WARNING] {name} is not installed and cannot be installed automatically. Please install it manually - the profile is restored anyway."));
+            return;
+        }
+        await InstallViaWinget(name, id);
+    }
+
+    // ------------------------------------------------------------ Programmprofile: gemeinsamer Ablauf
+
+    /// <summary>Spiegelt ein Programmprofil in die Sicherung.</summary>
+    private async Task MirrorAppProfile(string name, string quelle, string ziel, string[]? excludeDirs)
+    {
+        var args = new List<string> { Quote(quelle), Quote(ziel), "/MIR", "/R:1", "/W:1", "/MT:32" };
         if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
         foreach (var ex in excludeDirs ?? Array.Empty<string>()) { args.Add("/XD"); args.Add(Quote(ex)); }
 
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
         if (_cancel.IsCancelled) return;
-        _log(code < 8 ? Loc.Tr($"[ERFOLG] {appName} Profil gesichert.", $"[SUCCESS] {appName} profile backed up.") : Loc.Tr($"[FEHLER] ExitCode {code}", $"[ERROR] ExitCode {code}"));
+        _log(code < 8 ? Loc.Tr($"[ERFOLG] {name} Profil gesichert.", $"[SUCCESS] {name} profile backed up.")
+                      : Loc.Tr($"[FEHLER] {name}: ExitCode {code}", $"[ERROR] {name}: ExitCode {code}"));
     }
 
-    public async Task RestoreAppProfile(string appName, string profileRel, string processName)
+    /// <summary>
+    /// Schreibt ein Programmprofil zurueck. Ein vorhandenes Profil wird vorher
+    /// beiseitegelegt ("..._alt_&lt;Zeit&gt;"), nicht geloescht.
+    /// </summary>
+    private async Task RestoreAppDir(string name, string quelle, string ziel)
     {
-        await InstallApp(appName, processName + ".exe");
-
-        var backupSourceDir = Path.Combine(BackupPath, $"{appName}-Profil");
-        if (!Directory.Exists(backupSourceDir)) { _log(Loc.Tr($"[FEHLER] {appName} Backup nicht gefunden.", $"[ERROR] {appName} backup not found.")); return; }
-        var targetAppProfileDir = Path.Combine(SourcePath, profileRel);
-
-        _log(Loc.Tr($"[INFO] Beende {appName}...", $"[INFO] Closing {appName}..."));
-        KillProcess(processName);
-        await Task.Delay(2000);
-
-        if (Directory.Exists(targetAppProfileDir))
+        if (Directory.Exists(ziel))
         {
             var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            var oldDir = $"{targetAppProfileDir}_alt_{stamp}";
+            var oldDir = $"{ziel}_alt_{stamp}";
             try
             {
-                Directory.Move(targetAppProfileDir, oldDir);
-                _log(Loc.Tr($"[INFO] Bisheriges {appName}-Profil gesichert nach: {oldDir}", $"[INFO] Previous {appName} profile moved to: {oldDir}"));
+                Directory.Move(ziel, oldDir);
+                _log(Loc.Tr($"[INFO] Bisheriges {name}-Profil gesichert nach: {oldDir}", $"[INFO] Previous {name} profile moved to: {oldDir}"));
             }
             catch (Exception ex)
             {
@@ -405,24 +513,25 @@ public sealed class BackupService
                 // Uebrig blieb ein halb geloeschtes Profil, und schlug danach das
                 // Zurueckschreiben fehl, war gar keins mehr da. Abbrechen ist
                 // hier die einzige Antwort, die nichts kaputt machen kann.
-                _log(Loc.Tr($"[FEHLER] Das bisherige {appName}-Profil ließ sich nicht beiseitelegen ({ex.Message}). "
+                _log(Loc.Tr($"[FEHLER] Das bisherige {name}-Profil ließ sich nicht beiseitelegen ({ex.Message}). "
                             + $"Wiederherstellung abgebrochen - am bestehenden Profil wurde nichts verändert. "
-                            + $"Bitte {appName} vollständig schließen und erneut versuchen.",
-                            $"[ERROR] The existing {appName} profile could not be moved aside ({ex.Message}). "
+                            + $"Bitte {name} vollständig schließen und erneut versuchen.",
+                            $"[ERROR] The existing {name} profile could not be moved aside ({ex.Message}). "
                             + $"Restore aborted - the existing profile was left untouched. "
-                            + $"Please close {appName} completely and try again."));
+                            + $"Please close {name} completely and try again."));
                 return;
             }
         }
-        var parent = Path.GetDirectoryName(targetAppProfileDir);
+        var parent = Path.GetDirectoryName(ziel);
         if (parent != null && !Directory.Exists(parent)) Directory.CreateDirectory(parent);
 
-        var args = new List<string> { Quote(backupSourceDir), Quote(targetAppProfileDir), "/MIR", "/R:1", "/W:1", "/MT:32" };
+        var args = new List<string> { Quote(quelle), Quote(ziel), "/MIR", "/R:1", "/W:1", "/MT:32" };
         if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
 
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
         if (_cancel.IsCancelled) return;
-        _log(code < 8 ? Loc.Tr($"[ERFOLG] {appName} Profil wiederhergestellt.", $"[SUCCESS] {appName} profile restored.") : Loc.Tr($"[FEHLER] ExitCode {code}", $"[ERROR] ExitCode {code}"));
+        _log(code < 8 ? Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt.", $"[SUCCESS] {name} profile restored.")
+                      : Loc.Tr($"[FEHLER] {name}: ExitCode {code}", $"[ERROR] {name}: ExitCode {code}"));
     }
 
     public string[] ChromiumExcludes => ChromiumCacheExcludes;
@@ -1008,7 +1117,7 @@ public sealed class BackupService
 
     // ------------------------------------------------------------ App-Install/Update
 
-    private async Task InstallApp(string appName, string exeName)
+    private async Task InstallApp(string appName, string exeName, string? wingetId)
     {
         if (_cancel.IsCancelled) return;
         _log(Loc.Tr($"[INFO] Prüfe, ob {appName} installiert ist...", $"[INFO] Checking whether {appName} is installed..."));
@@ -1016,17 +1125,13 @@ public sealed class BackupService
         using var key = Registry.LocalMachine.OpenSubKey(appPathKey);
         if (key != null) { _log(Loc.Tr($"[INFO] {appName} ist bereits installiert.", $"[INFO] {appName} is already installed.")); return; }
 
-        if (appName == "Edge") return;
-        var wingetId = appName switch
-        {
-            "Firefox" => "Mozilla.Firefox.de",
-            "Thunderbird" => "Mozilla.Thunderbird.de",
-            "Chrome" => "Google.Chrome",
-            "Brave" => "Brave.Brave",
-            _ => null
-        };
+        // Edge gehoert zu Windows, fuer ihn gibt es kein Paket.
         if (wingetId is null) return;
+        await InstallViaWinget(appName, wingetId);
+    }
 
+    private async Task InstallViaWinget(string appName, string wingetId)
+    {
         _log(Loc.Tr($"[INFO] Versuche, {appName} via Winget zu installieren...", $"[INFO] Trying to install {appName} via winget..."));
         var r = await _runner.RunAsync("winget", $"install --id {wingetId} -e --accept-package-agreements --accept-source-agreements");
 

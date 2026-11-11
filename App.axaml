@@ -151,8 +151,11 @@
                  sitzt aber in der Checkbox: siehe CheckBoxMinHeight in
                  MainWindow.axaml.
                  Gerendert werden die Kacheln trotzdem hoeher, weil sie sich den
-                 freien Platz teilen. -->
-            <Setter Property="MinHeight" Value="28"/>
+                 freien Platz teilen.
+
+                 Seit der Opera-Kachel sind es 11 Kacheln, also 6 Zeilen statt 5:
+                 24 statt 28 px Untergrenze halten die Summe unter der Sichthoehe. -->
+            <Setter Property="MinHeight" Value="24"/>
             <Setter Property="Margin" Value="3,2"/>
             <Setter Property="Padding" Value="14,0"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -194,7 +197,10 @@
         <Style Selector="CheckBox.subCard:checked">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
         </Style>
-        <Style Selector="CheckBox.card:disabled">
+        <!-- Gesperrt (Programm fehlt / nicht in der Sicherung): deutlich blasser.
+             Auch fuer die Unterpunkte - ihre feste Textfarbe verdeckt sonst,
+             dass sie gesperrt sind. -->
+        <Style Selector="CheckBox.card:disabled, CheckBox.subCard:disabled">
             <Setter Property="Opacity" Value="0.35"/>
         </Style>
 

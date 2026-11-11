@@ -27,9 +27,25 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Schalter `/XA:SH` war für die Registry-Dateien gedacht, traf aber jede versteckte
   oder Systemdatei, etwa die `desktop.ini` angepasster Ordner. Jetzt werden nur die
   Registry-Dateien gezielt ausgelassen.
+- **Gesperrte Unterpunkte sahen aus wie freie.** *AppData* und *Cloud-Anbieter* in der
+  Profilkachel wurden bei gesperrter Oberfläche nicht blasser dargestellt. Jetzt
+  sind sie wie die Kacheln deutlich ausgegraut.
 
 ### Hinzugefügt
 
+- **Opera-Sicherung, jede Fassung.** Neue Kachel *Opera-Profil (auch GX)* direkt nach
+  den anderen Browsern. Gesichert wird jede Fassung, die beim Benutzer eingerichtet
+  ist (Opera, Opera GX, Beta, Developer, Air …). Erkannt wird jede an ihren
+  Profildateien, nicht an einer festen Liste. Jede liegt in einem eigenen
+  Unterordner von `Opera-Profil` und kommt beim Wiederherstellen an ihren Platz
+  zurück. Ein vorhandenes Profil wird dabei beiseitegelegt, nicht gelöscht. Fehlt
+  Opera oder Opera GX, wird es per Winget nachinstalliert.
+- **Nicht verfügbare Punkte sind ausgegraut.** Beim Sichern sind die
+  Programmsicherungen gesperrt, wenn das Programm beim gewählten Benutzer nicht
+  eingerichtet ist. Beim Wiederherstellen ist jeder Punkt gesperrt, den die gewählte
+  Sicherung nicht enthält. Der Tooltip nennt den Grund. Ist der Ordner über den
+  Sicherungen gewählt statt einer Sicherung, sagt er das. Gesperrte Punkte verlieren
+  ihren Haken.
 - **Warnung bei Verknüpfungen aus dem Profil hinaus.** Ist ein Ordner in Wahrheit
   eine Verknüpfung auf einen Ort außerhalb des Profils (z. B. `Dokumente\Spiele` →
   `D:\Spiele`), wird ihr Inhalt nicht mitgesichert. Das steht jetzt vor dem Kopieren
