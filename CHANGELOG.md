@@ -7,6 +7,25 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [Unveröffentlicht]
+
+### Behoben
+
+- **Startete nicht unter Windows 10.** Version 1.2.0 war mit .NET 11 gebaut und
+  ließ sich auf Windows-10-Rechnern nicht starten. Das Tool läuft wieder auf
+  **.NET 10 (LTS)**. Die EXE bringt ihre Laufzeit weiterhin selbst mit, auf dem
+  Zielrechner muss nichts installiert werden.
+
+### Geändert
+
+- **.NET-Version festgelegt.** `global.json` legt das SDK auf .NET 10 fest
+  (`rollForward: latestFeature`, also neueste 10er-Fassung, nie 11). Zielframework,
+  Workflows und `build.ps1` folgen. Die wöchentliche Prüfung respektiert die
+  Festlegung: Ein neueres .NET meldet sie nur als Hinweis. Ein halbes Jahr vor dem
+  Supportende von .NET 10 warnt sie, danach schlägt sie fehl.
+
+---
+
 ## [1.2.0] - 2026-11-10
 
 ### Hinzugefügt

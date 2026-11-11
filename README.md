@@ -8,7 +8,7 @@
 
 [![Version](https://img.shields.io/badge/Version-1.2.0-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)](https://github.com/Tinnitus97/Windows.DaSi.Tool)
-[![.NET](https://img.shields.io/badge/.NET-11-512BD4)](https://dotnet.microsoft.com/download/dotnet/11.0)
+[![.NET](https://img.shields.io/badge/.NET-10%20LTS-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![License](https://img.shields.io/badge/Lizenz-MIT-green)](LICENSE)
 
 </div>
@@ -318,7 +318,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | --- | --- |
 | **Sprache** | C# |
 | **UI-Framework** | [Avalonia](https://avaloniaui.net/) 12.1 |
-| **Zielplattform** | .NET 11, `win-x64`, self-contained |
+| **Zielplattform** | .NET 10 (LTS), `win-x64`, self-contained, festgelegt in `global.json` |
 | **Dateioperationen** | Robocopy mit Spiegelung, Ausschlusslisten und Multithreading |
 | **Prozess-Handling** | Browser und Thunderbird werden vor dem Backup automatisch geschlossen, um Dateikonflikte zu vermeiden |
 | **Fehlerbehandlung** | Unerwartete Fehler landen in `%USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log` |
@@ -326,7 +326,14 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 
 ### Selbst bauen
 
-Voraussetzung ist das [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0).
+Voraussetzung ist das [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+
+> **Warum .NET 10 und nicht das neuere .NET 11?** Mit .NET 11 gebaut (Version
+> 1.2.0) startete das Tool auf Windows-10-Rechnern nicht. Das Projekt ist deshalb
+> in `global.json` auf .NET 10 (LTS) festgelegt. Ein daneben installiertes
+> .NET 11 SDK stört nicht, `dotnet` nimmt hier trotzdem das 10er-SDK. Die
+> wöchentliche Prüfung respektiert die Festlegung und meldet sich erst, wenn
+> der Support für .NET 10 ausläuft.
 
 ```powershell
 git clone https://github.com/Tinnitus97/Windows.DaSi.Tool.git
@@ -339,7 +346,7 @@ Die fertige EXE liegt anschließend im Ordner `publish`.
 | Parameter | Wirkung |
 | --- | --- |
 | `.\build.ps1` | Self-contained Build (Standard) — läuft ohne installiertes .NET |
-| `.\build.ps1 -Mode framework` | Deutlich kleinere EXE, setzt .NET 11 Desktop Runtime voraus |
+| `.\build.ps1 -Mode framework` | Deutlich kleinere EXE, setzt .NET 10 Desktop Runtime voraus |
 | `.\build.ps1 -Sign` | Signiert die EXE, um SmartScreen-Warnungen zu reduzieren |
 
 > **Fehler `MSB4236 … "Microsoft.NET.SDK.WorkloadAutoImportPropsLocator" wurde nicht gefunden`?**
@@ -348,7 +355,7 @@ Die fertige EXE liegt anschließend im Ordner `publish`.
 > braucht keine Workloads, die EXE ist bytegenau dieselbe. Wer `dotnet` direkt
 > aufruft (etwa für die Prüfungen unten), setzt vorher in derselben PowerShell
 > `$env:MSBuildEnableWorkloadResolver = 'false'`. Dauerhaft beheben lässt es sich
-> durch Reparieren oder Neuinstallieren des .NET 11 SDK.
+> durch Reparieren oder Neuinstallieren des .NET SDK.
 
 Die Prüfungen laufen ohne Oberfläche und auf jedem System:
 

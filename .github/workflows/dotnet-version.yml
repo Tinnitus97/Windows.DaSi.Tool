@@ -1,20 +1,30 @@
 name: .NET-Version prüfen
 
-# Wird mit der neuesten stabilen .NET-Version gebaut?
+# Wird mit der richtigen .NET-Version gebaut?
 #
 # Maßstab ist die Liste von Microsoft, aus der auch die Download-Seite gespeist
-# wird (releases-index.json): die höchste Version, die weder Vorschau noch
-# Release Candidate ist. Geprüft wird jede Stelle, die beim Bauen die Version
-# festlegt:
+# wird (releases-index.json). Geprüft wird jede Stelle, die beim Bauen die
+# Version festlegt:
 #
-#   <TargetFramework> in jeder .csproj / .props    net11.0, net11.0-windows
-#   dotnet-version in den Workflows                11.0.x
-#   sdk.version in global.json                     falls vorhanden
-#   die SDK-Prüfung in build.ps1                   falls vorhanden
+#   <TargetFramework> in jeder .csproj / .props    net10.0, net10.0-windows
+#   dotnet-version in den Workflows                10.0.x
+#   sdk.version in global.json                     10.0.100
+#   die SDK-Prüfung in build.ps1                   '^\s*10\.'
 #
-# Steht irgendwo eine ältere Version, schlägt die Prüfung fehl und nennt Datei
-# und Zeile. Zusätzlich läuft sie jeden Montag von selbst - eine neue
-# .NET-Version erscheint, ohne dass sich im Repository etwas ändert.
+# SOLL-VERSION:
+#   - Steht in global.json eine SDK-Version, ist das Projekt auf diese
+#     .NET-Version FESTGELEGT. Dann müssen alle Stellen genau sie nennen. Eine
+#     neuere Version wird nur als Hinweis gemeldet. Rot wird die Prüfung erst,
+#     wenn die festgelegte Version nicht mehr unterstützt wird; ein halbes
+#     Jahr vorher warnt sie.
+#     Derzeit: .NET 10 (LTS), weil die EXE mit .NET 11 (Version 1.2.0) auf
+#     Windows-10-Rechnern nicht startete.
+#   - Ohne Festlegung: die neueste stabile Version, also weder Vorschau noch
+#     Release Candidate.
+#
+# Steht irgendwo eine andere Version, schlägt die Prüfung fehl und nennt Datei
+# und Zeile. Zusätzlich läuft sie jeden Montag von selbst - Supportende und
+# neue .NET-Versionen kommen, ohne dass sich im Repository etwas ändert.
 
 on:
   push:
@@ -66,16 +76,50 @@ jobs:
               return tuple(int(teil) for teil in version.split('.'))
 
           # Stabil heißt: keine Vorschau (preview) und kein Release Candidate (go-live).
-          stabil = [r for r in lade_liste()['releases-index']
+          lade_liste.cache = lade_liste()
+          stabil = [r for r in lade_liste.cache['releases-index']
                     if r.get('support-phase') in ('active', 'maintenance')]
           if not stabil:
               print('::error::In der Liste von Microsoft steht keine stabile .NET-Version.')
               sys.exit(1)
           neueste = max(stabil, key=lambda r: zahlen(r['channel-version']))
-          soll = neueste['channel-version']
-          print(f".NET {soll} ist die neueste stabile Version "
+          print(f".NET {neueste['channel-version']} ist die neueste stabile Version "
                 f"({neueste.get('release-type', '?').upper()}, Laufzeit {neueste.get('latest-runtime')}, "
                 f"SDK {neueste.get('latest-sdk')}, vom {neueste.get('latest-release-date')}).")
+
+          # Festlegung in global.json? Dann gilt sie statt der neuesten Version.
+          festgelegt = None
+          if Path('global.json').is_file():
+              sdk = (json.loads(Path('global.json').read_text(encoding='utf-8-sig')).get('sdk') or {}).get('version')
+              if sdk:
+                  festgelegt = '.'.join(sdk.split('.')[:2])
+
+          if festgelegt:
+              soll = festgelegt
+              eintrag = next((r for r in lade_liste.cache['releases-index']
+                              if r.get('channel-version') == soll), None)
+              phase = (eintrag or {}).get('support-phase', 'unbekannt')
+              ende = (eintrag or {}).get('eol-date') or '?'
+              print(f"Das Projekt ist in global.json auf .NET {soll} festgelegt "
+                    f"({(eintrag or {}).get('release-type', '?').upper()}, Support bis {ende}).")
+              if phase not in ('active', 'maintenance'):
+                  print(f'::error file=global.json::.NET {soll} wird nicht mehr unterstützt '
+                        f'(Phase: {phase}, Supportende: {ende}). Die Festlegung muss auf eine '
+                        f'unterstützte Version wechseln - vorher auf Windows 10 testen.')
+                  sys.exit(1)
+              try:
+                  rest = (time.strptime(ende, '%Y-%m-%d'), time.gmtime())
+                  tage = int((time.mktime(rest[0]) - time.mktime(rest[1])) // 86400)
+                  if tage <= 183:
+                      print(f'::warning file=global.json::Der Support für .NET {soll} endet in {tage} Tagen '
+                            f'({ende}). Rechtzeitig auf eine neuere Version wechseln - vorher auf Windows 10 testen.')
+              except ValueError:
+                  pass
+              if zahlen(neueste['channel-version']) > zahlen(soll):
+                  print(f"::notice::.NET {neueste['channel-version']} ist erschienen; das Projekt bleibt "
+                        f"wie festgelegt bei .NET {soll}.")
+          else:
+              soll = neueste['channel-version']
           print()
 
           # (Datei, Zeile, was dort steht, die Version darin, Art der Stelle)
@@ -111,7 +155,7 @@ jobs:
                       stellen.append((pfad, nr, version, '.'.join(version.split('.')[:2]), 'SDK in global.json'))
 
               elif pfad.name == 'build.ps1':
-                  # Die SDK-Prüfung des Bauskripts:  $_ -match '^\s*11\.'
+                  # Die SDK-Prüfung des Bauskripts:  $_ -match '^\s*10\.'
                   for nr, zeile in zeilen(pfad):
                       v = re.search(r"-match\s+'\^\\s\*(\d+)\\\.'", zeile)
                       if v:
@@ -128,13 +172,18 @@ jobs:
               if ok:
                   continue
               veraltet += 1
-              wie = 'eine Vorschau' if zahlen(version) > zahlen(soll) else 'veraltet'
-              print(f'::error file={pfad.as_posix()},line={nr}::{art}: {text} ist {wie} - '
-                    f'die neueste stabile Version ist .NET {soll}.')
+              if festgelegt:
+                  print(f'::error file={pfad.as_posix()},line={nr}::{art}: {text} weicht von der '
+                        f'Festlegung in global.json ab - das Projekt baut mit .NET {soll}.')
+              else:
+                  wie = 'eine Vorschau' if zahlen(version) > zahlen(soll) else 'veraltet'
+                  print(f'::error file={pfad.as_posix()},line={nr}::{art}: {text} ist {wie} - '
+                        f'die neueste stabile Version ist .NET {soll}.')
 
           print()
           if veraltet:
               print(f'{veraltet} von {len(stellen)} Stellen bauen nicht mit .NET {soll}.')
               sys.exit(1)
-          print(f'Alle {len(stellen)} Stellen bauen mit .NET {soll}.')
+          print(f'Alle {len(stellen)} Stellen bauen mit .NET {soll}'
+                + (' (festgelegt in global.json).' if festgelegt else '.'))
           PY
