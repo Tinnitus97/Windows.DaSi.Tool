@@ -759,6 +759,51 @@ internal static class Program
             DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? new ExplorerDesktop() : throw new PlatformNotSupportedException();
         }
 
+        Console.WriteLine("\n== winget nachinstallieren: Bausteine ==");
+        {
+            Check("Architektur -> Ordner im Abhaengigkeits-Paket",
+                WingetInstaller.ArchFolder(System.Runtime.InteropServices.Architecture.X64) == "x64"
+                && WingetInstaller.ArchFolder(System.Runtime.InteropServices.Architecture.Arm64) == "arm64"
+                && WingetInstaller.ArchFolder(System.Runtime.InteropServices.Architecture.X86) == "x86");
+            Check("Download-Adressen: neueste Fassung auf GitHub",
+                WingetInstaller.ReleaseBase + WingetInstaller.BundleFile
+                    == "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+                && WingetInstaller.DependenciesFile == "DesktopAppInstaller_Dependencies.zip");
+
+            // Aufbau wie im echten Paket: je Architektur ein Ordner mit .appx.
+            var ent = Path.Combine(root, "winget-deps");
+            foreach (var a in new[] { "x64", "x86", "arm64" })
+            {
+                Directory.CreateDirectory(Path.Combine(ent, a));
+                foreach (var n in new[] { "Microsoft.WindowsAppRuntime.1.8_8000.616.304.0", "Microsoft.VCLibs.140.00_14.0.33519.0", "Microsoft.VCLibs.140.00.UWPDesktop_14.0.33728.0" })
+                    File.WriteAllText(Path.Combine(ent, a, $"{n}_{a}.appx"), "x");
+            }
+            File.WriteAllText(Path.Combine(ent, "x64", "liesmich.txt"), "x");
+            var deps = WingetInstaller.Dependencies(ent, "x64");
+            Check("Abhaengigkeiten: genau die drei .appx fuer x64, VCLibs zuerst",
+                deps.Select(Path.GetFileName).SequenceEqual(new[]
+                {
+                    "Microsoft.VCLibs.140.00.UWPDesktop_14.0.33728.0_x64.appx",
+                    "Microsoft.VCLibs.140.00_14.0.33519.0_x64.appx",
+                    "Microsoft.WindowsAppRuntime.1.8_8000.616.304.0_x64.appx",
+                }), string.Join(", ", deps.Select(Path.GetFileName)));
+            Check("Abhaengigkeiten: fehlender Ordner -> keine (statt Absturz)",
+                WingetInstaller.Dependencies(ent, "arm") is { Count: 0 } && WingetInstaller.Dependencies(Path.Combine(root, "gibt-es-nicht"), "x64") is { Count: 0 });
+
+            Check("PowerShell: Apostroph im Pfad wird verdoppelt",
+                WingetInstaller.PsQuote(@"C:\Users\O'Brien\a.appx") == @"'C:\Users\O''Brien\a.appx'");
+            var psSkript = WingetInstaller.InstallScript(@"C:\Temp\O'B\winget.msixbundle", new[] { @"C:\Temp\a.appx", @"C:\Temp\b c.appx" });
+            Check("Skript: jede Abhaengigkeit einzeln, Fehler dort nicht fatal",
+                psSkript.Contains(@"@('C:\Temp\a.appx', 'C:\Temp\b c.appx')") && psSkript.Contains("try { Add-AppxPackage -Path $d } catch"), psSkript);
+            Check("Skript: danach das Bundle, Fehler dort fuehren zu Exit 1",
+                psSkript.Contains(@"Add-AppxPackage -Path 'C:\Temp\O''B\winget.msixbundle' -ForceApplicationShutdown")
+                && psSkript.IndexOf("foreach") < psSkript.IndexOf("msixbundle") && psSkript.Contains("exit 1"));
+            Check("Skript: ohne Abhaengigkeiten gueltig (leere Liste)", WingetInstaller.InstallScript("b", Array.Empty<string>()).Contains("@()"));
+            var kodiert = WingetInstaller.Encode("Write-Output 'Ä'");
+            Check("EncodedCommand: UTF-16LE in Base64",
+                System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(kodiert)) == "Write-Output 'Ä'");
+        }
+
         Console.WriteLine("\n== Desktop-Screenshot: ein Bild pro Monitor ==");
         {
             Check("Windows-Nummer aus dem Geraetenamen", DesktopScreenshot.DisplayNumber(@"\\.\DISPLAY2") == 2
@@ -1171,6 +1216,35 @@ internal static class Program
                 {
                     try { File.Delete(testDatei); } catch { }
                 }
+            }
+
+            Console.WriteLine("\n== winget von GitHub nachinstallieren (echt) ==");
+            {
+                var protokoll = new List<string>();
+                var uhr = System.Diagnostics.Stopwatch.StartNew();
+                var installiert = WingetInstaller.InstallAsync(z => { protokoll.Add(z); Console.WriteLine("         " + z); }, () => false)
+                                                 .GetAwaiter().GetResult();
+                Console.WriteLine($"         Dauer: {uhr.Elapsed.TotalSeconds:F0} s");
+                Check("echt: App-Installer und Abhaengigkeiten geladen", protokoll.Count(z => z.Contains("geladen (")) == 2,
+                    string.Join(" | ", protokoll));
+                Check("echt: Abhaengigkeiten fuer diese Architektur gefunden",
+                    protokoll.Any(z => System.Text.RegularExpressions.Regex.IsMatch(z, @"samt [1-9]\d* Abhängigkeiten")));
+                Check("echt: Installation gemeldet", installiert, protokoll.LastOrDefault());
+                var lokal = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string? fassung = null;
+                try
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo(Path.Combine(lokal, @"Microsoft\WindowsApps\winget.exe"), "--version")
+                    { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+                    using var p = System.Diagnostics.Process.Start(psi)!;
+                    fassung = p.StandardOutput.ReadToEnd().Trim();
+                    p.WaitForExit(30000);
+                }
+                catch (Exception ex) { fassung = "nicht startbar: " + ex.Message; }
+                Console.WriteLine($"         winget danach: {fassung}");
+                Check("echt: winget startet danach", fassung is not null && System.Text.RegularExpressions.Regex.IsMatch(fassung, @"^v?\d+\.\d+"), fassung);
+                Check("echt: Zwischendateien sind wieder weg",
+                    !Directory.EnumerateDirectories(Path.GetTempPath(), "DaSi-winget-*").Any());
             }
 
             var sitzung = DesktopScreenshot.GetInteractiveUser();

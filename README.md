@@ -224,9 +224,24 @@ wiederholt.
 
 Vor jedem Export und jedem Import prüft das Tool, ob winget **startet** *und* ob
 seine **Paketquelle antwortet** — „vorhanden“ heißt noch nicht „funktionsfähig“.
-Fehlt etwas, kommt die Meldung vor der ersten Kopie und nicht nach zwanzig Minuten
-Profilsicherung, mit dem konkreten Weg zur Behebung. Stehen weitere Aktionen an,
-lässt sich der winget-Schritt überspringen, ohne den Rest zu verlieren.
+Fehlt etwas, **hilft es sich zuerst selbst**:
+
+1. **Nicht registriert** (typisch für ein frisch angelegtes Benutzerkonto): Es
+   registriert den App-Installer für diesen Benutzer
+   (`Add-AppxPackage -RegisterByFamilyName …`).
+2. **Nicht installiert** — oder so alt, dass winget mit den heutigen Paketquellen nicht
+   mehr zurechtkommt: Es lädt den App-Installer als MSIX-Bundle samt Abhängigkeiten
+   (VCLibs, Windows App Runtime) aus dem neuesten Release von
+   [github.com/microsoft/winget-cli](https://github.com/microsoft/winget-cli/releases)
+   und installiert ihn. Das sind rund 300 MB, ein Microsoft Store ist nicht nötig;
+   es klappt auch auf LTSC- und Server-Ausgaben.
+3. **Paketquelle antwortet nicht:** Es setzt die Quellen zurück
+   (`winget source reset --force`) und lädt sie neu.
+
+Erst wenn das alles nicht hilft, kommt eine Meldung, und zwar vor der ersten Kopie und
+nicht nach zwanzig Minuten Profilsicherung. Jeder Versuch steht im Protokoll. Stehen
+weitere Aktionen an, lässt sich der winget-Schritt überspringen, ohne den Rest zu
+verlieren.
 
 <div align="center">
 <img src="docs/images/winget-pruefung.png" alt="Hinweis, dass winget nicht einsatzbereit ist, mit Lösungsweg" width="440">
@@ -359,7 +374,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | **Berechtigungen** | Administratorrechte — die UAC-Abfrage erfolgt automatisch beim Start |
 | **Dateisystem** | Das Backup-Ziel muss auf einem **NTFS**-Laufwerk liegen (Robocopy-Voraussetzung) |
 | **.NET** | Nicht erforderlich — die Laufzeit ist in der EXE enthalten |
-| **Winget** | Nur für *Programme exportieren/installieren*: der *App-Installer* aus dem Microsoft Store (unter Windows 11 vorinstalliert) |
+| **Winget** | Nur für *Programme exportieren/installieren*: der *App-Installer* (unter Windows 11 vorinstalliert). Fehlt er, installiert das Tool ihn selbst von GitHub nach — dafür braucht es eine Internetverbindung |
 
 ---
 
@@ -391,7 +406,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | | |
 | --- | --- |
 | **Sprache** | C# |
-| **UI-Framework** | [Avalonia](https://avaloniaui.net/) 12.1 |
+| **UI-Framework** | [Avalonia](https://avaloniaui.net/) 12.1.6 |
 | **Zielplattform** | .NET 10 (LTS), `win-x64`, self-contained, festgelegt in `global.json` |
 | **Dateioperationen** | Robocopy mit Spiegelung, Ausschlusslisten und Multithreading |
 | **Prozess-Handling** | Browser und Thunderbird werden vor dem Backup automatisch geschlossen, um Dateikonflikte zu vermeiden |

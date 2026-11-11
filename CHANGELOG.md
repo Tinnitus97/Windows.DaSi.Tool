@@ -37,6 +37,8 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Geändert
 
+- **Avalonia 12.1.6** (bisher 12.1.5): Avalonia, Avalonia.Desktop,
+  Avalonia.Fonts.Inter und Avalonia.Themes.Fluent.
 - **Sicherungsordner nur mit Datum:** `DASI_<Rechner>_TT_MM_JJJJ` statt mit Uhrzeit.
 - **Eine vorhandene Sicherung wird aktualisiert.** Ist das gewählte Ziel schon eine
   Sicherung (ein `DASI_…`-Ordner oder ein Ordner mit Sicherungsinhalt), geht die
@@ -49,6 +51,12 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Hinzugefügt
 
+- **winget hilft sich selbst.** Ist winget nicht registriert, registriert das Tool
+  den App-Installer wie bisher. Neu: Fehlt winget ganz oder ist es zu alt, lädt das
+  Tool den App-Installer (MSIX-Bundle samt Abhängigkeiten) aus dem neuesten Release
+  von github.com/microsoft/winget-cli und installiert ihn. Antwortet die Paketquelle
+  nicht, setzt es die Quellen zurück (`winget source reset --force`) und lädt sie neu.
+  Erst wenn nichts davon hilft, erscheint der Hinweis.
 - **Symbolpositionen sichern und zurücksetzen (wie DesktopOK).** Das Tool merkt sich,
   welches Desktop-Symbol wo liegt, und setzt beim Wiederherstellen jedes wieder an
   seine Stelle. Zugeordnet wird über den Namen im Desktop-Ordner, unabhängig von der

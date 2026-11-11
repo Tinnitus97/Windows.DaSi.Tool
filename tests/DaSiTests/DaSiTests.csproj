@@ -35,6 +35,8 @@
     <Compile Include="../../Services/ProfileLinks.cs" />
     <Compile Include="../../Services/AppCatalog.cs" />
     <Compile Include="../../Services/DesktopIcons.cs" />
+    <Compile Include="../../Services/WingetInstaller.cs" />
+    <Compile Include="../../Services/Localizer.cs" />
   </ItemGroup>
 
 </Project>
