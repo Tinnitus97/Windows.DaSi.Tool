@@ -151,8 +151,12 @@
                  sitzt aber in der Checkbox: siehe CheckBoxMinHeight in
                  MainWindow.axaml.
                  Gerendert werden die Kacheln trotzdem hoeher, weil sie sich den
-                 freien Platz teilen. -->
-            <Setter Property="MinHeight" Value="28"/>
+                 freien Platz teilen.
+
+                 Seit der Opera-Kachel sind es 6 Zeilen (5 mit je zwei Kacheln, dazu
+                 das Desktop-Layout ueber volle Breite): 24 statt 28 px Untergrenze
+                 halten die Summe unter der Sichthoehe. -->
+            <Setter Property="MinHeight" Value="24"/>
             <Setter Property="Margin" Value="3,2"/>
             <Setter Property="Padding" Value="14,0"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -191,10 +195,52 @@
         <Style Selector="CheckBox.subCard TextBlock">
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
+        <!-- Auswahl innerhalb einer Kachel (Desktop-Layout: Screenshot / Symbolpositionen).
+             Eigene, flache Vorlage: Der Fluent-RadioButton ist 32 px hoch und
+             machte die Kachelzeile hoeher als die anderen. -->
+        <Style Selector="RadioButton.subRadio">
+            <Setter Property="Foreground" Value="{DynamicResource SubtextBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="7" Background="{TemplateBinding Background}">
+                        <Panel Width="16" Height="16" VerticalAlignment="Center">
+                            <Ellipse Name="ring" Width="16" Height="16" StrokeThickness="1.5"
+                                     Stroke="{DynamicResource SubtextBrush}" Fill="Transparent"/>
+                            <Ellipse Name="dot" Width="6" Height="6" Fill="White" IsVisible="False"/>
+                        </Panel>
+                        <ContentPresenter Content="{TemplateBinding Content}" VerticalAlignment="Center"
+                                          Foreground="{TemplateBinding Foreground}"/>
+                    </StackPanel>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.subRadio:pointerover /template/ Ellipse#ring">
+            <Setter Property="Stroke" Value="{DynamicResource BlueBrush}"/>
+        </Style>
+        <Style Selector="RadioButton.subRadio:checked">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        </Style>
+        <Style Selector="RadioButton.subRadio:checked /template/ Ellipse#ring">
+            <Setter Property="Fill" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+            <Setter Property="Stroke" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+        </Style>
+        <Style Selector="RadioButton.subRadio:checked /template/ Ellipse#dot">
+            <Setter Property="IsVisible" Value="True"/>
+        </Style>
+        <Style Selector="RadioButton.subRadio:disabled">
+            <Setter Property="Opacity" Value="0.35"/>
+        </Style>
         <Style Selector="CheckBox.subCard:checked">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
         </Style>
-        <Style Selector="CheckBox.card:disabled">
+        <!-- Gesperrt (Programm fehlt / nicht in der Sicherung): deutlich blasser.
+             Auch fuer die Unterpunkte - ihre feste Textfarbe verdeckt sonst,
+             dass sie gesperrt sind. -->
+        <Style Selector="CheckBox.card:disabled, CheckBox.subCard:disabled">
             <Setter Property="Opacity" Value="0.35"/>
         </Style>
 
@@ -247,6 +293,67 @@
         <Style Selector="Button.exit">
             <Setter Property="Foreground" Value="{DynamicResource RedBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource RedBrush}"/>
+        </Style>
+
+        <!-- ============ Dialoge (Meldungen, Rueckfragen, Winget-Auswahl) ============
+             Dieselben Theme-Farben wie das Hauptfenster - frueher waren die Farben
+             fest eingetragen, und die Dialoge blieben im hellen Modus dunkel. -->
+        <Style Selector="Window.dialog">
+            <Setter Property="Background" Value="{DynamicResource BaseBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.dialogText">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.dialogTitle">
+            <Setter Property="Foreground" Value="{DynamicResource BlueBrush}"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+        <Style Selector="Border.dialogList">
+            <Setter Property="Background" Value="{DynamicResource CrustBrush}"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="CheckBox.dialogItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        </Style>
+
+        <!-- Dialog-Knoepfe: neutral, "ja"/"installieren" (gruen), "ok" (blau), "abbrechen" (rot) -->
+        <Style Selector="Button.dialog">
+            <Setter Property="Background" Value="{DynamicResource Surface0Brush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="5"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.dialog:pointerover /template/ ContentPresenter, Button.dialog:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface1Brush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        </Style>
+        <Style Selector="Button.dialog.yes">
+            <Setter Property="Background" Value="{DynamicResource GreenBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CrustBrush}"/>
+        </Style>
+        <Style Selector="Button.dialog.yes:pointerover /template/ ContentPresenter, Button.dialog.yes:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource GreenBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CrustBrush}"/>
+            <Setter Property="Opacity" Value="0.85"/>
+        </Style>
+        <Style Selector="Button.dialog.ok">
+            <Setter Property="Background" Value="{DynamicResource BlueBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CrustBrush}"/>
+        </Style>
+        <Style Selector="Button.dialog.ok:pointerover /template/ ContentPresenter, Button.dialog.ok:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource LavenderBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CrustBrush}"/>
+        </Style>
+        <Style Selector="Button.dialog.cancel">
+            <Setter Property="Foreground" Value="{DynamicResource RedBrush}"/>
+        </Style>
+        <Style Selector="Button.dialog.cancel:pointerover /template/ ContentPresenter, Button.dialog.cancel:pressed /template/ ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource RedBrush}"/>
         </Style>
 
         <!-- ============ Pfad-Textbox ============ -->

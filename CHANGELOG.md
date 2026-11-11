@@ -7,6 +7,83 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [1.2.5] - 2026-11-11
+
+### Behoben
+
+- **Wiederherstellen zu einem anderen Benutzer legte ein fremdes Profil an.**
+  Gesichert „Besitzer“, zurück zu „Anwender“: Das Hintergrundbild wurde unter
+  seinem alten Pfad abgelegt. Dabei entstand `C:\Users\Besitzer`, ein Profil, das
+  es auf dem neuen Rechner nicht gibt. Jetzt kommt es an dieselbe Stelle im
+  gewählten Profil (`C:\Users\Anwender\…`). Beim Sichern wird dafür das Profil mit
+  vermerkt, ältere Sicherungen werden am Pfad `C:\Users\<Name>\…` erkannt.
+- **Zielprofil, das es nicht gibt, wurde angelegt.** Vor dem Start prüft das Tool
+  jetzt, ob das gewählte Profil existiert, und bricht sonst mit einem Hinweis ab.
+- **Zurückgeschriebene Dateien bekamen fremde Zugriffsrechte.** Statt `/COPYALL`
+  jetzt `/COPY:DAT`: Die Dateien erben die Rechte des Zielprofils. Die
+  Registry-Dateien des Zielbenutzers (`NTUSER.DAT` …) werden nie überschrieben, auch
+  nicht aus älteren Sicherungen.
+- **Profilsicherung ließ versteckte und Systemdateien ohne Meldung aus.** Der
+  Schalter `/XA:SH` war für die Registry-Dateien gedacht, traf aber jede versteckte
+  oder Systemdatei, etwa die `desktop.ini` angepasster Ordner. Jetzt werden nur die
+  Registry-Dateien gezielt ausgelassen.
+- **Dialoge blieben im hellen Modus dunkel.** Meldungen, Rückfragen und die
+  Winget-Auswahl hatten fest eingetragene dunkle Farben. Jetzt nutzen sie dieselben
+  Theme-Farben wie das Hauptfenster und folgen Hell/Dunkel. Die Knöpfe zeigen dabei
+  auch beim Überfahren mit der Maus die passenden Farben.
+- **Gesperrte Unterpunkte sahen aus wie freie.** *AppData* und *Cloud-Anbieter* in der
+  Profilkachel wurden bei gesperrter Oberfläche nicht blasser dargestellt. Jetzt
+  sind sie wie die Kacheln deutlich ausgegraut.
+
+### Geändert
+
+- **Avalonia 12.1.6** (bisher 12.1.5): Avalonia, Avalonia.Desktop,
+  Avalonia.Fonts.Inter und Avalonia.Themes.Fluent.
+- **Sicherungsordner nur mit Datum:** `DASI_<Rechner>_TT_MM_JJJJ` statt mit Uhrzeit.
+- **Eine vorhandene Sicherung wird aktualisiert.** Ist das gewählte Ziel schon eine
+  Sicherung (ein `DASI_…`-Ordner oder ein Ordner mit Sicherungsinhalt), geht die
+  Sicherung dort hinein, statt daneben einen neuen Ordner anzulegen. Ebenso bei
+  einer zweiten Sicherung am selben Tag. Stammt der Ordner erkennbar von einem
+  anderen Rechner, fragt das Tool vorher nach.
+- **„Desktop-Screenshot“ heißt jetzt „Desktop-Layout“** und steht über die volle
+  Breite unter den anderen Kacheln, mit der Auswahl *Screenshot* oder
+  *Symbolpositionen*.
+
+### Hinzugefügt
+
+- **winget hilft sich selbst.** Ist winget nicht registriert, registriert das Tool
+  den App-Installer wie bisher. Neu: Fehlt winget ganz oder ist es zu alt, lädt das
+  Tool den App-Installer (MSIX-Bundle samt Abhängigkeiten) aus dem neuesten Release
+  von github.com/microsoft/winget-cli und installiert ihn. Antwortet die Paketquelle
+  nicht, setzt es die Quellen zurück (`winget source reset --force`) und lädt sie neu.
+  Erst wenn nichts davon hilft, erscheint der Hinweis.
+- **Symbolpositionen sichern und zurücksetzen (wie DesktopOK).** Das Tool merkt sich,
+  welches Desktop-Symbol wo liegt, und setzt beim Wiederherstellen jedes wieder an
+  seine Stelle. Zugeordnet wird über den Namen im Desktop-Ordner, unabhängig von der
+  Sprache. Bei anderer Desktop-Größe werden die Stellen im selben Verhältnis
+  umgerechnet. *Automatisch anordnen* wird dafür ausgeschaltet, das Raster wie beim
+  Sichern eingestellt. Fehlende Symbole nennt das Protokoll. Gespeichert wird
+  `Desktop-Symbole\Symbolpositionen.json`.
+- **Opera-Sicherung, jede Fassung.** Neue Kachel *Opera-Profil (auch GX)* direkt nach
+  den anderen Browsern. Gesichert wird jede Fassung, die beim Benutzer eingerichtet
+  ist (Opera, Opera GX, Beta, Developer, Air …). Erkannt wird jede an ihren
+  Profildateien, nicht an einer festen Liste. Jede liegt in einem eigenen
+  Unterordner von `Opera-Profil` und kommt beim Wiederherstellen an ihren Platz
+  zurück. Ein vorhandenes Profil wird dabei beiseitegelegt, nicht gelöscht. Fehlt
+  Opera oder Opera GX, wird es per Winget nachinstalliert.
+- **Nicht verfügbare Punkte sind ausgegraut.** Beim Sichern sind die
+  Programmsicherungen gesperrt, wenn das Programm beim gewählten Benutzer nicht
+  eingerichtet ist. Beim Wiederherstellen ist jeder Punkt gesperrt, den die gewählte
+  Sicherung nicht enthält. Der Tooltip nennt den Grund. Ist der Ordner über den
+  Sicherungen gewählt statt einer Sicherung, sagt er das. Gesperrte Punkte verlieren
+  ihren Haken.
+- **Warnung bei Verknüpfungen aus dem Profil hinaus.** Ist ein Ordner in Wahrheit
+  eine Verknüpfung auf einen Ort außerhalb des Profils (z. B. `Dokumente\Spiele` →
+  `D:\Spiele`), wird ihr Inhalt nicht mitgesichert. Das steht jetzt vor dem Kopieren
+  als Warnung im Protokoll. Bisher fehlte so ein Ordner ohne jeden Hinweis.
+
+---
+
 ## [1.2.1] - 2026-11-11
 
 ### Behoben
@@ -372,6 +449,7 @@ PowerShell/WPF-Skripts als native C#-Anwendung mit Avalonia.
 
 ---
 
+[1.2.5]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.5
 [1.2.1]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.1
 [1.2.0]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.0
 [1.1.0]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.1.0

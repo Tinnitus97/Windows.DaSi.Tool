@@ -18,7 +18,7 @@ namespace WindowsDaSiTool.ViewModels;
 public partial class MainWindowViewModel : ObservableObject
 {
     // ---- Konstanten (entsprechen den $script:-Variablen) ----
-    private const string VersionString = "1.2.1";
+    private const string VersionString = "1.2.5";
     private const string ProjectUrl = "https://github.com/Tinnitus97/Windows.DaSi.Tool";
 
     private readonly CancellationTokenState _cancel = new();
@@ -46,6 +46,9 @@ public partial class MainWindowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(UserOptionsEnabled));
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
+        // Nach einem Lauf neu bewerten: Eine Sicherung hat Ordner angelegt,
+        // eine Wiederherstellung Programme installiert.
+        if (value) VerfuegbarkeitPruefen(); else PunkteNeuMelden();
     }
 
     /// <summary>
@@ -75,6 +78,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (!string.IsNullOrEmpty(value) && UserProfiles.Contains(value) && SelectedProfile != value)
             SelectedProfile = value;
+        VerfuegbarkeitPruefen();
         ScheduleAutoStorageCheck();
     }
 
@@ -132,9 +136,11 @@ public partial class MainWindowViewModel : ObservableObject
     private void ToggleAutoStorage() => AutoStorageCheck = !AutoStorageCheck;
 
     // ---- Eigener Sicherungsordner (abschaltbar, Vorgabe: an) ----
-    // Beim Sichern entsteht unter dem gewaehlten Ziel ein eigener Ordner je
-    // Lauf: G:\ -> G:\DASI_<Rechner>_TT_MM_JJJJ_HH_MM. Beim Wiederherstellen
-    // wirkt der Schalter nicht - dort wird ja eine vorhandene Sicherung gewaehlt.
+    // Beim Sichern entsteht unter dem gewaehlten Ziel ein Ordner je Rechner und
+    // Tag: G:\ -> G:\DASI_<Rechner>_TT_MM_JJJJ. Ist das Gewaehlte schon eine
+    // Sicherung (oder gibt es den Ordner von heute schon), wird sie
+    // aktualisiert. Beim Wiederherstellen wirkt der Schalter nicht - dort wird
+    // ja eine vorhandene Sicherung gewaehlt.
     [ObservableProperty] private bool _ownBackupFolder = true;
 
     public string OwnFolderLabel => OwnBackupFolder
@@ -150,9 +156,12 @@ public partial class MainWindowViewModel : ObservableObject
             var beispiel = !IsRestoreMode && OwnBackupFolder && !string.IsNullOrWhiteSpace(BackupPath)
                 ? BackupPath
                 : BackupTarget.Resolve(basis, true, Environment.MachineName, DateTime.Now);
+            if (OwnBackupFolder && BackupTarget.IsBackupFolder(beispiel))
+                return Tr($"Gesichert wird in die vorhandene Sicherung - sie wird aktualisiert:\n{beispiel}\n\nAbschalten, um direkt in das gewählte Ziel zu sichern.",
+                          $"The backup goes into the existing backup and updates it:\n{beispiel}\n\nTurn off to back up directly into the chosen target.");
             return OwnBackupFolder
-                ? Tr($"Beim Sichern wird ein eigener Ordner angelegt:\n{beispiel}\n\nAbschalten, um direkt in das gewählte Ziel zu sichern.",
-                     $"When backing up, a separate folder is created:\n{beispiel}\n\nTurn off to back up directly into the chosen target.")
+                ? Tr($"Beim Sichern wird ein Ordner je Rechner und Tag angelegt:\n{beispiel}\n\nGibt es ihn schon, wird die Sicherung darin aktualisiert. Abschalten, um direkt in das gewählte Ziel zu sichern.",
+                     $"When backing up, a folder per computer and day is created:\n{beispiel}\n\nIf it already exists, the backup in it is updated. Turn off to back up directly into the chosen target.")
                 : Tr($"Gesichert wird direkt in das gewählte Ziel.\n\nEinschalten, um je Sicherung einen eigenen Ordner anzulegen, z. B.:\n{beispiel}",
                      $"The backup goes directly into the chosen target.\n\nTurn on to create a separate folder per backup, e.g.:\n{beispiel}");
         }
@@ -170,7 +179,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// Was der Benutzer als Ziel gewaehlt hat, z. B. "G:\". Das Feld zeigt beim
     /// Sichern mit eigenem Ordner daraus schon den fertigen Ordner
-    /// ("G:\DASI_Rechner_TT_MM_JJJJ_HH_MM") - genau dorthin wird gesichert.
+    /// ("G:\DASI_Rechner_TT_MM_JJJJ") - genau dorthin wird gesichert.
     /// Gemerkt wird die Auswahl, damit Ausschalten und Moduswechsel wieder auf
     /// das Gewaehlte zurueckrechnen koennen.
     /// </summary>
@@ -234,6 +243,7 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnBackupPathChanged(string value)
     {
         OnPropertyChanged(nameof(OwnFolderTip));
+        VerfuegbarkeitPruefen();
         // Freien Platz am Ziellaufwerk sofort anzeigen (leichtgewichtig).
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -344,6 +354,9 @@ public partial class MainWindowViewModel : ObservableObject
     public string TgEdge           => Tr("Edge-Profil", "Edge profile");
     public string TgChrome         => Tr("Chrome-Profil", "Chrome profile");
     public string TgBrave          => Tr("Brave-Profil", "Brave profile");
+    // Ein Punkt fuer alle Opera-Fassungen (Opera, GX, Beta ...) - welche gefunden
+    // wurden, steht im Tooltip.
+    public string TgOpera          => Tr("Opera-Profil (auch GX)", "Opera profile (incl. GX)");
     public string TgThunderbird    => Tr("Thunderbird-Profil", "Thunderbird profile");
 
     // Umschalter-Beschriftungen
@@ -356,6 +369,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _selEdge;
     [ObservableProperty] private bool _selChrome;
     [ObservableProperty] private bool _selBrave;
+    [ObservableProperty] private bool _selOpera;
     [ObservableProperty] private bool _selThunderbird;
     [ObservableProperty] private bool _selWinget;
     [ObservableProperty] private bool _selWlan;
@@ -392,10 +406,113 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnSelEdgeChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelChromeChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelBraveChanged(bool value) => ScheduleAutoStorageCheck();
+    partial void OnSelOperaChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelThunderbirdChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelWlanChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelPrinterChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelWallpaperChanged(bool value) => ScheduleAutoStorageCheck();
+
+    // ---- Verfuegbarkeit der Punkte ----
+    //
+    // Sichern: Programmsicherungen sind gesperrt, wenn das Programm beim
+    // gewaehlten Benutzer nicht eingerichtet ist. Wiederherstellen: jeder Punkt
+    // ist gesperrt, den die gewaehlte Sicherung nicht enthaelt. Der Grund steht
+    // im Tooltip der gesperrten Kachel. Die Regeln stehen in AppCatalog.
+    private readonly System.Collections.Generic.Dictionary<Punkt, (string De, string En)?> _gesperrt = new();
+    private string? _operaFunde;
+
+    private bool Frei(Punkt p) => !_gesperrt.TryGetValue(p, out var g) || g is null;
+    private string? Grund(Punkt p) => _gesperrt.TryGetValue(p, out var g) && g is { } x ? Tr(x.De, x.En) : null;
+
+    public bool EnUser        => UiEnabled && Frei(Punkt.Profil);
+    public bool EnAppData     => UserOptionsEnabled && Frei(Punkt.AppData);
+    public bool EnCloud       => UserOptionsEnabled && Frei(Punkt.Cloud);
+    public bool EnFirefox     => UiEnabled && Frei(Punkt.Firefox);
+    public bool EnEdge        => UiEnabled && Frei(Punkt.Edge);
+    public bool EnChrome      => UiEnabled && Frei(Punkt.Chrome);
+    public bool EnBrave       => UiEnabled && Frei(Punkt.Brave);
+    public bool EnOpera       => UiEnabled && Frei(Punkt.Opera);
+    public bool EnThunderbird => UiEnabled && Frei(Punkt.Thunderbird);
+    public bool EnWinget      => UiEnabled && Frei(Punkt.Winget);
+    public bool EnWlan        => UiEnabled && Frei(Punkt.Wlan);
+    public bool EnPrinter     => UiEnabled && Frei(Punkt.Drucker);
+    public bool EnWallpaper   => UiEnabled && Frei(Punkt.Hintergrund);
+    public bool EnDesktopShot => UiEnabled && Frei(Punkt.DesktopShot);
+
+    public string? TipUser        => Grund(Punkt.Profil);
+    public string? TipAppData     => Grund(Punkt.AppData);
+    public string? TipCloud       => Grund(Punkt.Cloud);
+    public string? TipFirefox     => Grund(Punkt.Firefox);
+    public string? TipEdge        => Grund(Punkt.Edge);
+    public string? TipChrome      => Grund(Punkt.Chrome);
+    public string? TipBrave       => Grund(Punkt.Brave);
+    public string? TipThunderbird => Grund(Punkt.Thunderbird);
+    public string? TipWinget      => Grund(Punkt.Winget);
+    public string? TipWlan        => Grund(Punkt.Wlan);
+    public string? TipPrinter     => Grund(Punkt.Drucker);
+    public string? TipWallpaper   => Grund(Punkt.Hintergrund);
+    public string? TipDesktopShot => Grund(Punkt.DesktopShot);
+    // Bei Opera auch im freien Zustand: welche Fassungen gefunden wurden.
+    public string? TipOpera => Grund(Punkt.Opera)
+        ?? (_operaFunde is null ? null : Tr($"Gefunden: {_operaFunde}", $"Found: {_operaFunde}"));
+
+    /// <summary>Bewertet alle Punkte neu und waehlt gesperrte ab.</summary>
+    private void VerfuegbarkeitPruefen()
+    {
+        var sicherung = IsRestoreMode ? AppCatalog.BeimWiederherstellen(BackupPath) : null;
+        foreach (var p in Enum.GetValues<Punkt>())
+            _gesperrt[p] = sicherung is not null ? sicherung[p] : AppCatalog.BeimSichern(p, SourcePath);
+
+        // Welche Opera-Fassungen gibt es dort, wo gerade gelesen wird?
+        var operaOrt = IsRestoreMode
+            ? (string.IsNullOrWhiteSpace(BackupPath) ? null : Path.Combine(BackupPath, AppCatalog.Opera.BackupOrdner))
+            : (string.IsNullOrWhiteSpace(SourcePath) ? null : AppCatalog.Pfad(SourcePath, AppCatalog.Opera.Rel));
+        var funde = operaOrt is null ? new System.Collections.Generic.List<string>() : AppCatalog.Opera.Varianten(operaOrt);
+        _operaFunde = funde.Count == 0 ? null : string.Join(", ", funde.Select(AppCatalog.Opera.Anzeigename));
+
+        // Desktop-Layout: welche Variante liegt in der Sicherung? Beim Sichern
+        // gibt es beide. Liegt nur die andere vor, wird auf sie umgeschaltet.
+        _hatScreenshot = _hatSymbole = true;
+        if (IsRestoreMode && !string.IsNullOrWhiteSpace(BackupPath) && Directory.Exists(BackupPath))
+        {
+            _hatScreenshot = AppCatalog.HatDesktopScreenshot(BackupPath);
+            _hatSymbole = AppCatalog.HatDesktopSymbole(BackupPath);
+            if (_hatScreenshot != _hatSymbole) DesktopSymbole = _hatSymbole;
+        }
+
+        // Was gesperrt ist, kann nicht gewaehlt bleiben.
+        if (!Frei(Punkt.Profil)) SelUser = false;
+        if (!Frei(Punkt.AppData)) SelUserAppData = false;
+        if (!Frei(Punkt.Cloud)) SelUserCloud = false;
+        if (!Frei(Punkt.Firefox)) SelFirefox = false;
+        if (!Frei(Punkt.Edge)) SelEdge = false;
+        if (!Frei(Punkt.Chrome)) SelChrome = false;
+        if (!Frei(Punkt.Brave)) SelBrave = false;
+        if (!Frei(Punkt.Opera)) SelOpera = false;
+        if (!Frei(Punkt.Thunderbird)) SelThunderbird = false;
+        if (!Frei(Punkt.Winget)) SelWinget = false;
+        if (!Frei(Punkt.Wlan)) SelWlan = false;
+        if (!Frei(Punkt.Drucker)) SelPrinter = false;
+        if (!Frei(Punkt.Hintergrund)) SelWallpaper = false;
+        if (!Frei(Punkt.DesktopShot)) SelDesktopShot = false;
+
+        PunkteNeuMelden();
+    }
+
+    private void PunkteNeuMelden()
+    {
+        foreach (var n in new[]
+                 {
+                     nameof(EnUser), nameof(EnAppData), nameof(EnCloud), nameof(EnFirefox), nameof(EnEdge),
+                     nameof(EnChrome), nameof(EnBrave), nameof(EnOpera), nameof(EnThunderbird), nameof(EnWinget),
+                     nameof(EnWlan), nameof(EnPrinter), nameof(EnWallpaper), nameof(EnDesktopShot),
+                     nameof(TipUser), nameof(TipAppData), nameof(TipCloud), nameof(TipFirefox), nameof(TipEdge),
+                     nameof(TipChrome), nameof(TipBrave), nameof(TipOpera), nameof(TipThunderbird), nameof(TipWinget),
+                     nameof(TipWlan), nameof(TipPrinter), nameof(TipWallpaper), nameof(TipDesktopShot),
+                     nameof(EnDesktopScreenshot), nameof(EnDesktopSymbole), nameof(TipDesktopScreenshot), nameof(TipDesktopSymbole),
+                 })
+            OnPropertyChanged(n);
+    }
 
     // ---- Modus: false = Sichern (Backup), true = Wiederherstellen (Restore) ----
     [ObservableProperty] private bool _isRestoreMode;
@@ -420,6 +537,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(ModeTitle));
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
         ZielAnzeigen();
+        VerfuegbarkeitPruefen();
         ScheduleAutoStorageCheck();
     }
 
@@ -439,8 +557,46 @@ public partial class MainWindowViewModel : ObservableObject
     // Sichern: Foto des Desktops. Wiederherstellen: dieses Foto oeffnen, damit
     // sich die Symbole von Hand wieder anordnen lassen.
     public string TgDesktopShot => IsRestoreMode
-        ? Tr("Desktop-Screenshot anzeigen", "Show desktop screenshot")
-        : Tr("Desktop-Screenshot erstellen", "Take desktop screenshot");
+        ? Tr("Desktop-Layout wiederherstellen", "Restore desktop layout")
+        : Tr("Desktop-Layout sichern", "Back up desktop layout");
+
+    // ---- Desktop-Layout: Screenshot ODER Symbolpositionen (wie DesktopOK) ----
+    // Zwei Radioknoepfe an einer Eigenschaft: DesktopSymbole = Symbolpositionen,
+    // sonst Screenshot.
+    [ObservableProperty] private bool _desktopSymbole;
+    public bool DesktopScreenshotGewaehlt
+    {
+        get => !DesktopSymbole;
+        set { if (value) DesktopSymbole = false; }
+    }
+    public bool DesktopSymboleGewaehlt
+    {
+        get => DesktopSymbole;
+        set { if (value) DesktopSymbole = true; }
+    }
+    partial void OnDesktopSymboleChanged(bool value)
+    {
+        OnPropertyChanged(nameof(DesktopScreenshotGewaehlt));
+        OnPropertyChanged(nameof(DesktopSymboleGewaehlt));
+    }
+
+    public string TgDesktopScreenshot => Tr("Screenshot", "Screenshot");
+    public string TgDesktopSymbole => Tr("Symbolpositionen", "Icon positions");
+
+    // Beim Wiederherstellen: nur die Variante, die in der Sicherung liegt.
+    private bool _hatScreenshot = true, _hatSymbole = true;
+    public bool EnDesktopScreenshot => EnDesktopShot && _hatScreenshot;
+    public bool EnDesktopSymbole => EnDesktopShot && _hatSymbole;
+    public string TipDesktopScreenshot => !_hatScreenshot
+        ? Tr("Die gewählte Sicherung enthält keinen Desktop-Screenshot.", "The selected backup contains no desktop screenshot.")
+        : IsRestoreMode
+            ? Tr("Öffnet das Foto des Desktops - die Symbole danach von Hand anordnen.", "Opens the picture of the desktop - then arrange the icons by hand.")
+            : Tr("Fotografiert den Desktop, ein Bild pro Bildschirm.", "Takes a picture of the desktop, one per screen.");
+    public string TipDesktopSymbole => !_hatSymbole
+        ? Tr("Die gewählte Sicherung enthält keine Symbolpositionen.", "The selected backup contains no icon positions.")
+        : IsRestoreMode
+            ? Tr("Setzt jedes Desktop-Symbol wieder an seine gesicherte Stelle (wie DesktopOK).", "Puts every desktop icon back in its saved position (like DesktopOK).")
+            : Tr("Merkt sich, welches Desktop-Symbol wo liegt (wie DesktopOK).", "Remembers where each desktop icon is (like DesktopOK).");
     public string ModeTitle => IsRestoreMode
         ? Tr("Wiederherstellen", "Restore")
         : Tr("Sichern", "Backup");
@@ -552,11 +708,12 @@ public partial class MainWindowViewModel : ObservableObject
     private System.Collections.Generic.List<string> SelectedProfileRelPaths()
     {
         var list = new System.Collections.Generic.List<string>();
-        if (SelFirefox)     list.Add(@"AppData\Roaming\Mozilla\Firefox");
-        if (SelEdge)        list.Add(@"AppData\Local\Microsoft\Edge\User Data");
-        if (SelChrome)      list.Add(@"AppData\Local\Google\Chrome\User Data");
-        if (SelBrave)       list.Add(@"AppData\Local\BraveSoftware\Brave-Browser\User Data");
-        if (SelThunderbird) list.Add(@"AppData\Roaming\Thunderbird");
+        if (SelFirefox)     list.Add(AppCatalog.Firefox.ProfilRel);
+        if (SelEdge)        list.Add(AppCatalog.Edge.ProfilRel);
+        if (SelChrome)      list.Add(AppCatalog.Chrome.ProfilRel);
+        if (SelBrave)       list.Add(AppCatalog.Brave.ProfilRel);
+        if (SelOpera)       list.Add(AppCatalog.Opera.Rel);
+        if (SelThunderbird) list.Add(AppCatalog.Thunderbird.ProfilRel);
         return list;
     }
 
@@ -570,6 +727,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (SelEdge)        list.Add("Edge-Profil");
         if (SelChrome)      list.Add("Chrome-Profil");
         if (SelBrave)       list.Add("Brave-Profil");
+        if (SelOpera)       list.Add(AppCatalog.Opera.BackupOrdner);
         if (SelThunderbird) list.Add("Thunderbird-Profil");
         if (SelWlan)        list.Add("WLAN-Profile");
         if (SelPrinter)     list.Add("Drucker");
@@ -1011,6 +1169,28 @@ public partial class MainWindowViewModel : ObservableObject
             await ShowInfo(Tr("Fehler", "Error"), Tr("Bitte lege zuerst das Quell- und Zielverzeichnis fest.", "Please set the source and target directory first."));
             return;
         }
+        // Ein Profil, das es nicht gibt, wird NICHT angelegt. Beim
+        // Wiederherstellen entstuende sonst ein Ordner unter C:\Users, zu dem
+        // kein Benutzer gehoert - Windows legt das echte Profil eines neuen
+        // Benutzers erst bei dessen erster Anmeldung an, und zwar daneben.
+        if (!Directory.Exists(SourcePath))
+        {
+            await ShowInfo(Tr("Fehler", "Error"), IsRestoreMode
+                ? Tr($"Das Zielprofil \"{SourcePath}\" gibt es auf diesem Rechner nicht.\n\n"
+                     + "Bitte das Profil des Benutzers wählen, in das zurückgeschrieben werden soll (z. B. C:\\Users\\Anwender). "
+                     + "Ein neuer Benutzer muss sich dafür einmal angemeldet haben - erst dann legt Windows sein Profil an.",
+                     $"The target profile \"{SourcePath}\" does not exist on this computer.\n\n"
+                     + "Please select the profile of the user to restore into (e.g. C:\\Users\\User). "
+                     + "A new user must have signed in once - only then does Windows create the profile.")
+                : Tr($"Das Benutzerprofil \"{SourcePath}\" gibt es nicht.", $"The user profile \"{SourcePath}\" does not exist."));
+            return;
+        }
+        if (IsRestoreMode && !Directory.Exists(BackupPath))
+        {
+            await ShowInfo(Tr("Fehler", "Error"),
+                Tr($"Den Sicherungsordner \"{BackupPath}\" gibt es nicht.", $"The backup folder \"{BackupPath}\" does not exist."));
+            return;
+        }
 
         // Akkubetrieb pruefen: Bei Notebooks ohne Netzteil warnen und rueckfragen.
         if (SystemHelpers.IsOnBattery(out var battery))
@@ -1075,6 +1255,27 @@ public partial class MainWindowViewModel : ObservableObject
         // Gesichert wird genau dorthin, wo das Feld zeigt - mit eigenem Ordner
         // steht dort schon "G:\DASI_...". Angelegt wird er erst jetzt.
         _laufZiel = BackupPath;
+        if (!IsRestoreMode && Directory.Exists(_laufZiel) && BackupTarget.IsBackupFolder(_laufZiel))
+        {
+            // Hinein in eine vorhandene Sicherung: Sie wird aktualisiert (das
+            // Profil per /MIR gespiegelt). Stammt sie erkennbar von einem
+            // anderen Rechner, ginge dabei dessen Stand verloren - nachfragen.
+            var vonRechner = BackupTarget.MachineOf(_laufZiel);
+            if (vonRechner is not null
+                && !string.Equals(vonRechner, BackupTarget.SafeMachineName(Environment.MachineName), StringComparison.OrdinalIgnoreCase)
+                && !await ShowYesNo(Tr("Sicherung eines anderen Rechners", "Backup of another computer"),
+                    Tr($"Der gewählte Ordner enthält die Sicherung des Rechners \"{vonRechner}\":\n{_laufZiel}\n\n"
+                       + "Wird hineingesichert, wird sie mit diesem Rechner abgeglichen - was es hier nicht gibt, wird dort gelöscht.\n\nTrotzdem in diesen Ordner sichern?",
+                       $"The selected folder contains the backup of the computer \"{vonRechner}\":\n{_laufZiel}\n\n"
+                       + "Backing up into it syncs it with this computer - anything that does not exist here is deleted there.\n\nBack up into this folder anyway?")))
+            {
+                Log(Tr("[INFO] Start abgebrochen - bitte ein anderes Ziel wählen.",
+                       "[INFO] Start cancelled - please choose another target."));
+                return;
+            }
+            Log(Tr($"[INFO] Vorhandene Sicherung wird aktualisiert: {_laufZiel}",
+                   $"[INFO] Updating the existing backup: {_laufZiel}"));
+        }
         if (!IsRestoreMode && !Directory.Exists(_laufZiel))
         {
             try
@@ -1137,6 +1338,7 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelEdge)        t.Add("Restore-Edge");
             if (SelChrome)      t.Add("Restore-Chrome");
             if (SelBrave)       t.Add("Restore-Brave");
+            if (SelOpera)       t.Add("Restore-Opera");
             if (SelThunderbird) t.Add("Restore-Thunderbird");
             if (SelWinget)      t.Add("Import-Winget");
             if (SelWlan)        t.Add("Import-Wlan");
@@ -1144,14 +1346,14 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelWallpaper)   t.Add("Import-Wallpaper");
             // Zuletzt: Das Foto soll offen sein, wenn alles andere fertig ist
             // und es ans Anordnen der Symbole geht.
-            if (SelDesktopShot) t.Add("Show-DesktopShot");
+            if (SelDesktopShot) t.Add(DesktopSymbole ? "Restore-DesktopIcons" : "Show-DesktopShot");
         }
         else
         {
             // Zuerst: Das Foto zeigt den Desktop, wie er VOR der Sicherung war,
             // und das kurze Ausblenden der Fenster faellt direkt nach dem Klick
             // auf "Starten" nicht als Stoerung auf.
-            if (SelDesktopShot) t.Add("Capture-DesktopShot");
+            if (SelDesktopShot) t.Add(DesktopSymbole ? "Backup-DesktopIcons" : "Capture-DesktopShot");
             if (SelUser)        t.Add("Backup-User");
             else
             {
@@ -1163,6 +1365,7 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelEdge)        t.Add("Backup-Edge");
             if (SelChrome)      t.Add("Backup-Chrome");
             if (SelBrave)       t.Add("Backup-Brave");
+            if (SelOpera)       t.Add("Backup-Opera");
             if (SelThunderbird) t.Add("Backup-Thunderbird");
             if (SelWinget)      t.Add("Export-Winget");
             if (SelWlan)        t.Add("Export-Wlan");
@@ -1201,11 +1404,12 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Backup-User":        await _backup.BackupUserProfile(); break;
                     case "Backup-AppData":     await _backup.BackupAppDataOnly(); break;
                     case "Backup-Cloud":       await _backup.BackupCloudOnly(); break;
-                    case "Backup-Firefox":     await _backup.BackupAppProfile("Firefox", @"AppData\Roaming\Mozilla\Firefox", "firefox"); break;
-                    case "Backup-Edge":        await _backup.BackupAppProfile("Edge", @"AppData\Local\Microsoft\Edge\User Data", "msedge", _backup.ChromiumExcludes); break;
-                    case "Backup-Chrome":      await _backup.BackupAppProfile("Chrome", @"AppData\Local\Google\Chrome\User Data", "chrome", _backup.ChromiumExcludes); break;
-                    case "Backup-Brave":       await _backup.BackupAppProfile("Brave", @"AppData\Local\BraveSoftware\Brave-Browser\User Data", "brave", _backup.ChromiumExcludes); break;
-                    case "Backup-Thunderbird": await _backup.BackupAppProfile("Thunderbird", @"AppData\Roaming\Thunderbird", "thunderbird"); break;
+                    case "Backup-Firefox":     await _backup.BackupAppProfile(AppCatalog.Firefox); break;
+                    case "Backup-Edge":        await _backup.BackupAppProfile(AppCatalog.Edge); break;
+                    case "Backup-Chrome":      await _backup.BackupAppProfile(AppCatalog.Chrome); break;
+                    case "Backup-Brave":       await _backup.BackupAppProfile(AppCatalog.Brave); break;
+                    case "Backup-Opera":       await _backup.BackupOpera(); break;
+                    case "Backup-Thunderbird": await _backup.BackupAppProfile(AppCatalog.Thunderbird); break;
                     case "Export-Winget":      await _winget.ExportAsync(_laufZiel); break;
                     case "Export-Wlan":        await _backup.ExportWlan(); break;
                     case "Export-Printer":     await _backup.ExportPrinters(); break;
@@ -1214,20 +1418,23 @@ public partial class MainWindowViewModel : ObservableObject
                         await _backup.CaptureDesktop();
                         await BringMainWindowToFront();
                         break;
+                    case "Backup-DesktopIcons": await _backup.BackupDesktopIcons(); break;
 
                     case "Restore-User":        await _backup.RestoreUserProfile(); break;
                     case "Restore-AppData":     await _backup.RestoreAppDataOnly(); break;
                     case "Restore-Cloud":       await _backup.RestoreCloudOnly(); break;
-                    case "Restore-Firefox":     await _backup.RestoreAppProfile("Firefox", @"AppData\Roaming\Mozilla\Firefox", "firefox"); break;
-                    case "Restore-Edge":        await _backup.RestoreAppProfile("Edge", @"AppData\Local\Microsoft\Edge\User Data", "msedge"); break;
-                    case "Restore-Chrome":      await _backup.RestoreAppProfile("Chrome", @"AppData\Local\Google\Chrome\User Data", "chrome"); break;
-                    case "Restore-Brave":       await _backup.RestoreAppProfile("Brave", @"AppData\Local\BraveSoftware\Brave-Browser\User Data", "brave"); break;
-                    case "Restore-Thunderbird": await _backup.RestoreAppProfile("Thunderbird", @"AppData\Roaming\Thunderbird", "thunderbird"); break;
+                    case "Restore-Firefox":     await _backup.RestoreAppProfile(AppCatalog.Firefox); break;
+                    case "Restore-Edge":        await _backup.RestoreAppProfile(AppCatalog.Edge); break;
+                    case "Restore-Chrome":      await _backup.RestoreAppProfile(AppCatalog.Chrome); break;
+                    case "Restore-Brave":       await _backup.RestoreAppProfile(AppCatalog.Brave); break;
+                    case "Restore-Opera":       await _backup.RestoreOpera(); break;
+                    case "Restore-Thunderbird": await _backup.RestoreAppProfile(AppCatalog.Thunderbird); break;
                     case "Import-Winget":       await _winget.ImportAsync(wingetSelection ?? new List<WingetPackage>()); break;
                     case "Import-Wlan":         await _backup.ImportWlan(); break;
                     case "Import-Printer":      await _backup.ImportPrinters(); break;
                     case "Import-Wallpaper":    await _backup.ImportWallpaper(); break;
                     case "Show-DesktopShot":    await _backup.ShowDesktopScreenshot(); break;
+                    case "Restore-DesktopIcons": await _backup.RestoreDesktopIcons(); break;
                 }
             }
             catch (Exception ex)
@@ -1331,12 +1538,14 @@ public partial class MainWindowViewModel : ObservableObject
             "Backup-Edge" or "Restore-Edge"               => Tr("Edge-Profil", "Edge profile"),
             "Backup-Chrome" or "Restore-Chrome"           => Tr("Chrome-Profil", "Chrome profile"),
             "Backup-Brave" or "Restore-Brave"             => Tr("Brave-Profil", "Brave profile"),
+            "Backup-Opera" or "Restore-Opera"             => Tr("Opera-Profil", "Opera profile"),
             "Backup-Thunderbird" or "Restore-Thunderbird" => Tr("Thunderbird-Profil", "Thunderbird profile"),
             "Export-Winget" or "Import-Winget"            => Tr("Programme (Winget)", "Programs (winget)"),
             "Export-Wlan" or "Import-Wlan"                => Tr("WLAN-Profile", "WiFi profiles"),
             "Export-Printer" or "Import-Printer"          => Tr("Drucker & Treiber", "Printers & drivers"),
             "Export-Wallpaper" or "Import-Wallpaper"      => Tr("Hintergrundbild", "Wallpaper"),
             "Capture-DesktopShot" or "Show-DesktopShot"   => Tr("Desktop-Screenshot", "Desktop screenshot"),
+            "Backup-DesktopIcons" or "Restore-DesktopIcons" => Tr("Desktop-Symbolpositionen", "Desktop icon positions"),
             _ => choice
         };
     }

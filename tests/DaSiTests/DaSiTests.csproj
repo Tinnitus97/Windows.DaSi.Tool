@@ -31,6 +31,12 @@
     <Compile Include="../../Services/BackupTarget.cs" />
     <Compile Include="../../Services/DesktopScreenshot.cs" />
     <Compile Include="../../Services/RobocopySkips.cs" />
+    <Compile Include="../../Services/ProfilePaths.cs" />
+    <Compile Include="../../Services/ProfileLinks.cs" />
+    <Compile Include="../../Services/AppCatalog.cs" />
+    <Compile Include="../../Services/DesktopIcons.cs" />
+    <Compile Include="../../Services/WingetInstaller.cs" />
+    <Compile Include="../../Services/Localizer.cs" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using WindowsDaSiTool.Services;
@@ -364,30 +365,59 @@ internal static class Program
         // ================================================================
         Console.WriteLine("\n== Eigener Sicherungsordner ==");
         var zeitpunkt = new DateTime(2026, 11, 10, 8, 5, 0);
-        Check("Name: DASI_<Rechner>_TT_MM_JJJJ_HH_MM, mit fuehrenden Nullen",
-            BackupTarget.FolderName("DESKTOP-7K4Q2M", zeitpunkt) == "DASI_DESKTOP-7K4Q2M_10_11_2026_08_05",
+        Check("Name: DASI_<Rechner>_TT_MM_JJJJ - nur das Datum, mit fuehrenden Nullen",
+            BackupTarget.FolderName("DESKTOP-7K4Q2M", zeitpunkt) == "DASI_DESKTOP-7K4Q2M_10_11_2026",
             BackupTarget.FolderName("DESKTOP-7K4Q2M", zeitpunkt));
         Check("unzulaessige Zeichen im Rechnernamen werden zu _",
-            BackupTarget.FolderName("PC:1/2*?", zeitpunkt) == "DASI_PC_1_2___10_11_2026_08_05",
+            BackupTarget.FolderName("PC:1/2*?", zeitpunkt) == "DASI_PC_1_2___10_11_2026",
             BackupTarget.FolderName("PC:1/2*?", zeitpunkt));
         Check("ohne Rechnernamen: PC",
-            BackupTarget.FolderName("  ", zeitpunkt) == "DASI_PC_10_11_2026_08_05");
-        Check("24-Stunden-Format (18 Uhr, nicht 6)",
-            BackupTarget.FolderName("PC", new DateTime(2026, 11, 10, 18, 45, 0)).EndsWith("_10_11_2026_18_45"));
+            BackupTarget.FolderName("  ", zeitpunkt) == "DASI_PC_10_11_2026");
+        Check("morgens und abends derselbe Ordner",
+            BackupTarget.FolderName("PC", new DateTime(2026, 11, 10, 18, 45, 0)) == BackupTarget.FolderName("PC", zeitpunkt));
 
         var laufwerk = Path.Combine(root, "G");
+        Directory.CreateDirectory(laufwerk);
         Check("eingeschaltet: Ordner unter dem gewaehlten Ziel",
-            BackupTarget.Resolve(laufwerk, true, "PC", zeitpunkt) == Path.Combine(laufwerk, "DASI_PC_10_11_2026_08_05"));
+            BackupTarget.Resolve(laufwerk, true, "PC", zeitpunkt) == Path.Combine(laufwerk, "DASI_PC_10_11_2026"));
         Check("ausgeschaltet: direkt ins gewaehlte Ziel",
             BackupTarget.Resolve(laufwerk, false, "PC", zeitpunkt) == laufwerk);
-        var schonDasi = Path.Combine(laufwerk, "DASI_ALTPC_01_10_2026_12_00");
-        Check("ist das Ziel schon ein DASI-Ordner, kommt der neue DANEBEN (nicht hinein, nicht an seine Stelle)",
-            BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt) == Path.Combine(laufwerk, "DASI_PC_10_11_2026_08_05"),
+        var schonDasi = Path.Combine(laufwerk, "DASI_ALTPC_01_10_2026");
+        Check("ist das Ziel schon ein DASI-Ordner, geht die Sicherung HINEIN (kein neuer Ordner)",
+            BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt) == schonDasi,
             BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt));
+        var alteFassung = Path.Combine(laufwerk, "DASI_PC_09_11_2026_18_45");
+        Check("auch ein Ordner der alten Fassung mit Uhrzeit wird weiterbenutzt",
+            BackupTarget.Resolve(alteFassung, true, "PC", zeitpunkt) == alteFassung);
         Check("ausgeschaltet bleibt auch ein DASI-Ordner, wie er ist",
             BackupTarget.Resolve(schonDasi, false, "PC", zeitpunkt) == schonDasi);
+
+        // Ein selbst benannter Ordner mit einer Sicherung darin.
+        var eigenerName = Path.Combine(laufwerk, "Sicherung Max");
+        Directory.CreateDirectory(Path.Combine(eigenerName, "Benutzerprofil", "Documents"));
+        Check("Ordner mit Sicherung darin (ohne DASI-Namen): auch hinein",
+            BackupTarget.Resolve(eigenerName, true, "PC", zeitpunkt) == eigenerName);
+        var nurProtokoll = Path.Combine(laufwerk, "Nur Protokoll");
+        Directory.CreateDirectory(nurProtokoll);
+        File.WriteAllText(Path.Combine(nurProtokoll, "Sicherung-Protokoll_PC_2026-11-10_08-05.txt"), "x");
+        Check("ein Protokoll des Tools genuegt als Zeichen einer Sicherung",
+            BackupTarget.IsBackupFolder(nurProtokoll) && BackupTarget.Resolve(nurProtokoll, true, "PC", zeitpunkt) == nurProtokoll);
+        var ohneSicherung = Path.Combine(laufwerk, "Leer");
+        Directory.CreateDirectory(ohneSicherung);
+        File.WriteAllText(Path.Combine(ohneSicherung, "Notiz.txt"), "x");
+        Check("Ordner ohne Sicherung: neuer DASI-Ordner darunter",
+            BackupTarget.Resolve(ohneSicherung, true, "PC", zeitpunkt) == Path.Combine(ohneSicherung, "DASI_PC_10_11_2026"));
+
+        Check("Rechner aus dem Ordnernamen", BackupTarget.MachineOf(schonDasi) == "ALTPC"
+            && BackupTarget.MachineOf(alteFassung) == "PC"
+            && BackupTarget.MachineOf(@"G:\DASI_DESKTOP-7K4Q2M_10_11_2026\") == "DESKTOP-7K4Q2M"
+            && BackupTarget.MachineOf(@"G:\DASI_PC_MIT_UNTERSTRICH_10_11_2026") == "PC_MIT_UNTERSTRICH",
+            BackupTarget.MachineOf(@"G:\DASI_PC_MIT_UNTERSTRICH_10_11_2026"));
+        Check("kein Rechner bei fremden Namen", BackupTarget.MachineOf(eigenerName) is null && BackupTarget.MachineOf("DASI_x") is null);
+        Check("Rechnername im Ordner wie im Vergleich", BackupTarget.SafeMachineName("PC:1") == "PC_1");
+
         Check("auch mit abschliessendem Trennzeichen und Kleinschreibung",
-            BackupTarget.IsOwnFolder(@"G:\dasi_pc_10_11_2026_08_05\") && BackupTarget.IsOwnFolder("/mnt/g/DASI_PC_x/"));
+            BackupTarget.IsOwnFolder(@"G:\dasi_pc_10_11_2026\") && BackupTarget.IsOwnFolder("/mnt/g/DASI_PC_x/"));
         Check("Laufwerkswurzel ist kein DASI-Ordner",
             !BackupTarget.IsOwnFolder(@"G:\") && !BackupTarget.IsOwnFolder(""));
         Check("ein Ordner, der DASI nur enthaelt, zaehlt nicht",
@@ -435,6 +465,344 @@ internal static class Program
         bool zuKurz = false;
         try { PngWriter.EncodeBgra(3, 2, new byte[10]); } catch (ArgumentException) { zuKurz = true; }
         Check("zu wenige Bildpunkte werden abgelehnt", zuKurz);
+
+        Console.WriteLine("\n== Wiederherstellen in ein anderes Profil (Besitzer -> Anwender) ==");
+        {
+            const string zielAnwender = @"C:\Users\Anwender";
+            Check("Pfad im gesicherten Profil kommt ins Zielprofil",
+                ProfilePaths.MapIntoProfile(@"C:\Users\Besitzer\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", @"C:\Users\Besitzer", zielAnwender)
+                == @"C:\Users\Anwender\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper");
+            Check("aeltere Sicherung ohne vermerktes Profil: C:\\Users\\<Name> wird erkannt",
+                ProfilePaths.MapIntoProfile(@"C:\Users\Besitzer\Pictures\Urlaub.jpg", null, zielAnwender) == @"C:\Users\Anwender\Pictures\Urlaub.jpg");
+            Check("Gross-/Kleinschreibung spielt keine Rolle",
+                ProfilePaths.MapIntoProfile(@"c:\users\besitzer\Pictures\a.jpg", @"C:\Users\Besitzer", zielAnwender) == @"C:\Users\Anwender\Pictures\a.jpg");
+            Check("Profil an anderem Ort (D:\\Profile\\Besitzer)",
+                ProfilePaths.MapIntoProfile(@"D:\Profile\Besitzer\Bilder\a.jpg", @"D:\Profile\Besitzer", zielAnwender) == @"C:\Users\Anwender\Bilder\a.jpg");
+            Check("\"Besitzer2\" liegt nicht in \"Besitzer\" - landet trotzdem im Zielprofil",
+                ProfilePaths.MapIntoProfile(@"C:\Users\Besitzer2\x.jpg", @"C:\Users\Besitzer", zielAnwender) == @"C:\Users\Anwender\x.jpg");
+            Check("ausserhalb jedes Profils (C:\\Windows\\Web): kein Profilpfad",
+                ProfilePaths.MapIntoProfile(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg", @"C:\Users\Besitzer", zielAnwender) is null);
+            Check("leere Angaben: kein Profilpfad",
+                ProfilePaths.MapIntoProfile(null, null, zielAnwender) is null && ProfilePaths.MapIntoProfile("", null, zielAnwender) is null
+                && ProfilePaths.MapIntoProfile(@"C:\Users\Besitzer\a", null, "") is null);
+            Check("kein Ergebnis enthaelt je den alten Benutzernamen",
+                new[] { @"C:\Users\Besitzer\Pictures\a.jpg", @"C:\Users\Besitzer\AppData\Local\b", @"C:\Users\Besitzer\Desktop\c.lnk" }
+                    .All(p => ProfilePaths.MapIntoProfile(p, null, zielAnwender)?.Contains("Besitzer") == false));
+
+            var sichern = ProfileExcludes.BackupSwitches();
+            Check("Sichern: kein /XA mehr (liess versteckte und Systemdateien ohne Meldung aus)",
+                !sichern.Any(s => s.StartsWith("/XA", StringComparison.OrdinalIgnoreCase)), string.Join(" ", sichern));
+            Check("Sichern: Registry-Dateien gezielt per /XF ausgelassen",
+                sichern.SkipWhile(s => s != "/XF").Skip(1).Take(ProfileExcludes.RegistryHiveFiles.Length)
+                       .SequenceEqual(ProfileExcludes.RegistryHiveFiles));
+            Check("Sichern: Verknuepfungspunkte bleiben draussen (/XJ), ein Versuch je Datei (/R:0)",
+                sichern.Contains("/XJ") && sichern.Contains("/R:0") && sichern.Contains("/MIR"));
+            var zurueck = ProfileExcludes.RestoreSwitches();
+            Check("Zurueckschreiben: /COPY:DAT statt /COPYALL - Rechte kommen vom Zielprofil",
+                zurueck.Contains("/COPY:DAT") && !zurueck.Any(s => s.StartsWith("/COPYALL", StringComparison.OrdinalIgnoreCase)
+                                                                 || s.StartsWith("/SEC", StringComparison.OrdinalIgnoreCase)),
+                string.Join(" ", zurueck));
+            Check("Zurueckschreiben: Registry-Dateien werden nie ueberschrieben, auch aus alten Sicherungen",
+                zurueck.SkipWhile(s => s != "/XF").Skip(1).Take(ProfileExcludes.RegistryHiveFiles.Length)
+                       .SequenceEqual(ProfileExcludes.RegistryHiveFiles));
+        }
+
+        Console.WriteLine("\n== Verknuepfungen im Profil, die nach draussen zeigen ==");
+        {
+            var lp = Path.Combine(root, "links", "Besitzer");
+            var aussen = Path.Combine(root, "links", "D-Laufwerk", "Spiele");
+            foreach (var d in new[] { Path.Combine(lp, "Documents", "Normal"), Path.Combine(lp, "Pictures"),
+                                      Path.Combine(lp, "AppData", "Local"), Path.Combine(lp, "OneDrive"), aussen })
+                Directory.CreateDirectory(d);
+            File.WriteAllText(Path.Combine(aussen, "spielstand.sav"), "x");
+            bool linksOk = true;
+            try
+            {
+                Directory.CreateSymbolicLink(Path.Combine(lp, "Documents", "Spiele"), aussen);                        // nach draussen
+                Directory.CreateSymbolicLink(Path.Combine(lp, "Documents", "Eigene Bilder"), Path.Combine(lp, "Pictures")); // ins Profil
+                Directory.CreateSymbolicLink(Path.Combine(lp, "AppData", "Local", "Verlauf"), aussen);                // in AppData
+                Directory.CreateSymbolicLink(Path.Combine(lp, "OneDrive", "Extern"), aussen);                          // in ausgelassenem Ordner
+            }
+            catch (Exception ex) { linksOk = false; Console.WriteLine($"         (symbolische Links hier nicht moeglich: {ex.Message})"); }
+            if (linksOk)
+            {
+                var gefunden = ProfileLinks.FindOutsideLinks(lp, new[] { Path.Combine(lp, "OneDrive") }, out var abgebrochen);
+                Check("Verknuepfung nach draussen wird gemeldet, mit Ziel",
+                    gefunden.Count == 1 && gefunden[0].Path.EndsWith("Spiele") && Path.GetFullPath(gefunden[0].Target) == Path.GetFullPath(aussen),
+                    string.Join(" | ", gefunden.Select(g => $"{g.Path} -> {g.Target}")));
+                Check("Verknuepfung ins Profil (wie \"Eigene Bilder\") wird nicht gemeldet",
+                    !gefunden.Any(g => g.Path.EndsWith("Eigene Bilder")));
+                // Relativ zum Profil: Unter Windows liegt das Pruefverzeichnis selbst
+                // in ...\AppData\Local\Temp - der volle Pfad enthielte "AppData" immer.
+                Check("AppData und ausgelassene Ordner werden nicht durchsucht",
+                    !gefunden.Select(g => Path.GetRelativePath(lp, g.Path))
+                             .Any(r => r.StartsWith("AppData", StringComparison.OrdinalIgnoreCase)
+                                       || r.StartsWith("OneDrive", StringComparison.OrdinalIgnoreCase)),
+                    string.Join(" | ", gefunden.Select(g => Path.GetRelativePath(lp, g.Path))));
+                Check("nicht abgebrochen", !abgebrochen);
+            }
+            Check("Profil, das es nicht gibt: leere Liste",
+                ProfileLinks.FindOutsideLinks(Path.Combine(root, "gibt-es-nicht"), Array.Empty<string>(), out _).Count == 0);
+        }
+
+        Console.WriteLine("\n== Opera: alle Fassungen ==");
+        {
+            var os = Path.Combine(root, "opera", "Besitzer", "AppData", "Roaming", "Opera Software");
+            void Profil(string ordner, string datei)
+            {
+                var p = Path.Combine(os, ordner, datei);
+                Directory.CreateDirectory(Path.GetDirectoryName(p)!);
+                File.WriteAllText(p, "{}");
+            }
+            Profil("Opera Stable", "Local State");
+            Profil("Opera GX Stable", "Preferences");
+            Profil("Opera Beta", Path.Combine("Default", "Bookmarks"));   // neuere Fassungen: Profil in "Default"
+            Directory.CreateDirectory(Path.Combine(os, "Opera Crash Reports"));  // kein Profil
+            Profil("Fremd", "Local State");                                   // kein Opera-Ordner
+            var gefunden = AppCatalog.Opera.Varianten(os);
+            Check("Opera, Opera Beta und Opera GX werden gefunden, nach Anzeigename",
+                gefunden.SequenceEqual(new[] { "Opera Stable", "Opera Beta", "Opera GX Stable" }), string.Join(", ", gefunden));
+            Check("Ordner ohne Profildateien und fremde Ordner nicht",
+                !gefunden.Contains("Opera Crash Reports") && !gefunden.Contains("Fremd"));
+            Check("Anzeigenamen ohne \"Stable\"",
+                AppCatalog.Opera.Anzeigename("Opera GX Stable") == "Opera GX" && AppCatalog.Opera.Anzeigename("Opera Stable") == "Opera"
+                && AppCatalog.Opera.Anzeigename("Opera Beta") == "Opera Beta");
+            Check("winget-Pakete fuer Opera und Opera GX, sonst keins",
+                AppCatalog.Opera.WingetId("Opera Stable") == "Opera.Opera" && AppCatalog.Opera.WingetId("Opera GX Stable") == "Opera.OperaGX"
+                && AppCatalog.Opera.WingetId("Opera Developer") is null);
+            Check("ohne Ordner: keine Fassung", AppCatalog.Opera.Varianten(Path.Combine(root, "gibt-es-nicht")).Count == 0);
+            Check("Katalogpfad: Teile einzeln angehaengt",
+                AppCatalog.Pfad(Path.Combine(root, "x"), @"AppData\Roaming\Opera Software") == Path.Combine(root, "x", "AppData", "Roaming", "Opera Software"));
+        }
+
+        Console.WriteLine("\n== Verfuegbarkeit der Punkte ==");
+        {
+            // Sichern: Profil mit Firefox und Opera, ohne die anderen Programme.
+            var pr = Path.Combine(root, "verf", "Besitzer");
+            Directory.CreateDirectory(AppCatalog.Pfad(pr, AppCatalog.Firefox.ProfilRel));
+            var gx = Path.Combine(AppCatalog.Pfad(pr, AppCatalog.Opera.Rel), "Opera GX Stable");
+            Directory.CreateDirectory(gx);
+            File.WriteAllText(Path.Combine(gx, "Local State"), "{}");
+
+            Check("Sichern: Firefox und Opera frei",
+                AppCatalog.BeimSichern(Punkt.Firefox, pr) is null && AppCatalog.BeimSichern(Punkt.Opera, pr) is null);
+            var grund = AppCatalog.BeimSichern(Punkt.Chrome, pr);
+            Check("Sichern: Chrome gesperrt, mit Grund und Ort",
+                grund is { } g1 && g1.De.StartsWith("Chrome ist bei diesem Benutzer nicht eingerichtet") && g1.De.Contains("Chrome"), grund?.De);
+            Check("Sichern: Edge, Brave, Thunderbird gesperrt",
+                new[] { Punkt.Edge, Punkt.Brave, Punkt.Thunderbird }.All(p => AppCatalog.BeimSichern(p, pr) is not null));
+            Check("Sichern: alles andere ist nie gesperrt",
+                new[] { Punkt.Profil, Punkt.AppData, Punkt.Cloud, Punkt.Winget, Punkt.Wlan, Punkt.Drucker, Punkt.Hintergrund, Punkt.DesktopShot }
+                    .All(p => AppCatalog.BeimSichern(p, pr) is null));
+            Check("Sichern: ohne (vorhandenes) Profil wird nichts gesperrt",
+                AppCatalog.BeimSichern(Punkt.Chrome, "") is null && AppCatalog.BeimSichern(Punkt.Chrome, Path.Combine(root, "gibt-es-nicht")) is null);
+
+            // Wiederherstellen: leere Sicherung - alles gesperrt.
+            var si = Path.Combine(root, "verf", "Sicherung");
+            Directory.CreateDirectory(si);
+            Check("Wiederherstellen: leere Sicherung sperrt jeden Punkt",
+                Enum.GetValues<Punkt>().All(p => AppCatalog.BeimWiederherstellen(p, si) is not null),
+                string.Join(", ", Enum.GetValues<Punkt>().Where(p => AppCatalog.BeimWiederherstellen(p, si) is null)));
+            Check("Wiederherstellen: Ordner ohne jede Sicherung - ein gemeinsamer Hinweis",
+                Enum.GetValues<Punkt>().All(p => AppCatalog.BeimWiederherstellen(p, si)?.De.StartsWith("Der gewählte Ordner enthält keine Sicherung") == true),
+                AppCatalog.BeimWiederherstellen(Punkt.Wlan, si)?.De);
+            // Typischer Fall: der Ordner ueber den Sicherungen ist gewaehlt.
+            Directory.CreateDirectory(Path.Combine(si, "..", "Ueber", "DASI_PC_11_11_2026_17_55", "Benutzerprofil"));
+            Check("Wiederherstellen: auch der Ordner ueber den Sicherungen ist keine Sicherung",
+                AppCatalog.BeimWiederherstellen(Punkt.Profil, Path.Combine(root, "verf", "Ueber"))?.De.StartsWith("Der gewählte Ordner enthält keine Sicherung") == true);
+
+            // Nach und nach befuellen.
+            Directory.CreateDirectory(Path.Combine(si, "Benutzerprofil", "Documents"));
+            Check("Wiederherstellen: Grund nennt, was fehlt",
+                AppCatalog.BeimWiederherstellen(Punkt.Wlan, si)?.De == "Die gewählte Sicherung enthält keine WLAN-Profile.",
+                AppCatalog.BeimWiederherstellen(Punkt.Wlan, si)?.De);
+            Directory.CreateDirectory(Path.Combine(si, "Firefox-Profil"));
+            Directory.CreateDirectory(Path.Combine(si, "Opera-Profil", "Opera GX Stable"));
+            File.WriteAllText(Path.Combine(si, "Opera-Profil", "Opera GX Stable", "Local State"), "{}");
+            Directory.CreateDirectory(Path.Combine(si, "Winget")); File.WriteAllText(Path.Combine(si, "Winget", "Export.json"), "{}");
+            Directory.CreateDirectory(Path.Combine(si, "WLAN-Profile")); File.WriteAllText(Path.Combine(si, "WLAN-Profile", "WLAN-Heim.xml"), "<x/>");
+            Directory.CreateDirectory(Path.Combine(si, "Drucker")); File.WriteAllText(Path.Combine(si, "Drucker", "Drucker.printerExport"), "x");
+            Directory.CreateDirectory(Path.Combine(si, "Hintergrundbild")); File.WriteAllText(Path.Combine(si, "Hintergrundbild", "Hintergrundbild-Pfad.txt"), "x");
+            Check("Hintergrundbild: nur die Pfad-Datei ist noch kein Bild",
+                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, si) is not null);
+            File.WriteAllText(Path.Combine(si, "Hintergrundbild", "Urlaub.jpg"), "x");
+            Directory.CreateDirectory(Path.Combine(si, "Desktop-Screenshot")); File.WriteAllText(Path.Combine(si, "Desktop-Screenshot", "Bildschirm-1.png"), "x");
+            var frei = new[] { Punkt.Profil, Punkt.Firefox, Punkt.Opera, Punkt.Winget, Punkt.Wlan, Punkt.Drucker, Punkt.Hintergrund, Punkt.DesktopShot };
+            Check("Wiederherstellen: was in der Sicherung liegt, ist frei",
+                frei.All(p => AppCatalog.BeimWiederherstellen(p, si) is null),
+                string.Join(", ", frei.Where(p => AppCatalog.BeimWiederherstellen(p, si) is not null)));
+            Check("Wiederherstellen: was fehlt, bleibt gesperrt (AppData, Cloud, Edge, Chrome, Brave, Thunderbird)",
+                new[] { Punkt.AppData, Punkt.Cloud, Punkt.Edge, Punkt.Chrome, Punkt.Brave, Punkt.Thunderbird }
+                    .All(p => AppCatalog.BeimWiederherstellen(p, si) is not null));
+            Directory.CreateDirectory(Path.Combine(si, "Benutzerprofil", "AppData"));
+            Directory.CreateDirectory(Path.Combine(si, "Benutzerprofil", "OneDrive"));
+            Check("Wiederherstellen: AppData und Cloud frei, sobald sie in der Sicherung liegen",
+                AppCatalog.BeimWiederherstellen(Punkt.AppData, si) is null && AppCatalog.BeimWiederherstellen(Punkt.Cloud, si) is null);
+            Check("Wiederherstellen: ohne (vorhandene) Sicherung wird nichts gesperrt",
+                AppCatalog.BeimWiederherstellen(Punkt.Firefox, "") is null
+                && AppCatalog.BeimWiederherstellen(Punkt.Firefox, Path.Combine(root, "gibt-es-nicht")) is null);
+        }
+
+        Console.WriteLine("\n== Desktop-Symbole: Zuordnen und Umrechnen ==");
+        {
+            DesktopIcon S(string name, string anzeige, int x, int y) => new(name, anzeige, x, y);
+            var gesichert = new DesktopLayout
+            {
+                Breite = 1920, Hoehe = 1080,
+                Symbole =
+                {
+                    S("::{645FF040-5081-101B-9F08-00AA002F954E}", "Papierkorb", 20, 10),
+                    S("Präsentation.pptx", "Präsentation", 1800, 900),
+                    S("Firefox.lnk", "Firefox", 120, 10),
+                    S("Weg.txt", "Weg", 300, 300),
+                }
+            };
+            var jetzt = new List<DesktopIcon>
+            {
+                S("Firefox.lnk", "Firefox", 5, 5),
+                S("::{645FF040-5081-101B-9F08-00AA002F954E}", "Recycle Bin", 5, 105),
+                S("Präsentation.pptx", "Präsentation", 5, 205),
+                S("Neu.txt", "Neu", 5, 305),
+            };
+            var plan = DesktopIcons.Plan(gesichert, jetzt, 1920, 1080);
+            Check("gleiche Groesse: Stellen 1:1, nichts umgerechnet", !plan.Skaliert
+                && plan.Zuordnung.Single(z => z.Gesichert.Name == "Präsentation.pptx") is { Index: 2, X: 1800, Y: 900 });
+            Check("Papierkorb ueber seine Kennung - auch wenn er hier anders heisst (Recycle Bin)",
+                plan.Zuordnung.Single(z => z.Gesichert.Anzeige == "Papierkorb") is { Index: 1, X: 20, Y: 10 });
+            Check("was es hier nicht gibt, steht als fehlend da", plan.Fehlend.Select(f => f.Name).SequenceEqual(new[] { "Weg.txt" }));
+            Check("neue Symbole bleiben, wo sie sind", plan.Zuordnung.All(z => z.Index != 3));
+
+            var gross = DesktopIcons.Plan(gesichert, jetzt, 3840, 2160);
+            Check("doppelt so grosser Desktop: Stellen im selben Verhaeltnis", gross.Skaliert
+                && gross.Zuordnung.Single(z => z.Gesichert.Name == "Präsentation.pptx") is { X: 3600, Y: 1800 });
+            var schmal = DesktopIcons.Plan(gesichert, jetzt, 1280, 720);
+            Check("kleinerer Desktop: rechts unten bleibt rechts unten, im Bild",
+                schmal.Zuordnung.Single(z => z.Gesichert.Name == "Präsentation.pptx") is { X: 1200, Y: 600 });
+            var draussen = new DesktopLayout { Symbole = { S("Firefox.lnk", "Firefox", 5000, -20) } };
+            Check("Stellen ausserhalb werden in den Desktop geholt",
+                DesktopIcons.Plan(draussen, jetzt, 1920, 1080).Zuordnung.Single() is { X: 1919, Y: 0 });
+
+            // Anzeigename nur als Notbehelf - und nie doppelt vergeben.
+            var umbenannt = new DesktopLayout
+            {
+                Symbole = { S("Firefox (alt).lnk", "Firefox", 1, 1), S("Firefox.lnk", "Firefox", 2, 2) }
+            };
+            var p2 = DesktopIcons.Plan(umbenannt, jetzt, 1920, 1080);
+            Check("erst eindeutige Namen, dann Anzeigenamen - ein Symbol nie zweimal",
+                p2.Zuordnung.Count == 1 && p2.Zuordnung[0].Gesichert.Name == "Firefox.lnk" && p2.Fehlend.Count == 1,
+                string.Join(", ", p2.Zuordnung.Select(z => z.Gesichert.Name)));
+            var nurAnzeige = new DesktopLayout { Symbole = { S("Neu (2).txt", "Neu", 7, 7) } };
+            Check("ohne Namenstreffer hilft der Anzeigename",
+                DesktopIcons.Plan(nurAnzeige, jetzt, 1920, 1080).Zuordnung.Single().Index == 3);
+
+            // Datei: lesbar, mit Umlauten, und wieder einlesbar.
+            var ordner = Path.Combine(root, "symbole", DesktopIcons.FolderName);
+            gesichert.Rechner = "PC"; gesichert.Benutzer = "Anwender"; gesichert.AmRasterAusrichten = true;
+            var symDatei = DesktopIcons.Speichern(ordner, gesichert);
+            Check("Datei: Desktop-Symbole\\Symbolpositionen.json", symDatei == DesktopIcons.Datei(Path.Combine(root, "symbole")));
+            Check("Datei: Umlaute bleiben lesbar", File.ReadAllText(symDatei).Contains("Präsentation.pptx"));
+            var gelesen = DesktopIcons.Laden(symDatei);
+            Check("Datei: wieder eingelesen ist alles gleich", gelesen is not null && gelesen.Breite == 1920 && gelesen.AmRasterAusrichten
+                && gelesen.Symbole.Count == 4 && gelesen.Symbole[1] == gesichert.Symbole[1]);
+            File.WriteAllText(Path.Combine(root, "kaputt.json"), "{ kein json");
+            Check("Datei: fehlend oder kaputt -> null",
+                DesktopIcons.Laden(Path.Combine(root, "gibt-es-nicht.json")) is null && DesktopIcons.Laden(Path.Combine(root, "kaputt.json")) is null);
+
+            // Verfuegbarkeit beim Wiederherstellen: Symbolpositionen allein genuegen.
+            var nurSymbole = Path.Combine(root, "symbole");
+            Check("Wiederherstellen: Desktop-Layout frei, wenn nur Symbolpositionen da sind",
+                AppCatalog.BeimWiederherstellen(Punkt.DesktopShot, nurSymbole) is null
+                && AppCatalog.HatDesktopSymbole(nurSymbole) && !AppCatalog.HatDesktopScreenshot(nurSymbole));
+        }
+
+        Console.WriteLine("\n== Desktop-Symbole: Ablauf (nachgebauter Desktop) ==");
+        {
+            var testDesktop = new TestDesktop(1920, 1080, autoAnordnen: true, raster: false,
+                new DesktopIcon("a.txt", "a", 10, 10), new DesktopIcon("b.txt", "b", 10, 110), new DesktopIcon("", "", 0, 0));
+            DesktopIcons.OeffneDesktop = () => testDesktop;
+            var gelesen = DesktopIcons.Lesen("PC", "Anwender");
+            Check("Lesen: Groesse, Schalter und Symbole (ohne namenlose)", gelesen.Breite == 1920 && gelesen.AutomatischAnordnen
+                && !gelesen.AmRasterAusrichten && gelesen.Symbole.Count == 2 && gelesen.Rechner == "PC");
+
+            var symZiel = new DesktopLayout
+            {
+                Breite = 1920, Hoehe = 1080, AutomatischAnordnen = false, AmRasterAusrichten = true,
+                Symbole = { new("b.txt", "b", 500, 400), new("a.txt", "a", 700, 50), new("c.txt", "c", 900, 900) }
+            };
+            // "c.txt" erscheint erst nach dem zweiten Nachsehen - wie eine Datei,
+            // die der Explorer nach dem Zurueckschreiben gerade erst entdeckt.
+            testDesktop.SpaeterDazu = (2, new DesktopIcon("c.txt", "c", 10, 210));
+            var erg = DesktopIcons.Wiederherstellen(symZiel, TimeSpan.FromSeconds(8));
+            Check("Wiederherstellen: alle drei gesetzt, auch das spaet erschienene", erg.Gesetzt == 3 && erg.Fehlend.Count == 0,
+                $"{erg.Gesetzt}/{erg.Gesamt}, fehlend {erg.Fehlend.Count}");
+            Check("Wiederherstellen: Stellen stimmen", testDesktop.Stelle("b.txt") == (500, 400) && testDesktop.Stelle("a.txt") == (700, 50)
+                && testDesktop.Stelle("c.txt") == (900, 900));
+            Check("Wiederherstellen: \"Automatisch anordnen\" aus und gemeldet", !testDesktop.AutomatischAnordnen && erg.AnordnenAusgeschaltet);
+            Check("Wiederherstellen: Raster wie gesichert", testDesktop.AmRasterAusrichten && erg.RasterUmgestellt);
+            Check("Wiederherstellen: \"Automatisch anordnen\" erst AUS, dann wieder wie gesichert",
+                testDesktop.Protokoll.IndexOf("anordnen=False") < testDesktop.Protokoll.IndexOf("setzen b.txt"));
+
+            var mitAuto = new DesktopLayout { Breite = 1920, Hoehe = 1080, AutomatischAnordnen = true, Symbole = { new("a.txt", "a", 1, 1) } };
+            var erg2 = DesktopIcons.Wiederherstellen(mitAuto, TimeSpan.Zero);
+            Check("war beim Sichern \"Automatisch anordnen\" an, ist es danach wieder an", testDesktop.AutomatischAnordnen && erg2.AnordnenWiederAn && !erg2.AnordnenAusgeschaltet);
+
+            var fehlt = new DesktopLayout { Breite = 1920, Hoehe = 1080, Symbole = { new("weg.txt", "weg", 1, 1) } };
+            var uhr = System.Diagnostics.Stopwatch.StartNew();
+            var erg3 = DesktopIcons.Wiederherstellen(fehlt, TimeSpan.FromSeconds(30));
+            Check("fehlt etwas dauerhaft, wird nicht die ganze Zeit gewartet", erg3.Fehlend.Count == 1 && uhr.Elapsed.TotalSeconds < 8,
+                $"{uhr.Elapsed.TotalSeconds:F1} s");
+
+            DesktopIcons.OeffneDesktop = () => throw new InvalidOperationException("Kein Explorer-Desktop gefunden");
+            bool gemeldet = false;
+            try { DesktopIcons.Lesen("PC", "x"); } catch (InvalidOperationException) { gemeldet = true; }
+            Check("ohne Desktop: der Fehler kommt beim Aufrufer an (nicht verschluckt)", gemeldet);
+            DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? new ExplorerDesktop() : throw new PlatformNotSupportedException();
+        }
+
+        Console.WriteLine("\n== winget nachinstallieren: Bausteine ==");
+        {
+            Check("Architektur -> Ordner im Abhaengigkeits-Paket",
+                WingetInstaller.ArchFolder(System.Runtime.InteropServices.Architecture.X64) == "x64"
+                && WingetInstaller.ArchFolder(System.Runtime.InteropServices.Architecture.Arm64) == "arm64"
+                && WingetInstaller.ArchFolder(System.Runtime.InteropServices.Architecture.X86) == "x86");
+            Check("Download-Adressen: neueste Fassung auf GitHub",
+                WingetInstaller.ReleaseBase + WingetInstaller.BundleFile
+                    == "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+                && WingetInstaller.DependenciesFile == "DesktopAppInstaller_Dependencies.zip");
+
+            // Aufbau wie im echten Paket: je Architektur ein Ordner mit .appx.
+            var ent = Path.Combine(root, "winget-deps");
+            foreach (var a in new[] { "x64", "x86", "arm64" })
+            {
+                Directory.CreateDirectory(Path.Combine(ent, a));
+                foreach (var n in new[] { "Microsoft.WindowsAppRuntime.1.8_8000.616.304.0", "Microsoft.VCLibs.140.00_14.0.33519.0", "Microsoft.VCLibs.140.00.UWPDesktop_14.0.33728.0" })
+                    File.WriteAllText(Path.Combine(ent, a, $"{n}_{a}.appx"), "x");
+            }
+            File.WriteAllText(Path.Combine(ent, "x64", "liesmich.txt"), "x");
+            var deps = WingetInstaller.Dependencies(ent, "x64");
+            Check("Abhaengigkeiten: genau die drei .appx fuer x64, VCLibs zuerst",
+                deps.Select(Path.GetFileName).SequenceEqual(new[]
+                {
+                    "Microsoft.VCLibs.140.00.UWPDesktop_14.0.33728.0_x64.appx",
+                    "Microsoft.VCLibs.140.00_14.0.33519.0_x64.appx",
+                    "Microsoft.WindowsAppRuntime.1.8_8000.616.304.0_x64.appx",
+                }), string.Join(", ", deps.Select(Path.GetFileName)));
+            Check("Abhaengigkeiten: fehlender Ordner -> keine (statt Absturz)",
+                WingetInstaller.Dependencies(ent, "arm") is { Count: 0 } && WingetInstaller.Dependencies(Path.Combine(root, "gibt-es-nicht"), "x64") is { Count: 0 });
+
+            Check("PowerShell: Apostroph im Pfad wird verdoppelt",
+                WingetInstaller.PsQuote(@"C:\Users\O'Brien\a.appx") == @"'C:\Users\O''Brien\a.appx'");
+            var psSkript = WingetInstaller.InstallScript(@"C:\Temp\O'B\winget.msixbundle", new[] { @"C:\Temp\a.appx", @"C:\Temp\b c.appx" });
+            Check("Skript: jede Abhaengigkeit einzeln, Fehler dort nicht fatal",
+                psSkript.Contains(@"@('C:\Temp\a.appx', 'C:\Temp\b c.appx')") && psSkript.Contains("try { Add-AppxPackage -Path $d } catch"), psSkript);
+            Check("Skript: danach das Bundle, Fehler dort fuehren zu Exit 1",
+                psSkript.Contains(@"Add-AppxPackage -Path 'C:\Temp\O''B\winget.msixbundle' -ForceApplicationShutdown")
+                && psSkript.IndexOf("foreach") < psSkript.IndexOf("msixbundle") && psSkript.Contains("exit 1"));
+            Check("Skript: ohne Abhaengigkeiten gueltig (leere Liste)", WingetInstaller.InstallScript("b", Array.Empty<string>()).Contains("@()"));
+            var kodiert = WingetInstaller.Encode("Write-Output 'Ä'");
+            Check("EncodedCommand: UTF-16LE in Base64",
+                System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(kodiert)) == "Write-Output 'Ä'");
+        }
 
         Console.WriteLine("\n== Desktop-Screenshot: ein Bild pro Monitor ==");
         {
@@ -771,6 +1139,114 @@ internal static class Program
                     DesktopScreenshot.FindImages(bildOrdner).Select(Path.GetFileName).SequenceEqual(plan.Select(p => p.FileName)));
             }
 
+            Console.WriteLine("\n== Desktop-Symbole echt (Explorer) ==");
+            {
+                // Ohne Explorer kein Desktop - auf einem Laeufer ggf. erst starten.
+                if (System.Diagnostics.Process.GetProcessesByName("explorer").Length == 0)
+                {
+                    Console.WriteLine("         Explorer laeuft nicht - wird gestartet");
+                    try { System.Diagnostics.Process.Start("explorer.exe"); } catch (Exception ex) { Console.WriteLine($"         nicht startbar: {ex.Message}"); }
+                }
+                var desktopOrdner = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                var testName = "DaSi-Symboltest.txt";
+                var testDatei = Path.Combine(desktopOrdner, testName);
+                DesktopLayout? vorher = null;
+                string? grund = null;
+                try
+                {
+                    Directory.CreateDirectory(desktopOrdner);
+                    File.WriteAllText(testDatei, "Pruefung der Symbolpositionen");
+                    for (int i = 0; i < 30 && vorher is null; i++)
+                    {
+                        try
+                        {
+                            var l = DesktopIcons.Lesen("CI", "runner");
+                            if (l.Symbole.Any(x => x.Name.Equals(testName, StringComparison.OrdinalIgnoreCase))) vorher = l;
+                            else grund = $"Testsymbol nicht unter {l.Symbole.Count} Symbolen";
+                        }
+                        catch (Exception ex) { grund = ex.Message; }
+                        if (vorher is null) System.Threading.Thread.Sleep(1000);
+                    }
+                    if (vorher is null)
+                    {
+                        Console.WriteLine($"         (kein Explorer-Desktop auf diesem Laeufer: {grund} - Test uebersprungen)");
+                    }
+                    else
+                    {
+                        var symStart = vorher.Symbole.First(x => x.Name.Equals(testName, StringComparison.OrdinalIgnoreCase));
+                        Console.WriteLine($"         Desktop {vorher.Breite} x {vorher.Hoehe}, {vorher.Symbole.Count} Symbol(e), "
+                                          + $"automatisch anordnen = {vorher.AutomatischAnordnen}, Raster = {vorher.AmRasterAusrichten}");
+                        Console.WriteLine($"         Testsymbol \"{symStart.Anzeige}\" bei ({symStart.X},{symStart.Y})");
+                        Check("echt: Desktop hat eine Groesse", vorher.Breite > 0 && vorher.Hoehe > 0);
+                        Check("echt: Name im Desktop-Ordner mit Endung, Anzeigename lesbar",
+                            symStart.Name == testName && symStart.Anzeige.StartsWith("DaSi-Symboltest", StringComparison.OrdinalIgnoreCase), symStart.Anzeige);
+
+                        // Verschieben: alles wie es ist, nur das Testsymbol woanders hin.
+                        var zielX = symStart.X < vorher.Breite / 2 ? vorher.Breite / 2 : vorher.Breite / 4;
+                        var zielY = symStart.Y < vorher.Hoehe / 2 ? vorher.Hoehe / 2 : vorher.Hoehe / 4;
+                        var verschoben = new DesktopLayout
+                        {
+                            Breite = vorher.Breite, Hoehe = vorher.Hoehe, AmRasterAusrichten = vorher.AmRasterAusrichten,
+                            Symbole = { symStart with { X = zielX, Y = zielY } }
+                        };
+                        var e1 = DesktopIcons.Wiederherstellen(verschoben, TimeSpan.FromSeconds(5));
+                        System.Threading.Thread.Sleep(800);
+                        var mitte = DesktopIcons.Lesen("CI", "runner").Symbole.First(x => x.Name == testName);
+                        Console.WriteLine($"         verschoben nach ({mitte.X},{mitte.Y}), Ziel war ({zielX},{zielY})");
+                        Check("echt: Symbol laesst sich versetzen", e1.Gesetzt == 1
+                            && Math.Abs(mitte.X - zielX) < 200 && Math.Abs(mitte.Y - zielY) < 200
+                            && (Math.Abs(mitte.X - symStart.X) > 50 || Math.Abs(mitte.Y - symStart.Y) > 50));
+
+                        // Zurueck: die gesicherte Anordnung von vorhin - ueber die Datei.
+                        var dateiOrdner = Path.Combine(root, "echt-symbole");
+                        DesktopIcons.Speichern(Path.Combine(dateiOrdner, DesktopIcons.FolderName), vorher);
+                        var zurueck = DesktopIcons.Laden(DesktopIcons.Datei(dateiOrdner))!;
+                        var e2 = DesktopIcons.Wiederherstellen(zurueck, TimeSpan.FromSeconds(5));
+                        System.Threading.Thread.Sleep(800);
+                        var symNachher = DesktopIcons.Lesen("CI", "runner");
+                        var ende = symNachher.Symbole.First(x => x.Name == testName);
+                        Console.WriteLine($"         zurueck bei ({ende.X},{ende.Y}), {e2.Gesetzt} von {e2.Gesamt} gesetzt");
+                        Check("echt: aus der Sicherung wieder an der alten Stelle",
+                            Math.Abs(ende.X - symStart.X) <= 2 && Math.Abs(ende.Y - symStart.Y) <= 2, $"({ende.X},{ende.Y}) statt ({symStart.X},{symStart.Y})");
+                        Check("echt: Schalter wie vorher", symNachher.AutomatischAnordnen == vorher.AutomatischAnordnen
+                            && symNachher.AmRasterAusrichten == vorher.AmRasterAusrichten);
+                    }
+                }
+                finally
+                {
+                    try { File.Delete(testDatei); } catch { }
+                }
+            }
+
+            Console.WriteLine("\n== winget von GitHub nachinstallieren (echt) ==");
+            {
+                var protokoll = new List<string>();
+                var uhr = System.Diagnostics.Stopwatch.StartNew();
+                var installiert = WingetInstaller.InstallAsync(z => { protokoll.Add(z); Console.WriteLine("         " + z); }, () => false)
+                                                 .GetAwaiter().GetResult();
+                Console.WriteLine($"         Dauer: {uhr.Elapsed.TotalSeconds:F0} s");
+                Check("echt: App-Installer und Abhaengigkeiten geladen", protokoll.Count(z => z.Contains("geladen (")) == 2,
+                    string.Join(" | ", protokoll));
+                Check("echt: Abhaengigkeiten fuer diese Architektur gefunden",
+                    protokoll.Any(z => System.Text.RegularExpressions.Regex.IsMatch(z, @"samt [1-9]\d* Abhängigkeiten")));
+                Check("echt: Installation gemeldet", installiert, protokoll.LastOrDefault());
+                var lokal = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string? fassung = null;
+                try
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo(Path.Combine(lokal, @"Microsoft\WindowsApps\winget.exe"), "--version")
+                    { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+                    using var p = System.Diagnostics.Process.Start(psi)!;
+                    fassung = p.StandardOutput.ReadToEnd().Trim();
+                    p.WaitForExit(30000);
+                }
+                catch (Exception ex) { fassung = "nicht startbar: " + ex.Message; }
+                Console.WriteLine($"         winget danach: {fassung}");
+                Check("echt: winget startet danach", fassung is not null && System.Text.RegularExpressions.Regex.IsMatch(fassung, @"^v?\d+\.\d+"), fassung);
+                Check("echt: Zwischendateien sind wieder weg",
+                    !Directory.EnumerateDirectories(Path.GetTempPath(), "DaSi-winget-*").Any());
+            }
+
             var sitzung = DesktopScreenshot.GetInteractiveUser();
             Console.WriteLine($"         angemeldet: {sitzung?.Name ?? "(unbekannt)"}, Profil: {sitzung?.ProfilePath ?? "(unbekannt)"}");
             Check("angemeldeter Benutzer wird ermittelt (oder sauber null)", true);
@@ -867,8 +1343,178 @@ internal static class Program
             }
         }
 
+        if (OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("\n== echtes robocopy: was die Profilsicherung aus Dokumente mitnimmt ==");
+            var besitzer = Path.Combine(root, "profilwechsel", "Besitzer");
+            var doks = Path.Combine(besitzer, "Documents");
+            void Datei(string rel, string inhalt, FileAttributes? attr = null)
+            {
+                var p = Path.Combine(besitzer, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(p)!);
+                File.WriteAllText(p, inhalt);
+                if (attr is { } a) File.SetAttributes(p, a);
+            }
+            Datei(@"Documents\Normal\a.txt", "a");
+            // Ein angepasster Ordner (eigenes Symbol/eigene Ansicht): Windows setzt
+            // dafuer das System-Attribut und legt eine versteckte desktop.ini hinein.
+            Datei(@"Documents\Angepasst\brief.docx", "b");
+            Datei(@"Documents\Angepasst\desktop.ini", "[.ShellClassInfo]\r\nIconResource=C:\\Windows\\System32\\imageres.dll,-3\r\n",
+                  FileAttributes.Hidden | FileAttributes.System);
+            new DirectoryInfo(Path.Combine(doks, "Angepasst")).Attributes |= FileAttributes.System;
+            Datei(@"Documents\Schreibgeschuetzt\c.txt", "c");
+            new DirectoryInfo(Path.Combine(doks, "Schreibgeschuetzt")).Attributes |= FileAttributes.ReadOnly;
+            Datei(@"Documents\Versteckt\d.txt", "d");
+            new DirectoryInfo(Path.Combine(doks, "Versteckt")).Attributes |= FileAttributes.Hidden;
+            Datei(@"Documents\versteckt.txt", "e", FileAttributes.Hidden);
+            Datei(@"Documents\system.dat", "f", FileAttributes.System);
+            Datei(@"Pictures\p.jpg", "p");
+            Datei("NTUSER.DAT", "hive", FileAttributes.Hidden | FileAttributes.System);
+            Datei("ntuser.dat.LOG1", "log", FileAttributes.Hidden | FileAttributes.System);
+            // Verknuepfungspunkt wie "Eigene Bilder" in Dokumente - zeigt auf Pictures.
+            using (var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe",
+                       $"/c mklink /J \"{Path.Combine(doks, "Eigene Bilder")}\" \"{Path.Combine(besitzer, "Pictures")}\"")
+                   { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true }))
+            { mk!.StandardOutput.ReadToEnd(); mk.WaitForExit(); }
+            // Und einer, der aus dem Profil hinauszeigt ("Dokumente\Spiele" -> "D:\Spiele").
+            var draussen = Path.Combine(root, "profilwechsel", "D-Laufwerk", "Spiele");
+            Directory.CreateDirectory(draussen);
+            File.WriteAllText(Path.Combine(draussen, "spielstand.sav"), "s");
+            using (var mk2 = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe",
+                       $"/c mklink /J \"{Path.Combine(doks, "Spiele")}\" \"{draussen}\"")
+                   { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true }))
+            { mk2!.StandardOutput.ReadToEnd(); mk2.WaitForExit(); }
+            var verweise = ProfileLinks.FindOutsideLinks(besitzer, ProfileExcludes.Build(besitzer), out _);
+            Console.WriteLine($"         Verknuepfungen nach draussen: {string.Join(" | ", verweise.Select(v => $"{Path.GetFileName(v.Path)} -> {v.Target}"))}");
+            Check("echte Junction nach draussen wird gemeldet, mit Ziel",
+                verweise.Count == 1 && verweise[0].Path.EndsWith("Spiele")
+                && string.Equals(verweise[0].Target.TrimEnd('\\'), draussen, StringComparison.OrdinalIgnoreCase));
+            Check("Junction \"Eigene Bilder\" (ins Profil) wird nicht gemeldet",
+                !verweise.Any(v => v.Path.EndsWith("Eigene Bilder")));
+
+            static int Robo(string quelle, string ziel, System.Collections.Generic.IEnumerable<string> schalter)
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("robocopy.exe")
+                { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+                psi.ArgumentList.Add(quelle);
+                psi.ArgumentList.Add(ziel);
+                foreach (var s in schalter) psi.ArgumentList.Add(s);
+                using var p = System.Diagnostics.Process.Start(psi)!;
+                p.StandardOutput.ReadToEnd();
+                p.WaitForExit();
+                return p.ExitCode;
+            }
+            var altSchalter = new[] { "/MIR", "/ZB", "/SL", "/R:0", "/W:0", "/MT:32", "/XJ", "/XA:SH" };
+            var sicherungAlt = Path.Combine(root, "profilwechsel", "Sicherung-alt");
+            var sicherungNeu = Path.Combine(root, "profilwechsel", "Sicherung-neu");
+            Console.WriteLine($"         robocopy alt: {Robo(besitzer, sicherungAlt, altSchalter)}, neu: {Robo(besitzer, sicherungNeu, ProfileExcludes.BackupSwitches())}");
+
+            var faelle = new (string Was, string Rel, bool Soll)[]
+            {
+                ("gewoehnlicher Ordner", @"Documents\Normal\a.txt", true),
+                ("angepasster Ordner (System-Attribut)", @"Documents\Angepasst\brief.docx", true),
+                ("desktop.ini des angepassten Ordners", @"Documents\Angepasst\desktop.ini", true),
+                ("schreibgeschuetzt markierter Ordner", @"Documents\Schreibgeschuetzt\c.txt", true),
+                ("versteckter Ordner", @"Documents\Versteckt\d.txt", true),
+                ("versteckte Datei", @"Documents\versteckt.txt", true),
+                ("Systemdatei", @"Documents\system.dat", true),
+                ("Bilder", @"Pictures\p.jpg", true),
+                ("Verknuepfungspunkt \"Eigene Bilder\" (nicht verfolgen)", @"Documents\Eigene Bilder\p.jpg", false),
+                ("Verknuepfung nach draussen (gemeldet, nicht verfolgt)", @"Documents\Spiele\spielstand.sav", false),
+                ("Registry NTUSER.DAT", "NTUSER.DAT", false),
+                ("Registry ntuser.dat.LOG1", "ntuser.dat.LOG1", false),
+            };
+            Console.WriteLine("         gesichert?                                        alt    neu");
+            foreach (var (was, rel, soll) in faelle)
+            {
+                bool imAlten = File.Exists(Path.Combine(sicherungAlt, rel)), imNeuen = File.Exists(Path.Combine(sicherungNeu, rel));
+                Console.WriteLine($"         {was,-50}{(imAlten ? "ja" : "NEIN"),-7}{(imNeuen ? "ja" : "NEIN")}");
+                Check($"neue Schalter: {was} {(soll ? "wird" : "wird NICHT")} gesichert", imNeuen == soll);
+            }
+
+            Console.WriteLine("\n== echtes robocopy: Zurueckschreiben zu einem anderen Benutzer ==");
+            // In der Sicherung: eine Datei mit eigenen, nicht geerbten Rechten (wie
+            // sie das Sicherungsmedium mitbringen kann), dazu eine NTUSER.DAT aus
+            // einer aelteren Sicherung.
+            var probe = Path.Combine(sicherungNeu, @"Documents\Normal\a.txt");
+            var sec = new FileInfo(probe).GetAccessControl();
+            sec.SetAccessRuleProtection(true, false);
+            sec.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+                new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.WorldSid, null),
+                System.Security.AccessControl.FileSystemRights.FullControl, System.Security.AccessControl.AccessControlType.Allow));
+            new FileInfo(probe).SetAccessControl(sec);
+            File.WriteAllText(Path.Combine(sicherungNeu, "NTUSER.DAT"), "fremde Registry");
+
+            var anwenderAlt = Path.Combine(root, "profilwechsel", "Anwender-alt");
+            var anwenderNeu = Path.Combine(root, "profilwechsel", "Anwender-neu");
+            foreach (var a in new[] { anwenderAlt, anwenderNeu })
+            {
+                Directory.CreateDirectory(a);
+                File.WriteAllText(Path.Combine(a, "NTUSER.DAT"), "eigene Registry");
+            }
+            Robo(sicherungNeu, anwenderAlt, new[] { "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32" });
+            Robo(sicherungNeu, anwenderNeu, ProfileExcludes.RestoreSwitches());
+
+            static (bool Geschuetzt, int Eigene) Rechte(string datei)
+            {
+                var s = new FileInfo(datei).GetAccessControl();
+                return (s.AreAccessRulesProtected,
+                        s.GetAccessRules(true, false, typeof(System.Security.Principal.SecurityIdentifier)).Count);
+            }
+            var rAlt = Rechte(Path.Combine(anwenderAlt, @"Documents\Normal\a.txt"));
+            var rNeu = Rechte(Path.Combine(anwenderNeu, @"Documents\Normal\a.txt"));
+            Console.WriteLine($"         alt (/COPYALL): Vererbung aus = {rAlt.Geschuetzt}, eigene Regeln = {rAlt.Eigene}");
+            Console.WriteLine($"         neu (/COPY:DAT): Vererbung aus = {rNeu.Geschuetzt}, eigene Regeln = {rNeu.Eigene}");
+            Check("neue Schalter: Datei erbt die Rechte des Zielprofils (keine fremden Rechte)",
+                !rNeu.Geschuetzt && rNeu.Eigene == 0, $"geschuetzt={rNeu.Geschuetzt}, eigene={rNeu.Eigene}");
+            Check("neue Schalter: Inhalt kommt an",
+                File.ReadAllText(Path.Combine(anwenderNeu, @"Documents\Angepasst\brief.docx")) == "b");
+            Check("neue Schalter: die Registry des Zielbenutzers bleibt unangetastet",
+                File.ReadAllText(Path.Combine(anwenderNeu, "NTUSER.DAT")) == "eigene Registry");
+            Console.WriteLine($"         (alt: NTUSER.DAT danach \"{File.ReadAllText(Path.Combine(anwenderAlt, "NTUSER.DAT"))}\")");
+        }
+
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
         try { Directory.Delete(root, true); } catch { }
         return _failed == 0 ? 0 : 1;
     }
 }
+
+/// <summary>Ein Desktop ohne Explorer - zum Pruefen des Ablaufs.</summary>
+internal sealed class TestDesktop : IDesktopView
+{
+    private readonly int _b, _h;
+    private readonly List<DesktopIcon> _symbole;
+    private int _aufrufe;
+    public (int NachAufruf, DesktopIcon Symbol)? SpaeterDazu;
+    public readonly List<string> Protokoll = new();
+
+    public TestDesktop(int b, int h, bool autoAnordnen, bool raster, params DesktopIcon[] symbole)
+    {
+        _b = b; _h = h; _symbole = symbole.ToList();
+        _auto = autoAnordnen; _raster = raster;
+    }
+
+    private bool _auto, _raster;
+    public (int Breite, int Hoehe) Groesse() => (_b, _h);
+    public bool AutomatischAnordnen { get => _auto; set { _auto = value; Protokoll.Add($"anordnen={value}"); } }
+    public bool AmRasterAusrichten { get => _raster; set { _raster = value; Protokoll.Add($"raster={value}"); } }
+
+    public IReadOnlyList<DesktopIcon> Symbole()
+    {
+        _aufrufe++;
+        if (SpaeterDazu is { } d && _aufrufe > d.NachAufruf && !_symbole.Contains(d.Symbol)) _symbole.Add(d.Symbol);
+        return _symbole.ToList();
+    }
+
+    public void Setzen(int index, int x, int y)
+    {
+        Protokoll.Add($"setzen {_symbole[index].Name}");
+        _symbole[index] = _symbole[index] with { X = x, Y = y };
+    }
+
+    public (int, int) Stelle(string name) => _symbole.First(s => s.Name == name) is var s ? (s.X, s.Y) : (-1, -1);
+
+    public void Dispose() { }
+}
+

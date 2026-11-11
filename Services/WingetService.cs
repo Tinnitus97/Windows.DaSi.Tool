@@ -13,6 +13,9 @@ namespace WindowsDaSiTool.Services;
 /// - robustes Aufloesen eines lauffaehigen winget-Startwegs
 /// - Selbstregistrierung des App-Installer-Pakets, falls winget fuer den
 ///   aktuellen Benutzer nicht registriert ist
+/// - fehlt winget ganz (oder ist es zu alt), wird der App-Installer von
+///   GitHub nachinstalliert; antworten die Paketquellen nicht, werden sie
+///   zurueckgesetzt
 /// - nativer "winget export" mit Filterung von Zusatz-/Laufzeitpaketen
 /// - Rettung bekannter Programme (Firefox de, Office ...) ueber eine
 ///   verifizierte Bekannt-Liste
@@ -25,6 +28,9 @@ public sealed class WingetService
     private readonly Action<string> _log;
 
     private (string Exe, string Mode)? _launcher;
+
+    /// <summary>Nachinstallation von GitHub nur einmal je Programmlauf versuchen.</summary>
+    private bool _githubVersucht;
 
     public WingetService(ProcessRunner runner, CancellationTokenState cancel, Action<string> log)
     {
@@ -174,11 +180,87 @@ public sealed class WingetService
         }
         if (_cancel.IsCancelled) return null;
 
+        // Nicht registrierbar: Der App-Installer fehlt ganz. Dann von GitHub.
+        if (await InstallFromGitHub())
+        {
+            await Task.Delay(3000);
+            found = await TestCandidates(attempts);
+            if (found is null && await RegisterForCurrentUser())
+            {
+                await Task.Delay(2000);
+                found = await TestCandidates(attempts);
+            }
+            if (found is not null) { _launcher = found; return _launcher; }
+        }
+        if (_cancel.IsCancelled) return null;
+
         _log(Loc.Tr("[FEHLER] winget konnte mit keiner Methode gestartet werden. Versuchte Wege:", "[ERROR] winget could not be started by any method. Attempted paths:"));
         foreach (var a in attempts.Distinct()) _log("    " + a);
         _log(Loc.Tr("[INFO] Bitte einmal unter dem Benutzer, der dieses Tool startet, 'winget --version' in einer Konsole ausführen. Falls der Befehl unbekannt ist, den 'App-Installer' im Microsoft Store aktualisieren und danach erneut versuchen.", "[INFO] Please run 'winget --version' once in a console under the user that starts this tool. If the command is unknown, update the 'App Installer' from the Microsoft Store and try again."));
         return null;
     }
+
+    /// <summary>
+    /// App-Installer von GitHub installieren - hoechstens einmal je Lauf, denn
+    /// es sind rund 300 MB, und scheitert es einmal (kein Internet, per
+    /// Richtlinie gesperrt), scheitert es gleich wieder.
+    /// </summary>
+    private async Task<bool> InstallFromGitHub()
+    {
+        if (_githubVersucht || !OperatingSystem.IsWindows()) return false;
+        _githubVersucht = true;
+        _log(Loc.Tr("[INFO] winget ist nicht installiert oder nicht nutzbar - versuche, den App-Installer von GitHub zu installieren.",
+                    "[INFO] winget is not installed or not usable - trying to install the App Installer from GitHub."));
+        return await WingetInstaller.InstallAsync(_log, () => _cancel.IsCancelled);
+    }
+
+    /// <summary>Paketquellen zuruecksetzen und neu laden (braucht Adminrechte - die hat das Tool).</summary>
+    private async Task RepairSources()
+    {
+        _log(Loc.Tr("[INFO] Die Paketquellen von winget antworten nicht wie erwartet - setze sie zurück ('winget source reset --force') ...",
+                    "[INFO] The winget package sources do not respond as expected - resetting them ('winget source reset --force') ..."));
+        var reset = await InvokeWinget("source reset --force --disable-interactivity", 120000);
+        if (!_cancel.FastMode || !reset.Started || reset.ExitCode != 0)
+            _log(Loc.Tr($"    source reset: ExitCode {reset.ExitCode}", $"    source reset: exit code {reset.ExitCode}"));
+        var update = await InvokeWinget("source update --disable-interactivity", 180000);
+        if (!_cancel.FastMode || !update.Started || update.ExitCode != 0)
+            _log(Loc.Tr($"    source update: ExitCode {update.ExitCode}", $"    source update: exit code {update.ExitCode}"));
+    }
+
+    /// <summary>Antwortet die Paketquelle "winget"? null = ja, sonst was fehlt.</summary>
+    private async Task<WingetReadiness?> QuellenPruefen()
+    {
+        var quellen = await InvokeWinget("source list --disable-interactivity", 60000);
+        if (_cancel.IsCancelled) return Abgebrochen();
+
+        if (!quellen.Started || quellen.ExitCode != 0)
+            return WingetReadiness.Fail(
+                Loc.Tr("winget startet, kann aber seine Paketquellen nicht lesen.",
+                       "winget starts but cannot read its package sources."),
+                Loc.Tr("Ohne Paketquelle liefert ein Export eine leere Liste und ein Import findet nichts. "
+                       + "Das Zurücksetzen der Quellen und eine Neuinstallation des App-Installers von GitHub "
+                       + "haben nicht geholfen (Details im Protokoll). Führe in einer Konsole "
+                       + "'winget source reset --force' und danach 'winget source update' aus.",
+                       "Without a package source an export returns an empty list and an import finds nothing. "
+                       + "Resetting the sources and reinstalling the App Installer from GitHub did not help "
+                       + "(details in the log). Run 'winget source reset --force' and then 'winget source update' in a console."));
+
+        if (!quellen.Output.Contains("winget", StringComparison.OrdinalIgnoreCase))
+            return WingetReadiness.Fail(
+                Loc.Tr("Die Paketquelle 'winget' ist nicht eingerichtet.",
+                       "The 'winget' package source is not set up."),
+                Loc.Tr("winget läuft, aber die offizielle Quelle fehlt - Programme lassen sich so weder "
+                       + "zuverlässig erfassen noch installieren. Das Zurücksetzen der Quellen hat nicht "
+                       + "geholfen (Details im Protokoll). Führe in einer Konsole 'winget source reset --force' aus.",
+                       "winget runs, but the official source is missing - programs can neither be captured "
+                       + "nor installed reliably. Resetting the sources did not help (details in the log). "
+                       + "Run 'winget source reset --force' in a console."));
+        return null;
+    }
+
+    private static WingetReadiness Abgebrochen() => WingetReadiness.Fail(
+        Loc.Tr("Abgebrochen.", "Cancelled."),
+        Loc.Tr("Die Prüfung wurde abgebrochen.", "The check was cancelled."));
 
     private async Task<ProcessResult> InvokeWinget(string args, int timeoutMs = 0)
     {
@@ -234,43 +316,36 @@ public sealed class WingetService
             return WingetReadiness.Fail(
                 Loc.Tr("winget lässt sich auf diesem Rechner nicht starten.",
                        "winget cannot be started on this machine."),
-                Loc.Tr("Der Paket-Manager ist nicht installiert oder für diesen Benutzer nicht registriert. "
-                       + "Öffne eine Konsole als dieser Benutzer und führe 'winget --version' aus. "
-                       + "Meldet Windows den Befehl als unbekannt, installiere oder aktualisiere den "
-                       + "'App-Installer' im Microsoft Store und starte das Tool neu.\n\n"
-                       + "Die versuchten Wege stehen ausführlich im Protokoll.",
-                       "The package manager is not installed or not registered for this user. "
-                       + "Open a console as this user and run 'winget --version'. "
-                       + "If Windows reports the command as unknown, install or update the "
-                       + "'App Installer' from the Microsoft Store and restart the tool.\n\n"
-                       + "The attempted paths are listed in detail in the log."));
+                Loc.Tr("Das Tool hat versucht, den App-Installer für diesen Benutzer zu registrieren und ihn "
+                       + "von GitHub (github.com/microsoft/winget-cli) zu installieren - ohne Erfolg. Häufige "
+                       + "Gründe: keine Internetverbindung, App-Installationen per Richtlinie gesperrt.\n\n"
+                       + "Installiere den 'App-Installer' aus dem Microsoft Store oder das MSIX-Paket von GitHub "
+                       + "von Hand und starte das Tool neu. Die versuchten Wege stehen ausführlich im Protokoll.",
+                       "The tool tried to register the App Installer for this user and to install it from GitHub "
+                       + "(github.com/microsoft/winget-cli) - without success. Common reasons: no internet "
+                       + "connection, app installations blocked by policy.\n\n"
+                       + "Install the 'App Installer' from the Microsoft Store or the MSIX package from GitHub "
+                       + "manually and restart the tool. The attempted paths are listed in detail in the log."));
 
-        // Stufe 2: Antwortet die Paketquelle?
-        var quellen = await InvokeWinget("source list --disable-interactivity", 60000);
-        if (_cancel.IsCancelled)
-            return WingetReadiness.Fail(
-                Loc.Tr("Abgebrochen.", "Cancelled."),
-                Loc.Tr("Die Prüfung wurde abgebrochen.", "The check was cancelled."));
-
-        if (!quellen.Started || quellen.ExitCode != 0)
-            return WingetReadiness.Fail(
-                Loc.Tr("winget startet, kann aber seine Paketquellen nicht lesen.",
-                       "winget starts but cannot read its package sources."),
-                Loc.Tr("Ohne Paketquelle liefert ein Export eine leere Liste und ein Import findet nichts. "
-                       + "Führe in einer Konsole 'winget source reset --force' und danach "
-                       + "'winget source update' aus.",
-                       "Without a package source an export returns an empty list and an import finds nothing. "
-                       + "Run 'winget source reset --force' and then 'winget source update' in a console."));
-
-        if (!quellen.Output.Contains("winget", StringComparison.OrdinalIgnoreCase))
-            return WingetReadiness.Fail(
-                Loc.Tr("Die Paketquelle 'winget' ist nicht eingerichtet.",
-                       "The 'winget' package source is not set up."),
-                Loc.Tr("winget läuft, aber die offizielle Quelle fehlt - Programme lassen sich so weder "
-                       + "zuverlässig erfassen noch installieren. Führe in einer Konsole "
-                       + "'winget source reset --force' aus.",
-                       "winget runs, but the official source is missing - programs can neither be captured "
-                       + "nor installed reliably. Run 'winget source reset --force' in a console."));
+        // Stufe 2: Antwortet die Paketquelle? Wenn nicht: zuruecksetzen, und
+        // hilft das nicht, ist winget meist zu alt fuer die heutigen Quellen -
+        // dann den App-Installer von GitHub aktualisieren.
+        var problem = await QuellenPruefen();
+        if (problem is not null && !_cancel.IsCancelled)
+        {
+            await RepairSources();
+            problem = await QuellenPruefen();
+        }
+        if (problem is not null && !_cancel.IsCancelled && await InstallFromGitHub())
+        {
+            _launcher = null;
+            if (await ResolveLauncher() is not null)
+            {
+                problem = await QuellenPruefen();
+                if (problem is not null) { await RepairSources(); problem = await QuellenPruefen(); }
+            }
+        }
+        if (problem is not null) return problem;
 
         var version = await InvokeWinget("--version", 20000);
         var nummer = version.Started && version.ExitCode == 0 ? version.Output.Trim() : "?";
