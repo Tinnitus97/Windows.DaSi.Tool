@@ -564,7 +564,7 @@ public partial class MainWindowViewModel : ObservableObject
     // Zwei Radioknoepfe an einer Eigenschaft: DesktopSymbole = Symbolpositionen,
     // sonst Screenshot.
     [ObservableProperty] private bool _desktopSymbole;
-    public bool DesktopScreenshot
+    public bool DesktopScreenshotGewaehlt
     {
         get => !DesktopSymbole;
         set { if (value) DesktopSymbole = false; }
@@ -576,7 +576,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
     partial void OnDesktopSymboleChanged(bool value)
     {
-        OnPropertyChanged(nameof(DesktopScreenshot));
+        OnPropertyChanged(nameof(DesktopScreenshotGewaehlt));
         OnPropertyChanged(nameof(DesktopSymboleGewaehlt));
     }
 

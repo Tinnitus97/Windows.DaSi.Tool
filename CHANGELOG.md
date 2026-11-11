@@ -35,8 +35,27 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Profilkachel wurden bei gesperrter Oberfläche nicht blasser dargestellt. Jetzt
   sind sie wie die Kacheln deutlich ausgegraut.
 
+### Geändert
+
+- **Sicherungsordner nur mit Datum:** `DASI_<Rechner>_TT_MM_JJJJ` statt mit Uhrzeit.
+- **Eine vorhandene Sicherung wird aktualisiert.** Ist das gewählte Ziel schon eine
+  Sicherung (ein `DASI_…`-Ordner oder ein Ordner mit Sicherungsinhalt), geht die
+  Sicherung dort hinein, statt daneben einen neuen Ordner anzulegen. Ebenso bei
+  einer zweiten Sicherung am selben Tag. Stammt der Ordner erkennbar von einem
+  anderen Rechner, fragt das Tool vorher nach.
+- **„Desktop-Screenshot“ heißt jetzt „Desktop-Layout“** und steht über die volle
+  Breite unter den anderen Kacheln, mit der Auswahl *Screenshot* oder
+  *Symbolpositionen*.
+
 ### Hinzugefügt
 
+- **Symbolpositionen sichern und zurücksetzen (wie DesktopOK).** Das Tool merkt sich,
+  welches Desktop-Symbol wo liegt, und setzt beim Wiederherstellen jedes wieder an
+  seine Stelle. Zugeordnet wird über den Namen im Desktop-Ordner, unabhängig von der
+  Sprache. Bei anderer Desktop-Größe werden die Stellen im selben Verhältnis
+  umgerechnet. *Automatisch anordnen* wird dafür ausgeschaltet, das Raster wie beim
+  Sichern eingestellt. Fehlende Symbole nennt das Protokoll. Gespeichert wird
+  `Desktop-Symbole\Symbolpositionen.json`.
 - **Opera-Sicherung, jede Fassung.** Neue Kachel *Opera-Profil (auch GX)* direkt nach
   den anderen Browsern. Gesichert wird jede Fassung, die beim Benutzer eingerichtet
   ist (Opera, Opera GX, Beta, Developer, Air …). Erkannt wird jede an ihren

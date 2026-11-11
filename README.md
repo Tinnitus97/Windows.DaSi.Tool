@@ -19,7 +19,7 @@ Entwickelt für IT-Administratoren und Power-User. Das Tool vereint die Robusthe
 von **Robocopy** mit einer modernen, zweisprachigen Oberfläche und sichert in einem
 Durchgang Benutzerprofile, Browserdaten, installierte Programme, WLAN-Zugänge,
 Drucker und das Hintergrundbild — und stellt sie auf dem neuen Rechner wieder her.
-Ein Foto des Desktops hält fest, wo welche Symbole lagen.
+Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 
 <div align="center">
 <img src="docs/images/hauptfenster.png" alt="Hauptfenster des Windows DaSi Tool nach einer Sicherung" width="850">
@@ -38,7 +38,7 @@ Ein Foto des Desktops hält fest, wo welche Symbole lagen.
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
 | **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen über PrintBRM in einer Datei |
 | **Hintergrundbild** | Sichert das Desktop-Hintergrundbild und stellt es an derselben Stelle im gewählten Profil wieder her, auch wenn der Benutzer dort anders heißt |
-| **Desktop-Anordnung** | Ein Foto des Desktops über alle Monitore — zeigt nach der Neuinstallation, wo welche Symbole lagen |
+| **Desktop-Layout** | Wahlweise die Positionen der Desktop-Symbole (wie DesktopOK, beim Wiederherstellen automatisch zurückgesetzt) oder ein Foto des Desktops, ein Bild pro Monitor |
 
 > **WLAN-Schlüssel liegen im Klartext in der Sicherung.** Damit sie auf einem anderen
 > Rechner funktionieren, exportiert das Tool sie mit `key=clear` — verschlüsselt wären
@@ -53,8 +53,8 @@ Ein Foto des Desktops hält fest, wo welche Symbole lagen.
 
 Sichern und Wiederherstellen teilen sich eine Ansicht. Der Umschalter oben wechselt
 die Richtung, die Beschriftungen passen sich automatisch an — aus *Programme
-exportieren* wird *Programme installieren*, aus *Desktop-Screenshot erstellen* wird
-*Desktop-Screenshot anzeigen*. Die Auswahl bleibt beim Umschalten erhalten, soweit
+exportieren* wird *Programme installieren*, aus *Desktop-Layout sichern* wird
+*Desktop-Layout wiederherstellen*. Die Auswahl bleibt beim Umschalten erhalten, soweit
 die neue Richtung sie zulässt (siehe nächster Abschnitt).
 
 <div align="center">
@@ -155,17 +155,36 @@ Gesichert wird zum Beispiel der Benutzer *Besitzer*, auf dem neuen Rechner heiß
   gehören damit dem neuen Benutzer, nicht dem alten.
 - Die Registry-Dateien des Zielbenutzers (`NTUSER.DAT` …) werden nie überschrieben.
 
-### Desktop-Screenshot: Wo lag was?
+### Desktop-Layout: Wo lag was?
 
 Nach einer Neuinstallation ist der Desktop leer, und kaum jemand weiß noch, wo seine
-Verknüpfungen lagen. Auf Wunsch fotografiert das Tool deshalb den Desktop, und zwar
-**ein Bild pro Monitor**: alle im selben Moment, jedes in Größe und voller Auflösung
-seines Monitors, auch bei skalierten Bildschirmen. Damit die Symbole frei liegen, legt es dafür für einen Moment
+Verknüpfungen lagen. Der Punkt **Desktop-Layout** bietet dafür zwei Wege, gewählt
+über die beiden Knöpfe in der Kachel:
+
+**Symbolpositionen** (wie *DesktopOK*): Das Tool merkt sich, welches Symbol wo liegt,
+und setzt beim Wiederherstellen jedes wieder an seine Stelle — automatisch.
+
+- Gelesen und gesetzt wird über die Schnittstelle, die der Explorer für seinen
+  Desktop selbst anbietet. Zugeordnet wird über den Namen im Desktop-Ordner
+  (`Rechnung.pdf`, beim Papierkorb seine Kennung), also unabhängig von der Sprache:
+  Der „Papierkorb“ findet auch den „Recycle Bin“.
+- Ist der Desktop auf dem neuen Rechner anders groß (anderer Monitor, andere
+  Auflösung), werden die Stellen im selben Verhältnis umgerechnet. Was am rechten
+  Rand lag, liegt wieder am rechten Rand.
+- *Symbole automatisch anordnen* wird dafür ausgeschaltet — sonst reihte Windows die
+  Symbole sofort wieder neu. *Am Raster ausrichten* wird so eingestellt, wie es beim
+  Sichern war. War beim Sichern *automatisch anordnen* an, ist es danach wieder an.
+- Symbole, die es auf dem neuen Desktop (noch) nicht gibt, nennt das Protokoll. Am
+  besten läuft der Punkt deshalb zusammen mit Benutzerprofil und Programmen — er
+  kommt in der Warteschlange ohnehin zuletzt.
+- Gespeichert wird `Desktop-Symbole\Symbolpositionen.json` im Backup-Ziel.
+
+**Screenshot**: Das Tool fotografiert den Desktop, und zwar **ein Bild pro Monitor**:
+alle im selben Moment, jedes in Größe und voller Auflösung seines Monitors, auch bei
+skalierten Bildschirmen. Damit die Symbole frei liegen, legt es dafür für einen Moment
 alle Programmfenster beiseite und holt sie danach **genau so zurück, wie sie waren**:
 in derselben Reihenfolge, maximierte wieder maximiert, das zuletzt aktive Fenster
-wieder vorn.
-
-Die Bilder landen im Ordner `Desktop-Screenshot` im Backup-Ziel:
+wieder vorn. Die Bilder landen im Ordner `Desktop-Screenshot`:
 
 | Monitore | Bilder |
 | --- | --- |
@@ -174,14 +193,15 @@ Die Bilder landen im Ordner `Desktop-Screenshot` im Backup-Ziel:
 
 Die Nummern folgen Windows (`\\.\DISPLAY2` → `Bildschirm-2.png`) und stimmen meist mit
 denen unter *Einstellungen → Anzeige → Identifizieren* überein. Beim
-**Wiederherstellen** öffnet derselbe Punkt jedes Bild in einem eigenen Fenster. So
-lässt sich jedes auf „seinen“ Monitor ziehen und die Symbole von Hand daneben
-anordnen. Automatisch zurückstellen lässt sich die Anordnung nicht verlässlich, weil
-der Explorer sie mit seinem eigenen Stand überschreibt.
+**Wiederherstellen** öffnet das Tool jedes Bild in einem eigenen Fenster — zum
+Nachsehen und Anordnen von Hand.
 
-> Fotografiert wird, was auf dem Bildschirm zu sehen ist. Ist ein anderer Benutzer
-> angemeldet als der, dessen Profil gesichert wird — etwa der Techniker —, macht das
-> Tool kein Foto und sagt das im Protokoll: Es zeigte den falschen Desktop.
+Beim Wiederherstellen ist nur wählbar, was in der Sicherung liegt: Enthält sie nur
+Symbolpositionen, ist *Screenshot* ausgegraut und umgekehrt.
+
+> Beides betrifft den Desktop, der gerade zu sehen ist. Ist ein anderer Benutzer
+> angemeldet als der, dessen Profil gewählt ist — etwa der Techniker —, tut das Tool
+> nichts und sagt das im Protokoll: Es erwischte den falschen Desktop.
 
 ### Speicherprüfung mit Ampel
 
@@ -225,22 +245,26 @@ Beim **Wiederherstellen** wird gezielt ausgewählt, was installiert werden soll:
 ### Ein eigener Ordner je Sicherung
 
 Als Ziel genügt das Laufwerk: Wer `G:\` wählt, sieht im Feld sofort einen eigenen
-Ordner mit Rechnername und Zeitpunkt —
+Ordner mit Rechnername und Datum —
 
 ```
-G:\DASI_DESKTOP-7K4Q2M_10_11_2026_18_45
+G:\DASI_DESKTOP-7K4Q2M_10_11_2026
 ```
 
-So liegen mehrere Rechner und mehrere Stände sauber nebeneinander, statt sich im
-Wurzelverzeichnis gegenseitig zu überschreiben. Gesichert wird genau dorthin, wo das
-Feld zeigt; angelegt wird der Ordner beim Start. Der Schalter **Eigener Ordner**
-(Vorgabe: an) lässt sich abschalten — dann zeigt das Feld wieder `G:\`, und die
-Sicherung geht direkt dorthin.
+So liegen mehrere Rechner sauber nebeneinander, statt sich im Wurzelverzeichnis
+gegenseitig zu überschreiben. Gesichert wird genau dorthin, wo das Feld zeigt;
+angelegt wird der Ordner beim Start. Der Schalter **Eigener Ordner** (Vorgabe: an)
+lässt sich abschalten — dann zeigt das Feld wieder `G:\`, und die Sicherung geht
+direkt dorthin.
 
-In eine bestehende Sicherung wird nie hineingeschrieben: Ist das Gewählte selbst schon
-ein `DASI_…`-Ordner — etwa die Sicherung, die gerade als Quelle zum Wiederherstellen
-diente —, kommt der neue Ordner daneben. Beim **Wiederherstellen** wirkt der Schalter
-nicht; dort zeigt das Feld genau den gewählten `DASI_…`-Ordner.
+**Eine vorhandene Sicherung wird aktualisiert**, statt daneben einen weiteren Ordner
+anzulegen: Ist das Gewählte selbst schon eine Sicherung (ein `DASI_…`-Ordner oder ein
+Ordner mit Sicherungsinhalt), geht die neue Sicherung genau dort hinein. Ebenso bei
+einer zweiten Sicherung am selben Tag — der Ordnername ist derselbe. Das Profil wird
+dabei abgeglichen: Was es auf dem Rechner nicht mehr gibt, verschwindet auch aus der
+Sicherung. Stammt der Ordner erkennbar von einem **anderen Rechner**
+(`DASI_ALTPC_…`), fragt das Tool vorher nach. Beim **Wiederherstellen** wirkt der
+Schalter nicht; dort zeigt das Feld genau den gewählten Ordner.
 
 ### Schnellauswahl der Benutzerprofile
 
@@ -345,6 +369,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 3. Über die **Schnellauswahl** das Benutzerprofil wählen (oder per `...` manuell suchen).
 4. Das **Backup-Ziel** festlegen — ein Ordner auf einem NTFS-Laufwerk. Mit *Eigener
    Ordner: AN* genügt das Laufwerk (`G:\`) — das Feld zeigt dann sofort `G:\DASI_…`.
+   Eine vorhandene Sicherung als Ziel wird aktualisiert.
    Zum Wiederherstellen den gewünschten `DASI_…`-Ordner wählen.
 5. Modus **Sichern** oder **Wiederherstellen** wählen und die gewünschten Punkte ankreuzen.
    *AppData* und *Cloud-Anbieter* nur bei Bedarf dazunehmen. Ausgegraute Punkte gibt es
@@ -370,7 +395,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | **Dateioperationen** | Robocopy mit Spiegelung, Ausschlusslisten und Multithreading |
 | **Prozess-Handling** | Browser und Thunderbird werden vor dem Backup automatisch geschlossen, um Dateikonflikte zu vermeiden |
 | **Fehlerbehandlung** | Unerwartete Fehler landen in `%USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log` |
-| **Prüfungen** | `tests/DaSiTests` — Ausschlusslisten, Cloud-Erkennung, Opera-Fassungen, gesperrte Punkte, Bilanz, Update-Logik. Läuft bei jedem Push unter Linux und Windows; unter Windows wird das Austauschskript der Selbstaktualisierung dabei echt ausgeführt |
+| **Prüfungen** | `tests/DaSiTests` — Ausschlusslisten, Cloud-Erkennung, Opera-Fassungen, gesperrte Punkte, Sicherungsordner, Symbolpositionen, Bilanz, Update-Logik. Läuft bei jedem Push unter Linux und Windows; unter Windows werden dabei das Austauschskript der Selbstaktualisierung echt ausgeführt und ein Desktop-Symbol am echten Explorer-Desktop versetzt und zurückgesetzt |
 
 ### Selbst bauen
 
