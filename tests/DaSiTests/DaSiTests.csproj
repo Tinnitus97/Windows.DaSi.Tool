@@ -32,6 +32,7 @@
     <Compile Include="../../Services/DesktopScreenshot.cs" />
     <Compile Include="../../Services/RobocopySkips.cs" />
     <Compile Include="../../Services/ProfilePaths.cs" />
+    <Compile Include="../../Services/ProfileLinks.cs" />
   </ItemGroup>
 
 </Project>

@@ -31,13 +31,13 @@ Ein Foto des Desktops hält fest, wo welche Symbole lagen.
 
 | Bereich | Inhalt |
 | --- | --- |
-| **Windows-Benutzerprofil** | Dokumente, Bilder, Desktop, Downloads und alles Weitere im Profil. Zwischenspeicher, Temp-Ordner und Windows-Altlasten (Verknüpfungspunkte wie *Anwendungsdaten*) bleiben draußen. **AppData** und **Cloud-Ordner** wahlweise, auch einzeln ohne den Rest des Profils — Vorgabe: aus |
+| **Windows-Benutzerprofil** | Dokumente, Bilder, Desktop, Downloads und alles Weitere im Profil, auch versteckte und Systemdateien. Zwischenspeicher, Temp-Ordner, die Registry-Dateien (`NTUSER.DAT`) und Windows-Altlasten (Verknüpfungspunkte wie *Anwendungsdaten*) bleiben draußen. Zeigt ein Ordner als Verknüpfung aus dem Profil hinaus (z. B. `Dokumente\Spiele` → `D:\Spiele`), steht das als Warnung im Protokoll. **AppData** und **Cloud-Ordner** wahlweise, auch einzeln ohne den Rest des Profils — Vorgabe: aus |
 | **Browser-Profile** | Firefox, Edge, Chrome und Brave — inklusive Lesezeichen, Verlauf und Einstellungen |
 | **E-Mail** | Thunderbird-Profil mit Konten und lokalen Ordnern |
 | **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog. Programme ohne Winget-Paket landen in einer eigenen Liste |
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
 | **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen über PrintBRM in einer Datei |
-| **Hintergrundbild** | Sichert das Desktop-Hintergrundbild und stellt es am Originalpfad wieder her |
+| **Hintergrundbild** | Sichert das Desktop-Hintergrundbild und stellt es an derselben Stelle im gewählten Profil wieder her, auch wenn der Benutzer dort anders heißt |
 | **Desktop-Anordnung** | Ein Foto des Desktops über alle Monitore — zeigt nach der Neuinstallation, wo welche Symbole lagen |
 
 > **WLAN-Schlüssel liegen im Klartext in der Sicherung.** Damit sie auf einem anderen
@@ -108,6 +108,21 @@ ja nicht synchronisiert.
 <div align="center">
 <img src="docs/images/cloud-rueckfrage.png" alt="Rückfrage mit den erkannten Cloud-Anbietern" width="440">
 </div>
+
+### Auf einen anderen Rechner, zu einem anderen Benutzer
+
+Gesichert wird zum Beispiel der Benutzer *Besitzer*, auf dem neuen Rechner heißt er
+*Anwender*. Zurückgeschrieben wird immer in das Profil, das im Feld
+*Benutzerprofil* gewählt ist, also nach `C:\Users\Anwender`:
+
+- Ein Profil, das es dort nicht gibt, legt das Tool nicht an, sondern bricht mit
+  einem Hinweis ab. Ein neuer Benutzer muss sich vorher einmal angemeldet haben,
+  erst dann legt Windows sein Profil an.
+- Pfade aus der Sicherung (etwa der des Hintergrundbilds) werden ins gewählte
+  Profil übertragen: `C:\Users\Besitzer\Pictures\…` wird zu `C:\Users\Anwender\Pictures\…`.
+- Die zurückgeschriebenen Dateien erben die Zugriffsrechte des Zielprofils. Sie
+  gehören damit dem neuen Benutzer, nicht dem alten.
+- Die Registry-Dateien des Zielbenutzers (`NTUSER.DAT` …) werden nie überschrieben.
 
 ### Desktop-Screenshot: Wo lag was?
 

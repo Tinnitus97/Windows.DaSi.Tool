@@ -477,6 +477,39 @@ internal static class Program
                        .SequenceEqual(ProfileExcludes.RegistryHiveFiles));
         }
 
+        Console.WriteLine("\n== Verknuepfungen im Profil, die nach draussen zeigen ==");
+        {
+            var lp = Path.Combine(root, "links", "Besitzer");
+            var aussen = Path.Combine(root, "links", "D-Laufwerk", "Spiele");
+            foreach (var d in new[] { Path.Combine(lp, "Documents", "Normal"), Path.Combine(lp, "Pictures"),
+                                      Path.Combine(lp, "AppData", "Local"), Path.Combine(lp, "OneDrive"), aussen })
+                Directory.CreateDirectory(d);
+            File.WriteAllText(Path.Combine(aussen, "spielstand.sav"), "x");
+            bool linksOk = true;
+            try
+            {
+                Directory.CreateSymbolicLink(Path.Combine(lp, "Documents", "Spiele"), aussen);                        // nach draussen
+                Directory.CreateSymbolicLink(Path.Combine(lp, "Documents", "Eigene Bilder"), Path.Combine(lp, "Pictures")); // ins Profil
+                Directory.CreateSymbolicLink(Path.Combine(lp, "AppData", "Local", "Verlauf"), aussen);                // in AppData
+                Directory.CreateSymbolicLink(Path.Combine(lp, "OneDrive", "Extern"), aussen);                          // in ausgelassenem Ordner
+            }
+            catch (Exception ex) { linksOk = false; Console.WriteLine($"         (symbolische Links hier nicht moeglich: {ex.Message})"); }
+            if (linksOk)
+            {
+                var gefunden = ProfileLinks.FindOutsideLinks(lp, new[] { Path.Combine(lp, "OneDrive") }, out var abgebrochen);
+                Check("Verknuepfung nach draussen wird gemeldet, mit Ziel",
+                    gefunden.Count == 1 && gefunden[0].Path.EndsWith("Spiele") && Path.GetFullPath(gefunden[0].Target) == Path.GetFullPath(aussen),
+                    string.Join(" | ", gefunden.Select(g => $"{g.Path} -> {g.Target}")));
+                Check("Verknuepfung ins Profil (wie \"Eigene Bilder\") wird nicht gemeldet",
+                    !gefunden.Any(g => g.Path.EndsWith("Eigene Bilder")));
+                Check("AppData und ausgelassene Ordner werden nicht durchsucht",
+                    !gefunden.Any(g => g.Path.Contains("AppData") || g.Path.Contains("OneDrive")));
+                Check("nicht abgebrochen", !abgebrochen);
+            }
+            Check("Profil, das es nicht gibt: leere Liste",
+                ProfileLinks.FindOutsideLinks(Path.Combine(root, "gibt-es-nicht"), Array.Empty<string>(), out _).Count == 0);
+        }
+
         Console.WriteLine("\n== Desktop-Screenshot: ein Bild pro Monitor ==");
         {
             Check("Windows-Nummer aus dem Geraetenamen", DesktopScreenshot.DisplayNumber(@"\\.\DISPLAY2") == 2
@@ -941,6 +974,21 @@ internal static class Program
                        $"/c mklink /J \"{Path.Combine(doks, "Eigene Bilder")}\" \"{Path.Combine(besitzer, "Pictures")}\"")
                    { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true }))
             { mk!.StandardOutput.ReadToEnd(); mk.WaitForExit(); }
+            // Und einer, der aus dem Profil hinauszeigt ("Dokumente\Spiele" -> "D:\Spiele").
+            var draussen = Path.Combine(root, "profilwechsel", "D-Laufwerk", "Spiele");
+            Directory.CreateDirectory(draussen);
+            File.WriteAllText(Path.Combine(draussen, "spielstand.sav"), "s");
+            using (var mk2 = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe",
+                       $"/c mklink /J \"{Path.Combine(doks, "Spiele")}\" \"{draussen}\"")
+                   { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true }))
+            { mk2!.StandardOutput.ReadToEnd(); mk2.WaitForExit(); }
+            var verweise = ProfileLinks.FindOutsideLinks(besitzer, ProfileExcludes.Build(besitzer), out _);
+            Console.WriteLine($"         Verknuepfungen nach draussen: {string.Join(" | ", verweise.Select(v => $"{Path.GetFileName(v.Path)} -> {v.Target}"))}");
+            Check("echte Junction nach draussen wird gemeldet, mit Ziel",
+                verweise.Count == 1 && verweise[0].Path.EndsWith("Spiele")
+                && string.Equals(verweise[0].Target.TrimEnd('\\'), draussen, StringComparison.OrdinalIgnoreCase));
+            Check("Junction \"Eigene Bilder\" (ins Profil) wird nicht gemeldet",
+                !verweise.Any(v => v.Path.EndsWith("Eigene Bilder")));
 
             static int Robo(string quelle, string ziel, System.Collections.Generic.IEnumerable<string> schalter)
             {
@@ -970,6 +1018,7 @@ internal static class Program
                 ("Systemdatei", @"Documents\system.dat", true),
                 ("Bilder", @"Pictures\p.jpg", true),
                 ("Verknuepfungspunkt \"Eigene Bilder\" (nicht verfolgen)", @"Documents\Eigene Bilder\p.jpg", false),
+                ("Verknuepfung nach draussen (gemeldet, nicht verfolgt)", @"Documents\Spiele\spielstand.sav", false),
                 ("Registry NTUSER.DAT", "NTUSER.DAT", false),
                 ("Registry ntuser.dat.LOG1", "ntuser.dat.LOG1", false),
             };

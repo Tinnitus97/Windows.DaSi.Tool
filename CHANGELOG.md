@@ -7,6 +7,36 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [Unveröffentlicht]
+
+### Behoben
+
+- **Wiederherstellen zu einem anderen Benutzer legte ein fremdes Profil an.**
+  Gesichert „Besitzer“, zurück zu „Anwender“: Das Hintergrundbild wurde unter
+  seinem alten Pfad abgelegt. Dabei entstand `C:\Users\Besitzer`, ein Profil, das
+  es auf dem neuen Rechner nicht gibt. Jetzt kommt es an dieselbe Stelle im
+  gewählten Profil (`C:\Users\Anwender\…`). Beim Sichern wird dafür das Profil mit
+  vermerkt, ältere Sicherungen werden am Pfad `C:\Users\<Name>\…` erkannt.
+- **Zielprofil, das es nicht gibt, wurde angelegt.** Vor dem Start prüft das Tool
+  jetzt, ob das gewählte Profil existiert, und bricht sonst mit einem Hinweis ab.
+- **Zurückgeschriebene Dateien bekamen fremde Zugriffsrechte.** Statt `/COPYALL`
+  jetzt `/COPY:DAT`: Die Dateien erben die Rechte des Zielprofils. Die
+  Registry-Dateien des Zielbenutzers (`NTUSER.DAT` …) werden nie überschrieben, auch
+  nicht aus älteren Sicherungen.
+- **Profilsicherung ließ versteckte und Systemdateien ohne Meldung aus.** Der
+  Schalter `/XA:SH` war für die Registry-Dateien gedacht, traf aber jede versteckte
+  oder Systemdatei, etwa die `desktop.ini` angepasster Ordner. Jetzt werden nur die
+  Registry-Dateien gezielt ausgelassen.
+
+### Hinzugefügt
+
+- **Warnung bei Verknüpfungen aus dem Profil hinaus.** Ist ein Ordner in Wahrheit
+  eine Verknüpfung auf einen Ort außerhalb des Profils (z. B. `Dokumente\Spiele` →
+  `D:\Spiele`), wird ihr Inhalt nicht mitgesichert. Das steht jetzt vor dem Kopieren
+  als Warnung im Protokoll. Bisher fehlte so ein Ordner ohne jeden Hinweis.
+
+---
+
 ## [1.2.1] - 2026-11-11
 
 ### Behoben

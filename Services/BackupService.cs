@@ -93,6 +93,24 @@ public sealed class BackupService
                          "[INFO] Cloud folders should be included - but none were found."));
         }
 
+        // Ordner, die in Wahrheit auf einen Ort ausserhalb des Profils zeigen
+        // ("Dokumente\Spiele" -> "D:\Spiele"), folgt robocopy nicht (/XJ). Ihr
+        // Inhalt fehlte sonst in der Sicherung, ohne dass es irgendwo stuende.
+        var (verweise, abgebrochen) = await Task.Run(() =>
+        {
+            var l = ProfileLinks.FindOutsideLinks(userDir, excluded, out var t);
+            return (l, t);
+        });
+        foreach (var v in verweise)
+        {
+            var rel = Path.GetRelativePath(userDir, v.Path);
+            _log(Loc.Tr($"[WARNUNG] \"{rel}\" ist eine Verknüpfung auf \"{v.Target}\" außerhalb des Profils. Ihr Inhalt wird NICHT mitgesichert - bei Bedarf diesen Ordner selbst sichern.",
+                        $"[WARNING] \"{rel}\" is a link to \"{v.Target}\" outside the profile. Its content is NOT backed up - back up that folder separately if needed."));
+        }
+        if (abgebrochen)
+            _log(Loc.Tr($"[INFO] Die Suche nach Verknüpfungen wurde nach {ProfileLinks.MaxFolders:N0} Ordnern beendet.",
+                        $"[INFO] The search for links stopped after {ProfileLinks.MaxFolders:N0} folders."));
+
         _log(Loc.Tr("[INFO] Starte Backup Benutzerprofil...", "[INFO] Starting user profile backup..."));
         var skips = IncludeAppData ? new RobocopySkips(Path.Combine(userDir, "AppData")) : null;
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress, skips);
