@@ -18,7 +18,7 @@ namespace WindowsDaSiTool.ViewModels;
 public partial class MainWindowViewModel : ObservableObject
 {
     // ---- Konstanten (entsprechen den $script:-Variablen) ----
-    private const string VersionString = "1.2.0";
+    private const string VersionString = "1.2.1";
     private const string ProjectUrl = "https://github.com/Tinnitus97/Windows.DaSi.Tool";
 
     private readonly CancellationTokenState _cancel = new();
