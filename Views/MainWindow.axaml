@@ -178,19 +178,41 @@
                             <!-- Freigabe und Tooltip je Kachel: gesperrt, wenn das Programm beim
                                  Benutzer fehlt (Sichern) oder die Sicherung den Punkt nicht
                                  enthaelt (Wiederherstellen). Der Tooltip nennt den Grund. -->
-                            <UniformGrid Grid.Row="2" Columns="2">
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgFirefox}" IsChecked="{Binding SelFirefox}" IsEnabled="{Binding EnFirefox}" ToolTip.Tip="{Binding TipFirefox}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgEdge}" IsChecked="{Binding SelEdge}" IsEnabled="{Binding EnEdge}" ToolTip.Tip="{Binding TipEdge}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgChrome}" IsChecked="{Binding SelChrome}" IsEnabled="{Binding EnChrome}" ToolTip.Tip="{Binding TipChrome}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgBrave}" IsChecked="{Binding SelBrave}" IsEnabled="{Binding EnBrave}" ToolTip.Tip="{Binding TipBrave}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgOpera}" IsChecked="{Binding SelOpera}" IsEnabled="{Binding EnOpera}" ToolTip.Tip="{Binding TipOpera}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgThunderbird}" IsChecked="{Binding SelThunderbird}" IsEnabled="{Binding EnThunderbird}" ToolTip.Tip="{Binding TipThunderbird}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWinget}" IsChecked="{Binding SelWinget}" IsEnabled="{Binding EnWinget}" ToolTip.Tip="{Binding TipWinget}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWlan}" IsChecked="{Binding SelWlan}" IsEnabled="{Binding EnWlan}" ToolTip.Tip="{Binding TipWlan}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgPrinter}" IsChecked="{Binding SelPrinter}" IsEnabled="{Binding EnPrinter}" ToolTip.Tip="{Binding TipPrinter}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWallpaper}" IsChecked="{Binding SelWallpaper}" IsEnabled="{Binding EnWallpaper}" ToolTip.Tip="{Binding TipWallpaper}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <Border Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgDesktopShot}" IsChecked="{Binding SelDesktopShot}" IsEnabled="{Binding EnDesktopShot}" ToolTip.Tip="{Binding TipDesktopShot}" ToolTip.ShowOnDisabled="True"/></Border>
-                            </UniformGrid>
+                            <!-- Feste Zeilen statt UniformGrid: Das Desktop-Layout steht unten ueber
+                                 volle Breite (mit Auswahl), alle Zeilen bleiben gleich hoch. -->
+                            <Grid Grid.Row="2" ColumnDefinitions="*,*" RowDefinitions="*,*,*,*,*,*">
+                                <Border Grid.Row="0" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgFirefox}" IsChecked="{Binding SelFirefox}" IsEnabled="{Binding EnFirefox}" ToolTip.Tip="{Binding TipFirefox}" ToolTip.ShowOnDisabled="True"/></Border>
+                                <Border Grid.Row="0" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgEdge}" IsChecked="{Binding SelEdge}" IsEnabled="{Binding EnEdge}" ToolTip.Tip="{Binding TipEdge}" ToolTip.ShowOnDisabled="True"/></Border>
+                                <Border Grid.Row="1" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgChrome}" IsChecked="{Binding SelChrome}" IsEnabled="{Binding EnChrome}" ToolTip.Tip="{Binding TipChrome}" ToolTip.ShowOnDisabled="True"/></Border>
+                                <Border Grid.Row="1" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgBrave}" IsChecked="{Binding SelBrave}" IsEnabled="{Binding EnBrave}" ToolTip.Tip="{Binding TipBrave}" ToolTip.ShowOnDisabled="True"/></Border>
+                                <Border Grid.Row="2" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgOpera}" IsChecked="{Binding SelOpera}" IsEnabled="{Binding EnOpera}" ToolTip.Tip="{Binding TipOpera}" ToolTip.ShowOnDisabled="True"/></Border>
+                                <Border Grid.Row="2" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgThunderbird}" IsChecked="{Binding SelThunderbird}" IsEnabled="{Binding EnThunderbird}" ToolTip.Tip="{Binding TipThunderbird}" ToolTip.ShowOnDisabled="True"/></Border>
+                                <Border Grid.Row="3" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWinget}" IsChecked="{Binding SelWinget}" IsEnabled="{Binding EnWinget}" ToolTip.Tip="{Binding TipWinget}" ToolTip.ShowOnDisabled="True"/></Border>
+                                <Border Grid.Row="3" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWlan}" IsChecked="{Binding SelWlan}" IsEnabled="{Binding EnWlan}" ToolTip.Tip="{Binding TipWlan}" ToolTip.ShowOnDisabled="True"/></Border>
+                                <Border Grid.Row="4" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgPrinter}" IsChecked="{Binding SelPrinter}" IsEnabled="{Binding EnPrinter}" ToolTip.Tip="{Binding TipPrinter}" ToolTip.ShowOnDisabled="True"/></Border>
+                                <Border Grid.Row="4" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWallpaper}" IsChecked="{Binding SelWallpaper}" IsEnabled="{Binding EnWallpaper}" ToolTip.Tip="{Binding TipWallpaper}" ToolTip.ShowOnDisabled="True"/></Border>
+
+                                <!-- Desktop-Layout: Screenshot ODER Symbolpositionen (wie DesktopOK).
+                                     Aufbau wie die Profilkachel - die Auswahl steht buendig ueber
+                                     der rechten Kachelspalte. -->
+                                <Border Grid.Row="5" Grid.ColumnSpan="2" Classes="cardHost">
+                                    <Grid ColumnDefinitions="*,*">
+                                        <CheckBox Grid.Column="0" Classes="card" Content="{Binding TgDesktopShot}" IsChecked="{Binding SelDesktopShot}" IsEnabled="{Binding EnDesktopShot}" ToolTip.Tip="{Binding TipDesktopShot}" ToolTip.ShowOnDisabled="True"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" Margin="18,0,0,0" VerticalAlignment="Center">
+                                            <RadioButton Classes="subRadio" GroupName="desktopLayout"
+                                                         Content="{Binding TgDesktopScreenshot}"
+                                                         IsChecked="{Binding DesktopScreenshot, Mode=TwoWay}"
+                                                         IsEnabled="{Binding EnDesktopScreenshot}"
+                                                         ToolTip.Tip="{Binding TipDesktopScreenshot}" ToolTip.ShowOnDisabled="True"/>
+                                            <RadioButton Classes="subRadio" GroupName="desktopLayout"
+                                                         Content="{Binding TgDesktopSymbole}"
+                                                         IsChecked="{Binding DesktopSymboleGewaehlt, Mode=TwoWay}"
+                                                         IsEnabled="{Binding EnDesktopSymbole}"
+                                                         ToolTip.Tip="{Binding TipDesktopSymbole}" ToolTip.ShowOnDisabled="True"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Grid>
                     </Grid>
                 </Border>
 

@@ -153,8 +153,9 @@
                  Gerendert werden die Kacheln trotzdem hoeher, weil sie sich den
                  freien Platz teilen.
 
-                 Seit der Opera-Kachel sind es 11 Kacheln, also 6 Zeilen statt 5:
-                 24 statt 28 px Untergrenze halten die Summe unter der Sichthoehe. -->
+                 Seit der Opera-Kachel sind es 6 Zeilen (5 mit je zwei Kacheln, dazu
+                 das Desktop-Layout ueber volle Breite): 24 statt 28 px Untergrenze
+                 halten die Summe unter der Sichthoehe. -->
             <Setter Property="MinHeight" Value="24"/>
             <Setter Property="Margin" Value="3,2"/>
             <Setter Property="Padding" Value="14,0"/>
@@ -193,6 +194,45 @@
         </Style>
         <Style Selector="CheckBox.subCard TextBlock">
             <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <!-- Auswahl innerhalb einer Kachel (Desktop-Layout: Screenshot / Symbolpositionen).
+             Eigene, flache Vorlage: Der Fluent-RadioButton ist 32 px hoch und
+             machte die Kachelzeile hoeher als die anderen. -->
+        <Style Selector="RadioButton.subRadio">
+            <Setter Property="Foreground" Value="{DynamicResource SubtextBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="7" Background="{TemplateBinding Background}">
+                        <Panel Width="16" Height="16" VerticalAlignment="Center">
+                            <Ellipse Name="ring" Width="16" Height="16" StrokeThickness="1.5"
+                                     Stroke="{DynamicResource SubtextBrush}" Fill="Transparent"/>
+                            <Ellipse Name="dot" Width="6" Height="6" Fill="White" IsVisible="False"/>
+                        </Panel>
+                        <ContentPresenter Content="{TemplateBinding Content}" VerticalAlignment="Center"
+                                          Foreground="{TemplateBinding Foreground}"/>
+                    </StackPanel>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.subRadio:pointerover /template/ Ellipse#ring">
+            <Setter Property="Stroke" Value="{DynamicResource BlueBrush}"/>
+        </Style>
+        <Style Selector="RadioButton.subRadio:checked">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        </Style>
+        <Style Selector="RadioButton.subRadio:checked /template/ Ellipse#ring">
+            <Setter Property="Fill" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+            <Setter Property="Stroke" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+        </Style>
+        <Style Selector="RadioButton.subRadio:checked /template/ Ellipse#dot">
+            <Setter Property="IsVisible" Value="True"/>
+        </Style>
+        <Style Selector="RadioButton.subRadio:disabled">
+            <Setter Property="Opacity" Value="0.35"/>
         </Style>
         <Style Selector="CheckBox.subCard:checked">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>

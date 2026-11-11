@@ -136,9 +136,11 @@ public partial class MainWindowViewModel : ObservableObject
     private void ToggleAutoStorage() => AutoStorageCheck = !AutoStorageCheck;
 
     // ---- Eigener Sicherungsordner (abschaltbar, Vorgabe: an) ----
-    // Beim Sichern entsteht unter dem gewaehlten Ziel ein eigener Ordner je
-    // Lauf: G:\ -> G:\DASI_<Rechner>_TT_MM_JJJJ_HH_MM. Beim Wiederherstellen
-    // wirkt der Schalter nicht - dort wird ja eine vorhandene Sicherung gewaehlt.
+    // Beim Sichern entsteht unter dem gewaehlten Ziel ein Ordner je Rechner und
+    // Tag: G:\ -> G:\DASI_<Rechner>_TT_MM_JJJJ. Ist das Gewaehlte schon eine
+    // Sicherung (oder gibt es den Ordner von heute schon), wird sie
+    // aktualisiert. Beim Wiederherstellen wirkt der Schalter nicht - dort wird
+    // ja eine vorhandene Sicherung gewaehlt.
     [ObservableProperty] private bool _ownBackupFolder = true;
 
     public string OwnFolderLabel => OwnBackupFolder
@@ -154,9 +156,12 @@ public partial class MainWindowViewModel : ObservableObject
             var beispiel = !IsRestoreMode && OwnBackupFolder && !string.IsNullOrWhiteSpace(BackupPath)
                 ? BackupPath
                 : BackupTarget.Resolve(basis, true, Environment.MachineName, DateTime.Now);
+            if (OwnBackupFolder && BackupTarget.IsBackupFolder(beispiel))
+                return Tr($"Gesichert wird in die vorhandene Sicherung - sie wird aktualisiert:\n{beispiel}\n\nAbschalten, um direkt in das gewählte Ziel zu sichern.",
+                          $"The backup goes into the existing backup and updates it:\n{beispiel}\n\nTurn off to back up directly into the chosen target.");
             return OwnBackupFolder
-                ? Tr($"Beim Sichern wird ein eigener Ordner angelegt:\n{beispiel}\n\nAbschalten, um direkt in das gewählte Ziel zu sichern.",
-                     $"When backing up, a separate folder is created:\n{beispiel}\n\nTurn off to back up directly into the chosen target.")
+                ? Tr($"Beim Sichern wird ein Ordner je Rechner und Tag angelegt:\n{beispiel}\n\nGibt es ihn schon, wird die Sicherung darin aktualisiert. Abschalten, um direkt in das gewählte Ziel zu sichern.",
+                     $"When backing up, a folder per computer and day is created:\n{beispiel}\n\nIf it already exists, the backup in it is updated. Turn off to back up directly into the chosen target.")
                 : Tr($"Gesichert wird direkt in das gewählte Ziel.\n\nEinschalten, um je Sicherung einen eigenen Ordner anzulegen, z. B.:\n{beispiel}",
                      $"The backup goes directly into the chosen target.\n\nTurn on to create a separate folder per backup, e.g.:\n{beispiel}");
         }
@@ -174,7 +179,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// Was der Benutzer als Ziel gewaehlt hat, z. B. "G:\". Das Feld zeigt beim
     /// Sichern mit eigenem Ordner daraus schon den fertigen Ordner
-    /// ("G:\DASI_Rechner_TT_MM_JJJJ_HH_MM") - genau dorthin wird gesichert.
+    /// ("G:\DASI_Rechner_TT_MM_JJJJ") - genau dorthin wird gesichert.
     /// Gemerkt wird die Auswahl, damit Ausschalten und Moduswechsel wieder auf
     /// das Gewaehlte zurueckrechnen koennen.
     /// </summary>
@@ -465,6 +470,16 @@ public partial class MainWindowViewModel : ObservableObject
         var funde = operaOrt is null ? new System.Collections.Generic.List<string>() : AppCatalog.Opera.Varianten(operaOrt);
         _operaFunde = funde.Count == 0 ? null : string.Join(", ", funde.Select(AppCatalog.Opera.Anzeigename));
 
+        // Desktop-Layout: welche Variante liegt in der Sicherung? Beim Sichern
+        // gibt es beide. Liegt nur die andere vor, wird auf sie umgeschaltet.
+        _hatScreenshot = _hatSymbole = true;
+        if (IsRestoreMode && !string.IsNullOrWhiteSpace(BackupPath) && Directory.Exists(BackupPath))
+        {
+            _hatScreenshot = AppCatalog.HatDesktopScreenshot(BackupPath);
+            _hatSymbole = AppCatalog.HatDesktopSymbole(BackupPath);
+            if (_hatScreenshot != _hatSymbole) DesktopSymbole = _hatSymbole;
+        }
+
         // Was gesperrt ist, kann nicht gewaehlt bleiben.
         if (!Frei(Punkt.Profil)) SelUser = false;
         if (!Frei(Punkt.AppData)) SelUserAppData = false;
@@ -494,6 +509,7 @@ public partial class MainWindowViewModel : ObservableObject
                      nameof(TipUser), nameof(TipAppData), nameof(TipCloud), nameof(TipFirefox), nameof(TipEdge),
                      nameof(TipChrome), nameof(TipBrave), nameof(TipOpera), nameof(TipThunderbird), nameof(TipWinget),
                      nameof(TipWlan), nameof(TipPrinter), nameof(TipWallpaper), nameof(TipDesktopShot),
+                     nameof(EnDesktopScreenshot), nameof(EnDesktopSymbole), nameof(TipDesktopScreenshot), nameof(TipDesktopSymbole),
                  })
             OnPropertyChanged(n);
     }
@@ -541,8 +557,46 @@ public partial class MainWindowViewModel : ObservableObject
     // Sichern: Foto des Desktops. Wiederherstellen: dieses Foto oeffnen, damit
     // sich die Symbole von Hand wieder anordnen lassen.
     public string TgDesktopShot => IsRestoreMode
-        ? Tr("Desktop-Screenshot anzeigen", "Show desktop screenshot")
-        : Tr("Desktop-Screenshot erstellen", "Take desktop screenshot");
+        ? Tr("Desktop-Layout wiederherstellen", "Restore desktop layout")
+        : Tr("Desktop-Layout sichern", "Back up desktop layout");
+
+    // ---- Desktop-Layout: Screenshot ODER Symbolpositionen (wie DesktopOK) ----
+    // Zwei Radioknoepfe an einer Eigenschaft: DesktopSymbole = Symbolpositionen,
+    // sonst Screenshot.
+    [ObservableProperty] private bool _desktopSymbole;
+    public bool DesktopScreenshot
+    {
+        get => !DesktopSymbole;
+        set { if (value) DesktopSymbole = false; }
+    }
+    public bool DesktopSymboleGewaehlt
+    {
+        get => DesktopSymbole;
+        set { if (value) DesktopSymbole = true; }
+    }
+    partial void OnDesktopSymboleChanged(bool value)
+    {
+        OnPropertyChanged(nameof(DesktopScreenshot));
+        OnPropertyChanged(nameof(DesktopSymboleGewaehlt));
+    }
+
+    public string TgDesktopScreenshot => Tr("Screenshot", "Screenshot");
+    public string TgDesktopSymbole => Tr("Symbolpositionen", "Icon positions");
+
+    // Beim Wiederherstellen: nur die Variante, die in der Sicherung liegt.
+    private bool _hatScreenshot = true, _hatSymbole = true;
+    public bool EnDesktopScreenshot => EnDesktopShot && _hatScreenshot;
+    public bool EnDesktopSymbole => EnDesktopShot && _hatSymbole;
+    public string TipDesktopScreenshot => !_hatScreenshot
+        ? Tr("Die gewählte Sicherung enthält keinen Desktop-Screenshot.", "The selected backup contains no desktop screenshot.")
+        : IsRestoreMode
+            ? Tr("Öffnet das Foto des Desktops - die Symbole danach von Hand anordnen.", "Opens the picture of the desktop - then arrange the icons by hand.")
+            : Tr("Fotografiert den Desktop, ein Bild pro Bildschirm.", "Takes a picture of the desktop, one per screen.");
+    public string TipDesktopSymbole => !_hatSymbole
+        ? Tr("Die gewählte Sicherung enthält keine Symbolpositionen.", "The selected backup contains no icon positions.")
+        : IsRestoreMode
+            ? Tr("Setzt jedes Desktop-Symbol wieder an seine gesicherte Stelle (wie DesktopOK).", "Puts every desktop icon back in its saved position (like DesktopOK).")
+            : Tr("Merkt sich, welches Desktop-Symbol wo liegt (wie DesktopOK).", "Remembers where each desktop icon is (like DesktopOK).");
     public string ModeTitle => IsRestoreMode
         ? Tr("Wiederherstellen", "Restore")
         : Tr("Sichern", "Backup");
@@ -1201,6 +1255,27 @@ public partial class MainWindowViewModel : ObservableObject
         // Gesichert wird genau dorthin, wo das Feld zeigt - mit eigenem Ordner
         // steht dort schon "G:\DASI_...". Angelegt wird er erst jetzt.
         _laufZiel = BackupPath;
+        if (!IsRestoreMode && Directory.Exists(_laufZiel) && BackupTarget.IsBackupFolder(_laufZiel))
+        {
+            // Hinein in eine vorhandene Sicherung: Sie wird aktualisiert (das
+            // Profil per /MIR gespiegelt). Stammt sie erkennbar von einem
+            // anderen Rechner, ginge dabei dessen Stand verloren - nachfragen.
+            var vonRechner = BackupTarget.MachineOf(_laufZiel);
+            if (vonRechner is not null
+                && !string.Equals(vonRechner, BackupTarget.SafeMachineName(Environment.MachineName), StringComparison.OrdinalIgnoreCase)
+                && !await ShowYesNo(Tr("Sicherung eines anderen Rechners", "Backup of another computer"),
+                    Tr($"Der gewählte Ordner enthält die Sicherung des Rechners \"{vonRechner}\":\n{_laufZiel}\n\n"
+                       + "Wird hineingesichert, wird sie mit diesem Rechner abgeglichen - was es hier nicht gibt, wird dort gelöscht.\n\nTrotzdem in diesen Ordner sichern?",
+                       $"The selected folder contains the backup of the computer \"{vonRechner}\":\n{_laufZiel}\n\n"
+                       + "Backing up into it syncs it with this computer - anything that does not exist here is deleted there.\n\nBack up into this folder anyway?")))
+            {
+                Log(Tr("[INFO] Start abgebrochen - bitte ein anderes Ziel wählen.",
+                       "[INFO] Start cancelled - please choose another target."));
+                return;
+            }
+            Log(Tr($"[INFO] Vorhandene Sicherung wird aktualisiert: {_laufZiel}",
+                   $"[INFO] Updating the existing backup: {_laufZiel}"));
+        }
         if (!IsRestoreMode && !Directory.Exists(_laufZiel))
         {
             try
@@ -1271,14 +1346,14 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelWallpaper)   t.Add("Import-Wallpaper");
             // Zuletzt: Das Foto soll offen sein, wenn alles andere fertig ist
             // und es ans Anordnen der Symbole geht.
-            if (SelDesktopShot) t.Add("Show-DesktopShot");
+            if (SelDesktopShot) t.Add(DesktopSymbole ? "Restore-DesktopIcons" : "Show-DesktopShot");
         }
         else
         {
             // Zuerst: Das Foto zeigt den Desktop, wie er VOR der Sicherung war,
             // und das kurze Ausblenden der Fenster faellt direkt nach dem Klick
             // auf "Starten" nicht als Stoerung auf.
-            if (SelDesktopShot) t.Add("Capture-DesktopShot");
+            if (SelDesktopShot) t.Add(DesktopSymbole ? "Backup-DesktopIcons" : "Capture-DesktopShot");
             if (SelUser)        t.Add("Backup-User");
             else
             {
@@ -1343,6 +1418,7 @@ public partial class MainWindowViewModel : ObservableObject
                         await _backup.CaptureDesktop();
                         await BringMainWindowToFront();
                         break;
+                    case "Backup-DesktopIcons": await _backup.BackupDesktopIcons(); break;
 
                     case "Restore-User":        await _backup.RestoreUserProfile(); break;
                     case "Restore-AppData":     await _backup.RestoreAppDataOnly(); break;
@@ -1358,6 +1434,7 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Import-Printer":      await _backup.ImportPrinters(); break;
                     case "Import-Wallpaper":    await _backup.ImportWallpaper(); break;
                     case "Show-DesktopShot":    await _backup.ShowDesktopScreenshot(); break;
+                    case "Restore-DesktopIcons": await _backup.RestoreDesktopIcons(); break;
                 }
             }
             catch (Exception ex)
@@ -1468,6 +1545,7 @@ public partial class MainWindowViewModel : ObservableObject
             "Export-Printer" or "Import-Printer"          => Tr("Drucker & Treiber", "Printers & drivers"),
             "Export-Wallpaper" or "Import-Wallpaper"      => Tr("Hintergrundbild", "Wallpaper"),
             "Capture-DesktopShot" or "Show-DesktopShot"   => Tr("Desktop-Screenshot", "Desktop screenshot"),
+            "Backup-DesktopIcons" or "Restore-DesktopIcons" => Tr("Desktop-Symbolpositionen", "Desktop icon positions"),
             _ => choice
         };
     }

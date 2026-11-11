@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using WindowsDaSiTool.Services;
@@ -364,30 +365,59 @@ internal static class Program
         // ================================================================
         Console.WriteLine("\n== Eigener Sicherungsordner ==");
         var zeitpunkt = new DateTime(2026, 11, 10, 8, 5, 0);
-        Check("Name: DASI_<Rechner>_TT_MM_JJJJ_HH_MM, mit fuehrenden Nullen",
-            BackupTarget.FolderName("DESKTOP-7K4Q2M", zeitpunkt) == "DASI_DESKTOP-7K4Q2M_10_11_2026_08_05",
+        Check("Name: DASI_<Rechner>_TT_MM_JJJJ - nur das Datum, mit fuehrenden Nullen",
+            BackupTarget.FolderName("DESKTOP-7K4Q2M", zeitpunkt) == "DASI_DESKTOP-7K4Q2M_10_11_2026",
             BackupTarget.FolderName("DESKTOP-7K4Q2M", zeitpunkt));
         Check("unzulaessige Zeichen im Rechnernamen werden zu _",
-            BackupTarget.FolderName("PC:1/2*?", zeitpunkt) == "DASI_PC_1_2___10_11_2026_08_05",
+            BackupTarget.FolderName("PC:1/2*?", zeitpunkt) == "DASI_PC_1_2___10_11_2026",
             BackupTarget.FolderName("PC:1/2*?", zeitpunkt));
         Check("ohne Rechnernamen: PC",
-            BackupTarget.FolderName("  ", zeitpunkt) == "DASI_PC_10_11_2026_08_05");
-        Check("24-Stunden-Format (18 Uhr, nicht 6)",
-            BackupTarget.FolderName("PC", new DateTime(2026, 11, 10, 18, 45, 0)).EndsWith("_10_11_2026_18_45"));
+            BackupTarget.FolderName("  ", zeitpunkt) == "DASI_PC_10_11_2026");
+        Check("morgens und abends derselbe Ordner",
+            BackupTarget.FolderName("PC", new DateTime(2026, 11, 10, 18, 45, 0)) == BackupTarget.FolderName("PC", zeitpunkt));
 
         var laufwerk = Path.Combine(root, "G");
+        Directory.CreateDirectory(laufwerk);
         Check("eingeschaltet: Ordner unter dem gewaehlten Ziel",
-            BackupTarget.Resolve(laufwerk, true, "PC", zeitpunkt) == Path.Combine(laufwerk, "DASI_PC_10_11_2026_08_05"));
+            BackupTarget.Resolve(laufwerk, true, "PC", zeitpunkt) == Path.Combine(laufwerk, "DASI_PC_10_11_2026"));
         Check("ausgeschaltet: direkt ins gewaehlte Ziel",
             BackupTarget.Resolve(laufwerk, false, "PC", zeitpunkt) == laufwerk);
-        var schonDasi = Path.Combine(laufwerk, "DASI_ALTPC_01_10_2026_12_00");
-        Check("ist das Ziel schon ein DASI-Ordner, kommt der neue DANEBEN (nicht hinein, nicht an seine Stelle)",
-            BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt) == Path.Combine(laufwerk, "DASI_PC_10_11_2026_08_05"),
+        var schonDasi = Path.Combine(laufwerk, "DASI_ALTPC_01_10_2026");
+        Check("ist das Ziel schon ein DASI-Ordner, geht die Sicherung HINEIN (kein neuer Ordner)",
+            BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt) == schonDasi,
             BackupTarget.Resolve(schonDasi, true, "PC", zeitpunkt));
+        var alteFassung = Path.Combine(laufwerk, "DASI_PC_09_11_2026_18_45");
+        Check("auch ein Ordner der alten Fassung mit Uhrzeit wird weiterbenutzt",
+            BackupTarget.Resolve(alteFassung, true, "PC", zeitpunkt) == alteFassung);
         Check("ausgeschaltet bleibt auch ein DASI-Ordner, wie er ist",
             BackupTarget.Resolve(schonDasi, false, "PC", zeitpunkt) == schonDasi);
+
+        // Ein selbst benannter Ordner mit einer Sicherung darin.
+        var eigenerName = Path.Combine(laufwerk, "Sicherung Max");
+        Directory.CreateDirectory(Path.Combine(eigenerName, "Benutzerprofil", "Documents"));
+        Check("Ordner mit Sicherung darin (ohne DASI-Namen): auch hinein",
+            BackupTarget.Resolve(eigenerName, true, "PC", zeitpunkt) == eigenerName);
+        var nurProtokoll = Path.Combine(laufwerk, "Nur Protokoll");
+        Directory.CreateDirectory(nurProtokoll);
+        File.WriteAllText(Path.Combine(nurProtokoll, "Sicherung-Protokoll_PC_2026-11-10_08-05.txt"), "x");
+        Check("ein Protokoll des Tools genuegt als Zeichen einer Sicherung",
+            BackupTarget.IsBackupFolder(nurProtokoll) && BackupTarget.Resolve(nurProtokoll, true, "PC", zeitpunkt) == nurProtokoll);
+        var ohneSicherung = Path.Combine(laufwerk, "Leer");
+        Directory.CreateDirectory(ohneSicherung);
+        File.WriteAllText(Path.Combine(ohneSicherung, "Notiz.txt"), "x");
+        Check("Ordner ohne Sicherung: neuer DASI-Ordner darunter",
+            BackupTarget.Resolve(ohneSicherung, true, "PC", zeitpunkt) == Path.Combine(ohneSicherung, "DASI_PC_10_11_2026"));
+
+        Check("Rechner aus dem Ordnernamen", BackupTarget.MachineOf(schonDasi) == "ALTPC"
+            && BackupTarget.MachineOf(alteFassung) == "PC"
+            && BackupTarget.MachineOf(@"G:\DASI_DESKTOP-7K4Q2M_10_11_2026\") == "DESKTOP-7K4Q2M"
+            && BackupTarget.MachineOf(@"G:\DASI_PC_MIT_UNTERSTRICH_10_11_2026") == "PC_MIT_UNTERSTRICH",
+            BackupTarget.MachineOf(@"G:\DASI_PC_MIT_UNTERSTRICH_10_11_2026"));
+        Check("kein Rechner bei fremden Namen", BackupTarget.MachineOf(eigenerName) is null && BackupTarget.MachineOf("DASI_x") is null);
+        Check("Rechnername im Ordner wie im Vergleich", BackupTarget.SafeMachineName("PC:1") == "PC_1");
+
         Check("auch mit abschliessendem Trennzeichen und Kleinschreibung",
-            BackupTarget.IsOwnFolder(@"G:\dasi_pc_10_11_2026_08_05\") && BackupTarget.IsOwnFolder("/mnt/g/DASI_PC_x/"));
+            BackupTarget.IsOwnFolder(@"G:\dasi_pc_10_11_2026\") && BackupTarget.IsOwnFolder("/mnt/g/DASI_PC_x/"));
         Check("Laufwerkswurzel ist kein DASI-Ordner",
             !BackupTarget.IsOwnFolder(@"G:\") && !BackupTarget.IsOwnFolder(""));
         Check("ein Ordner, der DASI nur enthaelt, zaehlt nicht",
@@ -611,6 +641,122 @@ internal static class Program
             Check("Wiederherstellen: ohne (vorhandene) Sicherung wird nichts gesperrt",
                 AppCatalog.BeimWiederherstellen(Punkt.Firefox, "") is null
                 && AppCatalog.BeimWiederherstellen(Punkt.Firefox, Path.Combine(root, "gibt-es-nicht")) is null);
+        }
+
+        Console.WriteLine("\n== Desktop-Symbole: Zuordnen und Umrechnen ==");
+        {
+            DesktopIcon S(string name, string anzeige, int x, int y) => new(name, anzeige, x, y);
+            var gesichert = new DesktopLayout
+            {
+                Breite = 1920, Hoehe = 1080,
+                Symbole =
+                {
+                    S("::{645FF040-5081-101B-9F08-00AA002F954E}", "Papierkorb", 20, 10),
+                    S("Präsentation.pptx", "Präsentation", 1800, 900),
+                    S("Firefox.lnk", "Firefox", 120, 10),
+                    S("Weg.txt", "Weg", 300, 300),
+                }
+            };
+            var jetzt = new List<DesktopIcon>
+            {
+                S("Firefox.lnk", "Firefox", 5, 5),
+                S("::{645FF040-5081-101B-9F08-00AA002F954E}", "Recycle Bin", 5, 105),
+                S("Präsentation.pptx", "Präsentation", 5, 205),
+                S("Neu.txt", "Neu", 5, 305),
+            };
+            var plan = DesktopIcons.Plan(gesichert, jetzt, 1920, 1080);
+            Check("gleiche Groesse: Stellen 1:1, nichts umgerechnet", !plan.Skaliert
+                && plan.Zuordnung.Single(z => z.Gesichert.Name == "Präsentation.pptx") is { Index: 2, X: 1800, Y: 900 });
+            Check("Papierkorb ueber seine Kennung - auch wenn er hier anders heisst (Recycle Bin)",
+                plan.Zuordnung.Single(z => z.Gesichert.Anzeige == "Papierkorb") is { Index: 1, X: 20, Y: 10 });
+            Check("was es hier nicht gibt, steht als fehlend da", plan.Fehlend.Select(f => f.Name).SequenceEqual(new[] { "Weg.txt" }));
+            Check("neue Symbole bleiben, wo sie sind", plan.Zuordnung.All(z => z.Index != 3));
+
+            var gross = DesktopIcons.Plan(gesichert, jetzt, 3840, 2160);
+            Check("doppelt so grosser Desktop: Stellen im selben Verhaeltnis", gross.Skaliert
+                && gross.Zuordnung.Single(z => z.Gesichert.Name == "Präsentation.pptx") is { X: 3600, Y: 1800 });
+            var schmal = DesktopIcons.Plan(gesichert, jetzt, 1280, 720);
+            Check("kleinerer Desktop: rechts unten bleibt rechts unten, im Bild",
+                schmal.Zuordnung.Single(z => z.Gesichert.Name == "Präsentation.pptx") is { X: 1200, Y: 600 });
+            var draussen = new DesktopLayout { Symbole = { S("Firefox.lnk", "Firefox", 5000, -20) } };
+            Check("Stellen ausserhalb werden in den Desktop geholt",
+                DesktopIcons.Plan(draussen, jetzt, 1920, 1080).Zuordnung.Single() is { X: 1919, Y: 0 });
+
+            // Anzeigename nur als Notbehelf - und nie doppelt vergeben.
+            var umbenannt = new DesktopLayout
+            {
+                Symbole = { S("Firefox (alt).lnk", "Firefox", 1, 1), S("Firefox.lnk", "Firefox", 2, 2) }
+            };
+            var p2 = DesktopIcons.Plan(umbenannt, jetzt, 1920, 1080);
+            Check("erst eindeutige Namen, dann Anzeigenamen - ein Symbol nie zweimal",
+                p2.Zuordnung.Count == 1 && p2.Zuordnung[0].Gesichert.Name == "Firefox.lnk" && p2.Fehlend.Count == 1,
+                string.Join(", ", p2.Zuordnung.Select(z => z.Gesichert.Name)));
+            var nurAnzeige = new DesktopLayout { Symbole = { S("Neu (2).txt", "Neu", 7, 7) } };
+            Check("ohne Namenstreffer hilft der Anzeigename",
+                DesktopIcons.Plan(nurAnzeige, jetzt, 1920, 1080).Zuordnung.Single().Index == 3);
+
+            // Datei: lesbar, mit Umlauten, und wieder einlesbar.
+            var ordner = Path.Combine(root, "symbole", DesktopIcons.FolderName);
+            gesichert.Rechner = "PC"; gesichert.Benutzer = "Anwender"; gesichert.AmRasterAusrichten = true;
+            var symDatei = DesktopIcons.Speichern(ordner, gesichert);
+            Check("Datei: Desktop-Symbole\\Symbolpositionen.json", symDatei == DesktopIcons.Datei(Path.Combine(root, "symbole")));
+            Check("Datei: Umlaute bleiben lesbar", File.ReadAllText(symDatei).Contains("Präsentation.pptx"));
+            var gelesen = DesktopIcons.Laden(symDatei);
+            Check("Datei: wieder eingelesen ist alles gleich", gelesen is not null && gelesen.Breite == 1920 && gelesen.AmRasterAusrichten
+                && gelesen.Symbole.Count == 4 && gelesen.Symbole[1] == gesichert.Symbole[1]);
+            File.WriteAllText(Path.Combine(root, "kaputt.json"), "{ kein json");
+            Check("Datei: fehlend oder kaputt -> null",
+                DesktopIcons.Laden(Path.Combine(root, "gibt-es-nicht.json")) is null && DesktopIcons.Laden(Path.Combine(root, "kaputt.json")) is null);
+
+            // Verfuegbarkeit beim Wiederherstellen: Symbolpositionen allein genuegen.
+            var nurSymbole = Path.Combine(root, "symbole");
+            Check("Wiederherstellen: Desktop-Layout frei, wenn nur Symbolpositionen da sind",
+                AppCatalog.BeimWiederherstellen(Punkt.DesktopShot, nurSymbole) is null
+                && AppCatalog.HatDesktopSymbole(nurSymbole) && !AppCatalog.HatDesktopScreenshot(nurSymbole));
+        }
+
+        Console.WriteLine("\n== Desktop-Symbole: Ablauf (nachgebauter Desktop) ==");
+        {
+            var testDesktop = new TestDesktop(1920, 1080, autoAnordnen: true, raster: false,
+                new DesktopIcon("a.txt", "a", 10, 10), new DesktopIcon("b.txt", "b", 10, 110), new DesktopIcon("", "", 0, 0));
+            DesktopIcons.OeffneDesktop = () => testDesktop;
+            var gelesen = DesktopIcons.Lesen("PC", "Anwender");
+            Check("Lesen: Groesse, Schalter und Symbole (ohne namenlose)", gelesen.Breite == 1920 && gelesen.AutomatischAnordnen
+                && !gelesen.AmRasterAusrichten && gelesen.Symbole.Count == 2 && gelesen.Rechner == "PC");
+
+            var symZiel = new DesktopLayout
+            {
+                Breite = 1920, Hoehe = 1080, AutomatischAnordnen = false, AmRasterAusrichten = true,
+                Symbole = { new("b.txt", "b", 500, 400), new("a.txt", "a", 700, 50), new("c.txt", "c", 900, 900) }
+            };
+            // "c.txt" erscheint erst nach dem zweiten Nachsehen - wie eine Datei,
+            // die der Explorer nach dem Zurueckschreiben gerade erst entdeckt.
+            testDesktop.SpaeterDazu = (2, new DesktopIcon("c.txt", "c", 10, 210));
+            var erg = DesktopIcons.Wiederherstellen(symZiel, TimeSpan.FromSeconds(8));
+            Check("Wiederherstellen: alle drei gesetzt, auch das spaet erschienene", erg.Gesetzt == 3 && erg.Fehlend.Count == 0,
+                $"{erg.Gesetzt}/{erg.Gesamt}, fehlend {erg.Fehlend.Count}");
+            Check("Wiederherstellen: Stellen stimmen", testDesktop.Stelle("b.txt") == (500, 400) && testDesktop.Stelle("a.txt") == (700, 50)
+                && testDesktop.Stelle("c.txt") == (900, 900));
+            Check("Wiederherstellen: \"Automatisch anordnen\" aus und gemeldet", !testDesktop.AutomatischAnordnen && erg.AnordnenAusgeschaltet);
+            Check("Wiederherstellen: Raster wie gesichert", testDesktop.AmRasterAusrichten && erg.RasterUmgestellt);
+            Check("Wiederherstellen: \"Automatisch anordnen\" erst AUS, dann wieder wie gesichert",
+                testDesktop.Protokoll.IndexOf("anordnen=False") < testDesktop.Protokoll.IndexOf("setzen b.txt"));
+
+            var mitAuto = new DesktopLayout { Breite = 1920, Hoehe = 1080, AutomatischAnordnen = true, Symbole = { new("a.txt", "a", 1, 1) } };
+            var erg2 = DesktopIcons.Wiederherstellen(mitAuto, TimeSpan.Zero);
+            Check("war beim Sichern \"Automatisch anordnen\" an, ist es danach wieder an", testDesktop.AutomatischAnordnen && erg2.AnordnenWiederAn && !erg2.AnordnenAusgeschaltet);
+
+            var fehlt = new DesktopLayout { Breite = 1920, Hoehe = 1080, Symbole = { new("weg.txt", "weg", 1, 1) } };
+            var uhr = System.Diagnostics.Stopwatch.StartNew();
+            var erg3 = DesktopIcons.Wiederherstellen(fehlt, TimeSpan.FromSeconds(30));
+            Check("fehlt etwas dauerhaft, wird nicht die ganze Zeit gewartet", erg3.Fehlend.Count == 1 && uhr.Elapsed.TotalSeconds < 8,
+                $"{uhr.Elapsed.TotalSeconds:F1} s");
+
+            DesktopIcons.OeffneDesktop = () => throw new InvalidOperationException("Kein Explorer-Desktop gefunden");
+            bool gemeldet = false;
+            try { DesktopIcons.Lesen("PC", "x"); } catch (InvalidOperationException) { gemeldet = true; }
+            Check("ohne Desktop: der Fehler kommt beim Aufrufer an (nicht verschluckt)", gemeldet);
+            DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? new ExplorerDesktop() : throw new PlatformNotSupportedException();
         }
 
         Console.WriteLine("\n== Desktop-Screenshot: ein Bild pro Monitor ==");
@@ -948,6 +1094,85 @@ internal static class Program
                     DesktopScreenshot.FindImages(bildOrdner).Select(Path.GetFileName).SequenceEqual(plan.Select(p => p.FileName)));
             }
 
+            Console.WriteLine("\n== Desktop-Symbole echt (Explorer) ==");
+            {
+                // Ohne Explorer kein Desktop - auf einem Laeufer ggf. erst starten.
+                if (System.Diagnostics.Process.GetProcessesByName("explorer").Length == 0)
+                {
+                    Console.WriteLine("         Explorer laeuft nicht - wird gestartet");
+                    try { System.Diagnostics.Process.Start("explorer.exe"); } catch (Exception ex) { Console.WriteLine($"         nicht startbar: {ex.Message}"); }
+                }
+                var desktopOrdner = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                var testName = "DaSi-Symboltest.txt";
+                var testDatei = Path.Combine(desktopOrdner, testName);
+                DesktopLayout? vorher = null;
+                string? grund = null;
+                try
+                {
+                    Directory.CreateDirectory(desktopOrdner);
+                    File.WriteAllText(testDatei, "Pruefung der Symbolpositionen");
+                    for (int i = 0; i < 30 && vorher is null; i++)
+                    {
+                        try
+                        {
+                            var l = DesktopIcons.Lesen("CI", "runner");
+                            if (l.Symbole.Any(x => x.Name.Equals(testName, StringComparison.OrdinalIgnoreCase))) vorher = l;
+                            else grund = $"Testsymbol nicht unter {l.Symbole.Count} Symbolen";
+                        }
+                        catch (Exception ex) { grund = ex.Message; }
+                        if (vorher is null) System.Threading.Thread.Sleep(1000);
+                    }
+                    if (vorher is null)
+                    {
+                        Console.WriteLine($"         (kein Explorer-Desktop auf diesem Laeufer: {grund} - Test uebersprungen)");
+                    }
+                    else
+                    {
+                        var symStart = vorher.Symbole.First(x => x.Name.Equals(testName, StringComparison.OrdinalIgnoreCase));
+                        Console.WriteLine($"         Desktop {vorher.Breite} x {vorher.Hoehe}, {vorher.Symbole.Count} Symbol(e), "
+                                          + $"automatisch anordnen = {vorher.AutomatischAnordnen}, Raster = {vorher.AmRasterAusrichten}");
+                        Console.WriteLine($"         Testsymbol \"{symStart.Anzeige}\" bei ({symStart.X},{symStart.Y})");
+                        Check("echt: Desktop hat eine Groesse", vorher.Breite > 0 && vorher.Hoehe > 0);
+                        Check("echt: Name im Desktop-Ordner mit Endung, Anzeigename lesbar",
+                            symStart.Name == testName && symStart.Anzeige.StartsWith("DaSi-Symboltest", StringComparison.OrdinalIgnoreCase), symStart.Anzeige);
+
+                        // Verschieben: alles wie es ist, nur das Testsymbol woanders hin.
+                        var zielX = symStart.X < vorher.Breite / 2 ? vorher.Breite / 2 : vorher.Breite / 4;
+                        var zielY = symStart.Y < vorher.Hoehe / 2 ? vorher.Hoehe / 2 : vorher.Hoehe / 4;
+                        var verschoben = new DesktopLayout
+                        {
+                            Breite = vorher.Breite, Hoehe = vorher.Hoehe, AmRasterAusrichten = vorher.AmRasterAusrichten,
+                            Symbole = { symStart with { X = zielX, Y = zielY } }
+                        };
+                        var e1 = DesktopIcons.Wiederherstellen(verschoben, TimeSpan.FromSeconds(5));
+                        System.Threading.Thread.Sleep(800);
+                        var mitte = DesktopIcons.Lesen("CI", "runner").Symbole.First(x => x.Name == testName);
+                        Console.WriteLine($"         verschoben nach ({mitte.X},{mitte.Y}), Ziel war ({zielX},{zielY})");
+                        Check("echt: Symbol laesst sich versetzen", e1.Gesetzt == 1
+                            && Math.Abs(mitte.X - zielX) < 200 && Math.Abs(mitte.Y - zielY) < 200
+                            && (Math.Abs(mitte.X - symStart.X) > 50 || Math.Abs(mitte.Y - symStart.Y) > 50));
+
+                        // Zurueck: die gesicherte Anordnung von vorhin - ueber die Datei.
+                        var dateiOrdner = Path.Combine(root, "echt-symbole");
+                        DesktopIcons.Speichern(Path.Combine(dateiOrdner, DesktopIcons.FolderName), vorher);
+                        var zurueck = DesktopIcons.Laden(DesktopIcons.Datei(dateiOrdner))!;
+                        var e2 = DesktopIcons.Wiederherstellen(zurueck, TimeSpan.FromSeconds(5));
+                        System.Threading.Thread.Sleep(800);
+                        var symNachher = DesktopIcons.Lesen("CI", "runner");
+                        var ende = symNachher.Symbole.First(x => x.Name == testName);
+                        Console.WriteLine($"         zurueck bei ({ende.X},{ende.Y}), {e2.Gesetzt} von {e2.Gesamt} gesetzt");
+                        Check("echt: aus der Sicherung wieder an der alten Stelle",
+                            Math.Abs(ende.X - symStart.X) <= 2 && Math.Abs(ende.Y - symStart.Y) <= 2, $"({ende.X},{ende.Y}) statt ({symStart.X},{symStart.Y})");
+                        Check("echt: Schalter wie vorher", symNachher.AutomatischAnordnen == vorher.AutomatischAnordnen
+                            && symNachher.AmRasterAusrichten == vorher.AmRasterAusrichten);
+                    }
+                }
+                finally
+                {
+                    try { File.Delete(testDatei); } catch { }
+                }
+            }
+
             var sitzung = DesktopScreenshot.GetInteractiveUser();
             Console.WriteLine($"         angemeldet: {sitzung?.Name ?? "(unbekannt)"}, Profil: {sitzung?.ProfilePath ?? "(unbekannt)"}");
             Check("angemeldeter Benutzer wird ermittelt (oder sauber null)", true);
@@ -1180,3 +1405,42 @@ internal static class Program
         return _failed == 0 ? 0 : 1;
     }
 }
+
+/// <summary>Ein Desktop ohne Explorer - zum Pruefen des Ablaufs.</summary>
+internal sealed class TestDesktop : IDesktopView
+{
+    private readonly int _b, _h;
+    private readonly List<DesktopIcon> _symbole;
+    private int _aufrufe;
+    public (int NachAufruf, DesktopIcon Symbol)? SpaeterDazu;
+    public readonly List<string> Protokoll = new();
+
+    public TestDesktop(int b, int h, bool autoAnordnen, bool raster, params DesktopIcon[] symbole)
+    {
+        _b = b; _h = h; _symbole = symbole.ToList();
+        _auto = autoAnordnen; _raster = raster;
+    }
+
+    private bool _auto, _raster;
+    public (int Breite, int Hoehe) Groesse() => (_b, _h);
+    public bool AutomatischAnordnen { get => _auto; set { _auto = value; Protokoll.Add($"anordnen={value}"); } }
+    public bool AmRasterAusrichten { get => _raster; set { _raster = value; Protokoll.Add($"raster={value}"); } }
+
+    public IReadOnlyList<DesktopIcon> Symbole()
+    {
+        _aufrufe++;
+        if (SpaeterDazu is { } d && _aufrufe > d.NachAufruf && !_symbole.Contains(d.Symbol)) _symbole.Add(d.Symbol);
+        return _symbole.ToList();
+    }
+
+    public void Setzen(int index, int x, int y)
+    {
+        Protokoll.Add($"setzen {_symbole[index].Name}");
+        _symbole[index] = _symbole[index] with { X = x, Y = y };
+    }
+
+    public (int, int) Stelle(string name) => _symbole.First(s => s.Name == name) is var s ? (s.X, s.Y) : (-1, -1);
+
+    public void Dispose() { }
+}
+

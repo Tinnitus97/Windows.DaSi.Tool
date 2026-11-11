@@ -157,6 +157,22 @@ public static class AppCatalog
         return erg;
     }
 
+    /// <summary>
+    /// Liegt in dem Ordner schon eine Sicherung? Irgendein Punkt oder ein
+    /// Protokoll des Tools genuegt.
+    /// </summary>
+    public static bool IstSicherung(string? ordner)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(ordner) || !Directory.Exists(ordner)) return false;
+            if (Enum.GetValues<Punkt>().Any(p => Enthaelt(ordner, p))) return true;
+            return Directory.EnumerateFiles(ordner, "Sicherung-Protokoll_*.txt").Any()
+                || Directory.EnumerateFiles(ordner, "Wiederherstellung-Protokoll_*.txt").Any();
+        }
+        catch { return false; }
+    }
+
     private static readonly (string De, string En) KeineSicherung =
         ("Der gewählte Ordner enthält keine Sicherung. Bitte den Sicherungsordner selbst wählen (z. B. DASI_<PC>_<Datum>).",
          "The selected folder contains no backup. Please select the backup folder itself (e.g. DASI_<PC>_<date>).");
@@ -172,12 +188,19 @@ public static class AppCatalog
             Punkt.Wlan => ("keine WLAN-Profile", "no WiFi profiles"),
             Punkt.Drucker => ("keine Drucker", "no printers"),
             Punkt.Hintergrund => ("kein Hintergrundbild", "no wallpaper"),
-            Punkt.DesktopShot => ("keinen Desktop-Screenshot", "no desktop screenshot"),
+            Punkt.DesktopShot => ("kein Desktop-Layout (weder Screenshot noch Symbolpositionen)", "no desktop layout (neither screenshot nor icon positions)"),
             Punkt.Opera => ("kein Opera-Profil", "no Opera profile"),
             _ => ($"kein {p}-Profil", $"no {p} profile"),
         };
         return ($"Die gewählte Sicherung enthält {was.Item1}.", $"The selected backup contains {was.Item2}.");
     }
+
+    /// <summary>Desktop-Layout, Variante Screenshot: Bilder in der Sicherung?</summary>
+    public static bool HatDesktopScreenshot(string sicherung)
+        => DesktopScreenshot.FindImages(Path.Combine(sicherung, DesktopScreenshot.FolderName)).Count > 0;
+
+    /// <summary>Desktop-Layout, Variante Symbolpositionen: Datei in der Sicherung?</summary>
+    public static bool HatDesktopSymbole(string sicherung) => DesktopIcons.Vorhanden(sicherung);
 
     /// <summary>Liegt der Punkt in der Sicherung?</summary>
     private static bool Enthaelt(string sicherung, Punkt p)
@@ -194,7 +217,7 @@ public static class AppCatalog
             Punkt.Wlan => HatDateien(Path.Combine(sicherung, "WLAN-Profile"), "*.xml"),
             Punkt.Drucker => File.Exists(Path.Combine(sicherung, "Drucker", "Drucker.printerExport")),
             Punkt.Hintergrund => HatDateien(Path.Combine(sicherung, "Hintergrundbild"), "*", ohne: ".txt"),
-            Punkt.DesktopShot => DesktopScreenshot.FindImages(Path.Combine(sicherung, DesktopScreenshot.FolderName)).Count > 0,
+            Punkt.DesktopShot => HatDesktopScreenshot(sicherung) || HatDesktopSymbole(sicherung),
             _ => Programme.FirstOrDefault(a => a.Punkt == p) is { } app && Directory.Exists(Path.Combine(sicherung, app.BackupOrdner)),
         };
     }

@@ -1097,6 +1097,125 @@ public sealed class BackupService
         return Task.CompletedTask;
     }
 
+    // ------------------------------------------------------------ Desktop-Symbole (wie DesktopOK)
+
+    /// <summary>
+    /// Der Explorer zeigt den Desktop des angemeldeten Benutzers. Gehoert das
+    /// gewaehlte Profil jemand anderem, wuerde der falsche Desktop gelesen bzw.
+    /// umgestellt - dann lieber gar nichts tun.
+    /// </summary>
+    private bool DesktopGehoertZumProfil(string wasDe, string wasEn)
+    {
+        var angemeldet = DesktopScreenshot.GetInteractiveUser();
+        if (angemeldet?.ProfilePath is { } eigenesProfil && !ProfileExcludes.SameFolder(eigenesProfil, SourcePath))
+        {
+            _log(Loc.Tr($"[FEHLER] {wasDe}: Zu sehen ist der Desktop von {angemeldet.Name} ({eigenesProfil}), gewählt ist aber {SourcePath}. "
+                        + "Bitte als dieser Benutzer anmelden und das Tool dort starten.",
+                        $"[ERROR] {wasEn}: the visible desktop belongs to {angemeldet.Name} ({eigenesProfil}), but {SourcePath} is selected. "
+                        + "Please sign in as that user and run the tool there."));
+            return false;
+        }
+        if (angemeldet is null)
+            _log(Loc.Tr("[INFO] Der angemeldete Benutzer ließ sich nicht ermitteln - verwendet wird der Desktop, der gerade zu sehen ist.",
+                        "[INFO] The signed-in user could not be determined - the desktop currently on screen is used."));
+        return true;
+    }
+
+    /// <summary>Merkt sich, welches Desktop-Symbol wo liegt.</summary>
+    public async Task BackupDesktopIcons()
+    {
+        if (!DesktopGehoertZumProfil("Keine Symbolpositionen gesichert", "No icon positions backed up")) return;
+
+        DesktopLayout layout;
+        try
+        {
+            var benutzer = Path.GetFileName(SourcePath.TrimEnd('\\', '/'));
+            layout = await Task.Run(() => DesktopIcons.Lesen(Environment.MachineName, benutzer));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Desktop-Symbole ließen sich nicht lesen: {ex.Message}",
+                        $"[ERROR] The desktop icons could not be read: {ex.Message}"));
+            return;
+        }
+        if (layout.Symbole.Count == 0)
+        {
+            _log(Loc.Tr("[WARNUNG] Auf dem Desktop liegen keine Symbole - es gibt keine Positionen zu sichern.",
+                        "[WARNING] There are no icons on the desktop - there are no positions to back up."));
+            return;
+        }
+
+        string datei;
+        try { datei = DesktopIcons.Speichern(Path.Combine(BackupPath, DesktopIcons.FolderName), layout); }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Symbolpositionen konnten nicht gespeichert werden: {ex.Message}",
+                        $"[ERROR] Icon positions could not be saved: {ex.Message}"));
+            return;
+        }
+        if (layout.AutomatischAnordnen)
+            _log(Loc.Tr("[INFO] \"Symbole automatisch anordnen\" ist an - Windows reiht die Symbole selbst. Das wird mit vermerkt.",
+                        "[INFO] \"Auto arrange icons\" is on - Windows lines up the icons itself. This is noted as well."));
+        _log(Loc.Tr($"[ERFOLG] Positionen von {layout.Symbole.Count} Desktop-Symbolen gesichert (Desktop {layout.Breite} x {layout.Hoehe}): {datei}",
+                    $"[SUCCESS] Positions of {layout.Symbole.Count} desktop icons backed up (desktop {layout.Breite} x {layout.Hoehe}): {datei}"));
+    }
+
+    /// <summary>
+    /// Setzt jedes gesicherte Desktop-Symbol wieder an seine Stelle. Laeuft
+    /// zuletzt - nach Profil, Programmen und Hintergrundbild, damit die Symbole
+    /// dann auch da sind.
+    /// </summary>
+    public async Task RestoreDesktopIcons()
+    {
+        var datei = DesktopIcons.Datei(BackupPath);
+        var layout = DesktopIcons.Laden(datei);
+        if (layout is null)
+        {
+            _log(Loc.Tr($"[FEHLER] In der Sicherung liegen keine Symbolpositionen: {datei}",
+                        $"[ERROR] The backup contains no icon positions: {datei}"));
+            return;
+        }
+        if (!DesktopGehoertZumProfil("Symbolpositionen nicht gesetzt", "Icon positions not applied")) return;
+
+        _log(Loc.Tr($"[INFO] Setze {layout.Symbole.Count} Desktop-Symbole an ihre gesicherte Stelle (gesichert am {layout.Erstellt:dd.MM.yyyy} auf {layout.Rechner})...",
+                    $"[INFO] Moving {layout.Symbole.Count} desktop icons to their saved positions (saved on {layout.Erstellt:yyyy-MM-dd} on {layout.Rechner})..."));
+        IconErgebnis erg;
+        try { erg = await Task.Run(() => DesktopIcons.Wiederherstellen(layout, TimeSpan.FromSeconds(10))); }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Symbolpositionen ließen sich nicht setzen: {ex.Message}",
+                        $"[ERROR] The icon positions could not be applied: {ex.Message}"));
+            return;
+        }
+
+        if (erg.AnordnenAusgeschaltet)
+            _log(Loc.Tr("[INFO] \"Symbole automatisch anordnen\" war an und ist jetzt aus - sonst reihte Windows die Symbole sofort wieder neu.",
+                        "[INFO] \"Auto arrange icons\" was on and is now off - otherwise Windows would line the icons up again right away."));
+        if (erg.AnordnenWiederAn)
+            _log(Loc.Tr("[INFO] Beim Sichern war \"Symbole automatisch anordnen\" an - so ist es jetzt auch hier.",
+                        "[INFO] \"Auto arrange icons\" was on when backing up - it is now on here as well."));
+        if (erg.RasterUmgestellt)
+            _log(Loc.Tr($"[INFO] \"Symbole am Raster ausrichten\" wie beim Sichern: {(layout.AmRasterAusrichten ? "an" : "aus")}.",
+                        $"[INFO] \"Align icons to grid\" as when backing up: {(layout.AmRasterAusrichten ? "on" : "off")}."));
+        if (erg.Skaliert)
+            _log(Loc.Tr($"[INFO] Der Desktop ist hier {erg.BreiteJetzt} x {erg.HoeheJetzt} groß statt {layout.Breite} x {layout.Hoehe} - die Positionen wurden im selben Verhältnis umgerechnet.",
+                        $"[INFO] The desktop here is {erg.BreiteJetzt} x {erg.HoeheJetzt} instead of {layout.Breite} x {layout.Hoehe} - the positions were scaled accordingly."));
+        if (erg.Fehlend.Count > 0)
+        {
+            var namen = string.Join(", ", erg.Fehlend.Take(10).Select(f => string.IsNullOrWhiteSpace(f.Anzeige) ? f.Name : f.Anzeige))
+                        + (erg.Fehlend.Count > 10 ? ", ..." : "");
+            _log(Loc.Tr($"[WARNUNG] {erg.Fehlend.Count} von {erg.Gesamt} Symbolen gibt es auf diesem Desktop nicht: {namen}. "
+                        + "Sie wurden ausgelassen - am besten zusammen mit dem Benutzerprofil und den Programmen wiederherstellen.",
+                        $"[WARNING] {erg.Fehlend.Count} of {erg.Gesamt} icons do not exist on this desktop: {namen}. "
+                        + "They were skipped - best restore them together with the user profile and the programs."));
+        }
+        _log(erg.Gesetzt > 0
+            ? Loc.Tr($"[ERFOLG] {erg.Gesetzt} von {erg.Gesamt} Desktop-Symbolen an ihre gesicherte Stelle gesetzt.",
+                     $"[SUCCESS] {erg.Gesetzt} of {erg.Gesamt} desktop icons moved to their saved positions.")
+            : Loc.Tr("[FEHLER] Kein gesichertes Symbol ließ sich auf diesem Desktop zuordnen.",
+                     "[ERROR] None of the saved icons could be matched on this desktop."));
+    }
+
     /// <summary>Vergleicht zwei Dateien inhaltlich (Groesse, dann Bytes).</summary>
     private static bool FilesAreEqual(string a, string b)
     {
