@@ -7,6 +7,22 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [Unveröffentlicht]
+
+### Geändert
+
+- **Gebaut wird immer mit der neuesten LTS-Version von .NET** – nicht mit der
+  neuesten Version überhaupt. Die Workflows holen sich ihr SDK über die gemeinsame
+  Aktion `.github/actions/dotnet-lts` aus der Versionsliste von Microsoft, ohne
+  feste Nummer. Derzeit ist das .NET 10; das neuere .NET 11 ist eine STS-Version
+  mit kurzem Support und wird übersprungen. Die wöchentliche Prüfung
+  (`dotnet-version.yml`) misst ebenfalls an der neuesten LTS-Version statt an der
+  neuesten stabilen und wird erst rot, wenn eine neue LTS-Version erscheint
+  (voraussichtlich .NET 12 im November 2027) und die Projektdateien nachgezogen
+  werden müssen.
+
+---
+
 ## [1.2.5] - 2026-11-11
 
 ### Behoben

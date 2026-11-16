@@ -4,9 +4,12 @@
     <OutputType>WinExe</OutputType>
     <!-- Bewusst .NET 10 (LTS), festgelegt auch in global.json: Mit .NET 11
          gebaut (Version 1.2.0) startete die EXE auf Windows-10-Rechnern nicht.
-         Die woechentliche Pruefung (.github/workflows/dotnet-version.yml)
-         respektiert die Festlegung und meldet erst, wenn .NET 10 aus dem
-         Support faellt. Vor einem Wechsel: auf Windows 10 testen. -->
+         Gebaut wird immer mit der neuesten LTS-Version: Die Workflows holen
+         ihr SDK ueber .github/actions/dotnet-lts, und die woechentliche
+         Pruefung (.github/workflows/dotnet-version.yml) wird rot, sobald eine
+         neue LTS-Version erscheint (.NET 12, voraussichtlich November 2027).
+         STS-Versionen wie .NET 11 laesst sie aus. Vor einem Wechsel: auf
+         Windows 10 testen. -->
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
