@@ -1,30 +1,29 @@
 name: .NET-Version prüfen
 
-# Wird mit der richtigen .NET-Version gebaut?
+# Wird mit der neuesten LTS-Version von .NET gebaut?
 #
-# Maßstab ist die Liste von Microsoft, aus der auch die Download-Seite gespeist
-# wird (releases-index.json). Geprüft wird jede Stelle, die beim Bauen die
-# Version festlegt:
+# LTS-Versionen (.NET 8, 10, 12 ...) werden drei Jahre unterstützt,
+# STS-Versionen (.NET 9, 11 ...) nur zwei. Gebaut wird deshalb immer mit der
+# neuesten LTS-Version - nie mit einer neueren STS-Version, auch wenn sie
+# schon erschienen ist.
+#
+# Maßstab ist die Liste von Microsoft, aus der auch die Download-Seite
+# gespeist wird (releases-index.json): die höchste LTS-Version, die
+# unterstützt wird - also weder Vorschau noch Release Candidate.
+#
+# Die Workflows holen sich ihr SDK über .github/actions/dotnet-lts selbst aus
+# dieser Liste; dort steht keine feste Nummer. Geprüft wird hier jede Stelle,
+# die die Version FEST nennt:
 #
 #   <TargetFramework> in jeder .csproj / .props    net10.0, net10.0-windows
-#   dotnet-version in den Workflows                10.0.x
-#   sdk.version in global.json                     10.0.100
-#   die SDK-Prüfung in build.ps1                   '^\s*10\.'
+#   sdk.version in global.json                     falls vorhanden
+#   die SDK-Prüfung in build.ps1                   falls vorhanden
+#   .NET-Einrichtung in den Workflows              nur über .github/actions/dotnet-lts
 #
-# SOLL-VERSION:
-#   - Steht in global.json eine SDK-Version, ist das Projekt auf diese
-#     .NET-Version FESTGELEGT. Dann müssen alle Stellen genau sie nennen. Eine
-#     neuere Version wird nur als Hinweis gemeldet. Rot wird die Prüfung erst,
-#     wenn die festgelegte Version nicht mehr unterstützt wird; ein halbes
-#     Jahr vorher warnt sie.
-#     Derzeit: .NET 10 (LTS), weil die EXE mit .NET 11 (Version 1.2.0) auf
-#     Windows-10-Rechnern nicht startete.
-#   - Ohne Festlegung: die neueste stabile Version, also weder Vorschau noch
-#     Release Candidate.
-#
-# Steht irgendwo eine andere Version, schlägt die Prüfung fehl und nennt Datei
-# und Zeile. Zusätzlich läuft sie jeden Montag von selbst - Supportende und
-# neue .NET-Versionen kommen, ohne dass sich im Repository etwas ändert.
+# Steht irgendwo eine andere Version - oder richtet ein Workflow .NET an der
+# gemeinsamen Aktion vorbei ein -, schlägt die Prüfung fehl und nennt Datei
+# und Zeile. Zusätzlich läuft sie jeden Montag von selbst: Erscheint eine neue
+# LTS-Version, wird sie rot, bis die Projektdateien nachgezogen sind.
 
 on:
   push:
@@ -34,12 +33,13 @@ on:
     - cron: '23 5 * * 1'
   workflow_dispatch:
 
+
 permissions:
   contents: read
 
 jobs:
   aktuell:
-    name: Neueste stabile .NET-Version
+    name: Neueste LTS-Version von .NET
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -55,6 +55,7 @@ jobs:
               'https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json',
               'https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/releases-index.json',
           ]
+          AKTION = './.github/actions/dotnet-lts'
 
           def lade_liste():
               # Zum Ausprobieren ohne Netz: RELEASES_INDEX=pfad/zur/datei.json
@@ -75,54 +76,27 @@ jobs:
           def zahlen(version):
               return tuple(int(teil) for teil in version.split('.'))
 
-          # Stabil heißt: keine Vorschau (preview) und kein Release Candidate (go-live).
-          lade_liste.cache = lade_liste()
-          stabil = [r for r in lade_liste.cache['releases-index']
-                    if r.get('support-phase') in ('active', 'maintenance')]
-          if not stabil:
-              print('::error::In der Liste von Microsoft steht keine stabile .NET-Version.')
+          liste = lade_liste()['releases-index']
+          # Unterstützt heißt: weder Vorschau (preview) noch Release Candidate
+          # (go-live) noch aus dem Support (eol).
+          unterstuetzt = [r for r in liste if r.get('support-phase') in ('active', 'maintenance')]
+          lts = [r for r in unterstuetzt if r.get('release-type') == 'lts']
+          if not lts:
+              print('::error::In der Liste von Microsoft steht keine unterstützte LTS-Version.')
               sys.exit(1)
-          neueste = max(stabil, key=lambda r: zahlen(r['channel-version']))
-          print(f".NET {neueste['channel-version']} ist die neueste stabile Version "
-                f"({neueste.get('release-type', '?').upper()}, Laufzeit {neueste.get('latest-runtime')}, "
-                f"SDK {neueste.get('latest-sdk')}, vom {neueste.get('latest-release-date')}).")
-
-          # Festlegung in global.json? Dann gilt sie statt der neuesten Version.
-          festgelegt = None
-          if Path('global.json').is_file():
-              sdk = (json.loads(Path('global.json').read_text(encoding='utf-8-sig')).get('sdk') or {}).get('version')
-              if sdk:
-                  festgelegt = '.'.join(sdk.split('.')[:2])
-
-          if festgelegt:
-              soll = festgelegt
-              eintrag = next((r for r in lade_liste.cache['releases-index']
-                              if r.get('channel-version') == soll), None)
-              phase = (eintrag or {}).get('support-phase', 'unbekannt')
-              ende = (eintrag or {}).get('eol-date') or '?'
-              print(f"Das Projekt ist in global.json auf .NET {soll} festgelegt "
-                    f"({(eintrag or {}).get('release-type', '?').upper()}, Support bis {ende}).")
-              if phase not in ('active', 'maintenance'):
-                  print(f'::error file=global.json::.NET {soll} wird nicht mehr unterstützt '
-                        f'(Phase: {phase}, Supportende: {ende}). Die Festlegung muss auf eine '
-                        f'unterstützte Version wechseln - vorher auf Windows 10 testen.')
-                  sys.exit(1)
-              try:
-                  rest = (time.strptime(ende, '%Y-%m-%d'), time.gmtime())
-                  tage = int((time.mktime(rest[0]) - time.mktime(rest[1])) // 86400)
-                  if tage <= 183:
-                      print(f'::warning file=global.json::Der Support für .NET {soll} endet in {tage} Tagen '
-                            f'({ende}). Rechtzeitig auf eine neuere Version wechseln - vorher auf Windows 10 testen.')
-              except ValueError:
-                  pass
-              if zahlen(neueste['channel-version']) > zahlen(soll):
-                  print(f"::notice::.NET {neueste['channel-version']} ist erschienen; das Projekt bleibt "
-                        f"wie festgelegt bei .NET {soll}.")
-          else:
-              soll = neueste['channel-version']
+          neueste = max(lts, key=lambda r: zahlen(r['channel-version']))
+          soll = neueste['channel-version']
+          print(f".NET {soll} ist die neueste LTS-Version (Laufzeit {neueste.get('latest-runtime')}, "
+                f"SDK {neueste.get('latest-sdk')}, vom {neueste.get('latest-release-date')}, "
+                f"Support bis {neueste.get('eol-date') or '?'}).")
+          for r in sorted(unterstuetzt, key=lambda r: zahlen(r['channel-version'])):
+              if zahlen(r['channel-version']) > zahlen(soll):
+                  print(f".NET {r['channel-version']} ist neuer, aber {str(r.get('release-type', '?')).upper()} "
+                        f"(kurzer Support) - wird bewusst nicht verwendet.")
           print()
+          art_von = {r['channel-version']: str(r.get('release-type', '')).upper() for r in liste}
 
-          # (Datei, Zeile, was dort steht, die Version darin, Art der Stelle)
+          # (Datei, Zeile, was dort steht, die Version darin oder None, Art der Stelle)
           stellen = []
 
           def zeilen(pfad):
@@ -144,9 +118,15 @@ jobs:
 
               elif pfad.parent == Path('.github/workflows') and pfad.suffix in ('.yml', '.yaml'):
                   for nr, zeile in zeilen(pfad):
+                      if zeile.lstrip().startswith('#'):
+                          continue
+                      if re.search(r'uses:\s*' + re.escape(AKTION) + r'\s*$', zeile):
+                          stellen.append((pfad, nr, 'neueste LTS, automatisch', soll, 'SDK im Workflow'))
+                      elif re.search(r'uses:\s*actions/setup-dotnet', zeile):
+                          stellen.append((pfad, nr, 'actions/setup-dotnet direkt', None, 'SDK im Workflow'))
                       v = re.search(r'''dotnet-version:\s*['"]?((\d+\.\d+)[^'"\s]*)''', zeile)
                       if v:
-                          stellen.append((pfad, nr, v.group(1), v.group(2), 'SDK im Workflow'))
+                          stellen.append((pfad, nr, f'feste Nummer {v.group(1)}', None, 'SDK im Workflow'))
 
               elif pfad.name == 'global.json':
                   version = (json.loads(pfad.read_text(encoding='utf-8-sig')).get('sdk') or {}).get('version')
@@ -165,25 +145,26 @@ jobs:
               print('::error::Keine Stelle gefunden, an der die .NET-Version festgelegt wird. Hat sich der Aufbau geändert?')
               sys.exit(1)
 
-          veraltet = 0
+          falsch = 0
           for pfad, nr, text, version, art in stellen:
               ok = version == soll
-              print(f"  [{'OK' if ok else 'ALT'}]  {pfad.as_posix()}:{nr}  {art}: {text}")
+              print(f"  [{'OK' if ok else 'FALSCH'}]  {pfad.as_posix()}:{nr}  {art}: {text}")
               if ok:
                   continue
-              veraltet += 1
-              if festgelegt:
-                  print(f'::error file={pfad.as_posix()},line={nr}::{art}: {text} weicht von der '
-                        f'Festlegung in global.json ab - das Projekt baut mit .NET {soll}.')
+              falsch += 1
+              if version is None:
+                  grund = (f'keine feste Version und kein direktes setup-dotnet - bitte "uses: {AKTION}" '
+                           f'verwenden, die nimmt immer die neueste LTS-Version')
+              elif zahlen(version) > zahlen(soll):
+                  wie = 'eine STS-Version (kurzer Support)' if art_von.get(version) == 'STS' else 'eine Vorschau'
+                  grund = f'{text} ist {wie} - gebaut wird mit der neuesten LTS-Version, .NET {soll}'
               else:
-                  wie = 'eine Vorschau' if zahlen(version) > zahlen(soll) else 'veraltet'
-                  print(f'::error file={pfad.as_posix()},line={nr}::{art}: {text} ist {wie} - '
-                        f'die neueste stabile Version ist .NET {soll}.')
+                  grund = f'{text} ist veraltet - die neueste LTS-Version ist .NET {soll}'
+              print(f'::error file={pfad.as_posix()},line={nr}::{art}: {grund}.')
 
           print()
-          if veraltet:
-              print(f'{veraltet} von {len(stellen)} Stellen bauen nicht mit .NET {soll}.')
+          if falsch:
+              print(f'{falsch} von {len(stellen)} Stellen bauen nicht mit der neuesten LTS-Version (.NET {soll}).')
               sys.exit(1)
-          print(f'Alle {len(stellen)} Stellen bauen mit .NET {soll}'
-                + (' (festgelegt in global.json).' if festgelegt else '.'))
+          print(f'Alle {len(stellen)} Stellen bauen mit .NET {soll}, der neuesten LTS-Version.')
           PY

@@ -420,9 +420,12 @@ Voraussetzung ist das [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet
 > **Warum .NET 10 und nicht das neuere .NET 11?** Mit .NET 11 gebaut (Version
 > 1.2.0) startete das Tool auf Windows-10-Rechnern nicht. Das Projekt ist deshalb
 > in `global.json` auf .NET 10 (LTS) festgelegt. Ein daneben installiertes
-> .NET 11 SDK stört nicht, `dotnet` nimmt hier trotzdem das 10er-SDK. Die
-> wöchentliche Prüfung respektiert die Festlegung und meldet sich erst, wenn
-> der Support für .NET 10 ausläuft.
+> .NET 11 SDK stört nicht, `dotnet` nimmt hier trotzdem das 10er-SDK. Allgemein gilt:
+> Gebaut wird immer mit der **neuesten LTS-Version** von .NET, nie mit einer
+> neueren STS-Version. Die Workflows holen sich ihr SDK dafür über
+> `.github/actions/dotnet-lts` aus der Versionsliste von Microsoft, und die
+> wöchentliche Prüfung meldet sich, sobald eine neue LTS-Version erscheint und die
+> Projektdateien nachgezogen werden müssen.
 
 ```powershell
 git clone https://github.com/Tinnitus97/Windows.DaSi.Tool.git

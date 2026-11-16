@@ -1,0 +1,71 @@
+name: '.NET einrichten (neueste LTS-Version)'
+description: >-
+  Ermittelt aus der Versionsliste von Microsoft die neueste unterstützte
+  LTS-Version von .NET und installiert deren SDK. Eine neuere STS-Version
+  (kurzer Support) wird bewusst nicht genommen.
+
+# Warum keine feste Nummer in den Workflows: Erscheint eine neue LTS-Version
+# (.NET 12 im November 2027), bauen alle Workflows ab dann von selbst damit -
+# keine Stelle muss von Hand nachgezogen werden. Eine STS-Version wie .NET 11
+# wird übersprungen, auch wenn sie neuer ist.
+#
+# Maßstab ist dieselbe Liste, aus der die Download-Seite von Microsoft gespeist
+# wird (releases-index.json): "release-type" = lts, "support-phase" = active
+# oder maintenance - also weder Vorschau noch Release Candidate.
+
+outputs:
+  version:
+    description: 'Die verwendete LTS-Version, z. B. 10.0'
+    value: ${{ steps.lts.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Neueste LTS-Version von .NET ermitteln
+      id: lts
+      shell: pwsh
+      run: |
+        $quellen = @(
+          'https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json',
+          'https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/releases-index.json'
+        )
+        $liste = $null
+        $fehler = ''
+        # Zum Ausprobieren ohne Netz: RELEASES_INDEX=pfad/zur/datei.json
+        if ($env:RELEASES_INDEX) { $liste = Get-Content $env:RELEASES_INDEX -Raw | ConvertFrom-Json }
+        foreach ($versuch in 1..3) {
+          if ($liste) { break }
+          foreach ($url in $quellen) {
+            try { $liste = Invoke-RestMethod -Uri $url -TimeoutSec 30; break }
+            catch { $fehler = "${url}: $($_.Exception.Message)" }
+          }
+          if ($liste) { break }
+          Start-Sleep -Seconds (10 * $versuch)
+        }
+        if (-not $liste) {
+          Write-Host "::error::Die Liste der .NET-Versionen war nicht abrufbar ($fehler)."
+          exit 1
+        }
+
+        $alle = $liste.'releases-index'
+        $lts = $alle |
+          Where-Object { $_.'release-type' -eq 'lts' -and $_.'support-phase' -in @('active', 'maintenance') } |
+          Sort-Object { [version]$_.'channel-version' } -Descending |
+          Select-Object -First 1
+        if (-not $lts) {
+          Write-Host '::error::In der Liste von Microsoft steht keine unterstützte LTS-Version.'
+          exit 1
+        }
+        $version = $lts.'channel-version'
+        Write-Host ".NET $version ist die neueste LTS-Version (SDK $($lts.'latest-sdk'), Support bis $($lts.'eol-date'))."
+
+        $neuer = $alle |
+          Where-Object { $_.'support-phase' -in @('active', 'maintenance') -and [version]$_.'channel-version' -gt [version]$version }
+        foreach ($n in $neuer) {
+          Write-Host ".NET $($n.'channel-version') ist neuer, aber $($n.'release-type'.ToUpper()) (kurzer Support) - wird bewusst nicht verwendet."
+        }
+        "version=$version" >> $env:GITHUB_OUTPUT
+
+    - uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: '${{ steps.lts.outputs.version }}.x'
