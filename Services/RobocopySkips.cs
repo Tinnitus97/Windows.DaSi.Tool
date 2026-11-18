@@ -64,6 +64,13 @@ public sealed class RobocopySkips
     private static readonly Regex Abschluss =
         new(@"^\s*(?:ERROR|FEHLER)\s*:", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
+    // Mit /R:1 und mehr kuendigt robocopy statt des Abschlusses den naechsten
+    // Versuch an: "Waiting 1 seconds... Retrying..." - in jeder Sprache mit
+    // der Wartezeit als Zahl und Auslassungspunkten. Danach folgt fuer dieselbe
+    // Datei ein neuer Block - oder sie wird beim zweiten Versuch kopiert.
+    private static readonly Regex Wiederholung =
+        new(@"\d.*\.\.\.\s*$", RegexOptions.CultureInvariant);
+
     private enum Erwartet { Nichts, Grund, Abschluss }
 
     private readonly string _rootAnzeige;
@@ -72,8 +79,11 @@ public sealed class RobocopySkips
     private readonly Dictionary<int, int> _anzahl = new();
     private readonly Dictionary<int, string> _grund = new();
     private readonly List<(int Code, string Path)> _pfade = new();
+    private readonly HashSet<string> _gesehen = new(StringComparer.OrdinalIgnoreCase);
     private Erwartet _erwartet = Erwartet.Nichts;
     private int _code;
+    // Die Datei des laufenden Blocks, falls sie mit ihm erst gezaehlt wurde.
+    private string? _gezaehlt;
 
     /// <param name="root">Der Ordner, dessen Meldungen zusammengefasst werden, z. B. "C:\Users\Max\AppData".</param>
     /// <param name="zurueck">
@@ -119,9 +129,15 @@ public sealed class RobocopySkips
         {
             if (pfad is not null && IsUnder(pfad, _root))
             {
-                Count++;
-                _anzahl[code] = _anzahl.TryGetValue(code, out var n) ? n + 1 : 1;
-                if (_pfade.Count < MaxPaths) _pfade.Add((code, pfad));
+                // Jede Datei nur einmal - auch wenn robocopy sie mehrfach meldet.
+                _gezaehlt = null;
+                if (_gesehen.Add(pfad))
+                {
+                    Count++;
+                    _anzahl[code] = _anzahl.TryGetValue(code, out var n) ? n + 1 : 1;
+                    if (_pfade.Count < MaxPaths) _pfade.Add((code, pfad));
+                    _gezaehlt = pfad;
+                }
                 _code = code;
                 _erwartet = Erwartet.Grund;
                 return true;
@@ -148,9 +164,34 @@ public sealed class RobocopySkips
             _erwartet = Erwartet.Abschluss;
             return true;
         }
+        if (Wiederholung.IsMatch(line))
+        {
+            // Noch nicht aufgegeben: Zaehlung zuruecknehmen. Scheitert auch
+            // der naechste Versuch, kommt ein neuer Block; klappt er, wurde
+            // die Datei kopiert und gehoert nicht in die Liste.
+            Zuruecknehmen();
+            _erwartet = Erwartet.Nichts;
+            return true;
+        }
         // Statt des Abschlusses kam etwas anderes - das gehoert nicht mehr dazu.
         _erwartet = Erwartet.Nichts;
         return false;
+    }
+
+    private void Zuruecknehmen()
+    {
+        if (_gezaehlt is null) return;
+        _gesehen.Remove(_gezaehlt);
+        Count--;
+        if (_anzahl.TryGetValue(_code, out var n))
+        {
+            if (n <= 1) _anzahl.Remove(_code); else _anzahl[_code] = n - 1;
+        }
+        for (int i = _pfade.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(_pfade[i].Path, _gezaehlt, StringComparison.OrdinalIgnoreCase)) { _pfade.RemoveAt(i); break; }
+        }
+        _gezaehlt = null;
     }
 
     /// <summary>Erkennt die Kopfzeile einer robocopy-Fehlermeldung.</summary>

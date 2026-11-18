@@ -1046,6 +1046,30 @@ internal static class Program
                 && bloecke.All(b => zListe.Contains(b)), zListe.Split('\n')[0]);
             Check("Sichern bleibt beim alten Wortlaut", !new RobocopySkips(wurzel).Zurueck
                 && new RobocopySkips(wurzel).Summary("AppData", null, De).Contains("nicht gesichert"));
+
+            // Mit /R:1 (Zurueckschreiben) meldet robocopy eine gesperrte Datei
+            // ZWEIMAL: erst mit der Ankuendigung des naechsten Versuchs, dann
+            // endgueltig - so gesehen auf dem Windows-Laeufer.
+            var w = new RobocopySkips(@"C:\S\AppData", zurueck: true);
+            var zweimal = new[]
+            {
+                @"2026/11/18 20:01:39 ERROR 32 (0x00000020) Copying File C:\S\AppData\Roaming\a\000003.log",
+                "The process cannot access the file because it is being used by another process.",
+                "Waiting 1 seconds... Retrying...",
+                @"2026/11/18 20:01:40 ERROR 32 (0x00000020) Copying File C:\S\AppData\Roaming\a\000003.log",
+                "The process cannot access the file because it is being used by another process.",
+                "ERROR: RETRY LIMIT EXCEEDED.",
+            };
+            Check("Wiederholung: alle sechs Zeilen bleiben aus dem Protokoll", zweimal.All(w.Swallow));
+            Check("Wiederholung: die Datei zaehlt einmal", w.Count == 1 && w.Paths.Count == 1 && w.CountByCode[32] == 1,
+                $"{w.Count} / {w.Paths.Count}");
+            var klappt = new RobocopySkips(@"C:\S\AppData", zurueck: true);
+            Check("Wiederholung gelingt: Kopf, Grund und Ankuendigung geschluckt",
+                klappt.Swallow(@"2026/11/18 20:01:39 FEHLER 32 (0x00000020) Folgende Datei wird kopiert C:\S\AppData\b.db")
+                && klappt.Swallow("Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird.")
+                && klappt.Swallow("Wartezeit: 1 Sekunden... Wiederholung..."));
+            Check("Wiederholung gelingt: die Datei zaehlt NICHT als uebersprungen",
+                klappt.Count == 0 && klappt.Paths.Count == 0 && klappt.CountByCode.Count == 0 && !klappt.Swallow("\t  Neuer       \t\t  12\tC:\\S\\AppData\\b.db"));
         }
 
         Console.WriteLine("\n== Ausschlussliste: Zwischenspeicher und rechnergebundener Zustand ==");
