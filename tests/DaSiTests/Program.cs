@@ -1011,6 +1011,184 @@ internal static class Program
             Check("1,234 files: englisch mit Komma", viele.Summary("AppData", null, En).Contains("1,234 files"));
         }
 
+        Console.WriteLine("\n== robocopy beim Zurueckschreiben: gesperrte Dateien im Profil ==");
+        {
+            // Die Zeilen aus dem Protokoll vom 18.11.2026: robocopy nennt den
+            // Pfad in der SICHERUNG, gesperrt ist die Datei im Profil.
+            const string wurzel = @"C:\DASI_DESKTOP-6SLTVM2_18_11_2026\Benutzerprofil\AppData";
+            var z = new RobocopySkips(wurzel, zurueck: true);
+            var bloecke = new[]
+            {
+                @"Local\Microsoft\Edge\User Data\GrShaderCache\data_3",
+                @"Local\Microsoft\Edge\User Data\Default\EdgeHubAppUsage\EdgeHubAppUsageSQLite.db",
+                @"Local\Packages\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\LocalState\EBWebView\Default\Login Data",
+            };
+            bool alleGeschluckt = true;
+            foreach (var rel in bloecke)
+            {
+                alleGeschluckt &= z.Swallow($@"2026/11/18 20:44:06 FEHLER 32 (0x00000020) Folgende Datei wird kopiert {wurzel}\{rel}");
+                alleGeschluckt &= z.Swallow("Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird.");
+                alleGeschluckt &= z.Swallow("Fehler: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.");
+            }
+            Check("Zurueckschreiben: jeder Block bleibt aus dem Protokoll", alleGeschluckt);
+            Check("Zurueckschreiben: gezaehlt und erwartbar", z.Count == 3 && z.AllExpected && z.OtherErrors == 0 && z.Zurueck);
+            var zKurz = z.Summary("AppData", @"C:\DASI_DESKTOP-6SLTVM2_18_11_2026\" + RobocopySkips.RestoreListFileName, De);
+            Check("Zurueckschreiben: \"nicht zurückgeschrieben\" statt \"nicht gesichert\"",
+                zKurz.StartsWith("[WARNUNG] AppData: 3 Dateien nicht zurückgeschrieben") && !zKurz.Contains("gesichert"), zKurz.Split('\n')[0]);
+            Check("Zurueckschreiben: erklaert, dass die vorhandene Fassung bleibt", zKurz.Contains("vorhandene Fassung"));
+            Check("Zurueckschreiben: eigene Liste", zKurz.Contains("AppData-nicht-wiederhergestellt.txt")
+                && RobocopySkips.RestoreListFileName != RobocopySkips.ListFileName);
+            Check("Zurueckschreiben: zaehlt nicht als Fehlschlag", !ActionOutcome.IsErrorLine(zKurz));
+            Check("Zurueckschreiben englisch", z.Summary("AppData", null, En).StartsWith("[WARNING] AppData: 3 files not restored"));
+            var zListe = z.ListText("AppData", new DateTime(2026, 11, 18, 20, 44, 0), De);
+            Check("Zurueckschreiben: Liste mit Ueberschrift und allen Pfaden",
+                zListe.Contains("nicht zurückgeschrieben werden konnten") && zListe.Contains("Wiederherstellung vom 18.11.2026 20:44")
+                && bloecke.All(b => zListe.Contains(b)), zListe.Split('\n')[0]);
+            Check("Sichern bleibt beim alten Wortlaut", !new RobocopySkips(wurzel).Zurueck
+                && new RobocopySkips(wurzel).Summary("AppData", null, De).Contains("nicht gesichert"));
+
+            // Mit /R:1 (Zurueckschreiben) meldet robocopy eine gesperrte Datei
+            // ZWEIMAL: erst mit der Ankuendigung des naechsten Versuchs, dann
+            // endgueltig - so gesehen auf dem Windows-Laeufer.
+            var w = new RobocopySkips(@"C:\S\AppData", zurueck: true);
+            var zweimal = new[]
+            {
+                @"2026/11/18 20:01:39 ERROR 32 (0x00000020) Copying File C:\S\AppData\Roaming\a\000003.log",
+                "The process cannot access the file because it is being used by another process.",
+                "Waiting 1 seconds... Retrying...",
+                @"2026/11/18 20:01:40 ERROR 32 (0x00000020) Copying File C:\S\AppData\Roaming\a\000003.log",
+                "The process cannot access the file because it is being used by another process.",
+                "ERROR: RETRY LIMIT EXCEEDED.",
+            };
+            Check("Wiederholung: alle sechs Zeilen bleiben aus dem Protokoll", zweimal.All(w.Swallow));
+            Check("Wiederholung: die Datei zaehlt einmal", w.Count == 1 && w.Paths.Count == 1 && w.CountByCode[32] == 1,
+                $"{w.Count} / {w.Paths.Count}");
+            var klappt = new RobocopySkips(@"C:\S\AppData", zurueck: true);
+            Check("Wiederholung gelingt: Kopf, Grund und Ankuendigung geschluckt",
+                klappt.Swallow(@"2026/11/18 20:01:39 FEHLER 32 (0x00000020) Folgende Datei wird kopiert C:\S\AppData\b.db")
+                && klappt.Swallow("Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird.")
+                && klappt.Swallow("Wartezeit: 1 Sekunden... Wiederholung..."));
+            Check("Wiederholung gelingt: die Datei zaehlt NICHT als uebersprungen",
+                klappt.Count == 0 && klappt.Paths.Count == 0 && klappt.CountByCode.Count == 0 && !klappt.Swallow("\t  Neuer       \t\t  12\tC:\\S\\AppData\\b.db"));
+        }
+
+        Console.WriteLine("\n== Ausschlussliste: Zwischenspeicher und rechnergebundener Zustand ==");
+        {
+            var ap = Path.Combine(root, "ausschluss", "Anwender");
+            var mit = ProfileExcludes.Build(ap, includeAppData: true);
+            bool Drin(string rel) => mit.Contains(Path.Combine(ap, rel), StringComparer.OrdinalIgnoreCase);
+            Check("winget-Zustand (App-Installer) bleibt draussen - Ursache von 0x8A150009",
+                Drin(@"AppData\Local\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe")
+                && Drin(@"AppData\Local\Packages\Microsoft.Winget.Source_8wekyb3d8bbwe"));
+            Check("Windows-Shell (Suche/Widgets) bleibt draussen",
+                Drin(@"AppData\Local\Packages\MicrosoftWindows.Client.CBS_cw5n1h2txyewy")
+                && Drin(@"AppData\Local\Packages\Microsoft.Windows.Search_cw5n1h2txyewy"));
+            Check("Grafik-Zwischenspeicher der Browser bleiben draussen",
+                Drin(@"AppData\Local\Microsoft\Edge\User Data\GrShaderCache")
+                && Drin(@"AppData\Local\Microsoft\Edge\User Data\ShaderCache")
+                && Drin(@"AppData\Local\Google\Chrome\User Data\Default\GPUCache")
+                && Drin(@"AppData\Local\BraveSoftware\Brave-Browser\User Data\Default\DawnWebGPUCache"));
+            Check("wie bisher: Cache im Standardprofil", Drin(@"AppData\Local\Microsoft\Edge\User Data\Default\Cache")
+                && Drin(@"AppData\Local\Google\Chrome\User Data\Default\Cache"));
+            Check("die Browserprofile selbst bleiben drin",
+                !Drin(@"AppData\Local\Microsoft\Edge\User Data") && !Drin(@"AppData\Local\Microsoft\Edge\User Data\Default")
+                && !Drin(@"AppData\Local\Packages"));
+            Check("alles liegt in AppData", ProfileExcludes.AppDataAusschluesse().All(a => a.StartsWith(@"AppData\", StringComparison.Ordinal)));
+            Check("keine Dubletten", mit.Count == mit.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        }
+
+        Console.WriteLine("\n== winget: Rueckgabewerte und Ausgabe ==");
+        {
+            Check("0x8A150009 ist -1978335223 (Wert aus dem Protokoll)", WingetFehler.IndexZuNeu == -1978335223);
+            Check("bisherige Werte unveraendert", WingetFehler.SchonAktuell == -1978335189
+                && WingetFehler.SchonInstalliert == -1978335135 && WingetFehler.NichtGefunden == -1978335212);
+            Check("Hex-Schreibweise wie in der winget-Doku", WingetFehler.Hex(-1978335223) == "0x8A150009", WingetFehler.Hex(-1978335223));
+            Check("kaputte Quelle erkannt", WingetFehler.QuelleKaputt(WingetFehler.IndexZuNeu)
+                && WingetFehler.QuelleKaputt(WingetFehler.IndexBeschaedigt) && WingetFehler.QuelleKaputt(WingetFehler.QuellenBeschaedigt)
+                && WingetFehler.QuelleKaputt(WingetFehler.QuellDatenFehlen));
+            Check("Paketfehler sind keine kaputte Quelle", !WingetFehler.QuelleKaputt(0) && !WingetFehler.QuelleKaputt(WingetFehler.NichtGefunden)
+                && !WingetFehler.QuelleKaputt(WingetFehler.SchonInstalliert) && !WingetFehler.QuelleKaputt(1603));
+            Check("auch an der Ausgabe erkannt", WingetFehler.QuelleKaputt(1, "0x8a150009 : Cannot write to index; it is a higher schema version")
+                && !WingetFehler.QuelleKaputt(1, "Installer failed with exit code: 1603"));
+            Check("Erklaerung fuer 0x8A150009", WingetFehler.Erklaerung(WingetFehler.IndexZuNeu, De)?.Contains("neueren winget-Fassung") == true);
+            Check("keine Erklaerung fuer unbekannte Werte", WingetFehler.Erklaerung(1603, De) is null);
+
+            // So kam die Ausgabe an: Fortschrittskreisel und eine Zeile voller
+            // Leerzeichen, per Wagenruecklauf ueberschrieben.
+            var roh = "   - \r   \\ \r   | \r   / \r" + new string(' ', 120) + "\r"
+                      + "An unexpected error occurred while executing the command:\r\n"
+                      + "0x8a150009 : Cannot write to index; it is a higher schema version\r\n";
+            var meldung = WingetFehler.LetzteMeldung(roh);
+            Check("Ausgabe: nur die Meldung, ohne Kreisel und Leerzeilen",
+                meldung == "An unexpected error occurred while executing the command: | 0x8a150009 : Cannot write to index; it is a higher schema version",
+                meldung);
+            Check("Ausgabe: Fortschrittsbalken fallen weg",
+                WingetFehler.LetzteMeldung("Gefunden Firefox [Mozilla.Firefox.de]\n  ██████████████▒▒▒▒▒▒  40.0 MB / 70.1 MB\nInstallation fehlgeschlagen mit Exitcode: 1603\n")
+                == "Gefunden Firefox [Mozilla.Firefox.de] | Installation fehlgeschlagen mit Exitcode: 1603");
+            Check("Ausgabe: leer bleibt leer", WingetFehler.LetzteMeldung("") == "" && WingetFehler.LetzteMeldung(" \r - \r\n") == "");
+
+            var ordner = new[]
+            {
+                @"C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_1.9.25200.0_x64__8wekyb3d8bbwe",
+                @"C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_1.26.430.0_x64__8wekyb3d8bbwe",
+                @"C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_1.21.10120.0_x64__8wekyb3d8bbwe",
+            };
+            var sortiert = WingetFehler.NeuesteZuerst(ordner);
+            Check("App-Installer: neueste Fassung zuerst (1.26 vor 1.21 vor 1.9)",
+                sortiert[0].Contains("_1.26.") && sortiert[1].Contains("_1.21.") && sortiert[2].Contains("_1.9."), string.Join(" ", sortiert.Select(Path.GetFileName)));
+            Check("App-Installer: Fassung aus dem Ordnernamen", WingetFehler.OrdnerVersion(ordner[1]) == new Version(1, 26, 430, 0)
+                && WingetFehler.OrdnerVersion(@"C:\x\Microsoft.DesktopAppInstaller_kaputt") is null);
+        }
+
+        Console.WriteLine("\n== Desktop-Symbole: Systemsymbole einschalten ==");
+        {
+            const string dieserPc = "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}";
+            const string benutzer = "::{59031a47-3f72-44a7-89c5-5595fe6b30ee}";
+            const string papierkorb = "::{645FF040-5081-101B-9F08-00AA002F954E}";
+            Check("Kennung eines Systemsymbols", DesktopIcons.SystemsymbolKennung(dieserPc) == "{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
+                && DesktopIcons.SystemsymbolKennung(benutzer) == "{59031A47-3F72-44A7-89C5-5595FE6B30EE}");
+            Check("Dateien und unbekannte Kennungen sind keine Systemsymbole", DesktopIcons.SystemsymbolKennung("Firefox.lnk") is null
+                && DesktopIcons.SystemsymbolKennung("::{00000000-0000-0000-0000-000000000000}") is null);
+
+            // Wie im Protokoll: Auf dem alten Desktop lagen "Dieser PC" und der
+            // Benutzerordner ("Anwender"), auf dem neuen nur der Papierkorb.
+            var alt = new DesktopLayout
+            {
+                Breite = 1920, Hoehe = 1080,
+                Symbole = { new(dieserPc, "Dieser PC", 10, 10), new(benutzer, "Anwender", 10, 110), new(papierkorb, "Papierkorb", 10, 210), new("Firefox.lnk", "Firefox", 10, 310) }
+            };
+            var neuDesk = new TestDesktop(1920, 1080, autoAnordnen: false, raster: true, new DesktopIcon(papierkorb, "Papierkorb", 5, 5));
+            Check("fehlende Systemsymbole: genau die zwei", DesktopIcons.FehlendeSystemsymbole(alt, neuDesk.Symbole())
+                .SequenceEqual(new[] { "{20D04FE0-3AEA-1069-A2D8-08002B30309D}", "{59031A47-3F72-44A7-89C5-5595FE6B30EE}" }));
+
+            // Nach dem Einschalten zeigt der Explorer sie - hier: beim naechsten Nachsehen.
+            List<string>? angefragt = null;
+            DesktopIcons.OeffneDesktop = () => neuDesk;
+            var ergSys = DesktopIcons.Wiederherstellen(alt, TimeSpan.FromSeconds(8), k =>
+            {
+                angefragt = k.ToList();
+                neuDesk.SpaeterDazu = (0, new DesktopIcon(dieserPc, "Dieser PC", 100, 100));
+                neuDesk.Dazu(new DesktopIcon(benutzer.ToUpperInvariant(), "Anwender123", 100, 200));
+                return true;
+            });
+            Check("Einschalten: mit den fehlenden Kennungen aufgerufen", angefragt?.Count == 2, string.Join(", ", angefragt ?? new()));
+            Check("Einschalten: Desktop danach aktualisiert", neuDesk.Protokoll.Contains("aktualisieren"));
+            Check("Einschalten: gemeldet", ergSys.Eingeschaltet?.Count == 2);
+            Check("Benutzerordner heisst hier anders (Anwender123) - zugeordnet trotzdem, ueber die Kennung",
+                neuDesk.Stelle(benutzer.ToUpperInvariant()) == (10, 110));
+            Check("Dieser PC an seine Stelle", neuDesk.Stelle(dieserPc) == (10, 10));
+            Check("nur Firefox fehlt noch", ergSys.Fehlend.Count == 1 && ergSys.Fehlend[0].Name == "Firefox.lnk",
+                string.Join(", ", ergSys.Fehlend.Select(f => f.Name)));
+
+            var nochmal = DesktopIcons.Wiederherstellen(alt, TimeSpan.Zero, k => throw new InvalidOperationException("darf nicht kommen"));
+            Check("sind alle Systemsymbole da, wird nichts eingeschaltet", nochmal.Eingeschaltet is null);
+            var ohne = new TestDesktop(1920, 1080, false, true);
+            DesktopIcons.OeffneDesktop = () => ohne;
+            var ergOhne = DesktopIcons.Wiederherstellen(alt, TimeSpan.Zero, k => false);
+            Check("klappt das Einschalten nicht, steht nichts als eingeschaltet da", ergOhne.Eingeschaltet is null && ergOhne.Fehlend.Count == 4);
+            DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? new ExplorerDesktop() : throw new PlatformNotSupportedException();
+        }
+
         // ================================================================
         // Austauschskript WIRKLICH ausfuehren - nur unter Windows moeglich
         // ================================================================
@@ -1341,6 +1519,51 @@ internal static class Program
                       File.Exists(Path.Combine(zielRobo, "einstellungen.json"))
                       && File.Exists(Path.Combine(zielRobo, "Roaming", "discord", "Local Storage", "leveldb", "000003.log")));
             }
+
+            Console.WriteLine("\n== echtes robocopy: Zurueckschreiben, Datei im Profil gesperrt ==");
+            {
+                // Wie am 18.11.2026: Edge laeuft im Hintergrund und haelt eine
+                // Datei im Profil offen, waehrend AppData zurueckgeschrieben wird.
+                var neuProfil = Path.Combine(root, "robo", "Neu", "AppData");
+                var neuLeveldb = Path.Combine(neuProfil, "Roaming", "discord", "Local Storage", "leveldb");
+                Directory.CreateDirectory(neuLeveldb);
+                var imProfil = Path.Combine(neuLeveldb, "000003.log");
+                File.WriteAllText(imProfil, "die Fassung, die im Profil stehen bleibt");
+                File.SetLastWriteTimeUtc(imProfil, DateTime.UtcNow.AddDays(-3));
+
+                using var sperreZiel = new FileStream(imProfil, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                // Dieselben Schalter wie das Zurueckschreiben des Programms.
+                var schalter = string.Join(" ", ProfileExcludes.RestoreSwitches().Select(s => s.Contains(' ') ? $"\"{s}\"" : s));
+                var psiZurueck = new System.Diagnostics.ProcessStartInfo("robocopy.exe",
+                    $"\"{zielRobo}\" \"{neuProfil}\" {schalter} /NP /NDL")
+                {
+                    RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true,
+                };
+                var zurueckSkips = new RobocopySkips(zielRobo, zurueck: true);
+                var zurueckDurch = new System.Collections.Generic.List<string>();
+                using var roboZ = System.Diagnostics.Process.Start(psiZurueck)!;
+                string? zz;
+                while ((zz = roboZ.StandardOutput.ReadLine()) is not null)
+                {
+                    if (string.IsNullOrWhiteSpace(zz)) continue;
+                    if (!zurueckSkips.Swallow(zz)) zurueckDurch.Add(zz);
+                }
+                roboZ.WaitForExit();
+                Console.WriteLine($"         robocopy endete mit {roboZ.ExitCode}, geschluckt: {zurueckSkips.Count} Datei(en), "
+                                  + $"Fehlerart(en): {string.Join(", ", zurueckSkips.CountByCode.Keys)}");
+                Check("Zurueckschreiben echt: robocopy meldet den Fehlschlag (Bit 8)", (roboZ.ExitCode & 8) != 0, roboZ.ExitCode.ToString());
+                Check("Zurueckschreiben echt: erfasst ist die Datei - mit dem Pfad in der SICHERUNG",
+                      zurueckSkips.Count == 1 && zurueckSkips.Paths[0].Path.StartsWith(zielRobo, StringComparison.OrdinalIgnoreCase)
+                      && zurueckSkips.Paths[0].Path.EndsWith("000003.log"),
+                      string.Join(" | ", zurueckSkips.Paths.Select(x => x.Path)));
+                Check("Zurueckschreiben echt: Fehler 32, also erwartbar, kein anderer Fehler",
+                      zurueckSkips.CountByCode.ContainsKey(32) && zurueckSkips.AllExpected && zurueckSkips.OtherErrors == 0);
+                Check("Zurueckschreiben echt: im Protokoll steht keine Meldung mehr dazu",
+                      !zurueckDurch.Where(x => x[0] != ' ' && x[0] != '\t')
+                                   .Any(x => x.Contains("0x00000020") || x.Contains("RETRY", StringComparison.OrdinalIgnoreCase)
+                                             || x.Contains("Wiederholungsversuch", StringComparison.OrdinalIgnoreCase)));
+                Check("Zurueckschreiben echt: der Rest ist angekommen", File.Exists(Path.Combine(neuProfil, "einstellungen.json")));
+            }
         }
 
         if (OperatingSystem.IsWindows())
@@ -1506,6 +1729,10 @@ internal sealed class TestDesktop : IDesktopView
         if (SpaeterDazu is { } d && _aufrufe > d.NachAufruf && !_symbole.Contains(d.Symbol)) _symbole.Add(d.Symbol);
         return _symbole.ToList();
     }
+
+    public void Aktualisieren() => Protokoll.Add("aktualisieren");
+
+    public void Dazu(DesktopIcon symbol) => _symbole.Add(symbol);
 
     public void Setzen(int index, int x, int y)
     {

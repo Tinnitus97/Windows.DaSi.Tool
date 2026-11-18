@@ -6,7 +6,7 @@
 
 **Datensicherung und Wiederherstellung von Windows-Benutzerprofilen — portabel, schnell, ohne Installation.**
 
-[![Version](https://img.shields.io/badge/Version-1.2.5-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.6-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)](https://github.com/Tinnitus97/Windows.DaSi.Tool)
 [![.NET](https://img.shields.io/badge/.NET-10%20LTS-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![License](https://img.shields.io/badge/Lizenz-MIT-green)](LICENSE)
@@ -112,6 +112,14 @@ Wiederherstellung sie findet.
   als `AppData-nicht-gesichert.txt` im Sicherungsordner. Sind nur solche gesperrten
   oder verschwundenen Dateien betroffen, gilt die Sicherung als gelungen. Echte
   Fehler wie *Zugriff verweigert* oder ein volles Ziellaufwerk bleiben Fehler.
+  Beim **Zurückschreiben** gilt dasselbe: Vorher schließt das Tool die Browser und
+  Mailprogramme. Was im Profil trotzdem gesperrt ist, behält seine vorhandene Fassung
+  und steht in `AppData-nicht-wiederhergestellt.txt`.
+  Nie mitgenommen wird der **rechnergebundene Zustand** von Windows-Bestandteilen:
+  der des App-Installers (winget) und der Windows-Shell (Suche, Widgets). Die
+  Datenbanken eines neueren winget legen das ältere auf einem frisch eingerichteten
+  Rechner sonst lahm (`0x8A150009`). Das gilt auch beim Zurückschreiben älterer
+  Sicherungen, die ihn noch enthalten.
 - **Cloud-Ordner** erkennt das Tool selbst: OneDrive (auch mit angehängtem
   Firmennamen wie *OneDrive - Muster GmbH*), Dropbox, Google Drive, iCloud, STRATO
   HiDrive, Nextcloud, ownCloud, MagentaCLOUD, pCloud, MEGA, Box, Tresorit, Seafile,
@@ -175,6 +183,10 @@ und setzt beim Wiederherstellen jedes wieder an seine Stelle — automatisch.
 - *Symbole automatisch anordnen* wird dafür ausgeschaltet — sonst reihte Windows die
   Symbole sofort wieder neu. *Am Raster ausrichten* wird so eingestellt, wie es beim
   Sichern war. War beim Sichern *automatisch anordnen* an, ist es danach wieder an.
+- Systemsymbole wie *Dieser PC* oder der Benutzerordner sind auf einem frisch
+  eingerichteten Rechner meist ausgeschaltet. Lagen sie beim Sichern auf dem Desktop,
+  schaltet das Tool sie ein (wie unter *Desktopsymboleinstellungen*) und setzt sie an
+  ihre Stelle, auch wenn der Benutzerordner hier anders heißt.
 - Symbole, die es auf dem neuen Desktop (noch) nicht gibt, nennt das Protokoll. Am
   besten läuft der Punkt deshalb zusammen mit Benutzerprofil und Programmen — er
   kommt in der Warteschlange ohnehin zuletzt.
@@ -237,6 +249,14 @@ Fehlt etwas, **hilft es sich zuerst selbst**:
    es klappt auch auf LTSC- und Server-Ausgaben.
 3. **Paketquelle antwortet nicht:** Es setzt die Quellen zurück
    (`winget source reset --force`) und lädt sie neu.
+
+Auch **mitten im Import** greift die Reparatur: Scheitert ein Programm nicht am Paket,
+sondern an winget selbst (etwa `0x8A150009`, „higher schema version“), setzt das Tool
+die Quellen zurück und versucht es erneut. Hilft das nicht, aktualisiert es den
+App-Installer von GitHub. Bleibt winget unbrauchbar, bricht der Import mit einer
+Meldung samt Abhilfe ab, statt jedes weitere Programm einzeln scheitern zu lassen.
+Browser, die beim Wiederherstellen ihres Profils fehlen, installiert es auf demselben
+Weg nach.
 
 Erst wenn das alles nicht hilft, kommt eine Meldung, und zwar vor der ersten Kopie und
 nicht nach zwanzig Minuten Profilsicherung. Jeder Versuch steht im Protokoll. Stehen

@@ -18,7 +18,7 @@ namespace WindowsDaSiTool.ViewModels;
 public partial class MainWindowViewModel : ObservableObject
 {
     // ---- Konstanten (entsprechen den $script:-Variablen) ----
-    private const string VersionString = "1.2.5";
+    private const string VersionString = "1.2.6";
     private const string ProjectUrl = "https://github.com/Tinnitus97/Windows.DaSi.Tool";
 
     private readonly CancellationTokenState _cancel = new();
@@ -615,6 +615,7 @@ public partial class MainWindowViewModel : ObservableObject
                     : Tr($"{baseText}  -  {count} Dateien", $"{baseText}  -  {count} files"));
         };
         _winget = new WingetService(_runner, _cancel, Log);
+        _backup.Winget = _winget;
 
         // Sprache aus der Windows-Anzeigesprache uebernehmen (Fallback: Deutsch).
         // Setzt Localizer direkt, damit der Begruessungstext sofort passt.

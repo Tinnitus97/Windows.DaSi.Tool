@@ -33,6 +33,9 @@ public sealed class RobocopySkips
     /// <summary>Name der Liste, die neben der Sicherung abgelegt wird.</summary>
     public const string ListFileName = "AppData-nicht-gesichert.txt";
 
+    /// <summary>Name der Liste nach dem Zurueckschreiben - ebenfalls neben der Sicherung.</summary>
+    public const string RestoreListFileName = "AppData-nicht-wiederhergestellt.txt";
+
     /// <summary>Hoechstens so viele Pfade werden gemerkt; die Anzahl stimmt immer.</summary>
     public const int MaxPaths = 100_000;
 
@@ -61,22 +64,44 @@ public sealed class RobocopySkips
     private static readonly Regex Abschluss =
         new(@"^\s*(?:ERROR|FEHLER)\s*:", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
+    // Mit /R:1 und mehr kuendigt robocopy statt des Abschlusses den naechsten
+    // Versuch an: "Waiting 1 seconds... Retrying..." - in jeder Sprache mit
+    // der Wartezeit als Zahl und Auslassungspunkten. Danach folgt fuer dieselbe
+    // Datei ein neuer Block - oder sie wird beim zweiten Versuch kopiert.
+    private static readonly Regex Wiederholung =
+        new(@"\d.*\.\.\.\s*$", RegexOptions.CultureInvariant);
+
     private enum Erwartet { Nichts, Grund, Abschluss }
 
     private readonly string _rootAnzeige;
     private readonly string _root;
+    private readonly bool _zurueck;
     private readonly Dictionary<int, int> _anzahl = new();
     private readonly Dictionary<int, string> _grund = new();
     private readonly List<(int Code, string Path)> _pfade = new();
+    private readonly HashSet<string> _gesehen = new(StringComparer.OrdinalIgnoreCase);
     private Erwartet _erwartet = Erwartet.Nichts;
     private int _code;
+    // Die Datei des laufenden Blocks, falls sie mit ihm erst gezaehlt wurde.
+    private string? _gezaehlt;
 
     /// <param name="root">Der Ordner, dessen Meldungen zusammengefasst werden, z. B. "C:\Users\Max\AppData".</param>
-    public RobocopySkips(string root)
+    /// <param name="zurueck">
+    /// true beim Zurueckschreiben ins Profil. robocopy nennt auch dann den
+    /// Pfad in der QUELLE - <paramref name="root"/> ist also der AppData-Ordner
+    /// in der Sicherung. Gesperrt ist in dem Fall die Datei am Ziel: Ein
+    /// laufendes Programm haelt sie offen, und dort bleibt die vorhandene
+    /// Fassung stehen.
+    /// </param>
+    public RobocopySkips(string root, bool zurueck = false)
     {
         _rootAnzeige = root;
         _root = Normal(root);
+        _zurueck = zurueck;
     }
+
+    /// <summary>true beim Zurueckschreiben ins Profil.</summary>
+    public bool Zurueck => _zurueck;
 
     /// <summary>Uebersprungene Dateien im Ordner.</summary>
     public int Count { get; private set; }
@@ -104,9 +129,15 @@ public sealed class RobocopySkips
         {
             if (pfad is not null && IsUnder(pfad, _root))
             {
-                Count++;
-                _anzahl[code] = _anzahl.TryGetValue(code, out var n) ? n + 1 : 1;
-                if (_pfade.Count < MaxPaths) _pfade.Add((code, pfad));
+                // Jede Datei nur einmal - auch wenn robocopy sie mehrfach meldet.
+                _gezaehlt = null;
+                if (_gesehen.Add(pfad))
+                {
+                    Count++;
+                    _anzahl[code] = _anzahl.TryGetValue(code, out var n) ? n + 1 : 1;
+                    if (_pfade.Count < MaxPaths) _pfade.Add((code, pfad));
+                    _gezaehlt = pfad;
+                }
                 _code = code;
                 _erwartet = Erwartet.Grund;
                 return true;
@@ -133,9 +164,34 @@ public sealed class RobocopySkips
             _erwartet = Erwartet.Abschluss;
             return true;
         }
+        if (Wiederholung.IsMatch(line))
+        {
+            // Noch nicht aufgegeben: Zaehlung zuruecknehmen. Scheitert auch
+            // der naechste Versuch, kommt ein neuer Block; klappt er, wurde
+            // die Datei kopiert und gehoert nicht in die Liste.
+            Zuruecknehmen();
+            _erwartet = Erwartet.Nichts;
+            return true;
+        }
         // Statt des Abschlusses kam etwas anderes - das gehoert nicht mehr dazu.
         _erwartet = Erwartet.Nichts;
         return false;
+    }
+
+    private void Zuruecknehmen()
+    {
+        if (_gezaehlt is null) return;
+        _gesehen.Remove(_gezaehlt);
+        Count--;
+        if (_anzahl.TryGetValue(_code, out var n))
+        {
+            if (n <= 1) _anzahl.Remove(_code); else _anzahl[_code] = n - 1;
+        }
+        for (int i = _pfade.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(_pfade[i].Path, _gezaehlt, StringComparison.OrdinalIgnoreCase)) { _pfade.RemoveAt(i); break; }
+        }
+        _gezaehlt = null;
     }
 
     /// <summary>Erkennt die Kopfzeile einer robocopy-Fehlermeldung.</summary>
@@ -163,12 +219,26 @@ public sealed class RobocopySkips
     public string Summary(string was, string? listPath, Func<string, string, string> tr)
     {
         var sb = new StringBuilder();
-        sb.Append(tr($"[WARNUNG] {was}: {Zahl(Count, tr)} Dateien nicht gesichert",
-                     $"[WARNING] {was}: {Zahl(Count, tr)} files not backed up"));
-        sb.Append(AllExpected
-            ? tr(" - von laufenden Programmen gesperrt oder während der Sicherung gelöscht. Bei AppData ist das normal.",
-                 " - locked by running programs or deleted during the backup. This is normal for AppData.")
-            : ":");
+        if (_zurueck)
+        {
+            sb.Append(tr($"[WARNUNG] {was}: {Zahl(Count, tr)} Dateien nicht zurückgeschrieben",
+                         $"[WARNING] {was}: {Zahl(Count, tr)} files not restored"));
+            sb.Append(AllExpected
+                ? tr(" - im Profil von laufenden Programmen gesperrt; dort bleibt die vorhandene Fassung stehen. "
+                     + "Meist sind es Zwischenspeicher, die sich von selbst neu anlegen.",
+                     " - locked in the profile by running programs; the existing version stays in place. "
+                     + "Mostly these are caches that are recreated automatically.")
+                : ":");
+        }
+        else
+        {
+            sb.Append(tr($"[WARNUNG] {was}: {Zahl(Count, tr)} Dateien nicht gesichert",
+                         $"[WARNING] {was}: {Zahl(Count, tr)} files not backed up"));
+            sb.Append(AllExpected
+                ? tr(" - von laufenden Programmen gesperrt oder während der Sicherung gelöscht. Bei AppData ist das normal.",
+                     " - locked by running programs or deleted during the backup. This is normal for AppData.")
+                : ":");
+        }
         foreach (var (code, n) in _anzahl.OrderByDescending(x => x.Value).ThenBy(x => x.Key))
         {
             sb.Append('\n').Append("    ").Append(Zahl(n, tr).PadLeft(7)).Append(" × ")
@@ -184,17 +254,36 @@ public sealed class RobocopySkips
     public string ListText(string was, DateTime when, Func<string, string, string> tr)
     {
         var sb = new StringBuilder();
-        sb.AppendLine(tr($"Windows DaSi Tool - {was}: Dateien, die nicht gesichert werden konnten",
-                         $"Windows DaSi Tool - {was}: files that could not be backed up"));
-        sb.AppendLine(tr($"Sicherung vom {when.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture)}, Quelle: {_rootAnzeige}",
-                         $"Backup of {when.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}, source: {_rootAnzeige}"));
-        sb.AppendLine();
-        sb.AppendLine(tr("Fehler 32/33: von einem laufenden Programm gesperrt. Fehler 2/3: während der Sicherung",
-                         "Error 32/33: locked by a running program. Error 2/3: deleted or renamed during the"));
-        sb.AppendLine(tr("gelöscht oder umbenannt. Programme wie Discord, Teams oder Browser schreiben ständig",
-                         "backup. Programs such as Discord, Teams or browsers write to AppData all the time -"));
-        sb.AppendLine(tr("in AppData - wer diese Dateien braucht, schließt die Programme und sichert erneut.",
-                         "if you need these files, close the programs and back up again."));
+        if (_zurueck)
+        {
+            sb.AppendLine(tr($"Windows DaSi Tool - {was}: Dateien, die nicht zurückgeschrieben werden konnten",
+                             $"Windows DaSi Tool - {was}: files that could not be restored"));
+            sb.AppendLine(tr($"Wiederherstellung vom {when.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture)}, Quelle: {_rootAnzeige}",
+                             $"Restore of {when.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}, source: {_rootAnzeige}"));
+            sb.AppendLine();
+            sb.AppendLine(tr("Fehler 32/33: Die Datei im Profil war von einem laufenden Programm gesperrt - dort",
+                             "Error 32/33: the file in the profile was locked by a running program - the existing"));
+            sb.AppendLine(tr("steht weiter die vorhandene Fassung. Fehler 2/3: Die Datei verschwand während des",
+                             "version stays in place. Error 2/3: the file vanished while copying. Mostly these"));
+            sb.AppendLine(tr("Kopierens. Meist sind es Zwischenspeicher. Wer diese Dateien braucht, schließt die",
+                             "are caches. If you need these files, close the programs (including those in the"));
+            sb.AppendLine(tr("Programme (auch die im Infobereich) und stellt AppData erneut wieder her.",
+                             "notification area) and restore AppData again."));
+        }
+        else
+        {
+            sb.AppendLine(tr($"Windows DaSi Tool - {was}: Dateien, die nicht gesichert werden konnten",
+                             $"Windows DaSi Tool - {was}: files that could not be backed up"));
+            sb.AppendLine(tr($"Sicherung vom {when.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture)}, Quelle: {_rootAnzeige}",
+                             $"Backup of {when.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}, source: {_rootAnzeige}"));
+            sb.AppendLine();
+            sb.AppendLine(tr("Fehler 32/33: von einem laufenden Programm gesperrt. Fehler 2/3: während der Sicherung",
+                             "Error 32/33: locked by a running program. Error 2/3: deleted or renamed during the"));
+            sb.AppendLine(tr("gelöscht oder umbenannt. Programme wie Discord, Teams oder Browser schreiben ständig",
+                             "backup. Programs such as Discord, Teams or browsers write to AppData all the time -"));
+            sb.AppendLine(tr("in AppData - wer diese Dateien braucht, schließt die Programme und sichert erneut.",
+                             "if you need these files, close the programs and back up again."));
+        }
 
         foreach (var gruppe in _pfade.GroupBy(p => p.Code).OrderByDescending(g => _anzahl[g.Key]).ThenBy(g => g.Key))
         {
