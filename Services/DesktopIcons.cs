@@ -109,6 +109,36 @@ public static class DesktopIcons
     }
 
     /// <summary>
+    /// Teilt fehlende Symbole danach, ob sie aus dem Benutzerprofil stammen:
+    /// Liegt ihre Datei im Desktop-Ordner der Sicherung (oder ist es ein
+    /// Systemsymbol), kommt sie mit dem Profil. Die uebrigen lagen woanders -
+    /// meist auf dem oeffentlichen Desktop fuer alle Benutzer, auf den
+    /// Programme bei ihrer Installation ihre Verknuepfung legen. Sie erscheinen
+    /// erst mit dem Programm.
+    ///
+    /// Ohne Desktop-Ordner in der Sicherung (nur Symbolpositionen gesichert)
+    /// laesst sich das nicht sagen - dann zaehlen alle zum Profil.
+    /// </summary>
+    public static (List<DesktopIcon> ImProfil, List<DesktopIcon> Fremd) NachHerkunft(
+        IReadOnlyList<DesktopIcon> fehlend, string desktopDerSicherung)
+    {
+        if (!Directory.Exists(desktopDerSicherung)) return (fehlend.ToList(), new List<DesktopIcon>());
+        var imProfil = new List<DesktopIcon>();
+        var fremd = new List<DesktopIcon>();
+        foreach (var f in fehlend)
+        {
+            bool liegtDa = f.Name.StartsWith("::", StringComparison.Ordinal);
+            if (!liegtDa && f.Name.Length > 0 && f.Name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && f.Name.IndexOf('\\') < 0)
+            {
+                var pfad = Path.Combine(desktopDerSicherung, f.Name);
+                liegtDa = File.Exists(pfad) || Directory.Exists(pfad);
+            }
+            (liegtDa ? imProfil : fremd).Add(f);
+        }
+        return (imProfil, fremd);
+    }
+
+    /// <summary>
     /// Die Systemsymbole, die beim Sichern auf dem Desktop lagen, hier aber
     /// fehlen - auf einem frisch eingerichteten Rechner sind "Dieser PC" und
     /// der Benutzerordner meist ausgeschaltet.

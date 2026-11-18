@@ -198,6 +198,17 @@ public sealed class BackupService
             if (Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
 
         RobocopySkips? skips = null;
+        // Laeuft das Tool aus dem Zielprofil heraus (meist vom Desktop), wird
+        // seine Datei nicht ueberschrieben - sie ist gesperrt, und in der
+        // Sicherung liegt meist eine aeltere Fassung.
+        var selbst = ProfileExcludes.LaufendesProgrammInSicherung(destDir, backupSourceDir, Environment.ProcessPath);
+        if (selbst is not null && File.Exists(selbst))
+        {
+            args.Add("/XF"); args.Add(Quote(selbst));
+            _log(Loc.Tr($"[INFO] Das laufende Windows DaSi Tool wird nicht durch die Fassung aus der Sicherung ersetzt: {Path.GetRelativePath(backupSourceDir, selbst)}",
+                        $"[INFO] The running Windows DaSi Tool is not replaced by the copy from the backup: {Path.GetRelativePath(backupSourceDir, selbst)}"));
+        }
+
         if (IncludeAppData)
         {
             _log(Loc.Tr("[INFO] AppData wird mit wiederhergestellt.", "[INFO] AppData is included in the restore."));
@@ -1286,12 +1297,24 @@ public sealed class BackupService
                         $"[INFO] The desktop here is {erg.BreiteJetzt} x {erg.HoeheJetzt} instead of {layout.Breite} x {layout.Hoehe} - the positions were scaled accordingly."));
         if (erg.Fehlend.Count > 0)
         {
-            var namen = string.Join(", ", erg.Fehlend.Take(10).Select(f => string.IsNullOrWhiteSpace(f.Anzeige) ? f.Name : f.Anzeige))
-                        + (erg.Fehlend.Count > 10 ? ", ..." : "");
-            _log(Loc.Tr($"[WARNUNG] {erg.Fehlend.Count} von {erg.Gesamt} Symbolen gibt es auf diesem Desktop nicht: {namen}. "
-                        + "Sie wurden ausgelassen - am besten zusammen mit dem Benutzerprofil und den Programmen wiederherstellen.",
-                        $"[WARNING] {erg.Fehlend.Count} of {erg.Gesamt} icons do not exist on this desktop: {namen}. "
-                        + "They were skipped - best restore them together with the user profile and the programs."));
+            static string Namen(List<DesktopIcon> l) =>
+                string.Join(", ", l.Take(10).Select(f => string.IsNullOrWhiteSpace(f.Anzeige) ? f.Name : f.Anzeige))
+                + (l.Count > 10 ? ", ..." : "");
+            var (imProfil, fremd) = DesktopIcons.NachHerkunft(erg.Fehlend, Path.Combine(BackupPath, "Benutzerprofil", "Desktop"));
+            if (imProfil.Count > 0)
+                _log(Loc.Tr($"[WARNUNG] {imProfil.Count} von {erg.Gesamt} Symbolen gibt es auf diesem Desktop nicht: {Namen(imProfil)}. "
+                            + "Sie wurden ausgelassen - am besten zusammen mit dem Benutzerprofil und den Programmen wiederherstellen.",
+                            $"[WARNING] {imProfil.Count} of {erg.Gesamt} icons do not exist on this desktop: {Namen(imProfil)}. "
+                            + "They were skipped - best restore them together with the user profile and the programs."));
+            // Nicht aus dem Profil: Diese Verknuepfungen legen Programme bei der
+            // Installation an - meist auf dem oeffentlichen Desktop.
+            if (fremd.Count > 0)
+                _log(Loc.Tr($"[WARNUNG] {fremd.Count} von {erg.Gesamt} Symbolen fehlen hier und stammen nicht aus dem Benutzerprofil: {Namen(fremd)}. "
+                            + "Solche Verknüpfungen liegen meist auf dem öffentlichen Desktop (für alle Benutzer) und erscheinen, sobald ihr Programm installiert ist. "
+                            + "Danach \"Desktop-Layout wiederherstellen\" noch einmal ausführen, dann kommen auch sie an ihre Stelle.",
+                            $"[WARNING] {fremd.Count} of {erg.Gesamt} icons are missing here and do not come from the user profile: {Namen(fremd)}. "
+                            + "Such shortcuts usually live on the public desktop (for all users) and appear once their program is installed. "
+                            + "Then run \"Restore desktop layout\" again to put them in place as well."));
         }
         _log(erg.Gesetzt > 0
             ? Loc.Tr($"[ERFOLG] {erg.Gesetzt} von {erg.Gesamt} Desktop-Symbolen an ihre gesicherte Stelle gesetzt.",

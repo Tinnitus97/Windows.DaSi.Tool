@@ -1070,6 +1070,43 @@ internal static class Program
                 && klappt.Swallow("Wartezeit: 1 Sekunden... Wiederholung..."));
             Check("Wiederholung gelingt: die Datei zaehlt NICHT als uebersprungen",
                 klappt.Count == 0 && klappt.Paths.Count == 0 && klappt.CountByCode.Count == 0 && !klappt.Swallow("\t  Neuer       \t\t  12\tC:\\S\\AppData\\b.db"));
+
+            // Protokoll vom 18.11.2026, 21:11 Uhr: 32 Kopier-Threads, deren
+            // Meldungen sich verschraenken - dazwischen die gesperrte
+            // Programmdatei des Tools auf dem Desktop (ausserhalb von AppData).
+            const string sp = @"C:\DASI_DESKTOP-6SLTVM2_18_11_2026\Benutzerprofil";
+            var v = new RobocopySkips(sp + @"\AppData", zurueck: true);
+            const string gesperrtDe = "Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird.";
+            var protokoll = new (string Zeile, bool Schlucken)[]
+            {
+                (@"2026/11/18 21:11:55 FEHLER 32 (0x00000020) Folgende Datei wird kopiert " + sp + @"\AppData\Local\a\data_0", true),
+                (@"2026/11/18 21:11:55 FEHLER 1920 (0x00000780) Folgende Datei wird kopiert " + sp + @"\AppData\Local\Microsoft\WindowsApps\winget.exe", true),
+                (@"2026/11/18 21:11:55 FEHLER 32 (0x00000020) Folgende Datei wird kopiert " + sp + @"\Desktop\WindowsDaSiTool.exe", false),
+                (gesperrtDe, true),                                          // Grund zu data_0
+                ("Das System kann auf die Datei nicht zugreifen.", true),     // Grund zu winget.exe
+                (gesperrtDe, false),                                         // Grund zur Programmdatei - bleibt sichtbar
+                ("Fehler: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.", true),
+                ("Fehler: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.", true),
+                ("Wartezeit: 1 Sekunden... Wiederholung...", false),        // Programmdatei, zweiter Versuch folgt
+                (@"2026/11/18 21:11:56 FEHLER 32 (0x00000020) Folgende Datei wird kopiert " + sp + @"\Desktop\WindowsDaSiTool.exe", false),
+                (gesperrtDe, false),
+                ("Fehler: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.", false),
+                (@"2026/11/18 21:11:56 FEHLER 1224 (0x000004C8) Folgende Datei wird kopiert " + sp + @"\AppData\Local\b\c.dll", true),
+                ("Der Vorgang ist bei einer Datei mit einem geöffneten Bereich, der einem Benutzer zugeordnet ist, nicht anwendbar.", true),
+                ("Fehler: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.", true),
+                ("------------------------------------------------------------------------------", false),
+                ("Verzeich.:      3609      3598      3556         0         0        96", false),
+            };
+            var falsch = protokoll.Where(x => v.Swallow(x.Zeile) != x.Schlucken).Select(x => x.Zeile).ToList();
+            Check("verschraenkte Meldungen: AppData geschluckt, Programmdatei und Bilanz sichtbar", falsch.Count == 0, string.Join(" || ", falsch));
+            Check("verschraenkte Meldungen: drei Dateien in AppData, die Programmdatei zaehlt als anderer Fehler",
+                v.Count == 3 && v.OtherErrors == 2, $"{v.Count} / {v.OtherErrors}");
+            Check("verschraenkte Meldungen: Gruende richtig zugeordnet",
+                v.ReasonByCode[32] == gesperrtDe && v.ReasonByCode[1920] == "Das System kann auf die Datei nicht zugreifen."
+                && v.ReasonByCode[1224].StartsWith("Der Vorgang ist bei einer Datei"));
+            Check("Fehler 1224 (eingeblendete Datei eines laufenden Programms) ist erwartbar wie 32", v.AllExpected
+                && RobocopySkips.Expected.Contains(1224));
+            Check("Zugriff verweigert bleibt ein echter Fehler", !RobocopySkips.Expected.Contains(5));
         }
 
         Console.WriteLine("\n== Ausschlussliste: Zwischenspeicher und rechnergebundener Zustand ==");
@@ -1094,6 +1131,18 @@ internal static class Program
                 !Drin(@"AppData\Local\Microsoft\Edge\User Data") && !Drin(@"AppData\Local\Microsoft\Edge\User Data\Default")
                 && !Drin(@"AppData\Local\Packages"));
             Check("alles liegt in AppData", ProfileExcludes.AppDataAusschluesse().All(a => a.StartsWith(@"AppData\", StringComparison.Ordinal)));
+            Check("App-Aliase (WindowsApps) bleiben draussen - Fehler 1920", Drin(@"AppData\Local\Microsoft\WindowsApps"));
+
+            // Das Tool laeuft vom Desktop des Zielprofils.
+            var zielP = Path.Combine(root, "selbst", "Users", "Anwender123");
+            var sichP = Path.Combine(root, "selbst", "DASI", "Benutzerprofil");
+            Check("laufendes Tool im Zielprofil: dieselbe Stelle in der Sicherung",
+                ProfileExcludes.LaufendesProgrammInSicherung(zielP, sichP, Path.Combine(zielP, "Desktop", "WindowsDaSiTool.exe"))
+                == Path.Combine(sichP, "Desktop", "WindowsDaSiTool.exe"));
+            Check("laufendes Tool ausserhalb des Profils: nichts auszulassen",
+                ProfileExcludes.LaufendesProgrammInSicherung(zielP, sichP, Path.Combine(root, "selbst", "USB", "WindowsDaSiTool.exe")) is null
+                && ProfileExcludes.LaufendesProgrammInSicherung(zielP, sichP, Path.Combine(root, "selbst", "Users", "Anwender1234", "x.exe")) is null
+                && ProfileExcludes.LaufendesProgrammInSicherung(zielP, sichP, null) is null);
             Check("keine Dubletten", mit.Count == mit.Distinct(StringComparer.OrdinalIgnoreCase).Count());
         }
 
@@ -1179,6 +1228,20 @@ internal static class Program
             Check("Dieser PC an seine Stelle", neuDesk.Stelle(dieserPc) == (10, 10));
             Check("nur Firefox fehlt noch", ergSys.Fehlend.Count == 1 && ergSys.Fehlend[0].Name == "Firefox.lnk",
                 string.Join(", ", ergSys.Fehlend.Select(f => f.Name)));
+
+            // Woher kommen die fehlenden Symbole? Firefox.lnk liegt im
+            // Desktop-Ordner der Sicherung, "Finalisierung.lnk" nicht - es lag
+            // auf dem oeffentlichen Desktop.
+            var sichDesktop = Path.Combine(root, "herkunft", "Benutzerprofil", "Desktop");
+            Directory.CreateDirectory(sichDesktop);
+            File.WriteAllText(Path.Combine(sichDesktop, "Firefox.lnk"), "x");
+            var fehlendeH = new List<DesktopIcon> { new("Firefox.lnk", "Firefox", 1, 1), new("Finalisierung.lnk", "Finalisierung", 2, 2), new(dieserPc, "Dieser PC", 3, 3) };
+            var (imProfil, fremd) = DesktopIcons.NachHerkunft(fehlendeH, sichDesktop);
+            Check("Herkunft: Datei im Desktop-Ordner der Sicherung kommt mit dem Profil",
+                imProfil.Select(f => f.Name).SequenceEqual(new[] { "Firefox.lnk", dieserPc }));
+            Check("Herkunft: nicht im Profil (oeffentlicher Desktop)", fremd.Count == 1 && fremd[0].Name == "Finalisierung.lnk");
+            var (ohneOrdner, ohneFremd) = DesktopIcons.NachHerkunft(fehlendeH, Path.Combine(root, "herkunft", "gibt-es-nicht"));
+            Check("Herkunft: ohne Profil in der Sicherung zaehlt alles zum Profil", ohneOrdner.Count == 3 && ohneFremd.Count == 0);
 
             var nochmal = DesktopIcons.Wiederherstellen(alt, TimeSpan.Zero, k => throw new InvalidOperationException("darf nicht kommen"));
             Check("sind alle Systemsymbole da, wird nichts eingeschaltet", nochmal.Eingeschaltet is null);
@@ -1563,6 +1626,37 @@ internal static class Program
                                    .Any(x => x.Contains("0x00000020") || x.Contains("RETRY", StringComparison.OrdinalIgnoreCase)
                                              || x.Contains("Wiederholungsversuch", StringComparison.OrdinalIgnoreCase)));
                 Check("Zurueckschreiben echt: der Rest ist angekommen", File.Exists(Path.Combine(neuProfil, "einstellungen.json")));
+            }
+
+            Console.WriteLine("\n== echtes robocopy: das laufende Tool wird nicht ueberschrieben ==");
+            {
+                // Wie am 18.11.2026, 21:11 Uhr: Das Tool laeuft vom Desktop des
+                // Zielprofils, in der Sicherung liegt eine aeltere Fassung.
+                var sichSelbst = Path.Combine(root, "selbst-echt", "DASI", "Benutzerprofil");
+                var zielSelbst = Path.Combine(root, "selbst-echt", "Users", "Anwender123");
+                Directory.CreateDirectory(Path.Combine(sichSelbst, "Desktop"));
+                Directory.CreateDirectory(Path.Combine(zielSelbst, "Desktop"));
+                File.WriteAllText(Path.Combine(sichSelbst, "Desktop", "WindowsDaSiTool.exe"), "alte Fassung aus der Sicherung");
+                File.WriteAllText(Path.Combine(sichSelbst, "Desktop", "Brief.txt"), "Brief");
+                var laufend = Path.Combine(zielSelbst, "Desktop", "WindowsDaSiTool.exe");
+                File.WriteAllText(laufend, "laufende Fassung");
+                File.SetLastWriteTimeUtc(laufend, DateTime.UtcNow.AddDays(-1));
+
+                var ausSelbst = ProfileExcludes.LaufendesProgrammInSicherung(zielSelbst, sichSelbst, laufend);
+                var schalter = string.Join(" ", ProfileExcludes.RestoreSwitches().Select(s => s.Contains(' ') ? $"\"{s}\"" : s));
+                var psiSelbst = new System.Diagnostics.ProcessStartInfo("robocopy.exe",
+                    $"\"{sichSelbst}\" \"{zielSelbst}\" {schalter} /XF \"{ausSelbst}\" /NP /NDL")
+                {
+                    RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true,
+                };
+                using var roboS = System.Diagnostics.Process.Start(psiSelbst)!;
+                roboS.StandardOutput.ReadToEnd();
+                roboS.WaitForExit();
+                Console.WriteLine($"         robocopy endete mit {roboS.ExitCode}, ausgelassen: {ausSelbst}");
+                Check("laufendes Tool echt: robocopy ohne Fehler", roboS.ExitCode < 8, roboS.ExitCode.ToString());
+                Check("laufendes Tool echt: /XF mit vollem Pfad laesst genau diese Datei aus",
+                    File.ReadAllText(laufend) == "laufende Fassung", File.ReadAllText(laufend));
+                Check("laufendes Tool echt: der Rest des Desktops kommt an", File.Exists(Path.Combine(zielSelbst, "Desktop", "Brief.txt")));
             }
         }
 

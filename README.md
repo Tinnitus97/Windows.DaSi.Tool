@@ -114,9 +114,12 @@ Wiederherstellung sie findet.
   Fehler wie *Zugriff verweigert* oder ein volles Ziellaufwerk bleiben Fehler.
   Beim **Zurückschreiben** gilt dasselbe: Vorher schließt das Tool die Browser und
   Mailprogramme. Was im Profil trotzdem gesperrt ist, behält seine vorhandene Fassung
-  und steht in `AppData-nicht-wiederhergestellt.txt`.
+  und steht in `AppData-nicht-wiederhergestellt.txt`. Läuft das Tool selbst vom
+  Desktop des Zielprofils, überschreibt es seine eigene Programmdatei nicht mit der
+  Fassung aus der Sicherung.
   Nie mitgenommen wird der **rechnergebundene Zustand** von Windows-Bestandteilen:
-  der des App-Installers (winget) und der Windows-Shell (Suche, Widgets). Die
+  der des App-Installers (winget), der Windows-Shell (Suche, Widgets) und die
+  App-Aliase in `WindowsApps`. Die
   Datenbanken eines neueren winget legen das ältere auf einem frisch eingerichteten
   Rechner sonst lahm (`0x8A150009`). Das gilt auch beim Zurückschreiben älterer
   Sicherungen, die ihn noch enthalten.
@@ -189,7 +192,10 @@ und setzt beim Wiederherstellen jedes wieder an seine Stelle — automatisch.
   ihre Stelle, auch wenn der Benutzerordner hier anders heißt.
 - Symbole, die es auf dem neuen Desktop (noch) nicht gibt, nennt das Protokoll. Am
   besten läuft der Punkt deshalb zusammen mit Benutzerprofil und Programmen — er
-  kommt in der Warteschlange ohnehin zuletzt.
+  kommt in der Warteschlange ohnehin zuletzt. Verknüpfungen, die nicht aus dem
+  Profil stammen (meist vom öffentlichen Desktop für alle Benutzer), nennt es
+  getrennt: Sie erscheinen erst mit ihrem Programm. Danach den Punkt einfach noch
+  einmal ausführen.
 - Gespeichert wird `Desktop-Symbole\Symbolpositionen.json` im Backup-Ziel.
 
 **Screenshot**: Das Tool fotografiert den Desktop, und zwar **ein Bild pro Monitor**:

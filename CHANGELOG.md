@@ -7,6 +7,31 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [Unveröffentlicht]
+
+### Behoben
+
+- **Profil mit AppData zurückschreiben endete weiter mit „Robocopy Fehlercode: 11“.**
+  Das Protokoll mit 1.2.6 zeigte vier Gründe:
+  - **Das Tool selbst lief vom Desktop des Zielprofils.** In der Sicherung lag eine
+    ältere `WindowsDaSiTool.exe` an derselben Stelle. Sie wird jetzt ausgelassen,
+    statt am Ende als Fehler 32 zu scheitern.
+  - **30 App-Aliase in `AppData\Local\Microsoft\WindowsApps`** (Fehler 1920). Das
+    sind Verweise, die Windows für installierte Apps anlegt, keine Dateien. Sie
+    bleiben jetzt beim Sichern und beim Zurückschreiben draußen.
+  - **Fehler 1224**: eine Datei, die ein laufendes Programm in den Speicher
+    eingeblendet hat. Gilt jetzt wie Fehler 32 als „gesperrt“.
+  - **Verschränkte Meldungen.** robocopy kopiert mit 32 Threads gleichzeitig, und
+    deren Meldungen schieben sich ineinander. Zeilen landeten dadurch im Protokoll
+    statt in der Zusammenfassung. Sie werden jetzt der richtigen Datei zugeordnet.
+- **Fehlende Desktop-Symbole: Hinweis auf die Herkunft.** Verknüpfungen, die nicht
+  im Desktop-Ordner des gesicherten Profils lagen, stammen meist vom öffentlichen
+  Desktop für alle Benutzer und erscheinen erst mit ihrem Programm. Das Protokoll
+  nennt sie getrennt und rät, *Desktop-Layout wiederherstellen* danach noch einmal
+  auszuführen.
+
+---
+
 ## [1.2.6] - 2026-11-18
 
 ### Behoben
