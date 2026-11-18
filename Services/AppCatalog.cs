@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 
 namespace WindowsDaSiTool.Services;
 
@@ -104,6 +105,37 @@ public static class AppCatalog
     // ------------------------------------------------------------ Verfuegbarkeit
 
     /// <summary>
+    /// Hat dieser PC einen WLAN-Adapter? Austauschbar, damit sich die
+    /// Verfuegbarkeit auch ohne echten Adapter pruefen laesst.
+    /// </summary>
+    public static Func<bool> HatWlanAdapter { get; set; } = WlanAdapterVorhanden;
+
+    /// <summary>
+    /// Ein WLAN-Adapter, wie ihn Windows meldet - eingeschaltet, auch im
+    /// Flugmodus oder ohne Verbindung. Ein im Geraete-Manager deaktivierter
+    /// Adapter zaehlt nicht: Ohne ihn liefert "netsh wlan" weder Profile noch
+    /// nimmt es welche an. Laesst es sich nicht feststellen, wird nichts
+    /// gesperrt.
+    /// </summary>
+    public static bool WlanAdapterVorhanden()
+    {
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces()
+                                   .Any(n => n.NetworkInterfaceType == NetworkInterfaceType.Wireless80211);
+        }
+        catch { return true; }
+    }
+
+    private static readonly (string De, string En) KeinWlanSichern =
+        ("Dieser PC hat keinen WLAN-Adapter (oder er ist deaktiviert) - es gibt keine WLAN-Profile zu sichern.",
+         "This PC has no WiFi adapter (or it is disabled) - there are no WiFi profiles to back up.");
+
+    private static readonly (string De, string En) KeinWlanZurueck =
+        ("Dieser PC hat keinen WLAN-Adapter (oder er ist deaktiviert) - die WLAN-Profile aus der Sicherung lassen sich hier nicht einspielen.",
+         "This PC has no WiFi adapter (or it is disabled) - the WiFi profiles from the backup cannot be imported here.");
+
+    /// <summary>
     /// Ist der Punkt beim SICHERN waehlbar? null = ja, sonst der Grund.
     ///
     /// Gesperrt werden nur die Programmsicherungen: ohne Profil beim gewaehlten
@@ -112,6 +144,9 @@ public static class AppCatalog
     /// </summary>
     public static (string De, string En)? BeimSichern(Punkt p, string? profil)
     {
+        // WLAN haengt am Rechner, nicht am Benutzer: ohne Adapter keine Profile.
+        if (p == Punkt.Wlan) return HatWlanAdapter() ? null : KeinWlanSichern;
+
         if (string.IsNullOrWhiteSpace(profil) || !Directory.Exists(profil)) return null;
 
         if (p == Punkt.Opera)
@@ -145,15 +180,21 @@ public static class AppCatalog
     {
         var punkte = Enum.GetValues<Punkt>();
         var erg = punkte.ToDictionary(p => p, _ => ((string De, string En)?)null);
-        if (string.IsNullOrWhiteSpace(sicherung) || !Directory.Exists(sicherung)) return erg;
+        if (!string.IsNullOrWhiteSpace(sicherung) && Directory.Exists(sicherung))
+        {
+            var da = punkte.ToDictionary(p => p, p => Enthaelt(sicherung, p));
+            // Enthaelt der Ordner gar nichts davon, ist er keine Sicherung - meist
+            // ist der Ordner darueber gewaehlt (D:\DaSi statt D:\DaSi\DASI_...).
+            // Dann ein gemeinsamer Hinweis statt vierzehn einzelner Gruende.
+            bool keine = !da.Values.Any(x => x);
+            foreach (var p in punkte)
+                if (!da[p]) erg[p] = keine ? KeineSicherung : Fehlt(p);
+        }
 
-        var da = punkte.ToDictionary(p => p, p => Enthaelt(sicherung, p));
-        // Enthaelt der Ordner gar nichts davon, ist er keine Sicherung - meist
-        // ist der Ordner darueber gewaehlt (D:\DaSi statt D:\DaSi\DASI_...).
-        // Dann ein gemeinsamer Hinweis statt vierzehn einzelner Gruende.
-        bool keine = !da.Values.Any(x => x);
-        foreach (var p in punkte)
-            if (!da[p]) erg[p] = keine ? KeineSicherung : Fehlt(p);
+        // Liegen WLAN-Profile in der Sicherung, braucht es zum Einspielen
+        // trotzdem einen Adapter - "netsh wlan add profile" scheitert sonst.
+        // Fehlen sie in der Sicherung, bleibt das der Grund.
+        if (erg[Punkt.Wlan] is null && !HatWlanAdapter()) erg[Punkt.Wlan] = KeinWlanZurueck;
         return erg;
     }
 

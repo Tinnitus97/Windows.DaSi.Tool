@@ -577,6 +577,8 @@ internal static class Program
 
         Console.WriteLine("\n== Verfuegbarkeit der Punkte ==");
         {
+            // Die CI-Rechner haben kein WLAN - fuer diese Pruefungen gibt es eins.
+            AppCatalog.HatWlanAdapter = () => true;
             // Sichern: Profil mit Firefox und Opera, ohne die anderen Programme.
             var pr = Path.Combine(root, "verf", "Besitzer");
             Directory.CreateDirectory(AppCatalog.Pfad(pr, AppCatalog.Firefox.ProfilRel));
@@ -638,6 +640,29 @@ internal static class Program
             Directory.CreateDirectory(Path.Combine(si, "Benutzerprofil", "OneDrive"));
             Check("Wiederherstellen: AppData und Cloud frei, sobald sie in der Sicherung liegen",
                 AppCatalog.BeimWiederherstellen(Punkt.AppData, si) is null && AppCatalog.BeimWiederherstellen(Punkt.Cloud, si) is null);
+
+            // Ohne WLAN-Adapter.
+            AppCatalog.HatWlanAdapter = () => false;
+            var ohneWlan = AppCatalog.BeimSichern(Punkt.Wlan, pr);
+            Check("ohne WLAN-Adapter: Sichern gesperrt, mit Grund", ohneWlan?.De.StartsWith("Dieser PC hat keinen WLAN-Adapter") == true, ohneWlan?.De);
+            Check("ohne WLAN-Adapter: Sichern gesperrt, auch bevor ein Profil gewaehlt ist",
+                AppCatalog.BeimSichern(Punkt.Wlan, "") is not null && AppCatalog.BeimSichern(Punkt.Wlan, null) is not null);
+            Check("ohne WLAN-Adapter: die anderen Punkte bleiben, wie sie sind",
+                AppCatalog.BeimSichern(Punkt.Profil, pr) is null && AppCatalog.BeimSichern(Punkt.Firefox, pr) is null
+                && AppCatalog.BeimWiederherstellen(Punkt.Drucker, si) is null);
+            var zurueckOhne = AppCatalog.BeimWiederherstellen(Punkt.Wlan, si);
+            Check("ohne WLAN-Adapter: Profile in der Sicherung lassen sich nicht einspielen",
+                zurueckOhne?.De.Contains("nicht einspielen") == true, zurueckOhne?.De);
+            var ohneWlanSich = Path.Combine(root, "verf", "OhneWlan");
+            Directory.CreateDirectory(Path.Combine(ohneWlanSich, "Benutzerprofil"));
+            Check("ohne WLAN-Adapter: fehlen die Profile in der Sicherung, bleibt das der Grund",
+                AppCatalog.BeimWiederherstellen(Punkt.Wlan, ohneWlanSich)?.De == "Die gewählte Sicherung enthält keine WLAN-Profile.",
+                AppCatalog.BeimWiederherstellen(Punkt.Wlan, ohneWlanSich)?.De);
+            AppCatalog.HatWlanAdapter = () => true;
+            Check("mit WLAN-Adapter: Sichern frei, Wiederherstellen frei, wenn Profile in der Sicherung liegen",
+                AppCatalog.BeimSichern(Punkt.Wlan, pr) is null && AppCatalog.BeimWiederherstellen(Punkt.Wlan, si) is null
+                && AppCatalog.BeimWiederherstellen(Punkt.Wlan, ohneWlanSich) is not null);
+            Console.WriteLine($"         WLAN-Adapter auf diesem Rechner: {(AppCatalog.WlanAdapterVorhanden() ? "ja" : "nein")}");
             Check("Wiederherstellen: ohne (vorhandene) Sicherung wird nichts gesperrt",
                 AppCatalog.BeimWiederherstellen(Punkt.Firefox, "") is null
                 && AppCatalog.BeimWiederherstellen(Punkt.Firefox, Path.Combine(root, "gibt-es-nicht")) is null);

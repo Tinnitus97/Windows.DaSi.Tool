@@ -67,11 +67,14 @@ Punkte, die nichts zu tun hätten, sind **ausgegraut** und lassen sich nicht ank
 
 - **Sichern:** Eine Programmsicherung (Firefox, Edge, Chrome, Brave, Opera,
   Thunderbird) ist gesperrt, wenn das Programm beim gewählten Benutzer nicht
-  eingerichtet ist, also kein Profil hat. Oben im Bild: Brave.
+  eingerichtet ist, also kein Profil hat. Oben im Bild: Brave. *WLAN-Profile* sind
+  gesperrt, wenn der PC keinen WLAN-Adapter hat (oder er deaktiviert ist).
 - **Wiederherstellen:** Jeder Punkt ist gesperrt, den die gewählte Sicherung nicht
   enthält. Unten im Bild: Gesichert wurden Profil samt AppData, Firefox, Edge,
   Opera, die Programmliste und die Symbolpositionen des Desktops. Alles andere ist
-  grau, auch die Auswahl *Screenshot*.
+  grau, auch die Auswahl *Screenshot*. *WLAN-Profile* sind nur frei, wenn die
+  Sicherung welche enthält und dieser PC einen WLAN-Adapter hat, in den sie sich
+  einspielen lassen.
 
 Fährt man mit der Maus über einen grauen Punkt, nennt der Tooltip den Grund, etwa
 *Chrome ist bei diesem Benutzer nicht eingerichtet - kein Profil unter …* oder *Die
@@ -79,7 +82,7 @@ gewählte Sicherung enthält kein Chrome-Profil.* Ist statt einer Sicherung der 
 darüber gewählt (`D:\DaSi` statt `D:\DaSi\DASI_…`), sagt der Tooltip genau das. Wird ein
 Punkt durch einen Wechsel von Benutzer, Sicherung oder Modus gesperrt, verliert er
 auch seinen Haken. Solange noch kein vorhandenes Profil bzw. kein vorhandener Ordner
-gewählt ist, bleibt alles frei.
+gewählt ist, bleibt alles frei (bis auf *WLAN-Profile* ohne WLAN-Adapter).
 
 ### Opera in jeder Fassung
 

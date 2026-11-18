@@ -9,6 +9,14 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Neu
+
+- **WLAN-Profile nur, wenn der PC WLAN hat.** Ohne WLAN-Adapter (oder mit
+  deaktiviertem) ist der Punkt jetzt ausgegraut, wie die übrigen Kacheln, die nichts
+  zu tun hätten. Der Tooltip nennt den Grund. Beim Wiederherstellen ist er nur frei,
+  wenn die Sicherung WLAN-Profile enthält und dieser PC einen Adapter hat, in den sie
+  sich einspielen lassen. Bisher scheiterte `netsh wlan` erst während des Laufs.
+
 ### Behoben
 
 - **Profil mit AppData zurückschreiben endete weiter mit „Robocopy Fehlercode: 11“.**
