@@ -615,6 +615,7 @@ public partial class MainWindowViewModel : ObservableObject
                     : Tr($"{baseText}  -  {count} Dateien", $"{baseText}  -  {count} files"));
         };
         _winget = new WingetService(_runner, _cancel, Log);
+        _backup.Winget = _winget;
 
         // Sprache aus der Windows-Anzeigesprache uebernehmen (Fallback: Deutsch).
         // Setzt Localizer direkt, damit der Begruessungstext sofort passt.

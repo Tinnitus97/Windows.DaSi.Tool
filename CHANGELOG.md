@@ -9,6 +9,47 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Behoben
+
+- **Nach dem Wiederherstellen mit AppData scheiterte jede winget-Installation**
+  mit `0x8A150009` („Cannot write to index; it is a higher schema version“) –
+  Firefox und alle zehn Programme des Winget-Imports. Ursache: Die
+  Profil-Wiederherstellung kopierte den Zustand des App-Installers aus AppData mit,
+  samt der Datenbanken einer neueren winget-Fassung vom alten Rechner. Damit kommt
+  das ältere winget eines frisch eingerichteten Rechners nicht zurecht. Dieser
+  rechnergebundene Zustand bleibt jetzt in beide Richtungen draußen, auch beim
+  Zurückschreiben älterer Sicherungen, die ihn noch enthalten. Das gilt ebenso für
+  den der Windows-Shell (Suche, Widgets).
+- **winget repariert sich, wenn seine Paketquelle kaputt ist.** Scheitert eine
+  Installation nicht am Paket, sondern an winget selbst (`0x8A150009`, beschädigter
+  Index, beschädigte Quellen), setzt das Tool die Quellen zurück und versucht es
+  erneut. Hilft das nicht, aktualisiert es den App-Installer von GitHub. Bleibt
+  winget unbrauchbar, bricht der Import mit einer Meldung samt Abhilfe ab, statt
+  dieselbe Meldung für jedes Programm zu wiederholen.
+- **Die Fehlermeldung von winget ist lesbar.** Statt `ExitCode -1978335223. -` und
+  einer Zeile voller Leerzeichen steht jetzt der Wert, wie ihn die winget-Doku nennt
+  (`0x8A150009`), dazu eine Erklärung und die eigentliche Meldung. Der
+  Fortschrittskreisel und die Balken fallen weg.
+- **Browser werden über denselben winget-Weg nachinstalliert** wie beim
+  Winget-Import, mit derselben Reparatur. Bisher lief dafür einfach „winget“ aus
+  dem Suchpfad. Liegen mehrere App-Installer-Fassungen auf dem Rechner, nimmt das
+  Tool die neueste: Sortiert wurde bisher als Text, und „1.9“ stand vor „1.26“.
+- **Profil mit AppData zurückschreiben endete mit „Robocopy Fehlercode: 11“.**
+  Edge lief im Hintergrund, seine Dateien und die der Windows-Suche waren gesperrt,
+  und jede davon stand mit drei Zeilen im Protokoll, 126 Stück. Jetzt werden vor dem
+  Zurückschreiben von AppData die Browser und Mailprogramme geschlossen (wie bei den
+  einzelnen Browser-Kacheln). Die Grafik-Zwischenspeicher der Browser bleiben
+  draußen. Was trotzdem gesperrt ist, fasst das Tool zusammen wie beim Sichern: eine
+  Zeile je Fehlerart, die vollständige Liste als
+  `AppData-nicht-wiederhergestellt.txt` im Sicherungsordner. Die Aktion gilt dann als
+  gelungen.
+- **„Dieser PC“ und der Benutzerordner fehlten auf dem neuen Desktop.** Beide sind
+  Systemsymbole, die auf einem frisch eingerichteten Rechner ausgeschaltet sind. Lagen
+  sie beim Sichern auf dem Desktop, schaltet das Tool sie jetzt ein, wie unter
+  *Desktopsymboleinstellungen*, und setzt sie an ihre Stelle. Zugeordnet wird über
+  ihre Kennung: Der Benutzerordner heißt nach dem Benutzer und auf dem neuen Rechner
+  oft anders („Anwender“ → „Anwender123“).
+
 ### Geändert
 
 - **Gebaut wird immer mit der neuesten LTS-Version von .NET** – nicht mit der

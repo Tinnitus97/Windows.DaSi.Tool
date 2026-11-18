@@ -29,7 +29,8 @@ public sealed record MonitorArea(int Left, int Top, int Width, int Height, bool 
 public sealed record MonitorImage(MonitorArea Area, int Number, string FileName);
 
 /// <summary>Der an diesem Bildschirm angemeldete Benutzer.</summary>
-public sealed record InteractiveUser(string Name, string? ProfilePath);
+/// <param name="Sid">Seine Sicherheitskennung - fuer seinen Zweig der Registry (HKEY_USERS\&lt;SID&gt;).</param>
+public sealed record InteractiveUser(string Name, string? ProfilePath, string? Sid = null);
 
 /// <summary>
 /// Fotografiert den Desktop, damit sich nach einer Neuinstallation nachsehen
@@ -402,9 +403,10 @@ public static class DesktopScreenshot
             var domain = QuerySession(WTSDomainName) ?? "";
 
             string? profil = null;
+            string? sid = null;
             try
             {
-                var sid = new NTAccount(domain, name).Translate(typeof(SecurityIdentifier)).Value;
+                sid = new NTAccount(domain, name).Translate(typeof(SecurityIdentifier)).Value;
                 using var key = Registry.LocalMachine.OpenSubKey(
                     $@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\{sid}");
                 if (key?.GetValue("ProfileImagePath") is string pfad)
@@ -412,7 +414,7 @@ public static class DesktopScreenshot
             }
             catch { /* Name bekannt, Profil nicht - das reicht fuer die Meldung */ }
 
-            return new InteractiveUser(string.IsNullOrEmpty(domain) ? name : $@"{domain}\{name}", profil);
+            return new InteractiveUser(string.IsNullOrEmpty(domain) ? name : $@"{domain}\{name}", profil, sid);
         }
         catch
         {

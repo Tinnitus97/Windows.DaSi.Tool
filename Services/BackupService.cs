@@ -22,6 +22,13 @@ public sealed class BackupService
     public string SourcePath { get; set; } = "";
     public string BackupPath { get; set; } = "";
 
+    /// <summary>
+    /// Installiert Programme (Firefox, Chrome ...) beim Wiederherstellen ihrer
+    /// Profile - ueber denselben winget-Startweg und dieselbe Reparatur wie der
+    /// Winget-Import. Ohne: "winget" aus dem Suchpfad.
+    /// </summary>
+    public WingetService? Winget { get; set; }
+
     private static readonly string[] ChromiumCacheExcludes =
     {
         "Cache", "Code Cache", "GPUCache", "GrShaderCache", "ShaderCache",
@@ -137,7 +144,8 @@ public sealed class BackupService
     /// </summary>
     private bool ReportAppDataSkips(RobocopySkips skips, int code)
     {
-        var liste = Path.Combine(BackupPath, RobocopySkips.ListFileName);
+        // Beim Zurueckschreiben eine eigene Liste - die vom Sichern bleibt stehen.
+        var liste = Path.Combine(BackupPath, skips.Zurueck ? RobocopySkips.RestoreListFileName : RobocopySkips.ListFileName);
         if (skips.Count == 0)
         {
             // Eine Liste von frueher (gleicher Ordner, "Eigener Ordner" aus) waere jetzt falsch.
@@ -153,8 +161,11 @@ public sealed class BackupService
         catch (Exception ex)
         {
             geschrieben = null;
-            _log(Loc.Tr($"[WARNUNG] Die Liste der nicht gesicherten AppData-Dateien ließ sich nicht schreiben: {ex.Message}",
-                        $"[WARNING] The list of AppData files not backed up could not be written: {ex.Message}"));
+            _log(skips.Zurueck
+                ? Loc.Tr($"[WARNUNG] Die Liste der nicht zurückgeschriebenen AppData-Dateien ließ sich nicht schreiben: {ex.Message}",
+                         $"[WARNING] The list of AppData files not restored could not be written: {ex.Message}")
+                : Loc.Tr($"[WARNUNG] Die Liste der nicht gesicherten AppData-Dateien ließ sich nicht schreiben: {ex.Message}",
+                         $"[WARNING] The list of AppData files not backed up could not be written: {ex.Message}"));
         }
         _log(skips.Summary("AppData", geschrieben, Loc.Tr));
 
@@ -186,12 +197,26 @@ public sealed class BackupService
         foreach (var ex in GetProfileExcludes(backupSourceDir, IncludeAppData, includeCloud: false))
             if (Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
 
+        RobocopySkips? skips = null;
         if (IncludeAppData)
+        {
             _log(Loc.Tr("[INFO] AppData wird mit wiederhergestellt.", "[INFO] AppData is included in the restore."));
+            await CloseAppDataProgramsAsync();
+            // Gesperrte Dateien in AppData zusammenfassen - robocopy nennt den
+            // Pfad in der Sicherung, nicht im Profil.
+            skips = new RobocopySkips(Path.Combine(backupSourceDir, "AppData"), zurueck: true);
+        }
 
-        var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+        var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress, skips);
         if (_cancel.IsCancelled) return;
-        _log(code < 8 ? Loc.Tr("[ERFOLG] Benutzerprofil wiederhergestellt.", "[SUCCESS] User profile restored.") : Loc.Tr($"[FEHLER] Robocopy Fehlercode: {code}", $"[ERROR] Robocopy error code: {code}"));
+        var nurUebersprungen = skips != null && ReportAppDataSkips(skips, code);
+        if (code < 8)
+            _log(Loc.Tr("[ERFOLG] Benutzerprofil wiederhergestellt.", "[SUCCESS] User profile restored."));
+        else if (nurUebersprungen)
+            _log(Loc.Tr("[ERFOLG] Benutzerprofil wiederhergestellt - bis auf die oben genannten gesperrten Dateien in AppData.",
+                        "[SUCCESS] User profile restored - except for the locked files in AppData listed above."));
+        else
+            _log(Loc.Tr($"[FEHLER] Robocopy Fehlercode: {code}", $"[ERROR] Robocopy error code: {code}"));
 
         if (IncludeCloud) await RestoreCloudFolders(backupSourceDir, destDir);
     }
@@ -337,10 +362,62 @@ public sealed class BackupService
         var ziel = Path.Combine(SourcePath, "AppData");
         _log(Loc.Tr("[INFO] Schreibe AppData zurück (ohne den Rest des Profils)...",
                     "[INFO] Restoring AppData (without the rest of the profile)..."));
-        var code = await _runner.RunRobocopyAsync(string.Join(" ", ProfileRestoreArgs(quelle, ziel)), _log, OnFilesProgress);
+        await CloseAppDataProgramsAsync();
+
+        var args = ProfileRestoreArgs(quelle, ziel);
+        // Dieselben Ausschluesse wie beim Profil: Zwischenspeicher und der
+        // rechnergebundene Zustand von winget und Windows-Shell - auch dann,
+        // wenn eine aeltere Sicherung sie noch enthaelt.
+        foreach (var ex in ProfileExcludes.Build(Path.Combine(BackupPath, "Benutzerprofil"), includeAppData: true, includeCloud: true))
+            if (ProfileExcludes.IsInside(ex, quelle) && Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
+
+        var skips = new RobocopySkips(quelle, zurueck: true);
+        var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress, skips);
         if (_cancel.IsCancelled) return;
-        _log(code < 8 ? Loc.Tr("[ERFOLG] AppData wiederhergestellt.", "[SUCCESS] AppData restored.")
-                      : Loc.Tr($"[FEHLER] AppData: Robocopy Fehlercode {code}", $"[ERROR] AppData: Robocopy error code {code}"));
+        var nurUebersprungen = ReportAppDataSkips(skips, code);
+        if (code < 8)
+            _log(Loc.Tr("[ERFOLG] AppData wiederhergestellt.", "[SUCCESS] AppData restored."));
+        else if (nurUebersprungen)
+            _log(Loc.Tr("[ERFOLG] AppData wiederhergestellt - bis auf die oben genannten gesperrten Dateien.",
+                        "[SUCCESS] AppData restored - except for the locked files listed above."));
+        else
+            _log(Loc.Tr($"[FEHLER] AppData: Robocopy Fehlercode {code}", $"[ERROR] AppData: Robocopy error code {code}"));
+    }
+
+    /// <summary>
+    /// Schliesst vor dem Zurueckschreiben von AppData die Browser und
+    /// Mailprogramme aus dem Katalog, soweit sie laufen.
+    ///
+    /// Edge laeuft nach der Anmeldung meist unsichtbar im Hintergrund weiter
+    /// ("Startboost"). Seine Dateien sind dann gesperrt: Ein Teil des Profils
+    /// kam aus der Sicherung, der Rest blieb der alte - und jede gesperrte
+    /// Datei stand mit drei Zeilen im Protokoll. Genauso wird bei den
+    /// einzelnen Browser-Kacheln schon immer verfahren.
+    /// </summary>
+    private async Task CloseAppDataProgramsAsync()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var programme = AppCatalog.Programme.Select(a => (a.Name, a.Prozess))
+                                  .Append(("Opera", AppCatalog.Opera.Prozess));
+        var geschlossen = new List<string>();
+        foreach (var (name, prozess) in programme)
+        {
+            bool laeuft;
+            try
+            {
+                var liste = System.Diagnostics.Process.GetProcessesByName(prozess);
+                laeuft = liste.Length > 0;
+                foreach (var pr in liste) pr.Dispose();
+            }
+            catch { continue; }
+            if (!laeuft) continue;
+            KillProcess(prozess);
+            geschlossen.Add(name);
+        }
+        if (geschlossen.Count == 0) return;
+        _log(Loc.Tr($"[INFO] Vor dem Zurückschreiben von AppData geschlossen: {string.Join(", ", geschlossen)} - sonst wären ihre Dateien gesperrt.",
+                    $"[INFO] Closed before restoring AppData: {string.Join(", ", geschlossen)} - otherwise their files would be locked."));
+        await Task.Delay(2000);
     }
 
     /// <summary>Schreibt nur die Cloud-Ordner zurueck - wie immer neben das Original.</summary>
@@ -1180,7 +1257,8 @@ public sealed class BackupService
         _log(Loc.Tr($"[INFO] Setze {layout.Symbole.Count} Desktop-Symbole an ihre gesicherte Stelle (gesichert am {layout.Erstellt:dd.MM.yyyy} auf {layout.Rechner})...",
                     $"[INFO] Moving {layout.Symbole.Count} desktop icons to their saved positions (saved on {layout.Erstellt:yyyy-MM-dd} on {layout.Rechner})..."));
         IconErgebnis erg;
-        try { erg = await Task.Run(() => DesktopIcons.Wiederherstellen(layout, TimeSpan.FromSeconds(10))); }
+        var sid = OperatingSystem.IsWindows() ? DesktopScreenshot.GetInteractiveUser()?.Sid : null;
+        try { erg = await Task.Run(() => DesktopIcons.Wiederherstellen(layout, TimeSpan.FromSeconds(10), k => SystemsymboleEinschalten(k, sid))); }
         catch (Exception ex)
         {
             _log(Loc.Tr($"[FEHLER] Die Symbolpositionen ließen sich nicht setzen: {ex.Message}",
@@ -1188,6 +1266,12 @@ public sealed class BackupService
             return;
         }
 
+        if (erg.Eingeschaltet is { Count: > 0 } an)
+        {
+            var namen = string.Join(", ", an.Select(k => DesktopIcons.Systemsymbole.TryGetValue(k, out var n) ? Loc.Tr(n.De, n.En) : k));
+            _log(Loc.Tr($"[INFO] Systemsymbole eingeschaltet wie auf dem alten Desktop: {namen}.",
+                        $"[INFO] System icons switched on as on the old desktop: {namen}."));
+        }
         if (erg.AnordnenAusgeschaltet)
             _log(Loc.Tr("[INFO] \"Symbole automatisch anordnen\" war an und ist jetzt aus - sonst reihte Windows die Symbole sofort wieder neu.",
                         "[INFO] \"Auto arrange icons\" was on and is now off - otherwise Windows would line the icons up again right away."));
@@ -1215,6 +1299,38 @@ public sealed class BackupService
             : Loc.Tr("[FEHLER] Kein gesichertes Symbol ließ sich auf diesem Desktop zuordnen.",
                      "[ERROR] None of the saved icons could be matched on this desktop."));
     }
+
+    /// <summary>
+    /// Schaltet Systemsymbole des Desktops ein - dieselbe Einstellung wie
+    /// "Desktopsymboleinstellungen" (0 = sichtbar). Geschrieben wird in den
+    /// Zweig des ANGEMELDETEN Benutzers: Das Tool laeuft mit
+    /// Administratorrechten, womoeglich unter einem anderen Konto - dessen
+    /// HKEY_CURRENT_USER waere der falsche.
+    /// </summary>
+    private static bool SystemsymboleEinschalten(IReadOnlyList<string> kennungen, string? sid)
+    {
+        if (!OperatingSystem.IsWindows() || kennungen.Count == 0) return false;
+        const string pfad = @"Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel";
+        RegistryKey? zweig = null;
+        try
+        {
+            if (sid is not null) zweig = Registry.Users.OpenSubKey(sid, writable: true);
+            using var key = (zweig ?? Registry.CurrentUser).CreateSubKey(pfad, writable: true);
+            foreach (var k in kennungen) key.SetValue(k, 0, RegistryValueKind.DWord);
+        }
+        catch { return false; }
+        finally { zweig?.Dispose(); }
+
+        // Dem Explorer Bescheid geben - wie es auch die Einstellungsseite tut.
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_FLUSH, IntPtr.Zero, IntPtr.Zero);
+        return true;
+    }
+
+    private const int SHCNE_ASSOCCHANGED = 0x08000000;
+    private const uint SHCNF_FLUSH = 0x1000;
+
+    [System.Runtime.InteropServices.DllImport("shell32.dll")]
+    private static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
 
     /// <summary>Vergleicht zwei Dateien inhaltlich (Groesse, dann Bytes).</summary>
     private static bool FilesAreEqual(string a, string b)
@@ -1252,7 +1368,12 @@ public sealed class BackupService
     private async Task InstallViaWinget(string appName, string wingetId)
     {
         _log(Loc.Tr($"[INFO] Versuche, {appName} via Winget zu installieren...", $"[INFO] Trying to install {appName} via winget..."));
-        var r = await _runner.RunAsync("winget", $"install --id {wingetId} -e --accept-package-agreements --accept-source-agreements");
+        // Frueher immer "winget" aus dem Suchpfad - an der Pruefung und der
+        // Reparatur des Winget-Imports vorbei. Scheiterte winget an seiner
+        // Paketquelle, scheiterte die Installation hier stumm mit einer Zahl.
+        var r = Winget is not null
+            ? await Winget.InstallAsync(wingetId)
+            : await _runner.RunAsync("winget", $"install --id {wingetId} -e --accept-package-agreements --accept-source-agreements");
 
         // Frueher stand hier immer "Installation abgeschlossen" - auch wenn
         // winget gar nicht startete. Bewusst eine WARNUNG und kein FEHLER: Das
@@ -1262,9 +1383,11 @@ public sealed class BackupService
         if (!r.Started)
             _log(Loc.Tr($"[WARNUNG] winget konnte nicht gestartet werden ({r.StartError}). {appName} bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
                         $"[WARNING] winget could not be started ({r.StartError}). Please install {appName} manually - the profile is restored anyway."));
+        else if (r.ExitCode is WingetFehler.SchonInstalliert or WingetFehler.SchonAktuell)
+            _log(Loc.Tr($"[INFO] {appName} ist bereits installiert.", $"[INFO] {appName} is already installed."));
         else if (r.ExitCode != 0)
-            _log(Loc.Tr($"[WARNUNG] {appName} ließ sich per winget nicht installieren (ExitCode {r.ExitCode}). Bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
-                        $"[WARNING] {appName} could not be installed via winget (ExitCode {r.ExitCode}). Please install it manually - the profile is restored anyway."));
+            _log(Loc.Tr($"[WARNUNG] {appName} ließ sich per winget nicht installieren ({WingetService.Beschreibung(r)}). Bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
+                        $"[WARNING] {appName} could not be installed via winget ({WingetService.Beschreibung(r)}). Please install it manually - the profile is restored anyway."));
         else
             _log(Loc.Tr($"[INFO] {appName} wurde per winget installiert.", $"[INFO] {appName} was installed via winget."));
     }

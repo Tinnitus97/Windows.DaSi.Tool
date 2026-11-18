@@ -42,11 +42,68 @@ public static class ProfileExcludes
         @"AppData\Local\Microsoft\Windows\INetCache",
         @"AppData\Local\Microsoft\Windows\Explorer",
         @"AppData\Local\CrashDumps",
-        @"AppData\Local\Google\Chrome\User Data\Default\Cache",
-        @"AppData\Local\BraveSoftware\Brave-Browser\User Data\Default\Cache",
-        @"AppData\Local\Microsoft\Edge\User Data\Default\Cache",
         @"AppData\Local\Packages\Microsoft.Windows.Search_cw5n1h2txyewy"
     };
+
+    /// <summary>Die Datenordner der Chromium-Browser in AppData.</summary>
+    private static readonly string[] ChromiumUserData =
+    {
+        @"AppData\Local\Google\Chrome\User Data",
+        @"AppData\Local\BraveSoftware\Brave-Browser\User Data",
+        @"AppData\Local\Microsoft\Edge\User Data",
+    };
+
+    /// <summary>
+    /// Zwischenspeicher der Grafikkarte direkt unter "User Data". Sie passen
+    /// ohnehin nur zu Grafikkarte und Treiber des alten Rechners, und solange
+    /// der Browser im Hintergrund laeuft, sind sie gesperrt.
+    /// </summary>
+    private static readonly string[] ChromiumGemeinsameCaches = { "GrShaderCache", "ShaderCache", "GraphiteDawnCache" };
+
+    /// <summary>Zwischenspeicher im Standardprofil ("Default") eines Chromium-Browsers.</summary>
+    private static readonly string[] ChromiumProfilCaches = { "Cache", "Code Cache", "GPUCache", "DawnWebGPUCache", "DawnGraphiteCache" };
+
+    /// <summary>
+    /// Zustand von Windows-Bestandteilen, der nur zu diesem einen Rechner und
+    /// dieser einen Fassung passt. Auf einem anderen Rechner richtet er
+    /// Schaden an, statt zu helfen:
+    ///
+    /// - App-Installer (winget): seine Datenbanken. Stammen sie von einer
+    ///   neueren winget-Fassung als der auf dem Zielrechner, scheitert danach
+    ///   JEDE Installation mit 0x8A150009 ("Cannot write to index; it is a
+    ///   higher schema version") - so geschehen nach einer Wiederherstellung
+    ///   mit AppData auf einen frisch eingerichteten Rechner.
+    /// - Windows-Shell (Suche, Widgets, Startmenue): ihr App-Index und ihre
+    ///   eingebettete Browser-Ansicht. Beides legt Windows selbst neu an, und
+    ///   im laufenden Betrieb ist es ohnehin gesperrt.
+    ///
+    /// Sie bleiben in beide Richtungen draussen: beim Sichern und - auch fuer
+    /// Sicherungen von frueher, die sie noch enthalten - beim Zurueckschreiben.
+    /// </summary>
+    private static readonly string[] MaschinenZustand =
+    {
+        @"AppData\Local\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe",
+        @"AppData\Local\Packages\Microsoft.Winget.Source_8wekyb3d8bbwe",
+        @"AppData\Local\Packages\MicrosoftWindows.Client.CBS_cw5n1h2txyewy",
+        @"AppData\Local\Packages\MicrosoftWindows.Client.Core_cw5n1h2txyewy",
+    };
+
+    /// <summary>
+    /// Alles innerhalb von AppData, was nie mitgenommen wird - relativ zum
+    /// Profil. Oeffentlich fuer die Pruefungen.
+    /// </summary>
+    public static IEnumerable<string> AppDataAusschluesse()
+    {
+        foreach (var c in AppDataCaches) yield return c;
+        foreach (var browser in ChromiumUserData)
+        {
+            // Bewusst mit "\\" statt Path.Combine: Die Angaben sind Windows-Pfade,
+            // wie die Eintraege oben - auch in der Pruefumgebung unter Linux.
+            foreach (var c in ChromiumGemeinsameCaches) yield return browser + "\\" + c;
+            foreach (var c in ChromiumProfilCaches) yield return browser + "\\Default\\" + c;
+        }
+        foreach (var m in MaschinenZustand) yield return m;
+    }
 
     /// <summary>
     /// Die Registry-Dateien des Profils. Sie sind fuer das Kopieren gesperrt,
@@ -117,7 +174,7 @@ public static class ProfileExcludes
 
         // Die Zwischenspeicher immer - bei ausgeschlossenem AppData sind sie
         // ohnehin schon mit drin, doppelt genannt stoert robocopy nicht.
-        excluded.AddRange(AppDataCaches.Select(d => Path.Combine(userDir, d)));
+        excluded.AddRange(AppDataAusschluesse().Select(d => Path.Combine(userDir, d)));
 
         if (!includeCloud)
         {

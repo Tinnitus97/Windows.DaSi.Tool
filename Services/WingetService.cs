@@ -32,6 +32,9 @@ public sealed class WingetService
     /// <summary>Nachinstallation von GitHub nur einmal je Programmlauf versuchen.</summary>
     private bool _githubVersucht;
 
+    /// <summary>Paketquellen nach einem Quellenfehler nur einmal je Programmlauf zuruecksetzen.</summary>
+    private bool _quellenZurueckgesetzt;
+
     public WingetService(ProcessRunner runner, CancellationTokenState cancel, Action<string> log)
     {
         _runner = runner;
@@ -76,9 +79,10 @@ public sealed class WingetService
             var root = Path.Combine(progFiles, "WindowsApps");
             if (Directory.Exists(root))
             {
-                var dirs = Directory.GetDirectories(root, "Microsoft.DesktopAppInstaller_*__8wekyb3d8bbwe")
-                    .OrderByDescending(d => d);
-                results.AddRange(dirs);
+                // Neueste Fassung zuerst - nach der Versionsnummer, nicht nach
+                // dem Text (sonst stand "1.9" vor "1.26").
+                results.AddRange(WingetFehler.NeuesteZuerst(
+                    Directory.GetDirectories(root, "Microsoft.DesktopAppInstaller_*__8wekyb3d8bbwe")));
             }
         }
         catch { /* Zugriff auf WindowsApps evtl. eingeschraenkt */ }
@@ -626,24 +630,42 @@ public sealed class WingetService
             if (string.IsNullOrWhiteSpace(id)) continue;
 
             _log(Loc.Tr($"[{i}/{selected.Count}] Installiere {id} ...", $"[{i}/{selected.Count}] Installing {id} ..."));
-            var r = await InvokeWinget(
-                $"install --exact --id {Quote(id)} --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity");
+            var r = await InstallAsync(id);
             if (_cancel.IsCancelled) { _log(Loc.Tr("[ABBRUCH] Winget-Import durch Benutzer abgebrochen.", "[CANCELLED] Winget import cancelled by user.")); break; }
 
             if (!r.Started) { fail++; _log(Loc.Tr($"    -> [FEHLER] winget konnte nicht gestartet werden: {r.StartError}", $"    -> [ERROR] winget could not be started: {r.StartError}")); continue; }
 
             switch (r.ExitCode)
             {
-                case 0:            ok++;   _log(Loc.Tr("    -> Erfolgreich installiert.", "    -> Installed successfully.")); break;
-                case -1978335189:  skip++; _log(Loc.Tr("    -> Bereits installiert und aktuell.", "    -> Already installed and up to date.")); break;
-                case -1978335135:  skip++; _log(Loc.Tr("    -> Bereits installiert.", "    -> Already installed.")); break;
-                case -1978335212:  fail++; _log(Loc.Tr("    -> [FEHLER] Paket wurde im Winget-Katalog nicht gefunden.", "    -> [ERROR] Package was not found in the winget catalog.")); break;
+                case WingetFehler.Ok:               ok++;   _log(Loc.Tr("    -> Erfolgreich installiert.", "    -> Installed successfully.")); break;
+                case WingetFehler.SchonAktuell:     skip++; _log(Loc.Tr("    -> Bereits installiert und aktuell.", "    -> Already installed and up to date.")); break;
+                case WingetFehler.SchonInstalliert: skip++; _log(Loc.Tr("    -> Bereits installiert.", "    -> Already installed.")); break;
+                case WingetFehler.NichtGefunden:    fail++; _log(Loc.Tr("    -> [FEHLER] Paket wurde im Winget-Katalog nicht gefunden.", "    -> [ERROR] Package was not found in the winget catalog.")); break;
                 default:
                     fail++;
-                    var tail = string.Join(" | ",
-                        r.Output.Split('\n').Where(l => l.Trim().Length > 0).TakeLast(2).Select(l => l.Trim()));
-                    _log(Loc.Tr($"    -> [FEHLER] ExitCode {r.ExitCode}. {tail}", $"    -> [ERROR] ExitCode {r.ExitCode}. {tail}"));
+                    _log(Loc.Tr($"    -> [FEHLER] {Beschreibung(r)}", $"    -> [ERROR] {Beschreibung(r)}"));
                     break;
+            }
+
+            // Scheitert es auch nach der Reparatur an winget selbst, scheitert
+            // jedes weitere Paket genauso. Frueher lief die Liste trotzdem bis
+            // zum Ende durch - zehnmal dieselbe Meldung.
+            if (r.ExitCode != WingetFehler.Ok && WingetFehler.QuelleKaputt(r.ExitCode, r.Output))
+            {
+                var rest = selected.Skip(i).Count(p => !string.IsNullOrWhiteSpace(p.PackageIdentifier));
+                if (rest > 0)
+                {
+                    fail += rest;
+                    _log(Loc.Tr($"[FEHLER] winget lässt sich auch nach der Reparatur nicht benutzen - die übrigen {rest} Programme werden nicht versucht: "
+                                + string.Join(", ", selected.Skip(i).Select(p => p.PackageIdentifier).Where(x => !string.IsNullOrWhiteSpace(x))),
+                                $"[ERROR] winget is still unusable after the repair - the remaining {rest} programs are not attempted: "
+                                + string.Join(", ", selected.Skip(i).Select(p => p.PackageIdentifier).Where(x => !string.IsNullOrWhiteSpace(x)))));
+                }
+                _log(Loc.Tr("[INFO] Abhilfe: den 'App-Installer' aus dem Microsoft Store oder von github.com/microsoft/winget-cli aktualisieren, "
+                            + "in einer Konsole 'winget source reset --force' ausführen und den Winget-Import erneut starten.",
+                            "[INFO] Remedy: update the 'App Installer' from the Microsoft Store or github.com/microsoft/winget-cli, "
+                            + "run 'winget source reset --force' in a console and start the winget import again."));
+                break;
             }
         }
 
@@ -652,6 +674,65 @@ public sealed class WingetService
         // "0 installiert, 5 fehlgeschlagen".
         var kennung = fail > 0 ? Loc.Tr("[WARNUNG]", "[WARNING]") : Loc.Tr("[ERFOLG]", "[SUCCESS]");
         _log(Loc.Tr($"{kennung} Winget-Import abgeschlossen: {ok} installiert, {skip} übersprungen (bereits vorhanden), {fail} fehlgeschlagen.", $"{kennung} Winget import finished: {ok} installed, {skip} skipped (already present), {fail} failed."));
+    }
+
+    /// <summary>
+    /// Installiert ein Paket aus der Quelle "winget".
+    ///
+    /// Scheitert es nicht am Paket, sondern an winget selbst - Paketquelle
+    /// oder deren Datenbank kaputt oder von einer neueren winget-Fassung
+    /// (0x8A150009) -, wird winget repariert und das Paket noch einmal
+    /// versucht: erst die Quellen zuruecksetzen, dann den App-Installer von
+    /// GitHub aktualisieren. Jede Stufe hoechstens einmal je Lauf.
+    /// </summary>
+    public async Task<ProcessResult> InstallAsync(string id)
+    {
+        var r = await InstallOnce(id);
+        if (!Kaputt(r) || _cancel.IsCancelled) return r;
+
+        var erklaerung = WingetFehler.Erklaerung(r.ExitCode, Loc.Tr);
+        _log(Loc.Tr($"[WARNUNG] winget meldet {WingetFehler.Hex(r.ExitCode)}{(erklaerung is null ? "" : ": " + erklaerung)} "
+                    + "Das betrifft jedes Paket - winget wird repariert, danach geht es weiter.",
+                    $"[WARNING] winget reports {WingetFehler.Hex(r.ExitCode)}{(erklaerung is null ? "" : ": " + erklaerung)} "
+                    + "This affects every package - winget is being repaired, then it continues."));
+
+        if (!_quellenZurueckgesetzt)
+        {
+            _quellenZurueckgesetzt = true;
+            await RepairSources();
+            if (_cancel.IsCancelled) return r;
+            r = await InstallOnce(id);
+            if (!Kaputt(r) || _cancel.IsCancelled) return r;
+        }
+
+        // Hilft das Zuruecksetzen nicht, ist winget zu alt fuer seine Daten -
+        // die neueste Fassung kommt mit jeder Datenbank zurecht.
+        if (await InstallFromGitHub())
+        {
+            _launcher = null;
+            if (await ResolveLauncher() is not null && !_cancel.IsCancelled)
+            {
+                await RepairSources();
+                if (!_cancel.IsCancelled) r = await InstallOnce(id);
+            }
+        }
+        return r;
+    }
+
+    private Task<ProcessResult> InstallOnce(string id) => InvokeWinget(
+        $"install --exact --id {Quote(id)} --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity");
+
+    private static bool Kaputt(ProcessResult r) => r.Started && r.ExitCode != 0 && WingetFehler.QuelleKaputt(r.ExitCode, r.Output);
+
+    /// <summary>"ExitCode -1978335223 (0x8A150009): Erklaerung - letzte Meldung von winget".</summary>
+    public static string Beschreibung(ProcessResult r)
+    {
+        var text = $"ExitCode {r.ExitCode} ({WingetFehler.Hex(r.ExitCode)})";
+        var erklaerung = WingetFehler.Erklaerung(r.ExitCode, Loc.Tr);
+        if (erklaerung is not null) text += ": " + erklaerung;
+        var meldung = WingetFehler.LetzteMeldung(r.Output);
+        if (meldung.Length > 0) text += (erklaerung is null ? ": " : " - ") + meldung;
+        return text;
     }
 
     // ---------------------------------------------------------------- Helpers

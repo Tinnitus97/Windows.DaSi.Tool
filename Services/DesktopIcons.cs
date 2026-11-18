@@ -45,9 +45,11 @@ public sealed record IconZiel(DesktopIcon Gesichert, int Index, int X, int Y);
 public sealed record IconPlan(List<IconZiel> Zuordnung, List<DesktopIcon> Fehlend, bool Skaliert);
 
 /// <summary>Was beim Zurueckschreiben geschah.</summary>
+/// <param name="Eingeschaltet">Systemsymbole ("Dieser PC" ...), die dafuer erst eingeschaltet wurden.</param>
 public sealed record IconErgebnis(int Gesetzt, int Gesamt, List<DesktopIcon> Fehlend, bool Skaliert,
                                   int BreiteJetzt, int HoeheJetzt, bool AnordnenAusgeschaltet,
-                                  bool RasterUmgestellt, bool AnordnenWiederAn);
+                                  bool RasterUmgestellt, bool AnordnenWiederAn,
+                                  IReadOnlyList<string>? Eingeschaltet = null);
 
 /// <summary>
 /// Der Desktop, wie ihn der Explorer gerade zeigt. Unter Windows
@@ -63,6 +65,8 @@ public interface IDesktopView : IDisposable
     IReadOnlyList<DesktopIcon> Symbole();
     /// <summary>Setzt das Symbol mit diesem Index (aus dem letzten <see cref="Symbole"/>) an eine Stelle.</summary>
     void Setzen(int index, int x, int y);
+    /// <summary>Laesst den Explorer den Desktop neu einlesen (wie F5).</summary>
+    void Aktualisieren() { }
 }
 
 /// <summary>
@@ -79,6 +83,44 @@ public static class DesktopIcons
 {
     /// <summary>Unterordner im Backup-Ziel.</summary>
     public const string FolderName = "Desktop-Symbole";
+
+    /// <summary>
+    /// Die Systemsymbole aus "Desktopsymboleinstellungen" mit ihrer Kennung -
+    /// so heissen sie im Desktop-Ordner ("::{...}"), unabhaengig von Sprache
+    /// und Benutzername. Der Benutzerordner etwa traegt den Namen des
+    /// Benutzers: "Anwender" auf dem alten, "Anwender123" auf dem neuen Rechner.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, (string De, string En)> Systemsymbole =
+        new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["{20D04FE0-3AEA-1069-A2D8-08002B30309D}"] = ("Dieser PC", "This PC"),
+            ["{59031A47-3F72-44A7-89C5-5595FE6B30EE}"] = ("Benutzerordner", "User's files"),
+            ["{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}"] = ("Netzwerk", "Network"),
+            ["{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}"] = ("Systemsteuerung", "Control Panel"),
+            ["{645FF040-5081-101B-9F08-00AA002F954E}"] = ("Papierkorb", "Recycle Bin"),
+        };
+
+    /// <summary>"::{20D04FE0-...}" -> "{20D04FE0-...}", wenn es ein Systemsymbol ist; sonst null.</summary>
+    public static string? SystemsymbolKennung(string name)
+    {
+        if (string.IsNullOrEmpty(name) || !name.StartsWith("::", StringComparison.Ordinal)) return null;
+        var kennung = name[2..];
+        return Systemsymbole.ContainsKey(kennung) ? kennung.ToUpperInvariant() : null;
+    }
+
+    /// <summary>
+    /// Die Systemsymbole, die beim Sichern auf dem Desktop lagen, hier aber
+    /// fehlen - auf einem frisch eingerichteten Rechner sind "Dieser PC" und
+    /// der Benutzerordner meist ausgeschaltet.
+    /// </summary>
+    public static List<string> FehlendeSystemsymbole(DesktopLayout gesichert, IReadOnlyList<DesktopIcon> jetzt)
+    {
+        var da = new HashSet<string>(jetzt.Select(j => SystemsymbolKennung(j.Name)).OfType<string>(), StringComparer.OrdinalIgnoreCase);
+        return gesichert.Symbole.Select(s => SystemsymbolKennung(s.Name)).OfType<string>()
+                        .Where(k => !da.Contains(k))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+    }
     public const string FileName = "Symbolpositionen.json";
 
     /// <summary>Wie der Desktop geoeffnet wird - unter Windows der Explorer-Desktop.</summary>
@@ -212,10 +254,33 @@ public static class DesktopIcons
     /// Direkt nach dem Zurueckschreiben des Profils braucht der Explorer einen
     /// Moment, bis die neuen Dateien auf dem Desktop erscheinen.
     /// </summary>
-    public static IconErgebnis Wiederherstellen(DesktopLayout gesichert, TimeSpan warten) => ImEigenenThread(() =>
+    /// <param name="einschalten">
+    /// Schaltet Systemsymbole ein, die gesichert waren, hier aber fehlen
+    /// (Kennungen "{...}"); true, wenn es geklappt hat. null: nichts einschalten.
+    /// </param>
+    public static IconErgebnis Wiederherstellen(DesktopLayout gesichert, TimeSpan warten,
+                                                Func<IReadOnlyList<string>, bool>? einschalten = null) => ImEigenenThread(() =>
     {
         using var desktop = OeffneDesktop();
         var (b, h) = desktop.Groesse();
+
+        // Erst die Systemsymbole einschalten - der Explorer zeigt sie nach
+        // einem Moment, die Warteschleife unten nimmt sie dann mit.
+        IReadOnlyList<string>? eingeschaltet = null;
+        var fehlendeSystem = FehlendeSystemsymbole(gesichert, desktop.Symbole());
+        if (fehlendeSystem.Count > 0 && einschalten is not null)
+        {
+            try
+            {
+                if (einschalten(fehlendeSystem))
+                {
+                    eingeschaltet = fehlendeSystem;
+                    desktop.Aktualisieren();
+                }
+            }
+            catch { /* dann bleiben sie eben aus - gemeldet werden sie als fehlend */ }
+        }
+
         var plan = Plan(gesichert, desktop.Symbole(), b, h);
 
         var uhr = Stopwatch.StartNew();
@@ -254,7 +319,7 @@ public static class DesktopIcons
         if (gesichert.AutomatischAnordnen) { desktop.AutomatischAnordnen = true; wiederAn = true; }
 
         return new IconErgebnis(gesetzt, gesichert.Symbole.Count, plan.Fehlend, plan.Skaliert, b, h,
-                                anordnenAus && !wiederAn, raster, wiederAn);
+                                anordnenAus && !wiederAn, raster, wiederAn, eingeschaltet);
     });
 
     /// <summary>
@@ -364,6 +429,17 @@ public sealed class ExplorerDesktop : IDesktopView
         return liste;
     }
 
+    /// <summary>
+    /// "Aktualisieren" aus dem Kontextmenue des Desktops: Befehl 0x7103 an die
+    /// Ansicht. Erst danach zeigt der Explorer frisch eingeschaltete
+    /// Systemsymbole.
+    /// </summary>
+    public void Aktualisieren()
+    {
+        const uint WM_COMMAND = 0x0111;
+        PostMessageW(_fenster, WM_COMMAND, (IntPtr)0x7103, IntPtr.Zero);
+    }
+
     public void Setzen(int index, int x, int y)
     {
         var pidl = _pidls[index];
@@ -427,6 +503,7 @@ public sealed class ExplorerDesktop : IDesktopView
     [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
 
     [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] private static extern bool PostMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("shlwapi.dll")] private static extern int StrRetToStrW(IntPtr pstr, IntPtr pidl, out IntPtr ppsz);
 
