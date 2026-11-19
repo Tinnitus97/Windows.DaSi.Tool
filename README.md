@@ -32,7 +32,7 @@ Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 | Bereich | Inhalt |
 | --- | --- |
 | **Windows-Benutzerprofil** | Dokumente, Bilder, Desktop, Downloads und alles Weitere im Profil, auch versteckte und Systemdateien. Zwischenspeicher, Temp-Ordner, die Registry-Dateien (`NTUSER.DAT`) und Windows-Altlasten (Verknüpfungspunkte wie *Anwendungsdaten*) bleiben draußen. Zeigt ein Ordner als Verknüpfung aus dem Profil hinaus (z. B. `Dokumente\Spiele` → `D:\Spiele`), steht das als Warnung im Protokoll. **AppData** und **Cloud-Ordner** wahlweise, auch einzeln ohne den Rest des Profils — Vorgabe: aus |
-| **Browser-Profile** | Firefox, Edge, Chrome, Brave und Opera — inklusive Lesezeichen, Verlauf und Einstellungen. Bei Opera jede Fassung, die beim Benutzer eingerichtet ist: Opera, Opera GX, Beta, Developer, Air … |
+| **Browser-Profile** | Firefox, Edge, Chrome, Brave und Opera — inklusive Lesezeichen, Verlauf und Einstellungen. Bei Opera jede Fassung, die beim Benutzer eingerichtet ist: Opera, Opera GX, Beta, Developer, Air … Vor dem Zurückschreiben wird der Browser beendet, bis er wirklich weg ist. Danach prüft das Tool, ob das Profil vollständig im Ziel steht, und nennt die wiederhergestellten Profile |
 | **E-Mail** | Thunderbird-Profil mit Konten und lokalen Ordnern |
 | **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog. Programme ohne Winget-Paket landen in einer eigenen Liste |
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |

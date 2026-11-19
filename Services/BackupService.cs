@@ -410,7 +410,7 @@ public sealed class BackupService
         if (!OperatingSystem.IsWindows()) return;
         var programme = AppCatalog.Programme.Select(a => (a.Name, a.Prozess))
                                   .Append(("Opera", AppCatalog.Opera.Prozess));
-        var geschlossen = new List<string>();
+        var geschlossen = new List<(string Name, string Prozess)>();
         foreach (var (name, prozess) in programme)
         {
             bool laeuft;
@@ -422,13 +422,12 @@ public sealed class BackupService
             }
             catch { continue; }
             if (!laeuft) continue;
-            KillProcess(prozess);
-            geschlossen.Add(name);
+            geschlossen.Add((name, prozess));
         }
         if (geschlossen.Count == 0) return;
-        _log(Loc.Tr($"[INFO] Vor dem Zurückschreiben von AppData geschlossen: {string.Join(", ", geschlossen)} - sonst wären ihre Dateien gesperrt.",
-                    $"[INFO] Closed before restoring AppData: {string.Join(", ", geschlossen)} - otherwise their files would be locked."));
-        await Task.Delay(2000);
+        _log(Loc.Tr($"[INFO] Vor dem Zurückschreiben von AppData geschlossen: {string.Join(", ", geschlossen.Select(g => g.Name))} - sonst wären ihre Dateien gesperrt.",
+                    $"[INFO] Closed before restoring AppData: {string.Join(", ", geschlossen.Select(g => g.Name))} - otherwise their files would be locked."));
+        await BeendenUndWarten(TimeSpan.FromSeconds(20), geschlossen.Select(g => g.Prozess).ToArray());
     }
 
     /// <summary>Schreibt nur die Cloud-Ordner zurueck - wie immer neben das Original.</summary>
@@ -451,9 +450,9 @@ public sealed class BackupService
         var quelle = AppCatalog.Pfad(SourcePath, app.ProfilRel);
         if (!Directory.Exists(quelle)) { _log(Loc.Tr($"[FEHLER] Pfad nicht gefunden: {quelle}", $"[ERROR] Path not found: {quelle}")); return; }
 
-        _log(Loc.Tr($"[INFO] Beende {app.Name}...", $"[INFO] Closing {app.Name}..."));
-        KillProcess(app.Prozess);
-        await Task.Delay(2000);
+        if (!await ProgrammSchliessen(app.Name, false, app.Prozess))
+            _log(Loc.Tr($"[WARNUNG] {app.Name} läuft noch - gesichert wird trotzdem, einzelne Dateien können aber unvollständig sein.",
+                        $"[WARNING] {app.Name} is still running - backing up anyway, but individual files may be incomplete."));
 
         await MirrorAppProfile(app.Name, quelle, Path.Combine(BackupPath, app.BackupOrdner), app.Chromium ? ChromiumCacheExcludes : null);
     }
@@ -461,16 +460,21 @@ public sealed class BackupService
     /// <summary>Schreibt das Profil eines Programms aus dem Katalog zurueck - vorher wird es bei Bedarf installiert.</summary>
     public async Task RestoreAppProfile(AppEintrag app)
     {
-        await InstallApp(app.Name, app.Prozess + ".exe", app.WingetId);
+        var frisch = await InstallApp(app.Name, app.Prozess + ".exe", app.WingetId);
 
         var quelle = Path.Combine(BackupPath, app.BackupOrdner);
         if (!Directory.Exists(quelle)) { _log(Loc.Tr($"[FEHLER] {app.Name} Backup nicht gefunden.", $"[ERROR] {app.Name} backup not found.")); return; }
 
-        _log(Loc.Tr($"[INFO] Beende {app.Name}...", $"[INFO] Closing {app.Name}..."));
-        KillProcess(app.Prozess);
-        await Task.Delay(2000);
+        if (!await ProgrammSchliessen(app.Name, frisch, app.Prozess))
+        {
+            _log(Loc.Tr($"[FEHLER] {app.Name} läuft noch und ließ sich nicht beenden - das Profil wird NICHT zurückgeschrieben, sonst überschriebe {app.Name} es beim Beenden wieder. "
+                        + $"Bitte {app.Name} vollständig schließen (auch im Infobereich) und den Punkt erneut ausführen.",
+                        $"[ERROR] {app.Name} is still running and could not be closed - the profile is NOT restored, {app.Name} would overwrite it again on exit. "
+                        + $"Please close {app.Name} completely (including the notification area) and run this item again."));
+            return;
+        }
 
-        await RestoreAppDir(app.Name, quelle, AppCatalog.Pfad(SourcePath, app.ProfilRel));
+        await RestoreAppDir(app.Name, quelle, AppCatalog.Pfad(SourcePath, app.ProfilRel), app.Prozess);
     }
 
     // ------------------------------------------------------------ Opera (alle Fassungen)
@@ -492,9 +496,9 @@ public sealed class BackupService
         _log(Loc.Tr($"[INFO] Gefundene Opera-Fassungen: {namen}", $"[INFO] Opera editions found: {namen}"));
 
         // Alle Fassungen laufen als opera.exe - einmal beenden genuegt.
-        _log(Loc.Tr("[INFO] Beende Opera...", "[INFO] Closing Opera..."));
-        KillOpera();
-        await Task.Delay(2000);
+        if (!await ProgrammSchliessen("Opera", false, OperaProzesse))
+            _log(Loc.Tr("[WARNUNG] Opera läuft noch - gesichert wird trotzdem, einzelne Dateien können aber unvollständig sein.",
+                        "[WARNING] Opera is still running - backing up anyway, but individual files may be incomplete."));
 
         foreach (var v in varianten)
         {
@@ -519,29 +523,29 @@ public sealed class BackupService
         {
             if (_cancel.IsCancelled) return;
             var name = AppCatalog.Opera.Anzeigename(v);
-            await InstallOpera(v);
-            _log(Loc.Tr($"[INFO] Beende {name}...", $"[INFO] Closing {name}..."));
-            KillOpera();
-            await Task.Delay(2000);
-            await RestoreAppDir(name, Path.Combine(quelle, v), Path.Combine(ziel, v));
+            var frisch = await InstallOpera(v);
+            if (!await ProgrammSchliessen(name, frisch, OperaProzesse))
+            {
+                _log(Loc.Tr($"[FEHLER] {name} läuft noch und ließ sich nicht beenden - das Profil wird NICHT zurückgeschrieben. Bitte Opera vollständig schließen und den Punkt erneut ausführen.",
+                            $"[ERROR] {name} is still running and could not be closed - the profile is NOT restored. Please close Opera completely and run this item again."));
+                continue;
+            }
+            await RestoreAppDir(name, Path.Combine(quelle, v), Path.Combine(ziel, v), OperaProzesse);
         }
     }
 
     /// <summary>Opera selbst und seine Begleiter, die Dateien im Profil offen halten.</summary>
-    private static void KillOpera()
-    {
-        foreach (var name in new[] { AppCatalog.Opera.Prozess, "opera_autoupdate", "browser_assistant" })
-            KillProcess(name);
-    }
+    private static readonly string[] OperaProzesse = { AppCatalog.Opera.Prozess, "opera_autoupdate", "browser_assistant" };
 
     /// <summary>
     /// Ist diese Opera-Fassung installiert? Opera installiert sich meist nur
     /// fuer den Benutzer (AppData\Local\Programs\&lt;Fassung&gt;), seltener fuer alle
     /// (Programme). Sonst per winget - soweit das Paket bekannt ist.
     /// </summary>
-    private async Task InstallOpera(string variante)
+    /// <returns>true, wenn die Fassung gerade eben installiert wurde.</returns>
+    private async Task<bool> InstallOpera(string variante)
     {
-        if (_cancel.IsCancelled) return;
+        if (_cancel.IsCancelled) return false;
         var name = AppCatalog.Opera.Anzeigename(variante);
         var orte = new[]
         {
@@ -551,16 +555,16 @@ public sealed class BackupService
         if (orte.Any(File.Exists))
         {
             _log(Loc.Tr($"[INFO] {name} ist bereits installiert.", $"[INFO] {name} is already installed."));
-            return;
+            return false;
         }
         var id = AppCatalog.Opera.WingetId(variante);
         if (id is null)
         {
             _log(Loc.Tr($"[WARNUNG] {name} ist nicht installiert und lässt sich nicht automatisch nachinstallieren. Bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
                         $"[WARNING] {name} is not installed and cannot be installed automatically. Please install it manually - the profile is restored anyway."));
-            return;
+            return false;
         }
-        await InstallViaWinget(name, id);
+        return await InstallViaWinget(name, id);
     }
 
     // ------------------------------------------------------------ Programmprofile: gemeinsamer Ablauf
@@ -582,7 +586,12 @@ public sealed class BackupService
     /// Schreibt ein Programmprofil zurueck. Ein vorhandenes Profil wird vorher
     /// beiseitegelegt ("..._alt_&lt;Zeit&gt;"), nicht geloescht.
     /// </summary>
-    private async Task RestoreAppDir(string name, string quelle, string ziel)
+    /// <param name="prozesse">
+    /// Die Prozesse des Programms. Laeuft eins davon nach dem Kopieren wieder,
+    /// wird es beendet und noch einmal kopiert - sonst ueberschriebe es beim
+    /// Beenden das zurueckgeschriebene Profil.
+    /// </param>
+    private async Task RestoreAppDir(string name, string quelle, string ziel, params string[] prozesse)
     {
         if (Directory.Exists(ziel))
         {
@@ -618,8 +627,41 @@ public sealed class BackupService
 
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
         if (_cancel.IsCancelled) return;
-        _log(code < 8 ? Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt.", $"[SUCCESS] {name} profile restored.")
-                      : Loc.Tr($"[FEHLER] {name}: ExitCode {code}", $"[ERROR] {name}: ExitCode {code}"));
+
+        // Hat sich das Programm waehrend des Kopierens gestartet (Installer,
+        // Autostart, Benutzer), haelt es ein eigenes, frisches Profil offen.
+        if (prozesse.Length > 0 && OperatingSystem.IsWindows() && Laeuft(prozesse))
+        {
+            _log(Loc.Tr($"[WARNUNG] {name} wurde während des Kopierens gestartet - wird beendet, und das Profil wird noch einmal zurückgeschrieben.",
+                        $"[WARNING] {name} was started while copying - it is closed and the profile is restored once more."));
+            if (await BeendenUndWarten(TimeSpan.FromSeconds(20), prozesse))
+            {
+                code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+                if (_cancel.IsCancelled) return;
+            }
+        }
+
+        if (code >= 8)
+        {
+            _log(Loc.Tr($"[FEHLER] {name}: ExitCode {code}", $"[ERROR] {name}: ExitCode {code}"));
+            return;
+        }
+
+        // Stehen die Dateien, an denen das Profil haengt, so da wie gesichert?
+        var abweichend = ProfilAbgleich.Abweichungen(quelle, ziel);
+        if (abweichend.Count > 0)
+        {
+            _log(Loc.Tr($"[FEHLER] {name}: Das Profil steht nicht vollständig im Ziel - abweichend: {string.Join(", ", abweichend.Take(8))}{(abweichend.Count > 8 ? ", ..." : "")}. "
+                        + $"Meist lief {name} dabei. Bitte {name} vollständig schließen (auch im Infobereich) und den Punkt erneut ausführen.",
+                        $"[ERROR] {name}: the profile is not complete in the target - differing: {string.Join(", ", abweichend.Take(8))}{(abweichend.Count > 8 ? ", ..." : "")}. "
+                        + $"Usually {name} was running meanwhile. Please close {name} completely (including the notification area) and run this item again."));
+            return;
+        }
+
+        var profile = ProfilAbgleich.Profile(ziel);
+        _log(profile.Count > 0
+            ? Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt ({string.Join(", ", profile)}).", $"[SUCCESS] {name} profile restored ({string.Join(", ", profile)}).")
+            : Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt.", $"[SUCCESS] {name} profile restored."));
     }
 
     public string[] ChromiumExcludes => ChromiumCacheExcludes;
@@ -1375,20 +1417,85 @@ public sealed class BackupService
 
     // ------------------------------------------------------------ App-Install/Update
 
-    private async Task InstallApp(string appName, string exeName, string? wingetId)
+    /// <returns>true, wenn das Programm gerade eben installiert wurde.</returns>
+    private async Task<bool> InstallApp(string appName, string exeName, string? wingetId)
     {
-        if (_cancel.IsCancelled) return;
+        if (_cancel.IsCancelled) return false;
         _log(Loc.Tr($"[INFO] Prüfe, ob {appName} installiert ist...", $"[INFO] Checking whether {appName} is installed..."));
+        // Fuer alle Benutzer (HKLM) oder - wie Chrome ohne Adminrechte - nur
+        // fuer den Benutzer (HKCU) installiert.
         var appPathKey = $@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exeName}";
-        using var key = Registry.LocalMachine.OpenSubKey(appPathKey);
-        if (key != null) { _log(Loc.Tr($"[INFO] {appName} ist bereits installiert.", $"[INFO] {appName} is already installed.")); return; }
+        bool da;
+        using (var lm = Registry.LocalMachine.OpenSubKey(appPathKey))
+        using (var cu = Registry.CurrentUser.OpenSubKey(appPathKey))
+            da = lm != null || cu != null;
+        if (da) { _log(Loc.Tr($"[INFO] {appName} ist bereits installiert.", $"[INFO] {appName} is already installed.")); return false; }
 
         // Edge gehoert zu Windows, fuer ihn gibt es kein Paket.
-        if (wingetId is null) return;
-        await InstallViaWinget(appName, wingetId);
+        if (wingetId is null) return false;
+        return await InstallViaWinget(appName, wingetId);
     }
 
-    private async Task InstallViaWinget(string appName, string wingetId)
+    /// <summary>
+    /// Schliesst ein Programm vor dem Kopieren seines Profils - und wartet, bis
+    /// es wirklich beendet ist. Wurde es gerade erst installiert, wird vorher
+    /// kurz abgewartet: Manche Installer (Chrome) starten den Browser nach der
+    /// Installation von selbst, ein paar Sekunden spaeter. Lief er dann waehrend
+    /// des Kopierens, legte er ein frisches, leeres Profil an.
+    /// </summary>
+    /// <returns>false, wenn es sich nicht beenden liess.</returns>
+    private async Task<bool> ProgrammSchliessen(string name, bool frischInstalliert, params string[] prozesse)
+    {
+        if (!OperatingSystem.IsWindows()) return true;
+        if (frischInstalliert)
+        {
+            _log(Loc.Tr($"[INFO] {name} wurde gerade installiert - manche Installer starten das Programm danach von selbst. Kurz abwarten ...",
+                        $"[INFO] {name} has just been installed - some installers start the program afterwards. Waiting briefly ..."));
+            for (int i = 0; i < 12 && !Laeuft(prozesse) && !_cancel.IsCancelled; i++) await Task.Delay(1000);
+        }
+        _log(Loc.Tr($"[INFO] Beende {name}...", $"[INFO] Closing {name}..."));
+        return await BeendenUndWarten(TimeSpan.FromSeconds(20), prozesse);
+    }
+
+    /// <summary>Laeuft einer dieser Prozesse?</summary>
+    private static bool Laeuft(params string[] prozesse)
+    {
+        foreach (var name in prozesse)
+        {
+            try
+            {
+                var liste = System.Diagnostics.Process.GetProcessesByName(name);
+                var n = liste.Length;
+                foreach (var pr in liste) pr.Dispose();
+                if (n > 0) return true;
+            }
+            catch { /* naechster */ }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Beendet die Prozesse und wartet, bis keiner mehr laeuft - und es auch
+    /// eine Sekunde lang so bleibt (Browser starten Hilfsprozesse nach).
+    /// </summary>
+    private async Task<bool> BeendenUndWarten(TimeSpan hoechstens, params string[] prozesse)
+    {
+        var uhr = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            foreach (var name in prozesse) KillProcess(name);
+            await Task.Delay(700);
+            if (!Laeuft(prozesse))
+            {
+                await Task.Delay(1000);
+                if (!Laeuft(prozesse)) return true;
+            }
+            if (uhr.Elapsed > hoechstens || _cancel.IsCancelled) return !Laeuft(prozesse);
+        }
+    }
+
+    /// <returns>true, wenn winget das Programm gerade installiert hat.</returns>
+    private async Task<bool> InstallViaWinget(string appName, string wingetId)
     {
         _log(Loc.Tr($"[INFO] Versuche, {appName} via Winget zu installieren...", $"[INFO] Trying to install {appName} via winget..."));
         // Frueher immer "winget" aus dem Suchpfad - an der Pruefung und der
@@ -1412,7 +1519,11 @@ public sealed class BackupService
             _log(Loc.Tr($"[WARNUNG] {appName} ließ sich per winget nicht installieren ({WingetService.Beschreibung(r)}). Bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
                         $"[WARNING] {appName} could not be installed via winget ({WingetService.Beschreibung(r)}). Please install it manually - the profile is restored anyway."));
         else
+        {
             _log(Loc.Tr($"[INFO] {appName} wurde per winget installiert.", $"[INFO] {appName} was installed via winget."));
+            return true;
+        }
+        return false;
     }
 
     // ------------------------------------------------------------ Helpers

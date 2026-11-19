@@ -19,6 +19,27 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Behoben
 
+- **Chrome war nach der Wiederherstellung leer**, obwohl die Sicherung vollständig
+  war. Von Hand bei geschlossenem Chrome in den Profilordner kopiert, war alles da.
+  Wahrscheinliche Ursache: Chrome lief während des Kopierens. Der Installer startet
+  Chrome nach der Installation manchmal von selbst, ein paar Sekunden später. Dann
+  legt Chrome ein frisches Profil an und schreibt beim Beenden „Local State“ und
+  „Preferences“ über die zurückgeschriebenen. Für alle Browser und Thunderbird gilt
+  jetzt:
+  - Nach einer frischen Installation wird kurz abgewartet, ob der Installer das
+    Programm startet. Danach wird es beendet, und das Tool **wartet, bis es wirklich
+    weg ist**, statt pauschal zwei Sekunden.
+  - Startet es während des Kopierens trotzdem, wird es beendet und das Profil
+    **noch einmal** zurückgeschrieben.
+  - Danach prüft das Tool, ob die Dateien, an denen das Profil hängt (`Local State`,
+    `Preferences`, `Bookmarks`, `History`, bei Firefox `profiles.ini`, `prefs.js` …),
+    so im Ziel stehen wie in der Sicherung. Das Protokoll nennt die
+    wiederhergestellten Profile (`Default, Profile 1`) – oder als Fehler die
+    abweichenden Dateien.
+  - Lässt sich der Browser nicht beenden, wird das Profil nicht zurückgeschrieben,
+    sondern eine Meldung samt Abhilfe ausgegeben.
+  - Chrome, das nur für den Benutzer installiert ist, gilt als installiert. Bisher
+    wurde dann zusätzlich eine zweite Chrome-Installation für alle Benutzer angestoßen.
 - **Profil mit AppData zurückschreiben endete weiter mit „Robocopy Fehlercode: 11“.**
   Das Protokoll mit 1.2.6 zeigte vier Gründe:
   - **Das Tool selbst lief vom Desktop des Zielprofils.** In der Sicherung lag eine

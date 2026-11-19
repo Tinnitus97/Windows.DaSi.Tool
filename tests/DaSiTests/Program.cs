@@ -1277,6 +1277,57 @@ internal static class Program
             DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? new ExplorerDesktop() : throw new PlatformNotSupportedException();
         }
 
+        Console.WriteLine("\n== Browserprofil nach dem Zurueckschreiben pruefen ==");
+        {
+            // Wie Chrome: "Local State" oben, zwei Profile mit Preferences & Co.
+            var sicherungCh = Path.Combine(root, "abgleich", "Chrome-Profil");
+            void DateiAb(string basis, string rel, string inhalt)
+            {
+                var f = Path.Combine(basis, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(f)!);
+                File.WriteAllText(f, inhalt);
+            }
+            DateiAb(sicherungCh, "Local State", "{\"profile\":{\"last_used\":\"Profile 1\",\"info_cache\":{}}, \"os_crypt\":{}}");
+            DateiAb(sicherungCh, Path.Combine("Default", "Preferences"), new string('d', 4000));
+            DateiAb(sicherungCh, Path.Combine("Default", "Bookmarks"), new string('b', 900));
+            DateiAb(sicherungCh, Path.Combine("Profile 1", "Preferences"), new string('p', 5000));
+            DateiAb(sicherungCh, Path.Combine("Profile 1", "History"), new string('h', 20000));
+            DateiAb(sicherungCh, Path.Combine("Crowd Deny", "1.0", "manifest.json"), "x");
+            Check("Profile erkannt: Default und Profile 1 (nicht \"Crowd Deny\")",
+                ProfilAbgleich.Profile(sicherungCh).SequenceEqual(new[] { "Default", "Profile 1" }),
+                string.Join(", ", ProfilAbgleich.Profile(sicherungCh)));
+
+            // Vollstaendig kopiert.
+            var zielUd = Path.Combine(root, "abgleich", "User Data");
+            foreach (var f in Directory.GetFiles(sicherungCh, "*", SearchOption.AllDirectories))
+                DateiAb(zielUd, Path.GetRelativePath(sicherungCh, f), File.ReadAllText(f));
+            Check("vollstaendig: keine Abweichung", ProfilAbgleich.Abweichungen(sicherungCh, zielUd).Count == 0,
+                string.Join(", ", ProfilAbgleich.Abweichungen(sicherungCh, zielUd)));
+
+            // Wie am 19.11.2026: Chrome lief und schrieb beim Beenden ein frisches
+            // "Local State" und "Preferences" ueber das zurueckgeschriebene Profil.
+            File.WriteAllText(Path.Combine(zielUd, "Local State"), "{\"profile\":{}}");
+            File.WriteAllText(Path.Combine(zielUd, "Profile 1", "Preferences"), "{}");
+            File.Delete(Path.Combine(zielUd, "Default", "Bookmarks"));
+            var abw = ProfilAbgleich.Abweichungen(sicherungCh, zielUd);
+            Check("ueberschrieben: Local State, Preferences und fehlende Lesezeichen werden erkannt",
+                abw.Contains("Local State") && abw.Contains(Path.Combine("Profile 1", "Preferences"))
+                && abw.Contains(Path.Combine("Default", "Bookmarks")) && abw.Count == 3, string.Join(", ", abw));
+            Check("nicht gesicherte Dateien zaehlen nicht", !abw.Contains(Path.Combine("Default", "History")));
+
+            // Firefox: profiles.ini und Profiles\xxxx.default-release\prefs.js
+            var ff = Path.Combine(root, "abgleich", "Firefox-Profil");
+            DateiAb(ff, "profiles.ini", "[Profile0]\nPath=Profiles/abcd.default-release\n");
+            DateiAb(ff, Path.Combine("Profiles", "abcd.default-release", "prefs.js"), "user_pref(\"a\", 1);");
+            DateiAb(ff, Path.Combine("Profiles", "abcd.default-release", "places.sqlite"), new string('s', 3000));
+            Check("Firefox: Profil unter Profiles erkannt",
+                ProfilAbgleich.Profile(ff).SequenceEqual(new[] { Path.Combine("Profiles", "abcd.default-release") }));
+            var ffZiel = Path.Combine(root, "abgleich", "Firefox");
+            Check("Firefox: leeres Ziel - alle wichtigen Dateien fehlen",
+                ProfilAbgleich.Abweichungen(ff, ffZiel).Count == 3, string.Join(", ", ProfilAbgleich.Abweichungen(ff, ffZiel)));
+            Check("ohne Sicherung: nichts zu vergleichen", ProfilAbgleich.Abweichungen(Path.Combine(root, "abgleich", "fehlt"), ffZiel).Count == 0);
+        }
+
         // ================================================================
         // Austauschskript WIRKLICH ausfuehren - nur unter Windows moeglich
         // ================================================================
