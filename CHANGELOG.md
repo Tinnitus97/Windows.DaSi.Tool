@@ -11,6 +11,15 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Neu
 
+- **Taskleisten-Symbole.** Die Option *Symbolpositionen* der Kachel *Desktop-Layout*
+  heißt jetzt **Symbole + Taskleiste**. Sie sichert zusätzlich die an die Taskleiste
+  angehefteten Symbole: die Verknüpfungen aus `User Pinned\TaskBar` und ihre
+  Reihenfolge samt angehefteter Store-Apps (Registry-Schlüssel `Taskband`). Abgelegt
+  wird das unter `Desktop-Symbole\Taskleiste\`. Beim Wiederherstellen heftet das Tool
+  sie wieder an und startet dafür den Explorer kurz neu, denn er liest die Taskleiste
+  nur beim Start. Erst danach setzt es die Desktop-Symbole an ihre Stelle. Windows
+  startet die Shell normalerweise selbst wieder. Tut es das nicht, startet das Tool sie.
+
 - **„Design sichern / wiederherstellen“ statt „Hintergrundbild“.** Der Punkt sichert
   weiterhin den Hintergrund (Bild oder Volltonfarbe). Dazu kommen die
   Design-Einstellungen von Windows (*Personalisierung*). Alles liegt in **einem**

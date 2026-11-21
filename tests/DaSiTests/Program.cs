@@ -1495,6 +1495,42 @@ internal static class Program
                 AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerD)?.De);
         }
 
+        Console.WriteLine("\n== Taskleisten-Symbole ==");
+        {
+            var tlProfil = Path.Combine(root, "taskleiste", "Users", "Anwender");
+            var pin = Taskleiste.PinOrdner(tlProfil);
+            Check("Ordner der angehefteten Verknuepfungen im Profil",
+                pin == Path.Combine(tlProfil, "AppData", "Roaming", "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar"), pin);
+            Directory.CreateDirectory(pin);
+            foreach (var n in new[] { "Microsoft Edge.lnk", "Datei-Explorer.lnk", "Firefox.lnk" }) File.WriteAllText(Path.Combine(pin, n), "lnk");
+            File.WriteAllText(Path.Combine(pin, "desktop.ini"), "x");
+            var lnk = Taskleiste.Verknuepfungen(pin);
+            Check("nur Verknuepfungen, nach Namen", lnk.SequenceEqual(new[] { "Datei-Explorer.lnk", "Firefox.lnk", "Microsoft Edge.lnk" }), string.Join(", ", lnk));
+            Check("Namen fuers Protokoll", Taskleiste.Namen(lnk) == "Datei-Explorer, Firefox, Microsoft Edge");
+            Check("kein Ordner: keine Verknuepfungen", Taskleiste.Verknuepfungen(Path.Combine(root, "taskleiste", "fehlt")).Count == 0);
+
+            var tlSich = Path.Combine(root, "taskleiste", "DASI");
+            var band = new List<DesignEintrag>
+            {
+                new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "Favorites", Typ = "Binary", Wert = Convert.ToBase64String(new byte[] { 0, 1, 2, 255 }) },
+                new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "FavoritesVersion", Typ = "DWord", Wert = "3" },
+            };
+            Taskleiste.Speichern(tlSich, new TaskleistenSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Verknuepfungen = lnk, Taskband = band });
+            var tlZurueck = Taskleiste.Laden(tlSich);
+            Check("Taskleiste.json: Verknuepfungen und Taskband wieder gelesen",
+                tlZurueck is not null && tlZurueck.Verknuepfungen.SequenceEqual(lnk)
+                && tlZurueck.Taskband.Select(b => b.Name + b.Typ + b.Wert).SequenceEqual(band.Select(b => b.Name + b.Typ + b.Wert)));
+            Check("liegt unter Desktop-Symbole\\Taskleiste", File.Exists(Path.Combine(tlSich, "Desktop-Symbole", "Taskleiste", "Taskleiste.json")));
+            var leerTl = Path.Combine(root, "taskleiste", "leer");
+            Taskleiste.Speichern(leerTl, new TaskleistenSicherung());
+            Check("leere Taskleiste gilt nicht als gesichert", !Taskleiste.Vorhanden(leerTl) && Taskleiste.Laden(Path.Combine(root, "taskleiste", "nichts")) is null);
+
+            // Verfuegbarkeit: nur die Taskleiste, keine Symbolpositionen.
+            AppCatalog.HatWlanAdapter = () => true;
+            Check("nur Taskleiste: Variante Symbole frei", AppCatalog.HatDesktopSymbole(tlSich) && !DesktopIcons.Vorhanden(tlSich));
+            Check("nur Taskleiste: Desktop-Layout beim Wiederherstellen frei", AppCatalog.BeimWiederherstellen(Punkt.DesktopShot, tlSich) is null);
+        }
+
         // ================================================================
         // Austauschskript WIRKLICH ausfuehren - nur unter Windows moeglich
         // ================================================================
@@ -2080,6 +2116,34 @@ internal static class Program
             Check("neue Schalter: die Registry des Zielbenutzers bleibt unangetastet",
                 File.ReadAllText(Path.Combine(anwenderNeu, "NTUSER.DAT")) == "eigene Registry");
             Console.WriteLine($"         (alt: NTUSER.DAT danach \"{File.ReadAllText(Path.Combine(anwenderAlt, "NTUSER.DAT"))}\")");
+        }
+
+        // Zuletzt: den Explorer neu starten - wie beim Zurueckschreiben der
+        // Taskleiste. Laeuft als letzte Pruefung, weil danach der Desktop kurz weg ist.
+        if (OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("\n== Taskleiste echt: angeheftete Symbole lesen, Explorer neu starten ==");
+            var echtBand = new List<string>();
+            using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(Taskleiste.TaskbandSchluessel))
+                foreach (var name in k?.GetValueNames() ?? Array.Empty<string>())
+                    if (DesignRegistry.Lesen(Microsoft.Win32.Registry.CurrentUser, Taskleiste.TaskbandSchluessel, name) is { } v)
+                        echtBand.Add($"{name} ({v.Typ})");
+            var echtPins = Taskleiste.Verknuepfungen(Taskleiste.PinOrdner(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
+            Console.WriteLine($"         Taskband: {(echtBand.Count == 0 ? "leer" : string.Join(", ", echtBand))}");
+            Console.WriteLine($"         angeheftet: {(echtPins.Count == 0 ? "nichts" : Taskleiste.Namen(echtPins))}");
+
+            if (!ExplorerNeustart.TaskleisteDa())
+            {
+                Console.WriteLine("         (keine Taskleiste auf diesem Laeufer - Neustart-Pruefung uebersprungen)");
+            }
+            else
+            {
+                var uhrNeu = System.Diagnostics.Stopwatch.StartNew();
+                var (neuOk, vonSelbst) = ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+                Console.WriteLine($"         Neustart: {(neuOk ? "Taskleiste wieder da" : "Taskleiste NICHT wieder da")}, "
+                                  + $"{(vonSelbst ? "von Windows selbst" : "vom Tool gestartet")}, {uhrNeu.Elapsed.TotalSeconds:F1} s");
+                Check("echt: nach dem Neustart ist die Taskleiste wieder da", neuOk);
+            }
         }
 
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");

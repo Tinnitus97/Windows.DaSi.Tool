@@ -38,7 +38,7 @@ Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
 | **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen über PrintBRM in einer Datei |
 | **Design** | Der **Hintergrund**: das Bild samt Darstellung (*Füllen*, *Anpassen* …), an derselben Stelle im gewählten Profil, auch wenn der Benutzer dort anders heißt – oder eine **Volltonfarbe**. Dazu die **Design-Einstellungen** von Windows: *Hell/Dunkel* für Windows und Apps, *Akzentfarbe* (auch „automatisch“ und auf Start, Taskleiste und Titelleisten), *Transparenz*, *Mauszeiger* (Schema und Größe), *Taskleiste* (Ausrichtung, Suche, Taskansicht, Gruppieren) und *Start*. Gelesen und gesetzt wird beim angemeldeten Benutzer; Hell/Dunkel gilt sofort, die Akzentfarbe auf Titelleisten teils erst nach dem nächsten Anmelden. Alles liegt im Ordner `Design` der Sicherung (`Design.json`, bei einem Bild die Datei daneben) |
-| **Desktop-Layout** | Wahlweise die Positionen der Desktop-Symbole (wie DesktopOK, beim Wiederherstellen automatisch zurückgesetzt) oder ein Foto des Desktops, ein Bild pro Monitor |
+| **Desktop-Layout** | Wahlweise die Positionen der Desktop-Symbole (wie DesktopOK, beim Wiederherstellen automatisch zurückgesetzt) samt der an die Taskleiste angehefteten Symbole – oder ein Foto des Desktops, ein Bild pro Monitor |
 
 > **WLAN-Schlüssel liegen im Klartext in der Sicherung.** Damit sie auf einem anderen
 > Rechner funktionieren, exportiert das Tool sie mit `key=clear` — verschlüsselt wären
@@ -176,8 +176,9 @@ Nach einer Neuinstallation ist der Desktop leer, und kaum jemand weiß noch, wo 
 Verknüpfungen lagen. Der Punkt **Desktop-Layout** bietet dafür zwei Wege, gewählt
 über die beiden Knöpfe in der Kachel:
 
-**Symbolpositionen** (wie *DesktopOK*): Das Tool merkt sich, welches Symbol wo liegt,
-und setzt beim Wiederherstellen jedes wieder an seine Stelle — automatisch.
+**Symbole + Taskleiste** (wie *DesktopOK*): Das Tool merkt sich, welches Symbol wo liegt,
+und setzt beim Wiederherstellen jedes wieder an seine Stelle — automatisch. Dazu sichert
+es die **an die Taskleiste angehefteten Symbole** und heftet sie wieder an.
 
 - Gelesen und gesetzt wird über die Schnittstelle, die der Explorer für seinen
   Desktop selbst anbietet. Zugeordnet wird über den Namen im Desktop-Ordner
@@ -199,7 +200,15 @@ und setzt beim Wiederherstellen jedes wieder an seine Stelle — automatisch.
   Profil stammen (meist vom öffentlichen Desktop für alle Benutzer), nennt es
   getrennt: Sie erscheinen erst mit ihrem Programm. Danach den Punkt einfach noch
   einmal ausführen.
-- Gespeichert wird `Desktop-Symbole\Symbolpositionen.json` im Backup-Ziel.
+- **Taskleiste:** Gesichert werden die angehefteten Verknüpfungen (Ordner
+  `User Pinned\TaskBar` im Profil) und ihre Reihenfolge samt angehefteter Store-Apps
+  (Registry-Schlüssel `Taskband`). Der Explorer liest beides nur beim Start. Beim
+  Wiederherstellen startet er deshalb kurz neu, offene Explorer-Fenster schließen sich
+  dabei. Erst danach kommen die Desktop-Symbole an ihre Stelle. Symbole von Programmen,
+  die auf dem neuen Rechner noch fehlen, werden erst mit dem Programm sichtbar. Der
+  Punkt läuft deshalb nach dem Winget-Import.
+- Gespeichert wird `Desktop-Symbole\Symbolpositionen.json`, für die Taskleiste
+  `Desktop-Symbole\Taskleiste\` (`Taskleiste.json` und die Verknüpfungen) im Backup-Ziel.
 
 **Screenshot**: Das Tool fotografiert den Desktop, und zwar **ein Bild pro Monitor**:
 alle im selben Moment, jedes in Größe und voller Auflösung seines Monitors, auch bei

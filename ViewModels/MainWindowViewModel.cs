@@ -584,7 +584,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     public string TgDesktopScreenshot => Tr("Screenshot", "Screenshot");
-    public string TgDesktopSymbole => Tr("Symbolpositionen", "Icon positions");
+    public string TgDesktopSymbole => Tr("Symbole + Taskleiste", "Icons + taskbar");
 
     // Beim Wiederherstellen: nur die Variante, die in der Sicherung liegt.
     private bool _hatScreenshot = true, _hatSymbole = true;
@@ -596,10 +596,12 @@ public partial class MainWindowViewModel : ObservableObject
             ? Tr("Öffnet das Foto des Desktops - die Symbole danach von Hand anordnen.", "Opens the picture of the desktop - then arrange the icons by hand.")
             : Tr("Fotografiert den Desktop, ein Bild pro Bildschirm.", "Takes a picture of the desktop, one per screen.");
     public string TipDesktopSymbole => !_hatSymbole
-        ? Tr("Die gewählte Sicherung enthält keine Symbolpositionen.", "The selected backup contains no icon positions.")
+        ? Tr("Die gewählte Sicherung enthält weder Symbolpositionen noch Taskleisten-Symbole.", "The selected backup contains neither icon positions nor taskbar icons.")
         : IsRestoreMode
-            ? Tr("Setzt jedes Desktop-Symbol wieder an seine gesicherte Stelle (wie DesktopOK).", "Puts every desktop icon back in its saved position (like DesktopOK).")
-            : Tr("Merkt sich, welches Desktop-Symbol wo liegt (wie DesktopOK).", "Remembers where each desktop icon is (like DesktopOK).");
+            ? Tr("Heftet die gesicherten Symbole wieder an die Taskleiste (der Explorer startet dafür kurz neu) und setzt jedes Desktop-Symbol an seine Stelle (wie DesktopOK).",
+                 "Pins the saved icons to the taskbar again (Explorer restarts briefly) and puts every desktop icon back in its place (like DesktopOK).")
+            : Tr("Merkt sich, welches Desktop-Symbol wo liegt (wie DesktopOK), und sichert die an die Taskleiste angehefteten Symbole.",
+                 "Remembers where each desktop icon is (like DesktopOK) and backs up the icons pinned to the taskbar.");
     public string ModeTitle => IsRestoreMode
         ? Tr("Wiederherstellen", "Restore")
         : Tr("Sichern", "Backup");
@@ -1549,7 +1551,7 @@ public partial class MainWindowViewModel : ObservableObject
             "Export-Printer" or "Import-Printer"          => Tr("Drucker & Treiber", "Printers & drivers"),
             "Export-Design" or "Import-Design"            => Tr("Design (Hintergrund, Farben, Mauszeiger, Taskleiste)", "Design (wallpaper, colors, pointer, taskbar)"),
             "Capture-DesktopShot" or "Show-DesktopShot"   => Tr("Desktop-Screenshot", "Desktop screenshot"),
-            "Backup-DesktopIcons" or "Restore-DesktopIcons" => Tr("Desktop-Symbolpositionen", "Desktop icon positions"),
+            "Backup-DesktopIcons" or "Restore-DesktopIcons" => Tr("Desktop-Symbole und Taskleiste", "Desktop icons and taskbar"),
             _ => choice
         };
     }

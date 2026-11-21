@@ -1343,7 +1343,16 @@ public sealed class BackupService
                         + "Light/dark mode, accent color etc. belong to the signed-in user - please sign in as that user and run the tool there."));
             return (null, false);
         }
-        if (angemeldet?.Sid is { } sid)
+        return BenutzerZweig(schreiben);
+    }
+
+    /// <summary>
+    /// HKEY_USERS\&lt;SID&gt; des angemeldeten Benutzers - sonst HKEY_CURRENT_USER.
+    /// Ob er zum gewaehlten Profil gehoert, prueft der Aufrufer.
+    /// </summary>
+    private static (RegistryKey Wurzel, bool Eigen) BenutzerZweig(bool schreiben)
+    {
+        if (OperatingSystem.IsWindows() && DesktopScreenshot.GetInteractiveUser()?.Sid is { } sid)
         {
             try
             {
@@ -1619,6 +1628,138 @@ public sealed class BackupService
 
     // ------------------------------------------------------------ Desktop-Symbole (wie DesktopOK)
 
+    // ------------------------------------------------------------ Taskleisten-Symbole
+
+    /// <summary>
+    /// Sichert die an die Taskleiste angehefteten Symbole: die Verknuepfungen
+    /// aus "User Pinned\TaskBar" und den Registry-Schluessel Taskband
+    /// (Reihenfolge, auch angeheftete Store-Apps ohne Verknuepfung).
+    /// </summary>
+    private void TaskleisteSichern()
+    {
+        var pinOrdner = Taskleiste.PinOrdner(SourcePath);
+        var verknuepfungen = Taskleiste.Verknuepfungen(pinOrdner);
+        var taskband = new List<DesignEintrag>();
+        if (OperatingSystem.IsWindows())
+        {
+            var (wurzel, eigen) = BenutzerZweig(schreiben: false);
+            try
+            {
+                using var k = wurzel.OpenSubKey(Taskleiste.TaskbandSchluessel);
+                foreach (var name in k?.GetValueNames() ?? Array.Empty<string>())
+                    if (DesignRegistry.Lesen(wurzel, Taskleiste.TaskbandSchluessel, name) is { } v)
+                        taskband.Add(new DesignEintrag { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = name, Typ = v.Typ, Wert = v.Wert });
+            }
+            catch (Exception ex)
+            {
+                _log(Loc.Tr($"[WARNUNG] Die Reihenfolge der Taskleiste ließ sich nicht lesen: {ex.Message}",
+                            $"[WARNING] The taskbar order could not be read: {ex.Message}"));
+            }
+            finally { if (eigen) wurzel.Dispose(); }
+        }
+        if (verknuepfungen.Count == 0 && taskband.Count == 0)
+        {
+            _log(Loc.Tr("[WARNUNG] An die Taskleiste ist nichts angeheftet - es gibt keine Taskleisten-Symbole zu sichern.",
+                        "[WARNING] Nothing is pinned to the taskbar - there are no taskbar icons to back up."));
+            return;
+        }
+
+        try
+        {
+            var ziel = Taskleiste.SicherungsOrdner(BackupPath);
+            Directory.CreateDirectory(ziel);
+            // Erneut in denselben Ordner gesichert: fruehere Verknuepfungen weg.
+            foreach (var alt in Directory.GetFiles(ziel, "*.lnk")) File.Delete(alt);
+            foreach (var n in verknuepfungen) File.Copy(Path.Combine(pinOrdner, n), Path.Combine(ziel, n), overwrite: true);
+            Taskleiste.Speichern(BackupPath, new TaskleistenSicherung
+            {
+                Rechner = Environment.MachineName,
+                Erstellt = DateTime.Now,
+                Verknuepfungen = verknuepfungen,
+                Taskband = taskband,
+            });
+            _log(verknuepfungen.Count > 0
+                ? Loc.Tr($"[ERFOLG] Taskleiste gesichert: {verknuepfungen.Count} angeheftete Verknüpfungen ({Taskleiste.Namen(verknuepfungen)}) samt Reihenfolge und angehefteten Apps.",
+                         $"[SUCCESS] Taskbar backed up: {verknuepfungen.Count} pinned shortcuts ({Taskleiste.Namen(verknuepfungen)}) including order and pinned apps.")
+                : Loc.Tr("[ERFOLG] Taskleiste gesichert: Reihenfolge und angeheftete Apps.",
+                         "[SUCCESS] Taskbar backed up: order and pinned apps."));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Taskleisten-Symbole konnten nicht gesichert werden: {ex.Message}",
+                        $"[ERROR] The taskbar icons could not be backed up: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Heftet die gesicherten Symbole wieder an die Taskleiste: Verknuepfungen
+    /// zurueck, Taskband schreiben, Explorer neu starten.
+    /// </summary>
+    /// <returns>true, wenn der Explorer dafuer neu gestartet wurde.</returns>
+    private async Task<bool> TaskleisteZurueckschreiben(TaskleistenSicherung s)
+    {
+        var quelle = Taskleiste.SicherungsOrdner(BackupPath);
+        var ziel = Taskleiste.PinOrdner(SourcePath);
+        var zurueck = new List<string>();
+        var fehlend = new List<string>();
+        try
+        {
+            Directory.CreateDirectory(ziel);
+            foreach (var n in s.Verknuepfungen)
+            {
+                var q = Path.Combine(quelle, n);
+                if (File.Exists(q)) { File.Copy(q, Path.Combine(ziel, n), overwrite: true); zurueck.Add(n); }
+                else fehlend.Add(n);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Taskleisten-Verknüpfungen konnten nicht zurückgeschrieben werden: {ex.Message}",
+                        $"[ERROR] The taskbar shortcuts could not be restored: {ex.Message}"));
+            return false;
+        }
+
+        if (!OperatingSystem.IsWindows() || s.Taskband.Count == 0)
+        {
+            _log(Loc.Tr($"[WARNUNG] Die Sicherung enthält nur die Verknüpfungen der Taskleiste, nicht ihre Reihenfolge - angeheftet werden sie dadurch nicht: {Taskleiste.Namen(zurueck)}",
+                        $"[WARNING] The backup only contains the taskbar shortcuts, not their order - this does not pin them: {Taskleiste.Namen(zurueck)}"));
+            return false;
+        }
+
+        var (wurzel, eigen) = BenutzerZweig(schreiben: true);
+        try
+        {
+            foreach (var e in s.Taskband) DesignRegistry.Schreiben(wurzel, e);
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Reihenfolge der Taskleiste ließ sich nicht schreiben: {ex.Message}",
+                        $"[ERROR] The taskbar order could not be written: {ex.Message}"));
+            return false;
+        }
+        finally { if (eigen) wurzel.Dispose(); }
+
+        // Der Explorer liest die angehefteten Symbole nur beim Start.
+        _log(Loc.Tr("[INFO] Der Explorer startet kurz neu, damit die Taskleiste die gesicherten Symbole übernimmt - offene Explorer-Fenster schließen sich dabei.",
+                    "[INFO] Explorer restarts briefly so the taskbar picks up the saved icons - open Explorer windows close in the process."));
+        var (ok, vonSelbst) = await ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(20));
+        if (!ok)
+        {
+            _log(Loc.Tr("[WARNUNG] Der Explorer kam nicht zurück. Die Taskleiste zeigt die Symbole nach dem nächsten Anmelden. Notfalls im Task-Manager \"Neuen Task ausführen\" > explorer.exe.",
+                        "[WARNING] Explorer did not come back. The taskbar shows the icons after the next sign-in. If needed: Task Manager > \"Run new task\" > explorer.exe."));
+            return true;
+        }
+        if (!vonSelbst)
+            _log(Loc.Tr("[INFO] Windows hat den Explorer nicht selbst neu gestartet - das Tool hat ihn gestartet.",
+                        "[INFO] Windows did not restart Explorer by itself - the tool started it."));
+        _log(Loc.Tr($"[ERFOLG] Taskleiste wiederhergestellt: {(zurueck.Count > 0 ? $"{zurueck.Count} Verknüpfungen ({Taskleiste.Namen(zurueck)}) und " : "")}die angehefteten Apps in der gesicherten Reihenfolge.",
+                    $"[SUCCESS] Taskbar restored: {(zurueck.Count > 0 ? $"{zurueck.Count} shortcuts ({Taskleiste.Namen(zurueck)}) and " : "")}the pinned apps in the saved order."));
+        if (fehlend.Count > 0)
+            _log(Loc.Tr($"[WARNUNG] {fehlend.Count} Verknüpfungen fehlen in der Sicherung: {Taskleiste.Namen(fehlend)}",
+                        $"[WARNING] {fehlend.Count} shortcuts are missing from the backup: {Taskleiste.Namen(fehlend)}"));
+        return true;
+    }
+
     /// <summary>
     /// Der Explorer zeigt den Desktop des angemeldeten Benutzers. Gehoert das
     /// gewaehlte Profil jemand anderem, wuerde der falsche Desktop gelesen bzw.
@@ -1641,10 +1782,20 @@ public sealed class BackupService
         return true;
     }
 
-    /// <summary>Merkt sich, welches Desktop-Symbol wo liegt.</summary>
+    /// <summary>
+    /// "Symbolpositionen": merkt sich, welches Desktop-Symbol wo liegt, und
+    /// sichert die an die Taskleiste angehefteten Symbole.
+    /// </summary>
     public async Task BackupDesktopIcons()
     {
         if (!DesktopGehoertZumProfil("Keine Symbolpositionen gesichert", "No icon positions backed up")) return;
+        await DesktopSymbolpositionenSichern();
+        if (_cancel.IsCancelled) return;
+        TaskleisteSichern();
+    }
+
+    private async Task DesktopSymbolpositionenSichern()
+    {
 
         DesktopLayout layout;
         try
@@ -1689,25 +1840,47 @@ public sealed class BackupService
     {
         var datei = DesktopIcons.Datei(BackupPath);
         var layout = DesktopIcons.Laden(datei);
-        if (layout is null)
+        var taskleiste = Taskleiste.Laden(BackupPath);
+        if (layout is null && taskleiste is null)
         {
-            _log(Loc.Tr($"[FEHLER] In der Sicherung liegen keine Symbolpositionen: {datei}",
-                        $"[ERROR] The backup contains no icon positions: {datei}"));
+            _log(Loc.Tr($"[FEHLER] In der Sicherung liegen weder Symbolpositionen noch Taskleisten-Symbole: {datei}",
+                        $"[ERROR] The backup contains neither icon positions nor taskbar icons: {datei}"));
             return;
         }
         if (!DesktopGehoertZumProfil("Symbolpositionen nicht gesetzt", "Icon positions not applied")) return;
+
+        // Erst die Taskleiste: Dafuer startet der Explorer neu - danach erst
+        // die Desktop-Symbole an ihre Stelle, sonst ordnete der Neustart sie
+        // womoeglich neu.
+        var neuGestartet = taskleiste is not null && await TaskleisteZurueckschreiben(taskleiste);
+        if (_cancel.IsCancelled) return;
+        if (layout is null)
+        {
+            _log(Loc.Tr("[INFO] Die Sicherung enthält keine Positionen von Desktop-Symbolen.", "[INFO] The backup contains no desktop icon positions."));
+            return;
+        }
 
         _log(Loc.Tr($"[INFO] Setze {layout.Symbole.Count} Desktop-Symbole an ihre gesicherte Stelle (gesichert am {layout.Erstellt:dd.MM.yyyy} auf {layout.Rechner})...",
                     $"[INFO] Moving {layout.Symbole.Count} desktop icons to their saved positions (saved on {layout.Erstellt:yyyy-MM-dd} on {layout.Rechner})..."));
         IconErgebnis erg;
         var sid = OperatingSystem.IsWindows() ? DesktopScreenshot.GetInteractiveUser()?.Sid : null;
-        try { erg = await Task.Run(() => DesktopIcons.Wiederherstellen(layout, TimeSpan.FromSeconds(10), k => SystemsymboleEinschalten(k, sid))); }
-        catch (Exception ex)
+        // Nach einem Neustart des Explorers erscheinen Desktop und Symbole erst
+        // nach und nach: laenger warten, und das Oeffnen des Desktops wiederholen.
+        var warten = TimeSpan.FromSeconds(neuGestartet ? 25 : 10);
+        IconErgebnis? ergebnis = null;
+        Exception? letzter = null;
+        for (int versuch = 0; versuch < (neuGestartet ? 10 : 1) && ergebnis is null; versuch++)
         {
-            _log(Loc.Tr($"[FEHLER] Die Symbolpositionen ließen sich nicht setzen: {ex.Message}",
-                        $"[ERROR] The icon positions could not be applied: {ex.Message}"));
+            try { ergebnis = await Task.Run(() => DesktopIcons.Wiederherstellen(layout, warten, k => SystemsymboleEinschalten(k, sid))); }
+            catch (Exception ex) { letzter = ex; if (neuGestartet) await Task.Delay(1500); }
+        }
+        if (ergebnis is null)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Symbolpositionen ließen sich nicht setzen: {letzter?.Message}",
+                        $"[ERROR] The icon positions could not be applied: {letzter?.Message}"));
             return;
         }
+        erg = ergebnis;
 
         if (erg.Eingeschaltet is { Count: > 0 } an)
         {

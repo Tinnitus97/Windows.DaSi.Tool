@@ -241,7 +241,7 @@ public static class AppCatalog
         => DesktopScreenshot.FindImages(Path.Combine(sicherung, DesktopScreenshot.FolderName)).Count > 0;
 
     /// <summary>Desktop-Layout, Variante Symbolpositionen: Datei in der Sicherung?</summary>
-    public static bool HatDesktopSymbole(string sicherung) => DesktopIcons.Vorhanden(sicherung);
+    public static bool HatDesktopSymbole(string sicherung) => DesktopIcons.Vorhanden(sicherung) || Taskleiste.Vorhanden(sicherung);
 
     /// <summary>Hintergrund in der Sicherung - ein Bild oder eine Volltonfarbe (Hintergrund.json)?</summary>
     public static bool HatHintergrund(string sicherung)
