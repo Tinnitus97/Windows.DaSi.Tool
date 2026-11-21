@@ -37,7 +37,7 @@ Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 | **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog. Programme ohne Winget-Paket landen in einer eigenen Liste |
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
 | **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen über PrintBRM in einer Datei |
-| **Hintergrundbild** | Sichert das Desktop-Hintergrundbild und stellt es an derselben Stelle im gewählten Profil wieder her, auch wenn der Benutzer dort anders heißt |
+| **Hintergrundbild** | Sichert das Desktop-Hintergrundbild samt Darstellung (*Füllen*, *Anpassen* …) und stellt es an derselben Stelle im gewählten Profil wieder her, auch wenn der Benutzer dort anders heißt. Ist statt eines Bildes eine **Volltonfarbe** eingestellt, wird die Farbe gesichert und wieder gesetzt |
 | **Desktop-Layout** | Wahlweise die Positionen der Desktop-Symbole (wie DesktopOK, beim Wiederherstellen automatisch zurückgesetzt) oder ein Foto des Desktops, ein Bild pro Monitor |
 
 > **WLAN-Schlüssel liegen im Klartext in der Sicherung.** Damit sie auf einem anderen

@@ -881,6 +881,18 @@ public sealed class BackupService
     private const uint SPIF_UPDATEINIFILE   = 0x01;
     private const uint SPIF_SENDCHANGE       = 0x02;
 
+    // Die Desktopfarbe der laufenden Sitzung (COLOR_DESKTOP = COLOR_BACKGROUND).
+    private const int COLOR_DESKTOP = 1;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetSysColor(int nIndex);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetSysColors(int cElements, int[] lpaElements, int[] lpaRgbValues);
+
+    private const string WallpapersKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers";
+
     // Merkt sich neben dem Bild auch dessen Originalpfad ...
     private const string WallpaperPathFile = "Hintergrundbild-Pfad.txt";
     // ... und das gesicherte Profil, damit sich der Pfad beim Zurueckschreiben
@@ -902,17 +914,87 @@ public sealed class BackupService
         catch { return null; }
     }
 
+    /// <summary>
+    /// Was neben dem Bildpfad zum Hintergrund gehoert: die Farbe (Registry,
+    /// sonst die der laufenden Sitzung), die Art (BackgroundType) und die
+    /// Darstellung ("Füllen", "Anpassen" ...).
+    /// </summary>
+    private static (string? Farbe, int? Typ, string? Stil, string? Kacheln) HintergrundRegistry()
+    {
+        string? farbe = null, stil = null, kacheln = null;
+        int? typ = null;
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(@"Control Panel\Colors");
+            farbe = k?.GetValue("Background") as string;
+        }
+        catch { /* dann aus der Sitzung */ }
+        if (Hintergrund.FarbeLesen(farbe) is null && OperatingSystem.IsWindows())
+        {
+            try
+            {
+                var c = GetSysColor(COLOR_DESKTOP);
+                farbe = Hintergrund.FarbeText(((byte)(c & 0xFF), (byte)((c >> 8) & 0xFF), (byte)((c >> 16) & 0xFF)));
+            }
+            catch { /* bleibt leer */ }
+        }
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop");
+            stil = k?.GetValue("WallpaperStyle") as string;
+            kacheln = k?.GetValue("TileWallpaper") as string;
+        }
+        catch { /* ohne Darstellung */ }
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(WallpapersKey);
+            if (k?.GetValue("BackgroundType") is int t) typ = t;
+        }
+        catch { /* aelteres Windows */ }
+        return (farbe, typ, stil, kacheln);
+    }
+
     public async Task ExportWallpaper()
     {
         var src = GetCurrentWallpaperPath();
-        if (src is null || !File.Exists(src))
+        var (farbeText, typ, stil, kacheln) = HintergrundRegistry();
+        var art = Hintergrund.Bestimmen(src, src is not null && File.Exists(src), typ, farbeText);
+        var destDir = Path.Combine(BackupPath, "Hintergrundbild");
+
+        // Volltonfarbe: Es gibt kein Bild - gesichert wird die Farbe.
+        if (art == HintergrundArt.Volltonfarbe && Hintergrund.FarbeLesen(farbeText) is { } farbe)
         {
-            _log(Loc.Tr("[WARNUNG] Es konnte kein aktuelles Hintergrundbild gefunden werden (evtl. eine Volltonfarbe oder ein Diashow-Hintergrund).",
-                        "[WARNING] No current wallpaper file could be found (perhaps a solid color or a slideshow background)."));
+            try
+            {
+                Directory.CreateDirectory(destDir);
+                Hintergrund.Speichern(destDir, new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = Hintergrund.FarbeText(farbe) });
+                _log(Loc.Tr($"[ERFOLG] Volltonfarbe als Hintergrund gesichert: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)}).",
+                            $"[SUCCESS] Solid color background backed up: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})."));
+            }
+            catch (Exception ex)
+            {
+                _log(Loc.Tr($"[FEHLER] Die Hintergrundfarbe konnte nicht gesichert werden: {ex.Message}",
+                            $"[ERROR] The background color could not be backed up: {ex.Message}"));
+            }
+            return;
+        }
+        if (art == HintergrundArt.Wechselnd)
+        {
+            _log(Loc.Tr("[WARNUNG] Als Hintergrund läuft eine Diashow oder Windows-Blickpunkt - wechselnde Bilder, es gibt kein festes Bild zu sichern.",
+                        "[WARNING] The background is a slideshow or Windows Spotlight - changing images, there is no fixed image to back up."));
+            return;
+        }
+        if (art != HintergrundArt.Bild || src is null)
+        {
+            _log(Loc.Tr(src is null
+                            ? "[WARNUNG] Es konnte kein aktuelles Hintergrundbild und keine Hintergrundfarbe gefunden werden."
+                            : $"[WARNUNG] Das eingestellte Hintergrundbild gibt es nicht mehr: {src}",
+                        src is null
+                            ? "[WARNING] Neither a current wallpaper nor a background color could be found."
+                            : $"[WARNING] The configured wallpaper no longer exists: {src}"));
             return;
         }
 
-        var destDir = Path.Combine(BackupPath, "Hintergrundbild");
         Directory.CreateDirectory(destDir);
 
         // Bild unter seinem Originalnamen sichern.
@@ -926,6 +1008,15 @@ public sealed class BackupService
             // verwendet werden kann.
             await File.WriteAllTextAsync(Path.Combine(destDir, WallpaperPathFile), src);
             await File.WriteAllTextAsync(Path.Combine(destDir, WallpaperProfileFile), SourcePath);
+            // Darstellung und Farbe dazu: Bei "Anpassen" oder "Zentriert" sieht
+            // man die Farbe am Rand.
+            Hintergrund.Speichern(destDir, new HintergrundEinstellung
+            {
+                Art = "Bild",
+                Farbe = Hintergrund.FarbeLesen(farbeText) is { } rand ? Hintergrund.FarbeText(rand) : null,
+                Darstellung = stil,
+                Kacheln = kacheln,
+            });
 
             _log(Loc.Tr($"[ERFOLG] Hintergrundbild gesichert. Originalpfad: {src}",
                         $"[SUCCESS] Wallpaper backed up. Original path: {src}"));
@@ -946,6 +1037,14 @@ public sealed class BackupService
         {
             _log(Loc.Tr("[FEHLER] Keine Hintergrundbild-Sicherung gefunden.",
                         "[ERROR] No wallpaper backup found."));
+            return;
+        }
+
+        // Volltonfarbe statt Bild?
+        var einstellung = Hintergrund.Laden(srcDir);
+        if (Hintergrund.IstVolltonfarbe(einstellung))
+        {
+            VolltonfarbeSetzen(Hintergrund.FarbeLesen(einstellung!.Farbe)!.Value);
             return;
         }
 
@@ -971,7 +1070,8 @@ public sealed class BackupService
         {
             var bilder = Directory.EnumerateFiles(srcDir)
                 .Where(f => !f.EndsWith(WallpaperPathFile, StringComparison.OrdinalIgnoreCase)
-                            && !f.EndsWith(WallpaperProfileFile, StringComparison.OrdinalIgnoreCase))
+                            && !f.EndsWith(WallpaperProfileFile, StringComparison.OrdinalIgnoreCase)
+                            && !f.EndsWith(HintergrundEinstellung.DateiName, StringComparison.OrdinalIgnoreCase))
                 .ToList();
             var originalName = string.IsNullOrWhiteSpace(originalPath) ? null : Path.GetFileName(originalPath);
             backupImage = bilder.FirstOrDefault(f => originalName is not null
@@ -1037,9 +1137,14 @@ public sealed class BackupService
                             $"[INFO] Wallpaper restored to: {targetPath}"));
             }
 
+            // Darstellung wie gesichert ("Füllen", "Anpassen" ...) - sie gilt ab
+            // dem naechsten Setzen des Bildes, also davor schreiben.
+            if (einstellung is not null) DarstellungSetzen(einstellung);
+
             // Als Desktop-Hintergrund setzen.
             bool ok = SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, targetPath,
                                            SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+            if (ok) HintergrundTypSetzen(0);
             if (ok)
                 _log(Loc.Tr("[ERFOLG] Hintergrundbild gesetzt.", "[SUCCESS] Wallpaper set."));
             else
@@ -1051,6 +1156,67 @@ public sealed class BackupService
             _log(Loc.Tr($"[FEHLER] Hintergrundbild konnte nicht wiederhergestellt werden: {ex.Message}",
                         $"[ERROR] Wallpaper could not be restored: {ex.Message}"));
         }
+    }
+
+    /// <summary>
+    /// Setzt eine Volltonfarbe als Hintergrund - wie unter Einstellungen >
+    /// Personalisierung > Hintergrund > Volltonfarbe: Bild entfernen, Farbe
+    /// fuer die laufende Sitzung und dauerhaft in der Registry setzen.
+    /// </summary>
+    private void VolltonfarbeSetzen((byte R, byte G, byte B) farbe)
+    {
+        try
+        {
+            using (var k = Registry.CurrentUser.CreateSubKey(@"Control Panel\Colors"))
+                k.SetValue("Background", Hintergrund.FarbeText(farbe));
+            // Ohne Bild zeigt der Desktop die Farbe.
+            SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, "", SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+            bool ok = SetSysColors(1, new[] { COLOR_DESKTOP }, new[] { Hintergrund.ColorRef(farbe) });
+            HintergrundTypSetzen(1);
+            _log(ok
+                ? Loc.Tr($"[ERFOLG] Volltonfarbe als Hintergrund gesetzt: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)}).",
+                         $"[SUCCESS] Solid color background set: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)}).")
+                : Loc.Tr($"[WARNUNG] Die Volltonfarbe {Hintergrund.Hex(farbe)} ist eingetragen, wird aber erst nach der nächsten Anmeldung sichtbar.",
+                         $"[WARNING] The solid color {Hintergrund.Hex(farbe)} is set, but only becomes visible after the next sign-in."));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Volltonfarbe konnte nicht gesetzt werden: {ex.Message}",
+                        $"[ERROR] The solid color could not be set: {ex.Message}"));
+        }
+    }
+
+    /// <summary>Darstellung und Randfarbe eines Bildes wie gesichert.</summary>
+    private static void DarstellungSetzen(HintergrundEinstellung e)
+    {
+        try
+        {
+            using var k = Registry.CurrentUser.CreateSubKey(@"Control Panel\Desktop");
+            if (!string.IsNullOrWhiteSpace(e.Darstellung)) k.SetValue("WallpaperStyle", e.Darstellung);
+            if (!string.IsNullOrWhiteSpace(e.Kacheln)) k.SetValue("TileWallpaper", e.Kacheln);
+        }
+        catch { /* dann eben die aktuelle Darstellung */ }
+        if (Hintergrund.FarbeLesen(e.Farbe) is { } farbe)
+        {
+            try
+            {
+                using (var c = Registry.CurrentUser.CreateSubKey(@"Control Panel\Colors"))
+                    c.SetValue("Background", Hintergrund.FarbeText(farbe));
+                SetSysColors(1, new[] { COLOR_DESKTOP }, new[] { Hintergrund.ColorRef(farbe) });
+            }
+            catch { /* Randfarbe ist Nebensache */ }
+        }
+    }
+
+    /// <summary>BackgroundType, damit die Einstellungen-App die richtige Art anzeigt: 0 Bild, 1 Volltonfarbe.</summary>
+    private static void HintergrundTypSetzen(int typ)
+    {
+        try
+        {
+            using var k = Registry.CurrentUser.CreateSubKey(WallpapersKey);
+            k.SetValue("BackgroundType", typ, RegistryValueKind.DWord);
+        }
+        catch { /* aelteres Windows */ }
     }
 
     // ------------------------------------------------------------ Desktop-Screenshot

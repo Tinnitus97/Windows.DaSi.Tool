@@ -11,6 +11,17 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Neu
 
+- **Volltonfarbe als Hintergrund.** Ist unter *Personalisierung > Hintergrund*
+  statt eines Bildes eine Volltonfarbe eingestellt, sichert das Tool jetzt die Farbe.
+  Bisher meldete es nur „kein aktuelles Hintergrundbild gefunden“. Beim
+  Wiederherstellen setzt es die Farbe wieder, sofort sichtbar und dauerhaft, und die
+  Einstellungen-App zeigt wieder „Volltonfarbe“. Im Protokoll steht die Farbe als
+  RGB-Wert und Hexcode, etwa `RGB 0, 99, 177 (#0063B1)`.
+- **Hintergrundbild samt Darstellung.** Zum Bild werden jetzt auch *Füllen*,
+  *Anpassen*, *Strecken*, *Kacheln* usw. und die Randfarbe gesichert und
+  wiederhergestellt. Bei einer Diashow oder Windows-Blickpunkt ohne festes Bild sagt
+  das Protokoll das jetzt ausdrücklich.
+
 - **WLAN-Profile nur, wenn der PC WLAN hat.** Ohne WLAN-Adapter (oder mit
   deaktiviertem) ist der Punkt jetzt ausgegraut, wie die übrigen Kacheln, die nichts
   zu tun hätten. Der Tooltip nennt den Grund. Beim Wiederherstellen ist er nur frei,

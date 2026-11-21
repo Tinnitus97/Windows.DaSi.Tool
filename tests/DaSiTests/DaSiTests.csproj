@@ -38,6 +38,7 @@
     <Compile Include="../../Services/WingetInstaller.cs" />
     <Compile Include="../../Services/WingetFehler.cs" />
     <Compile Include="../../Services/ProfilAbgleich.cs" />
+    <Compile Include="../../Services/Hintergrund.cs" />
     <Compile Include="../../Services/Localizer.cs" />
   </ItemGroup>
 

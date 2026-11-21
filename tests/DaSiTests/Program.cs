@@ -1328,6 +1328,55 @@ internal static class Program
             Check("ohne Sicherung: nichts zu vergleichen", ProfilAbgleich.Abweichungen(Path.Combine(root, "abgleich", "fehlt"), ffZiel).Count == 0);
         }
 
+        Console.WriteLine("\n== Hintergrund: Volltonfarbe ==");
+        {
+            Check("Farbe aus der Registry lesen", Hintergrund.FarbeLesen("0 99 177") == ((byte)0, (byte)99, (byte)177)
+                && Hintergrund.FarbeLesen("  255 255 255 ") == ((byte)255, (byte)255, (byte)255));
+            Check("ungueltige Farben werden abgelehnt", Hintergrund.FarbeLesen("256 0 0") is null && Hintergrund.FarbeLesen("0,99,177") is null
+                && Hintergrund.FarbeLesen("") is null && Hintergrund.FarbeLesen(null) is null && Hintergrund.FarbeLesen("1 2") is null);
+            var blau = ((byte)0, (byte)99, (byte)177);
+            Check("Farbe zurueck in Registry-Form", Hintergrund.FarbeText(blau) == "0 99 177");
+            Check("Farbe als Hex", Hintergrund.Hex(blau) == "#0063B1", Hintergrund.Hex(blau));
+            Check("COLORREF fuer SetSysColors (0x00BBGGRR)", Hintergrund.ColorRef(blau) == 0xB16300, Hintergrund.ColorRef(blau).ToString("X6"));
+
+            // Was ist eingestellt? (BackgroundType: 0 Bild, 1 Volltonfarbe, 2 Diashow, 3 Blickpunkt)
+            Check("Volltonfarbe laut Windows (BackgroundType 1)",
+                Hintergrund.Bestimmen(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg", true, 1, "0 99 177") == HintergrundArt.Volltonfarbe);
+            Check("Volltonfarbe: kein Bildpfad, Farbe gesetzt (aelteres Windows ohne BackgroundType)",
+                Hintergrund.Bestimmen("", false, null, "0 99 177") == HintergrundArt.Volltonfarbe);
+            Check("Bild", Hintergrund.Bestimmen(@"C:\Users\A\Pictures\Urlaub.jpg", true, 0, "0 0 0") == HintergrundArt.Bild
+                && Hintergrund.Bestimmen(@"C:\Users\A\Pictures\Urlaub.jpg", true, null, null) == HintergrundArt.Bild);
+            Check("Diashow/Blickpunkt ohne aktuelles Bild: wechselnd", Hintergrund.Bestimmen("", false, 2, "0 0 0") == HintergrundArt.Wechselnd
+                && Hintergrund.Bestimmen(null, false, 3, null) == HintergrundArt.Wechselnd);
+            Check("Diashow mit aktuellem Bild: das Bild", Hintergrund.Bestimmen(@"C:\x\TranscodedWallpaper", true, 2, null) == HintergrundArt.Bild);
+            Check("Bildpfad ohne Datei: unbekannt", Hintergrund.Bestimmen(@"C:\weg.jpg", false, 0, "0 0 0") == HintergrundArt.Unbekannt);
+
+            // Gespeichert und wieder gelesen.
+            var hg = Path.Combine(root, "hintergrund", "Hintergrundbild");
+            Directory.CreateDirectory(hg);
+            Hintergrund.Speichern(hg, new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "0 99 177" });
+            var gelesen = Hintergrund.Laden(hg);
+            Check("Hintergrund.json: Volltonfarbe wieder gelesen", Hintergrund.IstVolltonfarbe(gelesen) && gelesen!.Farbe == "0 99 177");
+            Check("Bild-Einstellung ist keine Volltonfarbe",
+                !Hintergrund.IstVolltonfarbe(new HintergrundEinstellung { Art = "Bild", Farbe = "0 0 0", Darstellung = "10" }));
+            Check("aeltere Sicherung ohne Hintergrund.json", Hintergrund.Laden(Path.Combine(root, "hintergrund", "fehlt")) is null);
+            File.WriteAllText(Path.Combine(root, "hintergrund", "kaputt.json"), "{");
+            Directory.CreateDirectory(Path.Combine(root, "hintergrund", "kaputt"));
+            File.WriteAllText(Path.Combine(root, "hintergrund", "kaputt", HintergrundEinstellung.DateiName), "{ kaputt");
+            Check("kaputte Hintergrund.json: null statt Absturz", Hintergrund.Laden(Path.Combine(root, "hintergrund", "kaputt")) is null);
+
+            // Verfuegbarkeit: eine Sicherung, die nur die Farbe enthaelt.
+            AppCatalog.HatWlanAdapter = () => true;
+            var nurFarbe = Path.Combine(root, "hintergrund");
+            Check("Wiederherstellen: Volltonfarbe allein macht den Punkt frei",
+                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, nurFarbe) is null, AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, nurFarbe)?.De);
+            var leerHg = Path.Combine(root, "hintergrund-leer");
+            Directory.CreateDirectory(Path.Combine(leerHg, "Benutzerprofil"));
+            Check("Wiederherstellen: Grund nennt Bild und Volltonfarbe",
+                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerHg)?.De == "Die gewählte Sicherung enthält keinen Hintergrund (weder Bild noch Volltonfarbe).",
+                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerHg)?.De);
+        }
+
         // ================================================================
         // Austauschskript WIRKLICH ausfuehren - nur unter Windows moeglich
         // ================================================================
@@ -1454,6 +1503,21 @@ internal static class Program
                 Check("je Monitor als PNG gespeichert, in Monitorgroesse und verlustfrei", monitorBilderOk);
                 Check("beim Wiederherstellen werden genau diese Bilder gefunden",
                     DesktopScreenshot.FindImages(bildOrdner).Select(Path.GetFileName).SequenceEqual(plan.Select(p => p.FileName)));
+            }
+
+            Console.WriteLine("\n== Volltonfarbe echt (SetSysColors/GetSysColor) ==");
+            {
+                var farbeVorher = FarbeEcht.GetSysColor(1);
+                var farbeBlau = ((byte)0, (byte)99, (byte)177);
+                var farbeGesetzt = FarbeEcht.SetSysColors(1, new[] { 1 }, new[] { Hintergrund.ColorRef(farbeBlau) });
+                var farbeNachher = FarbeEcht.GetSysColor(1);
+                Console.WriteLine($"         farbeVorher 0x{farbeVorher:X6}, farbeGesetzt {farbeGesetzt}, farbeNachher 0x{farbeNachher:X6}");
+                Check("echt: Desktopfarbe laesst sich setzen", farbeGesetzt);
+                Check("echt: zurueckgelesen ist es dieselbe Farbe (Bytereihenfolge stimmt)",
+                    farbeNachher == (uint)Hintergrund.ColorRef(farbeBlau)
+                    && Hintergrund.Hex(((byte)(farbeNachher & 0xFF), (byte)((farbeNachher >> 8) & 0xFF), (byte)((farbeNachher >> 16) & 0xFF))) == "#0063B1",
+                    $"0x{farbeNachher:X6}");
+                FarbeEcht.SetSysColors(1, new[] { 1 }, new[] { (int)farbeVorher });
             }
 
             Console.WriteLine("\n== Desktop-Symbole echt (Explorer) ==");
@@ -1915,3 +1979,12 @@ internal sealed class TestDesktop : IDesktopView
     public void Dispose() { }
 }
 
+internal static class FarbeEcht
+{
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern uint GetSysColor(int nIndex);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    public static extern bool SetSysColors(int cElements, int[] lpaElements, int[] lpaRgbValues);
+}
