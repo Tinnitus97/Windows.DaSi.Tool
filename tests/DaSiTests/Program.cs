@@ -1437,10 +1437,51 @@ internal static class Program
             var designOrdner = Path.Combine(root, "design", "DASI");
             DesignEinstellungen.Speichern(designOrdner, new DesignSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Werte = designWerte });
             var designZurueck = DesignEinstellungen.Laden(designOrdner);
-            Check("Design-Einstellungen.json: wieder designWerte, gleich", designZurueck is not null && designZurueck.Werte.Count == designWerte.Count
+            Check("Design.json: Werte wieder gelesen, gleich", designZurueck is not null && designZurueck.Werte.Count == designWerte.Count
                 && designZurueck.Werte.Select(w => w.Schluessel + w.Name + w.Typ + w.Wert).SequenceEqual(designWerte.Select(w => w.Schluessel + w.Name + w.Typ + w.Wert)));
-            Check("Design-Einstellungen.json: Umlaute bleiben", designZurueck!.Werte.Any(w => w.Wert == "Windows-Standard (groß)"));
-            Check("liegt unter Design\\", File.Exists(Path.Combine(designOrdner, "Design", "Design-Einstellungen.json")));
+            Check("Design.json: Umlaute bleiben", designZurueck!.Werte.Any(w => w.Wert == "Windows-Standard (groß)"));
+            Check("eine Datei: Design\\Design.json", File.Exists(Path.Combine(designOrdner, "Design", "Design.json"))
+                && !File.Exists(Path.Combine(designOrdner, "Design", "Design-Einstellungen.json")));
+
+            // Hintergrund und Einstellungen in einer Datei - Bild mit Herkunft.
+            var eins = Path.Combine(root, "design", "eins");
+            DesignEinstellungen.Speichern(eins, new DesignSicherung
+            {
+                Rechner = "PC", Erstellt = new DateTime(2026, 11, 21),
+                Hintergrund = new HintergrundEinstellung { Art = "Bild", Bild = "Urlaub.jpg", BildPfad = @"C:\Users\Alt\Pictures\Urlaub.jpg",
+                                                           Profil = @"C:\Users\Alt", Farbe = "0 0 0", Darstellung = "6", Kacheln = "0" },
+                Werte = designWerte,
+            });
+            var einsZurueck = DesignEinstellungen.Laden(eins);
+            Check("eine Datei: Bild samt Herkunft und Darstellung wieder gelesen",
+                einsZurueck?.Hintergrund is { Art: "Bild", Bild: "Urlaub.jpg", Darstellung: "6" } hb && hb.BildPfad == @"C:\Users\Alt\Pictures\Urlaub.jpg"
+                && hb.Profil == @"C:\Users\Alt" && einsZurueck.Werte.Count == designWerte.Count && einsZurueck.Version == 2);
+            var nurHg = Path.Combine(root, "design", "nur-hintergrund");
+            DesignEinstellungen.Speichern(nurHg, new DesignSicherung { Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "107 105 214" } });
+            Check("eine Datei: nur der Hintergrund (Einstellungen nicht lesbar) genuegt",
+                DesignEinstellungen.Vorhanden(nurHg) && Hintergrund.IstVolltonfarbe(DesignEinstellungen.Laden(nurHg)!.Hintergrund));
+            AppCatalog.HatWlanAdapter = () => true;
+            Check("eine Datei: Punkt beim Wiederherstellen frei", AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, nurHg) is null);
+
+            // Zwischenfassung (Sicherung vom 21.11.2026, 20:41): Einstellungen in
+            // Design\Design-Einstellungen.json, Volltonfarbe getrennt in
+            // Hintergrundbild\Hintergrund.json - bleibt wiederherstellbar.
+            var zwischen = Path.Combine(root, "design", "zwischenfassung");
+            Directory.CreateDirectory(Path.Combine(zwischen, "Design"));
+            File.WriteAllText(Path.Combine(zwischen, "Design", "Design-Einstellungen.json"),
+                "{ \"Version\": 1, \"Rechner\": \"PC\", \"Werte\": [ { \"Gruppe\": \"Farben\", \"Schluessel\": \"" + pers.Replace("\\", "\\\\")
+                + "\", \"Name\": \"SystemUsesLightTheme\", \"Typ\": \"DWord\", \"Wert\": \"0\" } ] }");
+            Directory.CreateDirectory(Path.Combine(zwischen, "Hintergrundbild"));
+            Hintergrund.Speichern(Path.Combine(zwischen, "Hintergrundbild"), new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "107 105 214" });
+            var zw = DesignEinstellungen.Laden(zwischen);
+            Check("Zwischenfassung: Einstellungen werden gelesen, Hintergrund kommt aus dem alten Ordner",
+                zw is { Werte.Count: 1, Hintergrund: null } && AppCatalog.HatHintergrund(zwischen)
+                && Hintergrund.IstVolltonfarbe(Hintergrund.Laden(Path.Combine(zwischen, "Hintergrundbild"))));
+            Check("Zwischenfassung: Punkt beim Wiederherstellen frei", AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, zwischen) is null);
+
+            // Liegen beide Dateien da, gilt Design.json.
+            DesignEinstellungen.Speichern(zwischen, new DesignSicherung { Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "1 2 3" } });
+            Check("Design.json hat Vorrang vor der Datei der Zwischenfassung", DesignEinstellungen.Laden(zwischen)?.Hintergrund?.Farbe == "1 2 3");
             Check("ohne Datei: nicht vorhanden", !DesignEinstellungen.Vorhanden(Path.Combine(root, "design", "leer")));
 
             // Verfuegbarkeit: nur Design-Einstellungen (Hintergrund Diashow) genuegen.

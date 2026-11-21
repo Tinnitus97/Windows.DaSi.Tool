@@ -25,12 +25,14 @@ public sealed class DesignEintrag
     public string Wert { get; set; } = "";
 }
 
-/// <summary>Die Datei Design\Design-Einstellungen.json.</summary>
+/// <summary>Die Datei Design\Design.json - Hintergrund und Einstellungen in einem.</summary>
 public sealed class DesignSicherung
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public string Rechner { get; set; } = "";
     public DateTime Erstellt { get; set; }
+    /// <summary>Bild oder Volltonfarbe; null, wenn es nichts Festes zu sichern gab (Diashow).</summary>
+    public HintergrundEinstellung? Hintergrund { get; set; }
     public List<DesignEintrag> Werte { get; set; } = new();
 }
 
@@ -51,7 +53,14 @@ public sealed class DesignSicherung
 public static class DesignEinstellungen
 {
     public const string Ordner = "Design";
-    public const string DateiName = "Design-Einstellungen.json";
+    public const string DateiName = "Design.json";
+
+    /// <summary>
+    /// So hiess die Datei in einer Zwischenfassung - damals nur die
+    /// Einstellungen, der Hintergrund lag getrennt in "Hintergrundbild".
+    /// Wird beim Wiederherstellen weiter gelesen.
+    /// </summary>
+    public const string AlterDateiName = "Design-Einstellungen.json";
 
     private const string Personalize = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
     private const string Accent = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent";
@@ -189,17 +198,24 @@ public static class DesignEinstellungen
         File.WriteAllText(Datei(sicherung), JsonSerializer.Serialize(s, Json));
     }
 
-    /// <summary>null, wenn es keine (lesbare) Datei gibt.</summary>
+    /// <summary>
+    /// Design.json - oder die Datei der Zwischenfassung. null, wenn es keine
+    /// (lesbare) gibt oder nichts darin steht.
+    /// </summary>
     public static DesignSicherung? Laden(string sicherung)
     {
-        try
+        foreach (var name in new[] { DateiName, AlterDateiName })
         {
-            var d = Datei(sicherung);
-            if (!File.Exists(d)) return null;
-            var s = JsonSerializer.Deserialize<DesignSicherung>(File.ReadAllText(d));
-            return s is { Werte.Count: > 0 } ? s : null;
+            try
+            {
+                var d = Path.Combine(sicherung, Ordner, name);
+                if (!File.Exists(d)) continue;
+                var s = JsonSerializer.Deserialize<DesignSicherung>(File.ReadAllText(d));
+                if (s is not null && (s.Werte.Count > 0 || s.Hintergrund is not null)) return s;
+            }
+            catch { /* naechste */ }
         }
-        catch { return null; }
+        return null;
     }
 
     /// <summary>Liegen Design-Einstellungen in der Sicherung?</summary>

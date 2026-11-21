@@ -954,35 +954,30 @@ public sealed class BackupService
         return (farbe, typ, stil, kacheln);
     }
 
-    public async Task ExportWallpaper()
+    /// <summary>
+    /// Sichert den Hintergrund in den Ordner "Design": ein Bild (die Datei
+    /// daneben) oder eine Volltonfarbe. null, wenn es nichts Festes zu sichern
+    /// gibt (Diashow, Blickpunkt, Bild verschwunden) - das steht dann im
+    /// Protokoll.
+    /// </summary>
+    private async Task<HintergrundEinstellung?> HintergrundSichern(string ordner)
     {
         var src = GetCurrentWallpaperPath();
         var (farbeText, typ, stil, kacheln) = HintergrundRegistry();
         var art = Hintergrund.Bestimmen(src, src is not null && File.Exists(src), typ, farbeText);
-        var destDir = Path.Combine(BackupPath, "Hintergrundbild");
 
         // Volltonfarbe: Es gibt kein Bild - gesichert wird die Farbe.
         if (art == HintergrundArt.Volltonfarbe && Hintergrund.FarbeLesen(farbeText) is { } farbe)
         {
-            try
-            {
-                Directory.CreateDirectory(destDir);
-                Hintergrund.Speichern(destDir, new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = Hintergrund.FarbeText(farbe) });
-                _log(Loc.Tr($"[ERFOLG] Volltonfarbe als Hintergrund gesichert: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)}).",
-                            $"[SUCCESS] Solid color background backed up: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})."));
-            }
-            catch (Exception ex)
-            {
-                _log(Loc.Tr($"[FEHLER] Die Hintergrundfarbe konnte nicht gesichert werden: {ex.Message}",
-                            $"[ERROR] The background color could not be backed up: {ex.Message}"));
-            }
-            return;
+            _log(Loc.Tr($"[ERFOLG] Volltonfarbe als Hintergrund gesichert: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)}).",
+                        $"[SUCCESS] Solid color background backed up: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})."));
+            return new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = Hintergrund.FarbeText(farbe) };
         }
         if (art == HintergrundArt.Wechselnd)
         {
             _log(Loc.Tr("[WARNUNG] Als Hintergrund läuft eine Diashow oder Windows-Blickpunkt - wechselnde Bilder, es gibt kein festes Bild zu sichern.",
                         "[WARNING] The background is a slideshow or Windows Spotlight - changing images, there is no fixed image to back up."));
-            return;
+            return null;
         }
         if (art != HintergrundArt.Bild || src is null)
         {
@@ -992,43 +987,48 @@ public sealed class BackupService
                         src is null
                             ? "[WARNING] Neither a current wallpaper nor a background color could be found."
                             : $"[WARNING] The configured wallpaper no longer exists: {src}"));
-            return;
+            return null;
         }
 
-        Directory.CreateDirectory(destDir);
-
-        // Bild unter seinem Originalnamen sichern.
+        // Bild unter seinem Originalnamen neben Design.json.
         var fileName = Path.GetFileName(src);
-        var dest = Path.Combine(destDir, fileName);
-
+        if (string.Equals(fileName, DesignEinstellungen.DateiName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fileName, DesignEinstellungen.AlterDateiName, StringComparison.OrdinalIgnoreCase))
+            fileName = "Hintergrund-" + fileName;
         try
         {
-            await Task.Run(() => File.Copy(src, dest, overwrite: true));
-            // Originalpfad merken, damit beim Wiederherstellen die gleiche Stelle
-            // verwendet werden kann.
-            await File.WriteAllTextAsync(Path.Combine(destDir, WallpaperPathFile), src);
-            await File.WriteAllTextAsync(Path.Combine(destDir, WallpaperProfileFile), SourcePath);
+            Directory.CreateDirectory(ordner);
+            await Task.Run(() => File.Copy(src, Path.Combine(ordner, fileName), overwrite: true));
+            _log(Loc.Tr($"[ERFOLG] Hintergrundbild gesichert. Originalpfad: {src}",
+                        $"[SUCCESS] Wallpaper backed up. Original path: {src}"));
             // Darstellung und Farbe dazu: Bei "Anpassen" oder "Zentriert" sieht
             // man die Farbe am Rand.
-            Hintergrund.Speichern(destDir, new HintergrundEinstellung
+            return new HintergrundEinstellung
             {
                 Art = "Bild",
+                Bild = fileName,
+                BildPfad = src,
+                Profil = SourcePath,
                 Farbe = Hintergrund.FarbeLesen(farbeText) is { } rand ? Hintergrund.FarbeText(rand) : null,
                 Darstellung = stil,
                 Kacheln = kacheln,
-            });
-
-            _log(Loc.Tr($"[ERFOLG] Hintergrundbild gesichert. Originalpfad: {src}",
-                        $"[SUCCESS] Wallpaper backed up. Original path: {src}"));
+            };
         }
         catch (Exception ex)
         {
             _log(Loc.Tr($"[FEHLER] Hintergrundbild konnte nicht gesichert werden: {ex.Message}",
                         $"[ERROR] Wallpaper could not be backed up: {ex.Message}"));
+            return null;
         }
     }
 
-    public async Task ImportWallpaper()
+    /// <summary>
+    /// Hintergrund aus einer Sicherung im alten Format: Ordner
+    /// "Hintergrundbild" mit dem Bild, Hintergrundbild-Pfad.txt,
+    /// Hintergrundbild-Profil.txt und ggf. Hintergrund.json (Volltonfarbe,
+    /// Darstellung).
+    /// </summary>
+    private async Task HintergrundAusAlterSicherung()
     {
         var srcDir = Path.Combine(BackupPath, "Hintergrundbild");
         var pathFile = Path.Combine(srcDir, WallpaperPathFile);
@@ -1087,6 +1087,16 @@ public sealed class BackupService
             return;
         }
 
+        await HintergrundbildSetzen(backupImage, originalPath, originalProfile, einstellung);
+    }
+
+    /// <summary>
+    /// Legt das Bild aus der Sicherung ins gewaehlte Profil (an die Stelle, an
+    /// der es auf dem alten Rechner lag) und setzt es als Hintergrund - samt
+    /// Darstellung und Randfarbe, falls gesichert.
+    /// </summary>
+    private async Task HintergrundbildSetzen(string backupImage, string? originalPath, string? originalProfile, HintergrundEinstellung? einstellung)
+    {
         // Zielpfad bestimmen - IMMER im gewaehlten Zielprofil.
         //
         // Frueher wurde der gespeicherte Originalpfad unveraendert benutzt. Auf
@@ -1158,6 +1168,7 @@ public sealed class BackupService
         }
     }
 
+
     /// <summary>
     /// Setzt eine Volltonfarbe als Hintergrund - wie unter Einstellungen >
     /// Personalisierung > Hintergrund > Volltonfarbe: Bild entfernen, Farbe
@@ -1224,30 +1235,93 @@ public sealed class BackupService
     /// <summary>
     /// "Design sichern": der Hintergrund (Bild oder Volltonfarbe) und die
     /// Design-Einstellungen von Windows - Hell/Dunkel, Akzentfarbe,
-    /// Transparenz, Mauszeiger, Taskleiste, Start.
+    /// Transparenz, Mauszeiger, Taskleiste, Start. Alles in EINEM Ordner
+    /// "Design": Design.json und, bei einem Bild, die Bilddatei daneben.
     /// </summary>
     public async Task ExportDesign()
     {
-        await ExportWallpaper();
+        var ordner = Path.Combine(BackupPath, DesignEinstellungen.Ordner);
+        var hintergrund = await HintergrundSichern(ordner);
         if (_cancel.IsCancelled) return;
-        ExportDesignEinstellungen();
+        var werte = DesignEinstellungenLesen();
+        if (hintergrund is null && (werte is null || werte.Count == 0)) return;
+        try
+        {
+            DesignEinstellungen.Speichern(BackupPath, new DesignSicherung
+            {
+                Rechner = Environment.MachineName,
+                Erstellt = DateTime.Now,
+                Hintergrund = hintergrund,
+                Werte = werte ?? new List<DesignEintrag>(),
+            });
+            DesignOrdnerAufraeumen(ordner, hintergrund?.Bild);
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] {DesignEinstellungen.DateiName} konnte nicht geschrieben werden: {ex.Message}",
+                        $"[ERROR] {DesignEinstellungen.DateiName} could not be written: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Wird in einen vorhandenen Sicherungsordner erneut gesichert, laege
+    /// sonst ein frueheres Bild neben dem neuen - und die Datei der
+    /// Zwischenfassung neben Design.json.
+    /// </summary>
+    private static void DesignOrdnerAufraeumen(string ordner, string? bild)
+    {
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(ordner))
+            {
+                var name = Path.GetFileName(f);
+                if (string.Equals(name, DesignEinstellungen.DateiName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (bild is not null && string.Equals(name, bild, StringComparison.OrdinalIgnoreCase)) continue;
+                File.Delete(f);
+            }
+        }
+        catch { /* bleibt eben liegen - gelesen wird nur, was Design.json nennt */ }
     }
 
     /// <summary>
     /// "Design wiederherstellen": erst die Einstellungen (Hell/Dunkel,
     /// Akzentfarbe ...), dann der Hintergrund - ist "Akzentfarbe automatisch"
     /// an, leitet Windows sie danach aus dem Hintergrund ab, wie auf dem alten
-    /// Rechner.
+    /// Rechner. Sicherungen im alten Format (Ordner "Hintergrundbild") werden
+    /// weiter gelesen.
     /// </summary>
     public async Task ImportDesign()
     {
-        if (DesignEinstellungen.Vorhanden(BackupPath)) ImportDesignEinstellungen();
+        var design = DesignEinstellungen.Laden(BackupPath);
+        if (design is { Werte.Count: > 0 }) DesignEinstellungenSetzen(design);
         else _log(Loc.Tr("[INFO] Die Sicherung enthält keine Design-Einstellungen (ältere Fassung des Tools) - nur der Hintergrund wird wiederhergestellt.",
                          "[INFO] The backup contains no design settings (older version of the tool) - only the wallpaper is restored."));
         if (_cancel.IsCancelled) return;
 
-        if (AppCatalog.HatHintergrund(BackupPath)) await ImportWallpaper();
-        else _log(Loc.Tr("[INFO] Die Sicherung enthält keinen Hintergrund.", "[INFO] The backup contains no wallpaper."));
+        if (design?.Hintergrund is { } h)
+        {
+            if (Hintergrund.IstVolltonfarbe(h))
+            {
+                VolltonfarbeSetzen(Hintergrund.FarbeLesen(h.Farbe)!.Value);
+                return;
+            }
+            var bild = h.Bild is null ? null : Path.Combine(BackupPath, DesignEinstellungen.Ordner, h.Bild);
+            if (bild is null || !File.Exists(bild))
+            {
+                _log(Loc.Tr($"[FEHLER] Das Hintergrundbild fehlt in der Sicherung: {bild ?? "(kein Name)"}",
+                            $"[ERROR] The wallpaper is missing from the backup: {bild ?? "(no name)"}"));
+                return;
+            }
+            await HintergrundbildSetzen(bild, h.BildPfad, h.Profil, h);
+        }
+        else if (AppCatalog.HatHintergrund(BackupPath))
+        {
+            await HintergrundAusAlterSicherung();
+        }
+        else
+        {
+            _log(Loc.Tr("[INFO] Die Sicherung enthält keinen Hintergrund.", "[INFO] The backup contains no wallpaper."));
+        }
     }
 
     /// <summary>
@@ -1281,32 +1355,29 @@ public sealed class BackupService
         return (Registry.CurrentUser, false);
     }
 
-    private void ExportDesignEinstellungen()
+    /// <summary>Liest die Design-Einstellungen; null, wenn sie nicht gelesen werden (anderer Benutzer, Fehler).</summary>
+    private List<DesignEintrag>? DesignEinstellungenLesen()
     {
         var (wurzel, eigen) = DesignZweig(schreiben: false);
-        if (wurzel is null) return;
+        if (wurzel is null) return null;
         try
         {
             var werte = DesignEinstellungen.Auslesen((s, n) => DesignRegistry.Lesen(wurzel, s, n));
             if (werte.Count == 0)
             {
                 _log(Loc.Tr("[WARNUNG] Es wurden keine Design-Einstellungen gefunden.", "[WARNING] No design settings were found."));
-                return;
+                return werte;
             }
-            DesignEinstellungen.Speichern(BackupPath, new DesignSicherung
-            {
-                Rechner = Environment.MachineName,
-                Erstellt = DateTime.Now,
-                Werte = werte,
-            });
             var kurz = DesignEinstellungen.Zusammenfassung(werte, Loc.Tr);
             _log(Loc.Tr($"[ERFOLG] Design-Einstellungen gesichert ({werte.Count} Werte: {DesignEinstellungen.Gruppen(werte)}){(kurz.Length > 0 ? " - " + kurz : "")}.",
                         $"[SUCCESS] Design settings backed up ({werte.Count} values: {DesignEinstellungen.Gruppen(werte)}){(kurz.Length > 0 ? " - " + kurz : "")}."));
+            return werte;
         }
         catch (Exception ex)
         {
-            _log(Loc.Tr($"[FEHLER] Die Design-Einstellungen konnten nicht gesichert werden: {ex.Message}",
-                        $"[ERROR] The design settings could not be backed up: {ex.Message}"));
+            _log(Loc.Tr($"[FEHLER] Die Design-Einstellungen konnten nicht gelesen werden: {ex.Message}",
+                        $"[ERROR] The design settings could not be read: {ex.Message}"));
+            return null;
         }
         finally
         {
@@ -1314,10 +1385,8 @@ public sealed class BackupService
         }
     }
 
-    private void ImportDesignEinstellungen()
+    private void DesignEinstellungenSetzen(DesignSicherung sicherung)
     {
-        var sicherung = DesignEinstellungen.Laden(BackupPath);
-        if (sicherung is null) return;
         var (wurzel, eigen) = DesignZweig(schreiben: true);
         if (wurzel is null) return;
         try

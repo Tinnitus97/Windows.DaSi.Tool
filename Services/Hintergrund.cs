@@ -39,6 +39,15 @@ public sealed class HintergrundEinstellung
 
     /// <summary>Control Panel\Desktop\TileWallpaper - "1" bei "Kacheln".</summary>
     public string? Kacheln { get; set; }
+
+    /// <summary>Bei einem Bild: der Dateiname in der Sicherung (neben Design.json).</summary>
+    public string? Bild { get; set; }
+
+    /// <summary>Bei einem Bild: wo es auf dem alten Rechner lag.</summary>
+    public string? BildPfad { get; set; }
+
+    /// <summary>Das gesicherte Profil - damit sich BildPfad in ein anderes Profil uebertragen laesst.</summary>
+    public string? Profil { get; set; }
 }
 
 /// <summary>

@@ -13,8 +13,11 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 - **„Design sichern / wiederherstellen“ statt „Hintergrundbild“.** Der Punkt sichert
   weiterhin den Hintergrund (Bild oder Volltonfarbe). Dazu kommen die
-  Design-Einstellungen von Windows (*Personalisierung*), abgelegt in
-  `Design\Design-Einstellungen.json`:
+  Design-Einstellungen von Windows (*Personalisierung*). Alles liegt in **einem**
+  Ordner `Design`: `Design.json` mit Hintergrund und Einstellungen, bei einem Bild
+  die Bilddatei daneben. Sicherungen im alten Format (Ordner `Hintergrundbild`)
+  lassen sich weiter wiederherstellen. Eine Sicherung im neuen Format können
+  Fassungen bis 1.2.6 nicht mehr zurückschreiben. Gesichert werden:
   - *Hell/Dunkel* für Windows und für Apps, *Transparenzeffekte*;
   - *Akzentfarbe*: die Farbe selbst, „automatisch aus dem Hintergrund“ und ob sie
     auf Start, Taskleiste und Titelleisten erscheint;
