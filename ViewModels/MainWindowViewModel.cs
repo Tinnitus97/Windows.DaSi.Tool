@@ -450,7 +450,10 @@ public partial class MainWindowViewModel : ObservableObject
     public string? TipWinget      => Grund(Punkt.Winget);
     public string? TipWlan        => Grund(Punkt.Wlan);
     public string? TipPrinter     => Grund(Punkt.Drucker);
-    public string? TipWallpaper   => Grund(Punkt.Hintergrund);
+    // Auch im freien Zustand: was alles dazugehoert.
+    public string? TipWallpaper   => Grund(Punkt.Hintergrund)
+        ?? Tr("Hintergrund (Bild oder Volltonfarbe), Hell/Dunkel für Windows und Apps, Akzentfarbe, Transparenz, Mauszeiger, Taskleiste und Start",
+              "Wallpaper (image or solid color), light/dark mode for Windows and apps, accent color, transparency, mouse pointer, taskbar and Start");
     public string? TipDesktopShot => Grund(Punkt.DesktopShot);
     // Bei Opera auch im freien Zustand: welche Fassungen gefunden wurden.
     public string? TipOpera => Grund(Punkt.Opera)
@@ -552,8 +555,8 @@ public partial class MainWindowViewModel : ObservableObject
         ? Tr("Drucker & Treiber wiederherstellen", "Restore printers & drivers")
         : Tr("Drucker & Treiber sichern", "Back up printers & drivers");
     public string TgWallpaper => IsRestoreMode
-        ? Tr("Hintergrundbild wiederherstellen", "Restore wallpaper")
-        : Tr("Hintergrundbild sichern", "Back up wallpaper");
+        ? Tr("Design wiederherstellen", "Restore design")
+        : Tr("Design sichern", "Back up design");
     // Sichern: Foto des Desktops. Wiederherstellen: dieses Foto oeffnen, damit
     // sich die Symbole von Hand wieder anordnen lassen.
     public string TgDesktopShot => IsRestoreMode
@@ -732,7 +735,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (SelThunderbird) list.Add("Thunderbird-Profil");
         if (SelWlan)        list.Add("WLAN-Profile");
         if (SelPrinter)     list.Add("Drucker");
-        if (SelWallpaper)   list.Add("Hintergrundbild");
+        if (SelWallpaper)   { list.Add("Hintergrundbild"); list.Add(DesignEinstellungen.Ordner); }
         // Winget-Liste ist nur eine kleine Textdatei; vernachlaessigbar.
         return list;
     }
@@ -1344,7 +1347,7 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelWinget)      t.Add("Import-Winget");
             if (SelWlan)        t.Add("Import-Wlan");
             if (SelPrinter)     t.Add("Import-Printer");
-            if (SelWallpaper)   t.Add("Import-Wallpaper");
+            if (SelWallpaper)   t.Add("Import-Design");
             // Zuletzt: Das Foto soll offen sein, wenn alles andere fertig ist
             // und es ans Anordnen der Symbole geht.
             if (SelDesktopShot) t.Add(DesktopSymbole ? "Restore-DesktopIcons" : "Show-DesktopShot");
@@ -1371,7 +1374,7 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelWinget)      t.Add("Export-Winget");
             if (SelWlan)        t.Add("Export-Wlan");
             if (SelPrinter)     t.Add("Export-Printer");
-            if (SelWallpaper)   t.Add("Export-Wallpaper");
+            if (SelWallpaper)   t.Add("Export-Design");
         }
         return t;
     }
@@ -1414,7 +1417,7 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Export-Winget":      await _winget.ExportAsync(_laufZiel); break;
                     case "Export-Wlan":        await _backup.ExportWlan(); break;
                     case "Export-Printer":     await _backup.ExportPrinters(); break;
-                    case "Export-Wallpaper":   await _backup.ExportWallpaper(); break;
+                    case "Export-Design":      await _backup.ExportDesign(); break;
                     case "Capture-DesktopShot":
                         await _backup.CaptureDesktop();
                         await BringMainWindowToFront();
@@ -1433,7 +1436,7 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Import-Winget":       await _winget.ImportAsync(wingetSelection ?? new List<WingetPackage>()); break;
                     case "Import-Wlan":         await _backup.ImportWlan(); break;
                     case "Import-Printer":      await _backup.ImportPrinters(); break;
-                    case "Import-Wallpaper":    await _backup.ImportWallpaper(); break;
+                    case "Import-Design":       await _backup.ImportDesign(); break;
                     case "Show-DesktopShot":    await _backup.ShowDesktopScreenshot(); break;
                     case "Restore-DesktopIcons": await _backup.RestoreDesktopIcons(); break;
                 }
@@ -1544,7 +1547,7 @@ public partial class MainWindowViewModel : ObservableObject
             "Export-Winget" or "Import-Winget"            => Tr("Programme (Winget)", "Programs (winget)"),
             "Export-Wlan" or "Import-Wlan"                => Tr("WLAN-Profile", "WiFi profiles"),
             "Export-Printer" or "Import-Printer"          => Tr("Drucker & Treiber", "Printers & drivers"),
-            "Export-Wallpaper" or "Import-Wallpaper"      => Tr("Hintergrundbild", "Wallpaper"),
+            "Export-Design" or "Import-Design"            => Tr("Design (Hintergrund, Farben, Mauszeiger, Taskleiste)", "Design (wallpaper, colors, pointer, taskbar)"),
             "Capture-DesktopShot" or "Show-DesktopShot"   => Tr("Desktop-Screenshot", "Desktop screenshot"),
             "Backup-DesktopIcons" or "Restore-DesktopIcons" => Tr("Desktop-Symbolpositionen", "Desktop icon positions"),
             _ => choice

@@ -39,6 +39,8 @@
     <Compile Include="../../Services/WingetFehler.cs" />
     <Compile Include="../../Services/ProfilAbgleich.cs" />
     <Compile Include="../../Services/Hintergrund.cs" />
+    <Compile Include="../../Services/DesignEinstellungen.cs" />
+    <Compile Include="../../Services/DesignRegistry.cs" />
     <Compile Include="../../Services/Localizer.cs" />
   </ItemGroup>
 

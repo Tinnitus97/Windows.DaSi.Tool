@@ -11,6 +11,28 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Neu
 
+- **„Design sichern / wiederherstellen“ statt „Hintergrundbild“.** Der Punkt sichert
+  weiterhin den Hintergrund (Bild oder Volltonfarbe). Dazu kommen die
+  Design-Einstellungen von Windows (*Personalisierung*), abgelegt in
+  `Design\Design-Einstellungen.json`:
+  - *Hell/Dunkel* für Windows und für Apps, *Transparenzeffekte*;
+  - *Akzentfarbe*: die Farbe selbst, „automatisch aus dem Hintergrund“ und ob sie
+    auf Start, Taskleiste und Titelleisten erscheint;
+  - *Mauszeiger*: Schema, Größe und die einzelnen Zeiger. Zeiger aus einem eigenen
+    Schema, deren Datei es auf dem neuen Rechner nicht gibt, werden ausgelassen;
+  - *Taskleiste*: Ausrichtung, Suche, Taskansicht, Gruppieren, mehrere Bildschirme;
+  - *Start*: Layout, zuletzt geöffnete Elemente und Empfehlungen.
+
+  Gesichert wird eine feste Liste, nicht der ganze Registry-Zweig. Daneben liegen
+  rechnergebundene Werte (Bildschirmpositionen, Kennungen), und manche Werte schützt
+  Windows inzwischen (Widgets-Knopf). Gelesen und gesetzt wird beim angemeldeten
+  Benutzer. Ist ein anderes Profil gewählt, bleiben die Einstellungen mit einer
+  Warnung außen vor. Hell/Dunkel und Transparenz gelten sofort, die Akzentfarbe auf
+  Titelleisten und Taskleiste teils erst nach dem nächsten Anmelden. Das Protokoll
+  fasst zusammen, was gesichert bzw. übernommen wurde, etwa „Windows dunkel, Apps
+  dunkel, Transparenz an, Akzentfarbe #0063B1, Taskleiste links“. Ältere Sicherungen
+  mit nur dem Hintergrund lassen sich weiter wiederherstellen.
+
 - **Volltonfarbe als Hintergrund.** Ist unter *Personalisierung > Hintergrund*
   statt eines Bildes eine Volltonfarbe eingestellt, sichert das Tool jetzt die Farbe.
   Bisher meldete es nur „kein aktuelles Hintergrundbild gefunden“. Beim

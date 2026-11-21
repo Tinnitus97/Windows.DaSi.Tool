@@ -18,7 +18,7 @@
 Entwickelt für IT-Administratoren und Power-User. Das Tool vereint die Robustheit
 von **Robocopy** mit einer modernen, zweisprachigen Oberfläche und sichert in einem
 Durchgang Benutzerprofile, Browserdaten, installierte Programme, WLAN-Zugänge,
-Drucker und das Hintergrundbild — und stellt sie auf dem neuen Rechner wieder her.
+Drucker und das Design (Hintergrund, Hell/Dunkel, Akzentfarbe …) — und stellt sie auf dem neuen Rechner wieder her.
 Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 
 <div align="center">
@@ -37,7 +37,7 @@ Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 | **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog. Programme ohne Winget-Paket landen in einer eigenen Liste |
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
 | **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen über PrintBRM in einer Datei |
-| **Hintergrundbild** | Sichert das Desktop-Hintergrundbild samt Darstellung (*Füllen*, *Anpassen* …) und stellt es an derselben Stelle im gewählten Profil wieder her, auch wenn der Benutzer dort anders heißt. Ist statt eines Bildes eine **Volltonfarbe** eingestellt, wird die Farbe gesichert und wieder gesetzt |
+| **Design** | Der **Hintergrund**: das Bild samt Darstellung (*Füllen*, *Anpassen* …), an derselben Stelle im gewählten Profil, auch wenn der Benutzer dort anders heißt – oder eine **Volltonfarbe**. Dazu die **Design-Einstellungen** von Windows: *Hell/Dunkel* für Windows und Apps, *Akzentfarbe* (auch „automatisch“ und auf Start, Taskleiste und Titelleisten), *Transparenz*, *Mauszeiger* (Schema und Größe), *Taskleiste* (Ausrichtung, Suche, Taskansicht, Gruppieren) und *Start*. Gelesen und gesetzt wird beim angemeldeten Benutzer; Hell/Dunkel gilt sofort, die Akzentfarbe auf Titelleisten teils erst nach dem nächsten Anmelden |
 | **Desktop-Layout** | Wahlweise die Positionen der Desktop-Symbole (wie DesktopOK, beim Wiederherstellen automatisch zurückgesetzt) oder ein Foto des Desktops, ein Bild pro Monitor |
 
 > **WLAN-Schlüssel liegen im Klartext in der Sicherung.** Damit sie auf einem anderen

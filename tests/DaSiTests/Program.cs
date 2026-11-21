@@ -1372,9 +1372,86 @@ internal static class Program
                 AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, nurFarbe) is null, AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, nurFarbe)?.De);
             var leerHg = Path.Combine(root, "hintergrund-leer");
             Directory.CreateDirectory(Path.Combine(leerHg, "Benutzerprofil"));
-            Check("Wiederherstellen: Grund nennt Bild und Volltonfarbe",
-                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerHg)?.De == "Die gewählte Sicherung enthält keinen Hintergrund (weder Bild noch Volltonfarbe).",
+            Check("Wiederherstellen: ohne Hintergrund und Design-Einstellungen gesperrt, mit Grund",
+                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerHg)?.De == "Die gewählte Sicherung enthält kein Design (weder Hintergrund noch Design-Einstellungen).",
                 AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerHg)?.De);
+        }
+
+        Console.WriteLine("\n== Design: Einstellungen von Windows ==");
+        {
+            var designKat = DesignEinstellungen.Katalog;
+            const string pers = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+            const string dwm = @"Software\Microsoft\Windows\DWM";
+            const string adv = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
+            const string cur = @"Control Panel\Cursors";
+            bool ImKatalog(string s, string n) => designKat.Any(k => k.Schluessel == s && k.Name == n);
+            Check("Katalog: Hell/Dunkel fuer Windows und Apps, Transparenz",
+                ImKatalog(pers, "SystemUsesLightTheme") && ImKatalog(pers, "AppsUseLightTheme") && ImKatalog(pers, "EnableTransparency"));
+            Check("Katalog: Akzentfarbe (Palette, DWM, automatisch)",
+                ImKatalog(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent", "AccentPalette") && ImKatalog(dwm, "AccentColor")
+                && ImKatalog(dwm, "ColorPrevalence") && ImKatalog(@"Control Panel\Desktop", "AutoColorization"));
+            Check("Katalog: Mauszeiger-Schema, Groesse und Zeiger", ImKatalog(cur, "") && ImKatalog(cur, "CursorBaseSize") && ImKatalog(cur, "Arrow") && ImKatalog(cur, "Hand"));
+            Check("Katalog: Taskleiste und Start", ImKatalog(adv, "TaskbarAl") && ImKatalog(@"Software\Microsoft\Windows\CurrentVersion\Search", "SearchboxTaskbarMode")
+                && ImKatalog(adv, "Start_Layout"));
+            Check("Katalog: keine geschuetzten Werte (Widgets) und keine Bildschirmpositionen",
+                !ImKatalog(adv, "TaskbarDa") && !designKat.Any(k => k.Schluessel.Contains("StuckRects")));
+            Check("Katalog: keine Dubletten", designKat.Select(k => k.Schluessel + "|" + k.Name).Distinct().Count() == designKat.Count);
+            Check("Katalog: nur HKEY_CURRENT_USER-Pfade (Software\\..., Control Panel\\...)",
+                designKat.All(k => k.Schluessel.StartsWith(@"Software\", StringComparison.Ordinal) || k.Schluessel.StartsWith(@"Control Panel\", StringComparison.Ordinal)));
+
+            // Ein nachgebauter Rechner: dunkel, Transparenz an, Akzent #0063B1, Taskleiste links.
+            var fakeReg = new Dictionary<string, (string Typ, string Wert)>
+            {
+                [pers + "|SystemUsesLightTheme"] = ("DWord", "0"),
+                [pers + "|AppsUseLightTheme"] = ("DWord", "0"),
+                [pers + "|EnableTransparency"] = ("DWord", "1"),
+                [dwm + "|AccentColor"] = ("DWord", unchecked((int)0xFFB16300).ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                [@"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent|AccentPalette"] = ("Binary", Convert.ToBase64String(new byte[] { 1, 2, 3, 4 })),
+                [cur + "|"] = ("String", "Windows-Standard (groß)"),
+                [cur + "|Arrow"] = ("ExpandString", @"%SystemRoot%\cursors\aero_arrow_l.cur"),
+                [cur + "|Hand"] = ("ExpandString", @"C:\Users\Alt\Zeiger\eigene_hand.cur"),
+                [adv + "|TaskbarAl"] = ("DWord", "0"),
+            };
+            var designWerte = DesignEinstellungen.Auslesen((s, n) => fakeReg.TryGetValue(s + "|" + n, out var v) ? v : null);
+            Check("Auslesen: genau die vorhandenen Werte", designWerte.Count == fakeReg.Count, designWerte.Count.ToString());
+            Check("Auslesen: Gruppen", DesignEinstellungen.Gruppen(designWerte) == "Farben, Akzentfarbe, Mauszeiger, Taskleiste", DesignEinstellungen.Gruppen(designWerte));
+            Check("Auslesen: ein Lesefehler bricht nicht ab",
+                DesignEinstellungen.Auslesen((s, n) => n == "AppsUseLightTheme" ? throw new UnauthorizedAccessException() : fakeReg.TryGetValue(s + "|" + n, out var v) ? v : null).Count == fakeReg.Count - 1);
+            var designKurz = DesignEinstellungen.Zusammenfassung(designWerte, De);
+            Check("Zusammenfassung fuers Protokoll",
+                designKurz == "Windows dunkel, Apps dunkel, Transparenz an, Akzentfarbe #0063B1, Mauszeiger \"Windows-Standard (groß)\", Taskleiste links", designKurz);
+            Check("Zusammenfassung englisch", DesignEinstellungen.Zusammenfassung(designWerte, En).StartsWith("Windows dark, apps dark, transparency on"));
+            Check("Akzentfarbe aus DWM (0xAABBGGRR)", DesignEinstellungen.AkzentHex(unchecked((int)0xFFB16300)) == "#0063B1");
+            var mitAuto = designWerte.Append(new DesignEintrag { Schluessel = @"Control Panel\Desktop", Name = "AutoColorization", Typ = "DWord", Wert = "1" }).ToList();
+            Check("Akzentfarbe automatisch statt fester Farbe", DesignEinstellungen.Zusammenfassung(mitAuto, De).Contains("Akzentfarbe automatisch"));
+
+            // Mauszeiger aus einem eigenen Schema, dessen Datei hier fehlt.
+            bool ZeigerDa(string pfad) => pfad.Contains("aero_arrow");
+            Check("Zeiger mit vorhandener Datei wird gesetzt", !DesignEinstellungen.ZeigerFehlt(designWerte.First(e => e.Name == "Arrow"), ZeigerDa));
+            Check("Zeiger ohne Datei wird ausgelassen", DesignEinstellungen.ZeigerFehlt(designWerte.First(e => e.Name == "Hand"), ZeigerDa));
+            Check("Schema-Name und andere Werte sind nie \"Zeiger ohne Datei\"",
+                !DesignEinstellungen.ZeigerFehlt(designWerte.First(e => e.Name == "" && e.Gruppe == "Mauszeiger"), ZeigerDa)
+                && !DesignEinstellungen.ZeigerFehlt(designWerte.First(e => e.Name == "TaskbarAl"), ZeigerDa));
+
+            // Speichern und Laden.
+            var designOrdner = Path.Combine(root, "design", "DASI");
+            DesignEinstellungen.Speichern(designOrdner, new DesignSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Werte = designWerte });
+            var designZurueck = DesignEinstellungen.Laden(designOrdner);
+            Check("Design-Einstellungen.json: wieder designWerte, gleich", designZurueck is not null && designZurueck.Werte.Count == designWerte.Count
+                && designZurueck.Werte.Select(w => w.Schluessel + w.Name + w.Typ + w.Wert).SequenceEqual(designWerte.Select(w => w.Schluessel + w.Name + w.Typ + w.Wert)));
+            Check("Design-Einstellungen.json: Umlaute bleiben", designZurueck!.Werte.Any(w => w.Wert == "Windows-Standard (groß)"));
+            Check("liegt unter Design\\", File.Exists(Path.Combine(designOrdner, "Design", "Design-Einstellungen.json")));
+            Check("ohne Datei: nicht vorhanden", !DesignEinstellungen.Vorhanden(Path.Combine(root, "design", "leer")));
+
+            // Verfuegbarkeit: nur Design-Einstellungen (Hintergrund Diashow) genuegen.
+            AppCatalog.HatWlanAdapter = () => true;
+            Check("Wiederherstellen: Design-Einstellungen allein machen den Punkt frei",
+                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, designOrdner) is null, AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, designOrdner)?.De);
+            var leerD = Path.Combine(root, "design", "ohne");
+            Directory.CreateDirectory(Path.Combine(leerD, "Benutzerprofil"));
+            Check("Wiederherstellen: Grund nennt Hintergrund und Design-Einstellungen",
+                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerD)?.De == "Die gewählte Sicherung enthält kein Design (weder Hintergrund noch Design-Einstellungen).",
+                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerD)?.De);
         }
 
         // ================================================================
@@ -1503,6 +1580,39 @@ internal static class Program
                 Check("je Monitor als PNG gespeichert, in Monitorgroesse und verlustfrei", monitorBilderOk);
                 Check("beim Wiederherstellen werden genau diese Bilder gefunden",
                     DesktopScreenshot.FindImages(bildOrdner).Select(Path.GetFileName).SequenceEqual(plan.Select(p => p.FileName)));
+            }
+
+            Console.WriteLine("\n== Design-Einstellungen echt (Registry) ==");
+            {
+                var echt = DesignEinstellungen.Auslesen((s, n) => DesignRegistry.Lesen(Microsoft.Win32.Registry.CurrentUser, s, n));
+                Console.WriteLine($"         gelesen: {echt.Count} Werte ({DesignEinstellungen.Gruppen(echt)}) - {DesignEinstellungen.Zusammenfassung(echt, De)}");
+                Check("echt: Design-Einstellungen lesbar (mindestens das Mauszeiger-Schema)", echt.Count > 0);
+                Check("echt: %SystemRoot% in Zeigerpfaden bleibt unaufgeloest",
+                    !echt.Any(e => e.Typ == "ExpandString") || echt.Where(e => e.Typ == "ExpandString").Any(e => e.Wert.Contains('%')));
+
+                // Hin und zurueck in einem eigenen Testschluessel - alle vier Typen.
+                const string test = @"Software\DaSiTest\Design";
+                var proben = new[]
+                {
+                    new DesignEintrag { Schluessel = test, Name = "Zahl", Typ = "DWord", Wert = unchecked((int)0xFFB16300).ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                    new DesignEintrag { Schluessel = test, Name = "", Typ = "String", Wert = "Windows-Standard (groß)" },
+                    new DesignEintrag { Schluessel = test, Name = "Pfad", Typ = "ExpandString", Wert = @"%SystemRoot%\cursors\aero_arrow.cur" },
+                    new DesignEintrag { Schluessel = test, Name = "Bytes", Typ = "Binary", Wert = Convert.ToBase64String(new byte[] { 0, 99, 177, 255 }) },
+                };
+                try
+                {
+                    foreach (var pr in proben) DesignRegistry.Schreiben(Microsoft.Win32.Registry.CurrentUser, pr);
+                    var wieder = proben.Select(pr => DesignRegistry.Lesen(Microsoft.Win32.Registry.CurrentUser, pr.Schluessel, pr.Name)).ToList();
+                    Check("echt: alle vier Typen hin und zurueck unveraendert",
+                        wieder.Zip(proben).All(x => x.First is { } w && w.Typ == x.Second.Typ && w.Wert == x.Second.Wert),
+                        string.Join(" | ", wieder.Select(w => w is null ? "null" : $"{w.Value.Typ}={w.Value.Wert}")));
+                    Check("echt: fehlender Wert -> null", DesignRegistry.Lesen(Microsoft.Win32.Registry.CurrentUser, test, "gibt-es-nicht") is null
+                        && DesignRegistry.Lesen(Microsoft.Win32.Registry.CurrentUser, @"Software\DaSiTest\gibt-es-nicht", "x") is null);
+                }
+                finally
+                {
+                    try { Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(@"Software\DaSiTest", false); } catch { }
+                }
             }
 
             Console.WriteLine("\n== Volltonfarbe echt (SetSysColors/GetSysColor) ==");

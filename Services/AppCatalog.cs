@@ -228,7 +228,7 @@ public static class AppCatalog
             Punkt.Winget => ("keine Programmliste (Winget)", "no program list (winget)"),
             Punkt.Wlan => ("keine WLAN-Profile", "no WiFi profiles"),
             Punkt.Drucker => ("keine Drucker", "no printers"),
-            Punkt.Hintergrund => ("keinen Hintergrund (weder Bild noch Volltonfarbe)", "no wallpaper (neither image nor solid color)"),
+            Punkt.Hintergrund => ("kein Design (weder Hintergrund noch Design-Einstellungen)", "no design (neither wallpaper nor design settings)"),
             Punkt.DesktopShot => ("kein Desktop-Layout (weder Screenshot noch Symbolpositionen)", "no desktop layout (neither screenshot nor icon positions)"),
             Punkt.Opera => ("kein Opera-Profil", "no Opera profile"),
             _ => ($"kein {p}-Profil", $"no {p} profile"),
@@ -242,6 +242,10 @@ public static class AppCatalog
 
     /// <summary>Desktop-Layout, Variante Symbolpositionen: Datei in der Sicherung?</summary>
     public static bool HatDesktopSymbole(string sicherung) => DesktopIcons.Vorhanden(sicherung);
+
+    /// <summary>Hintergrund in der Sicherung - ein Bild oder eine Volltonfarbe (Hintergrund.json)?</summary>
+    public static bool HatHintergrund(string sicherung)
+        => HatDateien(Path.Combine(sicherung, "Hintergrundbild"), "*", ohne: ".txt");
 
     /// <summary>Liegt der Punkt in der Sicherung?</summary>
     private static bool Enthaelt(string sicherung, Punkt p)
@@ -257,7 +261,7 @@ public static class AppCatalog
                             || File.Exists(Path.Combine(sicherung, "Export.json")),
             Punkt.Wlan => HatDateien(Path.Combine(sicherung, "WLAN-Profile"), "*.xml"),
             Punkt.Drucker => File.Exists(Path.Combine(sicherung, "Drucker", "Drucker.printerExport")),
-            Punkt.Hintergrund => HatDateien(Path.Combine(sicherung, "Hintergrundbild"), "*", ohne: ".txt"),
+            Punkt.Hintergrund => HatHintergrund(sicherung) || DesignEinstellungen.Vorhanden(sicherung),
             Punkt.DesktopShot => HatDesktopScreenshot(sicherung) || HatDesktopSymbole(sicherung),
             _ => Programme.FirstOrDefault(a => a.Punkt == p) is { } app && Directory.Exists(Path.Combine(sicherung, app.BackupOrdner)),
         };

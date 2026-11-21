@@ -875,7 +875,7 @@ public sealed class BackupService
 
     [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    private static extern bool SystemParametersInfo(uint uAction, uint uParam, string lpvParam, uint fuWinIni);
+    private static extern bool SystemParametersInfo(uint uAction, uint uParam, string? lpvParam, uint fuWinIni);
 
     private const uint SPI_SETDESKWALLPAPER = 0x0014;
     private const uint SPIF_UPDATEINIFILE   = 0x01;
@@ -1218,6 +1218,161 @@ public sealed class BackupService
         }
         catch { /* aelteres Windows */ }
     }
+
+    // ------------------------------------------------------------ Design
+
+    /// <summary>
+    /// "Design sichern": der Hintergrund (Bild oder Volltonfarbe) und die
+    /// Design-Einstellungen von Windows - Hell/Dunkel, Akzentfarbe,
+    /// Transparenz, Mauszeiger, Taskleiste, Start.
+    /// </summary>
+    public async Task ExportDesign()
+    {
+        await ExportWallpaper();
+        if (_cancel.IsCancelled) return;
+        ExportDesignEinstellungen();
+    }
+
+    /// <summary>
+    /// "Design wiederherstellen": erst die Einstellungen (Hell/Dunkel,
+    /// Akzentfarbe ...), dann der Hintergrund - ist "Akzentfarbe automatisch"
+    /// an, leitet Windows sie danach aus dem Hintergrund ab, wie auf dem alten
+    /// Rechner.
+    /// </summary>
+    public async Task ImportDesign()
+    {
+        if (DesignEinstellungen.Vorhanden(BackupPath)) ImportDesignEinstellungen();
+        else _log(Loc.Tr("[INFO] Die Sicherung enthält keine Design-Einstellungen (ältere Fassung des Tools) - nur der Hintergrund wird wiederhergestellt.",
+                         "[INFO] The backup contains no design settings (older version of the tool) - only the wallpaper is restored."));
+        if (_cancel.IsCancelled) return;
+
+        if (AppCatalog.HatHintergrund(BackupPath)) await ImportWallpaper();
+        else _log(Loc.Tr("[INFO] Die Sicherung enthält keinen Hintergrund.", "[INFO] The backup contains no wallpaper."));
+    }
+
+    /// <summary>
+    /// Der Registry-Zweig fuer die Design-Einstellungen: der des ANGEMELDETEN
+    /// Benutzers (HKEY_USERS\&lt;SID&gt;) - das Tool laeuft mit Adminrechten,
+    /// womoeglich unter einem anderen Konto. Gehoert der angemeldete Benutzer
+    /// nicht zum gewaehlten Profil, null: Dann wuerden die Einstellungen eines
+    /// anderen gelesen bzw. veraendert.
+    /// </summary>
+    private (RegistryKey? Wurzel, bool Eigen) DesignZweig(bool schreiben)
+    {
+        if (!OperatingSystem.IsWindows()) return (null, false);
+        var angemeldet = DesktopScreenshot.GetInteractiveUser();
+        if (angemeldet?.ProfilePath is { } eigenesProfil && !ProfileExcludes.SameFolder(eigenesProfil, SourcePath))
+        {
+            _log(Loc.Tr($"[WARNUNG] Design-Einstellungen: Angemeldet ist {angemeldet.Name} ({eigenesProfil}), gewählt ist aber {SourcePath}. "
+                        + "Hell/Dunkel, Akzentfarbe & Co. gehören dem angemeldeten Benutzer - bitte als dieser Benutzer anmelden und das Tool dort starten.",
+                        $"[WARNING] Design settings: {angemeldet.Name} ({eigenesProfil}) is signed in, but {SourcePath} is selected. "
+                        + "Light/dark mode, accent color etc. belong to the signed-in user - please sign in as that user and run the tool there."));
+            return (null, false);
+        }
+        if (angemeldet?.Sid is { } sid)
+        {
+            try
+            {
+                var k = Registry.Users.OpenSubKey(sid, schreiben);
+                if (k is not null) return (k, true);
+            }
+            catch { /* dann HKEY_CURRENT_USER */ }
+        }
+        return (Registry.CurrentUser, false);
+    }
+
+    private void ExportDesignEinstellungen()
+    {
+        var (wurzel, eigen) = DesignZweig(schreiben: false);
+        if (wurzel is null) return;
+        try
+        {
+            var werte = DesignEinstellungen.Auslesen((s, n) => DesignRegistry.Lesen(wurzel, s, n));
+            if (werte.Count == 0)
+            {
+                _log(Loc.Tr("[WARNUNG] Es wurden keine Design-Einstellungen gefunden.", "[WARNING] No design settings were found."));
+                return;
+            }
+            DesignEinstellungen.Speichern(BackupPath, new DesignSicherung
+            {
+                Rechner = Environment.MachineName,
+                Erstellt = DateTime.Now,
+                Werte = werte,
+            });
+            var kurz = DesignEinstellungen.Zusammenfassung(werte, Loc.Tr);
+            _log(Loc.Tr($"[ERFOLG] Design-Einstellungen gesichert ({werte.Count} Werte: {DesignEinstellungen.Gruppen(werte)}){(kurz.Length > 0 ? " - " + kurz : "")}.",
+                        $"[SUCCESS] Design settings backed up ({werte.Count} values: {DesignEinstellungen.Gruppen(werte)}){(kurz.Length > 0 ? " - " + kurz : "")}."));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Design-Einstellungen konnten nicht gesichert werden: {ex.Message}",
+                        $"[ERROR] The design settings could not be backed up: {ex.Message}"));
+        }
+        finally
+        {
+            if (eigen) wurzel.Dispose();
+        }
+    }
+
+    private void ImportDesignEinstellungen()
+    {
+        var sicherung = DesignEinstellungen.Laden(BackupPath);
+        if (sicherung is null) return;
+        var (wurzel, eigen) = DesignZweig(schreiben: true);
+        if (wurzel is null) return;
+        try
+        {
+            var gesetzt = new List<DesignEintrag>();
+            var ohneDatei = new List<string>();
+            var nichtSchreibbar = new List<string>();
+            foreach (var e in sicherung.Werte)
+            {
+                if (DesignEinstellungen.ZeigerFehlt(e, p => File.Exists(Environment.ExpandEnvironmentVariables(p))))
+                {
+                    ohneDatei.Add(e.Name);
+                    continue;
+                }
+                try { DesignRegistry.Schreiben(wurzel, e); gesetzt.Add(e); }
+                catch { nichtSchreibbar.Add(e.Name.Length == 0 ? e.Schluessel : e.Name); }
+            }
+
+            // Windows und den laufenden Programmen Bescheid geben.
+            if (gesetzt.Any(e => e.Gruppe == "Mauszeiger"))
+                SystemParametersInfo(SPI_SETCURSORS, 0, null, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+            foreach (var bereich in new[] { "ImmersiveColorSet", "WindowsThemeElement", "TraySettings" })
+                SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero, bereich, SMTO_ABORTIFHUNG, 2000, out _);
+
+            var kurz = DesignEinstellungen.Zusammenfassung(gesetzt, Loc.Tr);
+            _log(Loc.Tr($"[ERFOLG] Design-Einstellungen übernommen ({gesetzt.Count} Werte: {DesignEinstellungen.Gruppen(gesetzt)}){(kurz.Length > 0 ? " - " + kurz : "")}.",
+                        $"[SUCCESS] Design settings applied ({gesetzt.Count} values: {DesignEinstellungen.Gruppen(gesetzt)}){(kurz.Length > 0 ? " - " + kurz : "")}."));
+            if (ohneDatei.Count > 0)
+                _log(Loc.Tr($"[INFO] {ohneDatei.Count} Mauszeiger aus einem eigenen Schema gibt es auf diesem Rechner nicht - dort bleibt der Standardzeiger: {string.Join(", ", ohneDatei)}.",
+                            $"[INFO] {ohneDatei.Count} pointers from a custom scheme do not exist on this machine - the default pointer remains: {string.Join(", ", ohneDatei)}."));
+            if (nichtSchreibbar.Count > 0)
+                _log(Loc.Tr($"[WARNUNG] {nichtSchreibbar.Count} Werte ließen sich nicht setzen: {string.Join(", ", nichtSchreibbar)}.",
+                            $"[WARNING] {nichtSchreibbar.Count} values could not be set: {string.Join(", ", nichtSchreibbar)}."));
+            _log(Loc.Tr("[INFO] Hell/Dunkel und Transparenz gelten sofort. Die Akzentfarbe auf Titelleisten und Taskleiste übernimmt Windows teils erst nach dem nächsten Anmelden.",
+                        "[INFO] Light/dark mode and transparency apply right away. Windows partly applies the accent color on title bars and the taskbar only after the next sign-in."));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Design-Einstellungen konnten nicht übernommen werden: {ex.Message}",
+                        $"[ERROR] The design settings could not be applied: {ex.Message}"));
+        }
+        finally
+        {
+            if (eigen) wurzel.Dispose();
+        }
+    }
+
+    private const uint SPI_SETCURSORS = 0x0057;
+    private static readonly IntPtr HWND_BROADCAST = new(0xFFFF);
+    private const uint WM_SETTINGCHANGE = 0x001A;
+    private const uint SMTO_ABORTIFHUNG = 0x0002;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr SendMessageTimeoutW(IntPtr hWnd, uint msg, UIntPtr wParam, string lParam,
+                                                     uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 
     // ------------------------------------------------------------ Desktop-Screenshot
 
