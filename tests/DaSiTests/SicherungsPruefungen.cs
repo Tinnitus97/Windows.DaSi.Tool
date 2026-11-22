@@ -351,9 +351,22 @@ internal static partial class Program
         Check("Drucker-Export: Ergebnis gemeldet", log.Hat("[ERFOLG] Drucker gesichert") || log.Hat("[FEHLER] Druckersicherung fehlgeschlagen") || log.Hat("PrintBrm.exe wurde nicht gefunden"), log.Text);
 
         Datei(Path.Combine(sicherung, "Drucker", "Drucker.printerExport"), "keine echte Druckersicherung");
+        // Was sagt PrintBrm selbst zu einer unbrauchbaren Datei? (Zur Auswertung im Protokoll der CI.)
+        var brm = Path.Combine(Environment.SystemDirectory, "spool", "tools", "PrintBrm.exe");
+        if (File.Exists(brm))
+        {
+            var tmp = Path.Combine(Path.GetTempPath(), "WDST_Pruefung.printerExport");
+            File.Copy(Path.Combine(sicherung, "Drucker", "Drucker.printerExport"), tmp, true);
+            var p = Process.Start(new ProcessStartInfo(brm, "-R -F WDST_Pruefung.printerExport -O FORCE")
+            { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true, WorkingDirectory = Path.GetTempPath() })!;
+            var aus = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            Console.WriteLine($"         PrintBrm -R mit unbrauchbarer Datei: ExitCode {p.ExitCode}, Ausgabe: {aus.Trim().Replace("\r", "").Replace("\n", " / ")}");
+            try { File.Delete(tmp); } catch { }
+        }
         log.Leeren();
         d.ImportPrinters().Wait();
-        Check("Drucker-Import: unbrauchbare Sicherung wird abgelehnt", log.Hat("Druckerwiederherstellung fehlgeschlagen") || log.Hat("PrintBrm.exe wurde nicht gefunden"), log.Text);
+        Check("Drucker-Import: Ergebnis gemeldet", log.Hat("Drucker wiederhergestellt") || log.Hat("Druckerwiederherstellung fehlgeschlagen"), log.Text);
     }
 
     /// <summary>

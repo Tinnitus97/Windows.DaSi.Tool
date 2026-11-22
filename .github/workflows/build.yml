@@ -51,6 +51,7 @@ jobs:
       # bedient mit Mausklicks. Mit Debug-Symbolen gebaut - nur fuer die Messung,
       # die ausgelieferte EXE (release.yml) bleibt ohne.
       - name: Prüfungen der Oberfläche
+        if: success() || failure()
         shell: pwsh
         run: |
           dotnet build tests/DaSiGuiTests -c Release -p:DebugType=portable -p:DebugSymbols=true

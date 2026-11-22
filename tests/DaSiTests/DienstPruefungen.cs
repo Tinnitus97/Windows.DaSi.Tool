@@ -246,7 +246,10 @@ internal static partial class Program
         int code = r.RunRobocopyAsync($"\"{quelle}\" \"{Path.Combine(root, "robo-zaehlen", "ziel1")}\" /E /NP /NJH",
                                       log.Schreiben, n => { lock (zaehler) zaehler.Add(n); }).GetAwaiter().GetResult();
         Check("robocopy: Exit-Code < 8", code is > 0 and < 8, code.ToString());
-        Check("robocopy schnell: Dateien gezaehlt, Endstand 60", zaehler.Count > 0 && zaehler.Last() == 60, string.Join(",", zaehler));
+        // Gezaehlt werden die eingerueckten Zeilen von robocopy - Dateien und
+        // Ordner. Es geht um den Fortschritt, nicht um eine genaue Bilanz.
+        Check("robocopy schnell: gezaehlt, alle 25 gemeldet, Endstand mit allen 60 Dateien",
+            zaehler.Count >= 3 && zaehler[0] == 25 && zaehler[1] == 50 && zaehler.Last() >= 60, string.Join(",", zaehler));
         Check("robocopy schnell: keine Dateizeilen im Protokoll", !log.Hat("datei07.txt"), log.Text);
 
         c.FastMode = false;

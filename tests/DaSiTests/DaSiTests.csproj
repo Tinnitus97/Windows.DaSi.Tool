@@ -64,10 +64,12 @@
     <Compile Include="../../Services/CancellationTokenState.cs" />
   </ItemGroup>
 
-  <!-- Die winget-Attrappe wird mitgebaut; eingebunden wird sie nicht - die
-       Pruefungen starten sie als eigenes Programm. -->
-  <ItemGroup>
-    <ProjectReference Include="../WingetAttrappe/WingetAttrappe.csproj" ReferenceOutputAssembly="false" />
-  </ItemGroup>
+  <!-- Die winget-Attrappe wird mitgebaut - in ihren eigenen Ordner. Ein
+       Projektverweis kopierte ihre Startdatei winget.exe (ohne winget.dll)
+       hierher, und Windows faende "winget" dann zuerst hier, im Ordner des
+       Pruefprogramms, statt im Suchpfad. -->
+  <Target Name="WingetAttrappeBauen" BeforeTargets="Build">
+    <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Properties="Configuration=$(Configuration)" />
+  </Target>
 
 </Project>

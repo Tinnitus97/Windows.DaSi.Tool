@@ -80,9 +80,12 @@ def funktion(klasse: str, methode: str) -> tuple[str, str] | None:
 
 
 def lesen(dateien: list[str]):
-    # (Datei, Klasse, Funktion) -> [Zeilen gesamt, Zeilen getroffen, Treffer]
+    # (Datei, Klasse, Funktion) -> {Zeile: Treffer}
     stand: dict[tuple[str, str, str], dict[int, int]] = defaultdict(dict)
     for datei in dateien:
+        if not os.path.exists(datei):
+            print(f"FEHLT: {datei} - diese Pruefung hat keinen Bericht geschrieben.")
+            continue
         baum = ET.parse(datei)
         quellen = [s.text or "" for s in baum.iter("source")]
         for klasse in baum.iter("class"):
@@ -111,6 +114,7 @@ def main() -> int:
         print(__doc__)
         return 2
     stand = lesen(args)
+    fehlende = [a for a in args if not os.path.exists(a)]
 
     # Gleiche Funktion aus mehreren Klassenteilen (Lambda + Methode) zusammen.
     funktionen: dict[tuple[str, str], dict[int, int]] = defaultdict(dict)
@@ -176,7 +180,7 @@ def main() -> int:
     if not fehlt and not ueberfluessig:
         print("\nJede Funktion wird von mindestens einer Pruefung ausgefuehrt.")
 
-    if pflicht and (fehlt or ueberfluessig):
+    if pflicht and (fehlt or ueberfluessig or fehlende):
         return 1
     return 0
 
