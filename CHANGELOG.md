@@ -67,21 +67,24 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 - **Hintergrund nach einem Neustart wieder schwarz bzw. weg.** Nach dem
   Wiederherstellen war der Hintergrund zu sehen. Nach einem Neustart von Windows
-  oder dem Explorer-Neustart für die Taskleiste war er schwarz bzw. wieder der alte.
-  Ursachen und Abhilfe:
+  bzw. der nächsten Anmeldung war er schwarz bzw. wieder der alte. Der
+  Explorer-Neustart für die Taskleiste ist es nicht: Er liest den Hintergrund
+  nicht neu ein, das ist unter Windows geprüft. Ursachen und Abhilfe:
   - Das Tool trug den Hintergrund in die Registry des Kontos ein, **unter dem es
     läuft**. Gibt jemand bei der Admin-Abfrage die Daten eines anderen Kontos ein,
     ist das nicht der angemeldete Benutzer. Sofort zu sehen war der Hintergrund
     trotzdem, dauerhaft aber nicht. Jetzt schreibt das Tool Bild, Darstellung, Farbe
     und Art direkt beim angemeldeten Benutzer, wie schon die Design-Einstellungen.
-    Den Windows-Aufruf nutzt es nur noch für die sofortige Anzeige. Danach prüft es,
+    Den Windows-Aufruf nutzt es nur noch für die sofortige Anzeige. Dazu verwirft es
+    Windows' Kopie des alten Hintergrunds in diesem Profil, damit Windows bei der
+    nächsten Anmeldung das neue Bild einliest. Danach prüft es,
     ob der Hintergrund wirklich eingetragen ist. Ist er es nicht, meldet das
     Protokoll einen Fehler statt „gesetzt“. Läuft das Tool unter einem anderen Konto,
     steht das als Hinweis im Protokoll. Auch das Sichern liest jetzt beim
     angemeldeten Benutzer und nicht beim Admin-Konto.
-  - Windows 11 merkt sich für jeden virtuellen Desktop einen eigenen Hintergrund
-    und setzt ihn beim Start des Explorers wieder. Diese Einträge gleicht das Tool
-    jetzt an.
+  - Windows 11 kann sich für jeden virtuellen Desktop einen eigenen Hintergrund
+    merken. Solche Einträge gleicht das Tool jetzt an, damit kein alter Hintergrund
+    zurückkommt.
   - Zeigte der alte Rechner ein Bild aus Windows' Zwischenspeicher
     (`Themes\TranscodedWallpaper`, `CachedFiles`), schrieb das Tool es dorthin zurück
     und trug es als Hintergrund ein. Diese Dateien überschreibt bzw. löscht Windows

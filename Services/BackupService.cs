@@ -1106,7 +1106,7 @@ public sealed class BackupService
             // Als Desktop-Hintergrund setzen - samt Darstellung ("Füllen",
             // "Anpassen" ...) und Randfarbe, eingetragen beim angemeldeten
             // Benutzer.
-            var r = DesktopHintergrund.BildSetzen(ziel.Wurzel, ziel.EigenerBenutzer, targetPath, einstellung);
+            var r = DesktopHintergrund.BildSetzen(ziel.Wurzel, ziel.EigenerBenutzer, targetPath, einstellung, SourcePath);
             HintergrundErgebnis(ziel, r, Loc.Tr("Hintergrundbild", "Wallpaper"));
         }
         catch (Exception ex)
@@ -1126,7 +1126,7 @@ public sealed class BackupService
     {
         try
         {
-            var r = DesktopHintergrund.FarbeSetzen(ziel.Wurzel, ziel.EigenerBenutzer, farbe);
+            var r = DesktopHintergrund.FarbeSetzen(ziel.Wurzel, ziel.EigenerBenutzer, farbe, SourcePath);
             HintergrundErgebnis(ziel, r, Loc.Tr($"Volltonfarbe RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})",
                                                 $"Solid color RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})"));
         }

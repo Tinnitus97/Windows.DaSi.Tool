@@ -2227,14 +2227,26 @@ internal static class Program
                     var a2 = HintergrundEcht.Sichtbar(rot);
                     Check("echt: nach dem Explorer-Neustart ist das Bild noch da", a2 > 0.5, $"{a2:P0} rot");
 
-                    // 2. So sieht es beim angemeldeten Benutzer aus, wenn das Tool
-                    //    unter einem ANDEREN Konto laeuft: Nur seine Registry
-                    //    stimmt, Windows' Zwischenspeicher zeigt noch das alte Bild.
+                    // 2. Nur in der Registry - so steht es beim angemeldeten Benutzer,
+                    //    wenn das Tool unter einem ANDEREN Konto laeuft. Ein
+                    //    Explorer-Neustart liest den Hintergrund nicht neu ein (er
+                    //    gehoert zur Sitzung) - der Neustart fuer die Taskleiste kann
+                    //    ihn also nicht verlieren. Erst die Anmeldung liest die Registry.
                     DesktopHintergrund.BildEintragen(hgWurzel, gruenBild, strecken);
                     Neustart("nur eingetragen");
-                    var a3 = HintergrundEcht.Sichtbar(gruen);
-                    Check("echt: nur eingetragen - nach dem Explorer-Neustart zeigt Windows das neue Bild", a3 > 0.5,
-                        $"{a3:P0} gruen, {HintergrundEcht.Anteil(rot):P0} rot");
+                    System.Threading.Thread.Sleep(3000);
+                    var a3 = HintergrundEcht.Anteil(rot);
+                    Check("echt: ein Explorer-Neustart laesst den Hintergrund der Sitzung stehen", a3 > 0.5,
+                        $"{a3:P0} rot, {HintergrundEcht.Anteil(gruen):P0} gruen");
+
+                    // Zur Auskunft: was die Anmeldung taete (UpdatePerUserSystemParameters
+                    // liest die Registry wie beim Anmelden) - erst mit altem
+                    // Zwischenspeicher, dann verworfen wie beim fremden Konto.
+                    HintergrundEcht.WieBeimAnmelden();
+                    Console.WriteLine($"         wie beim Anmelden, alter Zwischenspeicher: {HintergrundEcht.Anteil(gruen):P0} gruen (Registry), {HintergrundEcht.Anteil(rot):P0} rot (alt)");
+                    DesktopHintergrund.ZwischenspeicherVerwerfen(hgWurzel, hgNutzer?.ProfilePath);
+                    HintergrundEcht.WieBeimAnmelden();
+                    Console.WriteLine($"         wie beim Anmelden, Zwischenspeicher verworfen: {HintergrundEcht.Anteil(gruen):P0} gruen (Registry), {HintergrundEcht.Anteil(rot):P0} rot (alt)");
 
                     // 3. Volltonfarbe.
                     var r4 = DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, lila);
@@ -2246,12 +2258,15 @@ internal static class Program
                     var a5 = HintergrundEcht.Sichtbar(lila);
                     Check("echt: nach dem Explorer-Neustart ist die Volltonfarbe noch da", a5 > 0.5, $"{a5:P0} lila");
 
-                    // 4. Nur eingetragene Farbe - zur Auskunft, woher der Explorer sie nimmt.
+                    // 4. Nur eingetragene Farbe: Der Explorer-Neustart laesst die der Sitzung stehen.
                     DesktopHintergrund.FarbeEintragen(hgWurzel, tuerkis);
                     Neustart("Farbe nur eingetragen");
                     System.Threading.Thread.Sleep(3000);
-                    Console.WriteLine($"         nur eingetragene Farbe nach dem Neustart: {HintergrundEcht.Anteil(tuerkis):P0} tuerkis (Registry), "
-                                      + $"{HintergrundEcht.Anteil(lila):P0} lila (Sitzung)");
+                    var a6 = HintergrundEcht.Anteil(lila);
+                    Check("echt: auch die Volltonfarbe der Sitzung bleibt beim Explorer-Neustart stehen", a6 > 0.5,
+                        $"{a6:P0} lila, {HintergrundEcht.Anteil(tuerkis):P0} tuerkis");
+                    HintergrundEcht.WieBeimAnmelden();
+                    Console.WriteLine($"         wie beim Anmelden: {HintergrundEcht.Anteil(tuerkis):P0} tuerkis (Registry), {HintergrundEcht.Anteil(lila):P0} lila (Sitzung)");
                 }
                 finally
                 {
@@ -2346,6 +2361,23 @@ internal static class HintergrundEcht
             if (Math.Abs(b[o] - f.B) <= 24 && Math.Abs(b[o + 1] - f.G) <= 24 && Math.Abs(b[o + 2] - f.R) <= 24) treffer++;
         }
         return gesamt == 0 ? 0 : (double)treffer / gesamt;
+    }
+
+    /// <summary>
+    /// Liest die Benutzereinstellungen aus der Registry neu ein, wie beim
+    /// Anmelden. Unter neueren Windows-Fassungen nicht immer wirksam - daher
+    /// nur zur Auskunft.
+    /// </summary>
+    public static void WieBeimAnmelden()
+    {
+        try
+        {
+            using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                "rundll32.exe", "user32.dll,UpdatePerUserSystemParameters 1, True") { UseShellExecute = false });
+            p?.WaitForExit(15000);
+        }
+        catch (Exception ex) { Console.WriteLine($"         (UpdatePerUserSystemParameters: {ex.Message})"); }
+        System.Threading.Thread.Sleep(4000);
     }
 
     /// <summary>Wartet bis zu 15 Sekunden, bis die Farbe ueberwiegt - der Desktop braucht nach dem Setzen einen Moment.</summary>

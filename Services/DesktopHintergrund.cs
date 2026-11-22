@@ -35,11 +35,18 @@ public sealed record HintergrundGesetzt(bool Eingetragen, bool Angezeigt, int Vi
 /// Deshalb: Registry-Werte selbst in den Zweig des angemeldeten Benutzers
 /// (HKEY_USERS\&lt;SID&gt;) schreiben und SystemParametersInfo nur fuer die
 /// laufende Sitzung rufen - mit SPIF_UPDATEINIFILE nur, wenn das Tool unter
-/// genau diesem Benutzer laeuft.
+/// genau diesem Benutzer laeuft. Sonst wird zusaetzlich Windows'
+/// Zwischenspeicher des Benutzers verworfen (TranscodedWallpaper), damit
+/// Windows das Bild bei der naechsten Anmeldung neu einliest, statt den
+/// alten Stand zu zeigen.
 ///
-/// Windows 11 merkt sich ausserdem je virtuellem Desktop einen eigenen
-/// Hintergrund und setzt ihn beim Start des Explorers wieder - auch der wird
-/// angeglichen.
+/// Ein Neustart des Explorers liest den Hintergrund uebrigens NICHT neu
+/// ein - der gehoert zur Sitzung (unter Windows geprueft). Massgeblich ist,
+/// was bei der naechsten Anmeldung in der Registry steht.
+///
+/// Windows 11 kann sich ausserdem je virtuellem Desktop einen eigenen
+/// Hintergrund merken und setzt ihn beim Wechsel bzw. Anmelden wieder - auch
+/// der wird angeglichen.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static class DesktopHintergrund
@@ -103,9 +110,11 @@ public static class DesktopHintergrund
     /// laufenden Sitzung zeigen.
     /// </summary>
     /// <param name="eigenerBenutzer">Laeuft das Tool unter dem Benutzer, dem <paramref name="wurzel"/> gehoert?</param>
-    public static HintergrundGesetzt BildSetzen(RegistryKey wurzel, bool eigenerBenutzer, string pfad, HintergrundEinstellung? e)
+    /// <param name="profil">Profilordner des Benutzers - fuer seinen Zwischenspeicher.</param>
+    public static HintergrundGesetzt BildSetzen(RegistryKey wurzel, bool eigenerBenutzer, string pfad, HintergrundEinstellung? e, string? profil = null)
     {
         int vd = BildEintragen(wurzel, pfad, e);
+        if (!eigenerBenutzer) ZwischenspeicherVerwerfen(wurzel, profil);
         bool angezeigt = SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, pfad, Flags(eigenerBenutzer));
         if (Hintergrund.FarbeLesen(e?.Farbe) is { } rand) SitzungsFarbe(rand);
 
@@ -146,9 +155,10 @@ public static class DesktopHintergrund
     }
 
     /// <summary>Eine Volltonfarbe als Hintergrund - wie unter Einstellungen > Personalisierung > Hintergrund.</summary>
-    public static HintergrundGesetzt FarbeSetzen(RegistryKey wurzel, bool eigenerBenutzer, (byte R, byte G, byte B) farbe)
+    public static HintergrundGesetzt FarbeSetzen(RegistryKey wurzel, bool eigenerBenutzer, (byte R, byte G, byte B) farbe, string? profil = null)
     {
         int vd = FarbeEintragen(wurzel, farbe);
+        if (!eigenerBenutzer) ZwischenspeicherVerwerfen(wurzel, profil);
         // Ohne Bild zeigt der Desktop die Farbe.
         SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, "", Flags(eigenerBenutzer));
         bool angezeigt = SitzungsFarbe(farbe);
@@ -171,6 +181,30 @@ public static class DesktopHintergrund
             k.SetValue("WallPaper", "");
         TypEintragen(wurzel, 1);
         return DesktopBilderAngleichen(wurzel, null);
+    }
+
+    /// <summary>
+    /// Windows' Kopie des bisherigen Hintergrunds verwerfen - die Datei
+    /// TranscodedWallpaper und den Verweis darauf (TranscodedImageCache). Bei
+    /// der naechsten Anmeldung liest Windows den Hintergrund dann aus der
+    /// Registry neu ein, wie bei einem frischen Profil. Nur noetig, wenn das
+    /// Tool unter einem anderen Konto laeuft: Sonst erneuert Windows die Kopie
+    /// beim Setzen selbst.
+    /// </summary>
+    public static void ZwischenspeicherVerwerfen(RegistryKey wurzel, string? profil)
+    {
+        try
+        {
+            using var k = wurzel.OpenSubKey(DesktopSchluessel, writable: true);
+            k?.DeleteValue("TranscodedImageCache", throwOnMissingValue: false);
+        }
+        catch { /* dann eben nur die Datei */ }
+        try
+        {
+            if (Hintergrund.Zwischenspeicher(profil) is { } datei && System.IO.File.Exists(datei))
+                System.IO.File.Delete(datei);
+        }
+        catch { /* gesperrt - Windows vergleicht ohnehin den Pfad */ }
     }
 
     private static bool IstEingetragen(RegistryKey wurzel, string pfad)
