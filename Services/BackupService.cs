@@ -198,6 +198,17 @@ public sealed class BackupService
             if (Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
 
         RobocopySkips? skips = null;
+        // Laeuft das Tool aus dem Zielprofil heraus (meist vom Desktop), wird
+        // seine Datei nicht ueberschrieben - sie ist gesperrt, und in der
+        // Sicherung liegt meist eine aeltere Fassung.
+        var selbst = ProfileExcludes.LaufendesProgrammInSicherung(destDir, backupSourceDir, Environment.ProcessPath);
+        if (selbst is not null && File.Exists(selbst))
+        {
+            args.Add("/XF"); args.Add(Quote(selbst));
+            _log(Loc.Tr($"[INFO] Das laufende Windows DaSi Tool wird nicht durch die Fassung aus der Sicherung ersetzt: {Path.GetRelativePath(backupSourceDir, selbst)}",
+                        $"[INFO] The running Windows DaSi Tool is not replaced by the copy from the backup: {Path.GetRelativePath(backupSourceDir, selbst)}"));
+        }
+
         if (IncludeAppData)
         {
             _log(Loc.Tr("[INFO] AppData wird mit wiederhergestellt.", "[INFO] AppData is included in the restore."));
@@ -399,7 +410,7 @@ public sealed class BackupService
         if (!OperatingSystem.IsWindows()) return;
         var programme = AppCatalog.Programme.Select(a => (a.Name, a.Prozess))
                                   .Append(("Opera", AppCatalog.Opera.Prozess));
-        var geschlossen = new List<string>();
+        var geschlossen = new List<(string Name, string Prozess)>();
         foreach (var (name, prozess) in programme)
         {
             bool laeuft;
@@ -411,13 +422,12 @@ public sealed class BackupService
             }
             catch { continue; }
             if (!laeuft) continue;
-            KillProcess(prozess);
-            geschlossen.Add(name);
+            geschlossen.Add((name, prozess));
         }
         if (geschlossen.Count == 0) return;
-        _log(Loc.Tr($"[INFO] Vor dem Zurückschreiben von AppData geschlossen: {string.Join(", ", geschlossen)} - sonst wären ihre Dateien gesperrt.",
-                    $"[INFO] Closed before restoring AppData: {string.Join(", ", geschlossen)} - otherwise their files would be locked."));
-        await Task.Delay(2000);
+        _log(Loc.Tr($"[INFO] Vor dem Zurückschreiben von AppData geschlossen: {string.Join(", ", geschlossen.Select(g => g.Name))} - sonst wären ihre Dateien gesperrt.",
+                    $"[INFO] Closed before restoring AppData: {string.Join(", ", geschlossen.Select(g => g.Name))} - otherwise their files would be locked."));
+        await BeendenUndWarten(TimeSpan.FromSeconds(20), geschlossen.Select(g => g.Prozess).ToArray());
     }
 
     /// <summary>Schreibt nur die Cloud-Ordner zurueck - wie immer neben das Original.</summary>
@@ -440,9 +450,9 @@ public sealed class BackupService
         var quelle = AppCatalog.Pfad(SourcePath, app.ProfilRel);
         if (!Directory.Exists(quelle)) { _log(Loc.Tr($"[FEHLER] Pfad nicht gefunden: {quelle}", $"[ERROR] Path not found: {quelle}")); return; }
 
-        _log(Loc.Tr($"[INFO] Beende {app.Name}...", $"[INFO] Closing {app.Name}..."));
-        KillProcess(app.Prozess);
-        await Task.Delay(2000);
+        if (!await ProgrammSchliessen(app.Name, false, app.Prozess))
+            _log(Loc.Tr($"[WARNUNG] {app.Name} läuft noch - gesichert wird trotzdem, einzelne Dateien können aber unvollständig sein.",
+                        $"[WARNING] {app.Name} is still running - backing up anyway, but individual files may be incomplete."));
 
         await MirrorAppProfile(app.Name, quelle, Path.Combine(BackupPath, app.BackupOrdner), app.Chromium ? ChromiumCacheExcludes : null);
     }
@@ -450,16 +460,21 @@ public sealed class BackupService
     /// <summary>Schreibt das Profil eines Programms aus dem Katalog zurueck - vorher wird es bei Bedarf installiert.</summary>
     public async Task RestoreAppProfile(AppEintrag app)
     {
-        await InstallApp(app.Name, app.Prozess + ".exe", app.WingetId);
+        var frisch = await InstallApp(app.Name, app.Prozess + ".exe", app.WingetId);
 
         var quelle = Path.Combine(BackupPath, app.BackupOrdner);
         if (!Directory.Exists(quelle)) { _log(Loc.Tr($"[FEHLER] {app.Name} Backup nicht gefunden.", $"[ERROR] {app.Name} backup not found.")); return; }
 
-        _log(Loc.Tr($"[INFO] Beende {app.Name}...", $"[INFO] Closing {app.Name}..."));
-        KillProcess(app.Prozess);
-        await Task.Delay(2000);
+        if (!await ProgrammSchliessen(app.Name, frisch, app.Prozess))
+        {
+            _log(Loc.Tr($"[FEHLER] {app.Name} läuft noch und ließ sich nicht beenden - das Profil wird NICHT zurückgeschrieben, sonst überschriebe {app.Name} es beim Beenden wieder. "
+                        + $"Bitte {app.Name} vollständig schließen (auch im Infobereich) und den Punkt erneut ausführen.",
+                        $"[ERROR] {app.Name} is still running and could not be closed - the profile is NOT restored, {app.Name} would overwrite it again on exit. "
+                        + $"Please close {app.Name} completely (including the notification area) and run this item again."));
+            return;
+        }
 
-        await RestoreAppDir(app.Name, quelle, AppCatalog.Pfad(SourcePath, app.ProfilRel));
+        await RestoreAppDir(app.Name, quelle, AppCatalog.Pfad(SourcePath, app.ProfilRel), app.Prozess);
     }
 
     // ------------------------------------------------------------ Opera (alle Fassungen)
@@ -481,9 +496,9 @@ public sealed class BackupService
         _log(Loc.Tr($"[INFO] Gefundene Opera-Fassungen: {namen}", $"[INFO] Opera editions found: {namen}"));
 
         // Alle Fassungen laufen als opera.exe - einmal beenden genuegt.
-        _log(Loc.Tr("[INFO] Beende Opera...", "[INFO] Closing Opera..."));
-        KillOpera();
-        await Task.Delay(2000);
+        if (!await ProgrammSchliessen("Opera", false, OperaProzesse))
+            _log(Loc.Tr("[WARNUNG] Opera läuft noch - gesichert wird trotzdem, einzelne Dateien können aber unvollständig sein.",
+                        "[WARNING] Opera is still running - backing up anyway, but individual files may be incomplete."));
 
         foreach (var v in varianten)
         {
@@ -508,29 +523,29 @@ public sealed class BackupService
         {
             if (_cancel.IsCancelled) return;
             var name = AppCatalog.Opera.Anzeigename(v);
-            await InstallOpera(v);
-            _log(Loc.Tr($"[INFO] Beende {name}...", $"[INFO] Closing {name}..."));
-            KillOpera();
-            await Task.Delay(2000);
-            await RestoreAppDir(name, Path.Combine(quelle, v), Path.Combine(ziel, v));
+            var frisch = await InstallOpera(v);
+            if (!await ProgrammSchliessen(name, frisch, OperaProzesse))
+            {
+                _log(Loc.Tr($"[FEHLER] {name} läuft noch und ließ sich nicht beenden - das Profil wird NICHT zurückgeschrieben. Bitte Opera vollständig schließen und den Punkt erneut ausführen.",
+                            $"[ERROR] {name} is still running and could not be closed - the profile is NOT restored. Please close Opera completely and run this item again."));
+                continue;
+            }
+            await RestoreAppDir(name, Path.Combine(quelle, v), Path.Combine(ziel, v), OperaProzesse);
         }
     }
 
     /// <summary>Opera selbst und seine Begleiter, die Dateien im Profil offen halten.</summary>
-    private static void KillOpera()
-    {
-        foreach (var name in new[] { AppCatalog.Opera.Prozess, "opera_autoupdate", "browser_assistant" })
-            KillProcess(name);
-    }
+    private static readonly string[] OperaProzesse = { AppCatalog.Opera.Prozess, "opera_autoupdate", "browser_assistant" };
 
     /// <summary>
     /// Ist diese Opera-Fassung installiert? Opera installiert sich meist nur
     /// fuer den Benutzer (AppData\Local\Programs\&lt;Fassung&gt;), seltener fuer alle
     /// (Programme). Sonst per winget - soweit das Paket bekannt ist.
     /// </summary>
-    private async Task InstallOpera(string variante)
+    /// <returns>true, wenn die Fassung gerade eben installiert wurde.</returns>
+    private async Task<bool> InstallOpera(string variante)
     {
-        if (_cancel.IsCancelled) return;
+        if (_cancel.IsCancelled) return false;
         var name = AppCatalog.Opera.Anzeigename(variante);
         var orte = new[]
         {
@@ -540,16 +555,16 @@ public sealed class BackupService
         if (orte.Any(File.Exists))
         {
             _log(Loc.Tr($"[INFO] {name} ist bereits installiert.", $"[INFO] {name} is already installed."));
-            return;
+            return false;
         }
         var id = AppCatalog.Opera.WingetId(variante);
         if (id is null)
         {
             _log(Loc.Tr($"[WARNUNG] {name} ist nicht installiert und lässt sich nicht automatisch nachinstallieren. Bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
                         $"[WARNING] {name} is not installed and cannot be installed automatically. Please install it manually - the profile is restored anyway."));
-            return;
+            return false;
         }
-        await InstallViaWinget(name, id);
+        return await InstallViaWinget(name, id);
     }
 
     // ------------------------------------------------------------ Programmprofile: gemeinsamer Ablauf
@@ -571,7 +586,12 @@ public sealed class BackupService
     /// Schreibt ein Programmprofil zurueck. Ein vorhandenes Profil wird vorher
     /// beiseitegelegt ("..._alt_&lt;Zeit&gt;"), nicht geloescht.
     /// </summary>
-    private async Task RestoreAppDir(string name, string quelle, string ziel)
+    /// <param name="prozesse">
+    /// Die Prozesse des Programms. Laeuft eins davon nach dem Kopieren wieder,
+    /// wird es beendet und noch einmal kopiert - sonst ueberschriebe es beim
+    /// Beenden das zurueckgeschriebene Profil.
+    /// </param>
+    private async Task RestoreAppDir(string name, string quelle, string ziel, params string[] prozesse)
     {
         if (Directory.Exists(ziel))
         {
@@ -607,11 +627,42 @@ public sealed class BackupService
 
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
         if (_cancel.IsCancelled) return;
-        _log(code < 8 ? Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt.", $"[SUCCESS] {name} profile restored.")
-                      : Loc.Tr($"[FEHLER] {name}: ExitCode {code}", $"[ERROR] {name}: ExitCode {code}"));
-    }
 
-    public string[] ChromiumExcludes => ChromiumCacheExcludes;
+        // Hat sich das Programm waehrend des Kopierens gestartet (Installer,
+        // Autostart, Benutzer), haelt es ein eigenes, frisches Profil offen.
+        if (prozesse.Length > 0 && OperatingSystem.IsWindows() && Laeuft(prozesse))
+        {
+            _log(Loc.Tr($"[WARNUNG] {name} wurde während des Kopierens gestartet - wird beendet, und das Profil wird noch einmal zurückgeschrieben.",
+                        $"[WARNING] {name} was started while copying - it is closed and the profile is restored once more."));
+            if (await BeendenUndWarten(TimeSpan.FromSeconds(20), prozesse))
+            {
+                code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+                if (_cancel.IsCancelled) return;
+            }
+        }
+
+        if (code >= 8)
+        {
+            _log(Loc.Tr($"[FEHLER] {name}: ExitCode {code}", $"[ERROR] {name}: ExitCode {code}"));
+            return;
+        }
+
+        // Stehen die Dateien, an denen das Profil haengt, so da wie gesichert?
+        var abweichend = ProfilAbgleich.Abweichungen(quelle, ziel);
+        if (abweichend.Count > 0)
+        {
+            _log(Loc.Tr($"[FEHLER] {name}: Das Profil steht nicht vollständig im Ziel - abweichend: {string.Join(", ", abweichend.Take(8))}{(abweichend.Count > 8 ? ", ..." : "")}. "
+                        + $"Meist lief {name} dabei. Bitte {name} vollständig schließen (auch im Infobereich) und den Punkt erneut ausführen.",
+                        $"[ERROR] {name}: the profile is not complete in the target - differing: {string.Join(", ", abweichend.Take(8))}{(abweichend.Count > 8 ? ", ..." : "")}. "
+                        + $"Usually {name} was running meanwhile. Please close {name} completely (including the notification area) and run this item again."));
+            return;
+        }
+
+        var profile = ProfilAbgleich.Profile(ziel);
+        _log(profile.Count > 0
+            ? Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt ({string.Join(", ", profile)}).", $"[SUCCESS] {name} profile restored ({string.Join(", ", profile)}).")
+            : Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt.", $"[SUCCESS] {name} profile restored."));
+    }
 
     // ------------------------------------------------------------ WLAN
 
@@ -686,6 +737,23 @@ public sealed class BackupService
     }
 
     private const string PrinterFileName = "Drucker.printerExport";
+
+    /// <summary>
+    /// Der Fehler, den PrintBrm in seiner Ausgabe nennt - null, wenn keiner.
+    ///
+    /// PrintBrm endet auch dann mit Exit-Code 0, wenn es scheitert, etwa an
+    /// einer unbrauchbaren Sicherungsdatei: "The following error occurred:
+    /// 0x80070057. / The parameter is incorrect." (unter Windows geprueft).
+    /// Erkennbar ist das am Fehlercode (HRESULT 0x8...) - in jeder Sprache.
+    /// </summary>
+    internal static string? PrintBrmFehler(string? ausgabe)
+    {
+        if (string.IsNullOrWhiteSpace(ausgabe)) return null;
+        var zeilen = ausgabe.Split('\n').Select(z => z.Trim()).Where(z => z.Length > 0).ToList();
+        var i = zeilen.FindIndex(z => System.Text.RegularExpressions.Regex.IsMatch(z, @"\b0x8[0-9A-Fa-f]{7}\b"));
+        // Die Zeile mit dem Code und die Erklaerung dahinter.
+        return i < 0 ? null : string.Join(" ", zeilen.Skip(i).Take(2));
+    }
 
     public async Task ExportPrinters()
     {
@@ -803,7 +871,10 @@ public sealed class BackupService
             return;
         }
 
-        if (r.ExitCode == 0)
+        // PrintBrm endet auch bei manchem Fehlschlag mit 0 - etwa bei einer
+        // unbrauchbaren Sicherungsdatei. Frueher stand dann "[ERFOLG]" da.
+        var fehler = PrintBrmFehler(r.Output);
+        if (r.ExitCode == 0 && fehler is null)
         {
             _log(Loc.Tr("[ERFOLG] Drucker wiederhergestellt.", "[SUCCESS] Printers restored."));
             _log(Loc.Tr("[INFO] Hinweis: Netzwerkdrucker sind nur erreichbar, wenn der Druckserver verfügbar ist.",
@@ -811,22 +882,14 @@ public sealed class BackupService
         }
         else
         {
-            _log(Loc.Tr($"[FEHLER] Druckerwiederherstellung fehlgeschlagen (ExitCode: {r.ExitCode}).",
-                        $"[ERROR] Printer restore failed (ExitCode: {r.ExitCode})."));
+            _log(Loc.Tr($"[FEHLER] Druckerwiederherstellung fehlgeschlagen (ExitCode: {r.ExitCode}{(fehler is null ? "" : ", " + fehler)}).",
+                        $"[ERROR] Printer restore failed (ExitCode: {r.ExitCode}{(fehler is null ? "" : ", " + fehler)})."));
             if (!string.IsNullOrWhiteSpace(r.Output))
                 _log(Loc.Tr("[INFO] PrintBrm-Ausgabe: ", "[INFO] PrintBrm output: ") + r.Output.Trim());
         }
     }
 
     // ------------------------------------------------------------ Hintergrundbild
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
-    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    private static extern bool SystemParametersInfo(uint uAction, uint uParam, string lpvParam, uint fuWinIni);
-
-    private const uint SPI_SETDESKWALLPAPER = 0x0014;
-    private const uint SPIF_UPDATEINIFILE   = 0x01;
-    private const uint SPIF_SENDCHANGE       = 0x02;
 
     // Merkt sich neben dem Bild auch dessen Originalpfad ...
     private const string WallpaperPathFile = "Hintergrundbild-Pfad.txt";
@@ -836,55 +899,99 @@ public sealed class BackupService
     private const string WallpaperProfileFile = "Hintergrundbild-Profil.txt";
 
     /// <summary>
-    /// Liest den Pfad des aktuellen Desktop-Hintergrundbilds aus der Registry.
+    /// Sichert den Hintergrund in den Ordner "Design": ein Bild (die Datei
+    /// daneben) oder eine Volltonfarbe. null, wenn es nichts Festes zu sichern
+    /// gibt (Diashow, Blickpunkt, Bild verschwunden) - das steht dann im
+    /// Protokoll.
     /// </summary>
-    private static string? GetCurrentWallpaperPath()
+    private async Task<HintergrundEinstellung?> HintergrundSichern(string ordner, DesignZiel ziel)
     {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop");
-            var p = key?.GetValue("WallPaper") as string;
-            return string.IsNullOrWhiteSpace(p) ? null : p;
-        }
-        catch { return null; }
-    }
+        var stand = DesktopHintergrund.Lesen(ziel.Wurzel);
+        var src = stand.Bild;
+        string? farbeText = stand.Farbe, stil = stand.Stil, kacheln = stand.Kacheln;
+        var art = Hintergrund.Bestimmen(src, src is not null && File.Exists(src), stand.Typ, farbeText);
 
-    public async Task ExportWallpaper()
-    {
-        var src = GetCurrentWallpaperPath();
-        if (src is null || !File.Exists(src))
+        // Das eingetragene Bild ist geloescht, Windows zeigt es aber weiter -
+        // aus seinem Zwischenspeicher. Dann eben das sichern.
+        if (art == HintergrundArt.Unbekannt && src is not null && !File.Exists(src)
+            && Hintergrund.Zwischenspeicher(SourcePath) is { } zwischen && File.Exists(zwischen))
         {
-            _log(Loc.Tr("[WARNUNG] Es konnte kein aktuelles Hintergrundbild gefunden werden (evtl. eine Volltonfarbe oder ein Diashow-Hintergrund).",
-                        "[WARNING] No current wallpaper file could be found (perhaps a solid color or a slideshow background)."));
-            return;
+            _log(Loc.Tr($"[INFO] Das eingetragene Hintergrundbild gibt es nicht mehr ({src}) - gesichert wird das Bild, das Windows gerade zeigt.",
+                        $"[INFO] The configured wallpaper no longer exists ({src}) - the image Windows currently shows is backed up."));
+            src = zwischen;
+            art = HintergrundArt.Bild;
         }
 
-        var destDir = Path.Combine(BackupPath, "Hintergrundbild");
-        Directory.CreateDirectory(destDir);
+        // Volltonfarbe: Es gibt kein Bild - gesichert wird die Farbe.
+        if (art == HintergrundArt.Volltonfarbe && Hintergrund.FarbeLesen(farbeText) is { } farbe)
+        {
+            _log(Loc.Tr($"[ERFOLG] Volltonfarbe als Hintergrund gesichert: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)}).",
+                        $"[SUCCESS] Solid color background backed up: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})."));
+            return new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = Hintergrund.FarbeText(farbe) };
+        }
+        if (art == HintergrundArt.Wechselnd)
+        {
+            _log(Loc.Tr("[WARNUNG] Als Hintergrund läuft eine Diashow oder Windows-Blickpunkt - wechselnde Bilder, es gibt kein festes Bild zu sichern.",
+                        "[WARNING] The background is a slideshow or Windows Spotlight - changing images, there is no fixed image to back up."));
+            return null;
+        }
+        if (art != HintergrundArt.Bild || src is null)
+        {
+            _log(Loc.Tr(src is null
+                            ? "[WARNUNG] Es konnte kein aktuelles Hintergrundbild und keine Hintergrundfarbe gefunden werden."
+                            : $"[WARNUNG] Das eingestellte Hintergrundbild gibt es nicht mehr: {src}",
+                        src is null
+                            ? "[WARNING] Neither a current wallpaper nor a background color could be found."
+                            : $"[WARNING] The configured wallpaper no longer exists: {src}"));
+            return null;
+        }
 
-        // Bild unter seinem Originalnamen sichern.
-        var fileName = Path.GetFileName(src);
-        var dest = Path.Combine(destDir, fileName);
-
+        // Bild unter seinem Originalnamen neben Design.json - Windows'
+        // Zwischenspeicher ("TranscodedWallpaper", ohne Endung) als
+        // "Hintergrundbild.jpg".
+        var fileName = Hintergrund.SicherungsName(src, KopfLesen(src));
+        if (Hintergrund.IstWindowsZwischenspeicher(src))
+            _log(Loc.Tr($"[INFO] Der Hintergrund liegt nur in Windows' Zwischenspeicher ({src}) - gesichert als {fileName}.",
+                        $"[INFO] The wallpaper only exists in Windows' cache ({src}) - backed up as {fileName}."));
+        if (string.Equals(fileName, DesignEinstellungen.DateiName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fileName, DesignEinstellungen.AlterDateiName, StringComparison.OrdinalIgnoreCase))
+            fileName = "Hintergrund-" + fileName;
         try
         {
-            await Task.Run(() => File.Copy(src, dest, overwrite: true));
-            // Originalpfad merken, damit beim Wiederherstellen die gleiche Stelle
-            // verwendet werden kann.
-            await File.WriteAllTextAsync(Path.Combine(destDir, WallpaperPathFile), src);
-            await File.WriteAllTextAsync(Path.Combine(destDir, WallpaperProfileFile), SourcePath);
-
+            Directory.CreateDirectory(ordner);
+            await Task.Run(() => File.Copy(src, Path.Combine(ordner, fileName), overwrite: true));
             _log(Loc.Tr($"[ERFOLG] Hintergrundbild gesichert. Originalpfad: {src}",
                         $"[SUCCESS] Wallpaper backed up. Original path: {src}"));
+            // Darstellung und Farbe dazu: Bei "Anpassen" oder "Zentriert" sieht
+            // man die Farbe am Rand.
+            return new HintergrundEinstellung
+            {
+                Art = "Bild",
+                Bild = fileName,
+                BildPfad = src,
+                Profil = SourcePath,
+                Farbe = Hintergrund.FarbeLesen(farbeText) is { } rand ? Hintergrund.FarbeText(rand) : null,
+                Darstellung = stil,
+                Kacheln = kacheln,
+            };
         }
         catch (Exception ex)
         {
             _log(Loc.Tr($"[FEHLER] Hintergrundbild konnte nicht gesichert werden: {ex.Message}",
                         $"[ERROR] Wallpaper could not be backed up: {ex.Message}"));
+            return null;
         }
     }
 
-    public async Task ImportWallpaper()
+    /// <summary>
+    /// Hintergrund aus einer Sicherung im alten Format lesen: Ordner
+    /// "Hintergrundbild" mit dem Bild, Hintergrundbild-Pfad.txt,
+    /// Hintergrundbild-Profil.txt und ggf. Hintergrund.json (Volltonfarbe,
+    /// Darstellung). Gesetzt wird er wie beim neuen Format - ueber das
+    /// Windows-Design.
+    /// </summary>
+    /// <returns>Die Einstellung (Art, Farbe, Darstellung, Originalpfad, Profil) und das gesicherte Bild - (null, null), wenn nichts Brauchbares da ist.</returns>
+    private async Task<(HintergrundEinstellung? Einstellung, string? Bild)> AlteSicherungLesen()
     {
         var srcDir = Path.Combine(BackupPath, "Hintergrundbild");
         var pathFile = Path.Combine(srcDir, WallpaperPathFile);
@@ -893,8 +1000,12 @@ public sealed class BackupService
         {
             _log(Loc.Tr("[FEHLER] Keine Hintergrundbild-Sicherung gefunden.",
                         "[ERROR] No wallpaper backup found."));
-            return;
+            return (null, null);
         }
+
+        // Volltonfarbe statt Bild?
+        var einstellung = Hintergrund.Laden(srcDir);
+        if (Hintergrund.IstVolltonfarbe(einstellung)) return (einstellung, null);
 
         // Originalpfad und gesichertes Profil einlesen (falls vorhanden).
         string? originalPath = null, originalProfile = null;
@@ -918,7 +1029,8 @@ public sealed class BackupService
         {
             var bilder = Directory.EnumerateFiles(srcDir)
                 .Where(f => !f.EndsWith(WallpaperPathFile, StringComparison.OrdinalIgnoreCase)
-                            && !f.EndsWith(WallpaperProfileFile, StringComparison.OrdinalIgnoreCase))
+                            && !f.EndsWith(WallpaperProfileFile, StringComparison.OrdinalIgnoreCase)
+                            && !f.EndsWith(HintergrundEinstellung.DateiName, StringComparison.OrdinalIgnoreCase))
                 .ToList();
             var originalName = string.IsNullOrWhiteSpace(originalPath) ? null : Path.GetFileName(originalPath);
             backupImage = bilder.FirstOrDefault(f => originalName is not null
@@ -931,9 +1043,37 @@ public sealed class BackupService
         {
             _log(Loc.Tr("[FEHLER] In der Sicherung wurde kein Bild gefunden.",
                         "[ERROR] No image was found in the backup."));
-            return;
+            return (null, null);
         }
 
+        var e = einstellung ?? new HintergrundEinstellung();
+        e.Art = "Bild";
+        e.BildPfad = originalPath;
+        e.Profil = originalProfile;
+        return (e, backupImage);
+    }
+
+    /// <summary>Als Hintergrund setzen - Registry, Sitzung, Design-Datei - samt Darstellung und Randfarbe.</summary>
+    private void BildDirektSetzen(DesignZiel ziel, string pfad, HintergrundEinstellung? einstellung)
+    {
+        try
+        {
+            var r = DesktopHintergrund.BildSetzen(ziel.Wurzel, ziel.EigenerBenutzer, pfad, einstellung, SourcePath);
+            HintergrundErgebnis(ziel, r, Loc.Tr("Hintergrundbild", "Wallpaper"));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Hintergrundbild konnte nicht gesetzt werden: {ex.Message}",
+                        $"[ERROR] Wallpaper could not be set: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Legt das Bild aus der Sicherung ins gewaehlte Profil. Liefert den Pfad -
+    /// null, wenn das Kopieren scheiterte (steht dann im Protokoll).
+    /// </summary>
+    private async Task<string?> HintergrundbildBereitstellen(string backupImage, string? originalPath, string? originalProfile)
+    {
         // Zielpfad bestimmen - IMMER im gewaehlten Zielprofil.
         //
         // Frueher wurde der gespeicherte Originalpfad unveraendert benutzt. Auf
@@ -942,13 +1082,19 @@ public sealed class BackupService
         // ein Profil, das es dort nicht gibt. Und ohne gespeicherten Pfad ging
         // das Bild in "Bilder" dessen, der das Tool ausfuehrt, nicht des
         // Zielprofils.
+        //
+        // Lag es in Windows' Zwischenspeicher (Themes\TranscodedWallpaper,
+        // CachedFiles): NICHT dorthin zurueck. Die Dateien verwaltet Windows
+        // selbst - als Hintergrund eingetragen, ueberschreibt bzw. loescht es
+        // sie, und nach dem naechsten Neustart ist der Desktop schwarz.
         string targetPath;
-        var imZielprofil = ProfilePaths.MapIntoProfile(originalPath, originalProfile, SourcePath);
+        bool zwischenspeicher = Hintergrund.IstWindowsZwischenspeicher(originalPath);
+        var imZielprofil = zwischenspeicher ? null : ProfilePaths.MapIntoProfile(originalPath, originalProfile, SourcePath);
         if (imZielprofil is not null)
         {
             targetPath = imZielprofil;
         }
-        else if (!string.IsNullOrWhiteSpace(originalPath) && File.Exists(originalPath)
+        else if (!zwischenspeicher && !string.IsNullOrWhiteSpace(originalPath) && File.Exists(originalPath)
                  && FilesAreEqual(backupImage, originalPath))
         {
             // Ein Windows-Hintergrund ausserhalb jedes Profils (C:\Windows\Web\...),
@@ -957,7 +1103,7 @@ public sealed class BackupService
         }
         else
         {
-            targetPath = Path.Combine(SourcePath, "Pictures", Path.GetFileName(backupImage));
+            targetPath = Path.Combine(SourcePath, "Pictures", Hintergrund.SicherungsName(backupImage, KopfLesen(backupImage)));
         }
         if (!string.IsNullOrWhiteSpace(originalPath)
             && !string.Equals(originalPath, targetPath, StringComparison.OrdinalIgnoreCase))
@@ -983,20 +1129,470 @@ public sealed class BackupService
                 _log(Loc.Tr($"[INFO] Hintergrundbild wiederhergestellt nach: {targetPath}",
                             $"[INFO] Wallpaper restored to: {targetPath}"));
             }
-
-            // Als Desktop-Hintergrund setzen.
-            bool ok = SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, targetPath,
-                                           SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
-            if (ok)
-                _log(Loc.Tr("[ERFOLG] Hintergrundbild gesetzt.", "[SUCCESS] Wallpaper set."));
-            else
-                _log(Loc.Tr("[WARNUNG] Das Bild wurde bereitgestellt, konnte aber nicht automatisch gesetzt werden.",
-                            "[WARNING] The image was placed but could not be set automatically."));
+            return targetPath;
         }
         catch (Exception ex)
         {
             _log(Loc.Tr($"[FEHLER] Hintergrundbild konnte nicht wiederhergestellt werden: {ex.Message}",
                         $"[ERROR] Wallpaper could not be restored: {ex.Message}"));
+            return null;
+        }
+    }
+
+
+    /// <summary>
+    /// Setzt eine Volltonfarbe als Hintergrund - wie unter Einstellungen >
+    /// Personalisierung > Hintergrund > Volltonfarbe: Bild entfernen, Farbe
+    /// fuer die laufende Sitzung und dauerhaft beim angemeldeten Benutzer.
+    /// </summary>
+    private void VolltonfarbeSetzen(DesignZiel ziel, (byte R, byte G, byte B) farbe)
+    {
+        try
+        {
+            var r = DesktopHintergrund.FarbeSetzen(ziel.Wurzel, ziel.EigenerBenutzer, farbe, SourcePath);
+            HintergrundErgebnis(ziel, r, Loc.Tr($"Volltonfarbe RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})",
+                                                $"Solid color RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})"));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Volltonfarbe konnte nicht gesetzt werden: {ex.Message}",
+                        $"[ERROR] The solid color could not be set: {ex.Message}"));
+        }
+    }
+
+    /// <summary>Was beim Setzen des Hintergrunds herauskam - ins Protokoll.</summary>
+    private void HintergrundErgebnis(DesignZiel ziel, HintergrundGesetzt r, string was)
+    {
+        if (r.VirtuelleDesktops > 0)
+            _log(Loc.Tr($"[INFO] {r.VirtuelleDesktops} virtuelle(r) Desktop(s) hatte(n) einen eigenen Hintergrund - angeglichen.",
+                        $"[INFO] {r.VirtuelleDesktops} virtual desktop(s) had their own background - adjusted."));
+        DesignDateiProtokoll(r.DesignDatei);
+        _log(r.ExplorerFehler is null
+            ? Loc.Tr("[INFO] Gesetzt über den Explorer (IDesktopWallpaper), wie die Einstellungen-App.", "[INFO] Set via Explorer (IDesktopWallpaper), like the Settings app.")
+            : Loc.Tr($"[INFO] Gesetzt über SystemParametersInfo - der Weg über den Explorer ging nicht: {r.ExplorerFehler}",
+                     $"[INFO] Set via SystemParametersInfo - the Explorer route failed: {r.ExplorerFehler}"));
+        var fuer = ziel.EigenerBenutzer || ziel.Name is null ? "" : Loc.Tr($" (eingetragen für {ziel.Name})", $" (set for {ziel.Name})");
+        if (r.Eingetragen && r.Angezeigt)
+            _log(Loc.Tr($"[ERFOLG] Hintergrund gesetzt: {was}{fuer}.", $"[SUCCESS] Background set: {was}{fuer}."));
+        else if (r.Eingetragen)
+            _log(Loc.Tr($"[WARNUNG] Hintergrund eingetragen: {was}{fuer} - Windows zeigt ihn erst nach der nächsten Anmeldung.",
+                        $"[WARNING] Background configured: {was}{fuer} - Windows only shows it after the next sign-in."));
+        else
+            _log(Loc.Tr($"[FEHLER] Der Hintergrund ließ sich nicht dauerhaft eintragen ({was}) - nach einem Neustart wäre er wieder weg.",
+                        $"[ERROR] The background could not be saved permanently ({was}) - it would be gone after a restart."));
+    }
+
+    /// <summary>Was mit der Design-Datei von Windows geschah - ins Protokoll.</summary>
+    private void DesignDateiProtokoll(DesignDateiErgebnis? d)
+    {
+        if (d is null) return;
+        var name = d.Datei is null ? "" : Path.GetFileName(d.Datei);
+        if (d.Geaendert)
+            _log(Loc.Tr($"[INFO] Auch in der Design-Datei von Windows eingetragen ({name}) - sonst setzt Windows beim nächsten Anmelden den alten Stand zurück.",
+                        $"[INFO] Also written to the Windows theme file ({name}) - otherwise Windows restores the old state at the next sign-in."));
+        else if (d.Grund is not null)
+            _log(Loc.Tr($"[INFO] Design-Datei von Windows nicht angepasst ({(d.Datei ?? "-")}): {d.Grund}.",
+                        $"[INFO] Windows theme file not adjusted ({(d.Datei ?? "-")}): {d.Grund}."));
+    }
+
+    /// <summary>Die ersten Bytes einer Datei - fuer die Bildart. Leer, wenn sie sich nicht lesen laesst.</summary>
+    private static byte[] KopfLesen(string pfad)
+    {
+        try
+        {
+            using var f = File.OpenRead(pfad);
+            var kopf = new byte[16];
+            int n = f.Read(kopf, 0, kopf.Length);
+            return kopf[..n];
+        }
+        catch { return Array.Empty<byte>(); }
+    }
+
+    // ------------------------------------------------------------ Design
+
+    /// <summary>
+    /// "Design sichern": der Hintergrund (Bild oder Volltonfarbe) und die
+    /// Design-Einstellungen von Windows - Hell/Dunkel, Akzentfarbe,
+    /// Transparenz, Mauszeiger, Taskleiste, Start. Alles in EINEM Ordner
+    /// "Design": Design.json und, bei einem Bild, die Bilddatei daneben.
+    /// </summary>
+    public async Task ExportDesign()
+    {
+        var ordner = Path.Combine(BackupPath, DesignEinstellungen.Ordner);
+        using var ziel = DesignZweig(schreiben: false);
+        if (ziel is null) return;
+        var hintergrund = await HintergrundSichern(ordner, ziel);
+        if (_cancel.IsCancelled) return;
+        var werte = DesignEinstellungenLesen(ziel);
+        if (hintergrund is null && (werte is null || werte.Count == 0)) return;
+        try
+        {
+            DesignEinstellungen.Speichern(BackupPath, new DesignSicherung
+            {
+                Rechner = Environment.MachineName,
+                Erstellt = DateTime.Now,
+                Hintergrund = hintergrund,
+                Werte = werte ?? new List<DesignEintrag>(),
+            });
+            DesignOrdnerAufraeumen(ordner, hintergrund?.Bild);
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] {DesignEinstellungen.DateiName} konnte nicht geschrieben werden: {ex.Message}",
+                        $"[ERROR] {DesignEinstellungen.DateiName} could not be written: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Wird in einen vorhandenen Sicherungsordner erneut gesichert, laege
+    /// sonst ein frueheres Bild neben dem neuen - und die Datei der
+    /// Zwischenfassung neben Design.json.
+    /// </summary>
+    private static void DesignOrdnerAufraeumen(string ordner, string? bild)
+    {
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(ordner))
+            {
+                var name = Path.GetFileName(f);
+                if (string.Equals(name, DesignEinstellungen.DateiName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (bild is not null && string.Equals(name, bild, StringComparison.OrdinalIgnoreCase)) continue;
+                File.Delete(f);
+            }
+        }
+        catch { /* bleibt eben liegen - gelesen wird nur, was Design.json nennt */ }
+    }
+
+    /// <summary>
+    /// "Design wiederherstellen": erst die Einstellungen (Hell/Dunkel,
+    /// Akzentfarbe ...), dann der Hintergrund - ist "Akzentfarbe automatisch"
+    /// an, leitet Windows sie danach aus dem Hintergrund ab, wie auf dem alten
+    /// Rechner. Sicherungen im alten Format (Ordner "Hintergrundbild") werden
+    /// weiter gelesen.
+    /// </summary>
+    public async Task ImportDesign()
+    {
+        var design = DesignEinstellungen.Laden(BackupPath);
+        using var ziel = DesignZweig(schreiben: true);
+        if (ziel is null) return;
+        if (_cancel.IsCancelled) return;
+
+        // Legt eine Richtlinie den Hintergrund fest, gewinnt sie - vorher sagen.
+        if (OperatingSystem.IsWindows())
+            foreach (var e in DesktopHintergrund.Einfluesse(ziel.Wurzel, mitWechsel: false, Loc.Tr))
+                _log("[WARNUNG] " + e + ".");
+
+        // 1. Den Hintergrund bereitlegen: Farbe oder Bild (ins Profil kopiert) -
+        //    aus Design.json oder aus einer Sicherung im alten Format
+        //    (Ordner "Hintergrundbild", bis Version 1.2.6).
+        var h = design?.Hintergrund;
+        string? gesichert = h?.Bild is null ? null : Path.Combine(BackupPath, DesignEinstellungen.Ordner, h.Bild);
+        if (h is null && AppCatalog.HatHintergrund(BackupPath))
+            (h, gesichert) = await AlteSicherungLesen();
+        (byte R, byte G, byte B)? farbe = Hintergrund.IstVolltonfarbe(h) ? Hintergrund.FarbeLesen(h!.Farbe) : null;
+        string? bild = null;
+        if (h is not null && farbe is null)
+        {
+            if (gesichert is null || !File.Exists(gesichert))
+            {
+                _log(Loc.Tr($"[FEHLER] Das Hintergrundbild fehlt in der Sicherung: {gesichert ?? "(kein Name)"}",
+                            $"[ERROR] The wallpaper is missing from the backup: {gesichert ?? "(no name)"}"));
+            }
+            else
+            {
+                bild = await HintergrundbildBereitstellen(gesichert, h.BildPfad, h.Profil);
+            }
+        }
+        var werte = design?.Werte ?? new List<DesignEintrag>();
+
+        // 2. Windows das Design selbst anwenden lassen - wie ein Doppelklick
+        //    auf eine .theme-Datei. Sonst schreibt der Designdienst beim
+        //    Neustart des Explorers bzw. beim Abmelden sein altes Design zurueck.
+        if (OperatingSystem.IsWindows() && (farbe is not null || bild is not null || werte.Count > 0))
+            await DesignVonWindowsAnwenden(ziel, farbe, bild, h, werte);
+        if (_cancel.IsCancelled) return;
+
+        // 3. Die Design-Einstellungen ausdruecklich eintragen - erst JETZT:
+        //    Stuenden Hell/Dunkel vorher schon da, saehe Windows beim Anwenden
+        //    keinen Wechsel und sagte Taskleiste und Fenstern nicht Bescheid
+        //    (CLInstall). Taskleiste und Start stehen nicht in der Design-Datei.
+        if (werte.Count > 0) DesignEinstellungenSetzen(design!, ziel);
+        else _log(Loc.Tr("[INFO] Die Sicherung enthält keine Design-Einstellungen (ältere Fassung des Tools) - nur der Hintergrund wird wiederhergestellt.",
+                         "[INFO] The backup contains no design settings (older version of the tool) - only the wallpaper is restored."));
+        if (_cancel.IsCancelled) return;
+
+        // 4. Der Hintergrund - bei einer Volltonfarbe erst hier: Das Design
+        //    traegt sie ein, gezeigt wird aber noch das Bild der Datei.
+        bool gesetzt = false;
+        if (farbe is { } f)
+        {
+            VolltonfarbeSetzen(ziel, f);
+            gesetzt = true;
+        }
+        else if (bild is not null)
+        {
+            BildDirektSetzen(ziel, bild, h);
+            gesetzt = true;
+        }
+        else if (h is null && !AppCatalog.HatHintergrund(BackupPath))
+        {
+            _log(Loc.Tr("[INFO] Die Sicherung enthält keinen Hintergrund.", "[INFO] The backup contains no wallpaper."));
+        }
+
+        // Ein paar Sekunden spaeter nachsehen, ob Windows ihn stehen laesst.
+        if (gesetzt && OperatingSystem.IsWindows() && !_cancel.IsCancelled)
+            await HintergrundKontrollieren(ziel, DesktopHintergrund.Lesen(ziel.Wurzel),
+                                           Loc.Tr("Kontrolle nach dem Setzen", "Check after setting"));
+    }
+
+    /// <summary>Das Design, das Windows in diesem Lauf angewendet hat - fuer ein erneutes Anwenden.</summary>
+    private string? _angewandtesDesign;
+
+    /// <summary>
+    /// Baut aus der aktuellen Design-Datei des Benutzers eine mit den Werten
+    /// der Sicherung und laesst Windows sie als der angemeldete Benutzer
+    /// anwenden (<see cref="WindowsDesign"/>).
+    /// </summary>
+    private async Task DesignVonWindowsAnwenden(DesignZiel ziel, (byte R, byte G, byte B)? farbe, string? bild,
+                                                HintergrundEinstellung? h, List<DesignEintrag> werte)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        string? vorlage = null;
+        try
+        {
+            if (DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath) is { } aktuell && File.Exists(aktuell))
+                vorlage = DesignDatei.DateiLesen(aktuell).Inhalt;
+        }
+        catch { /* dann ohne */ }
+        if (vorlage is null)
+        {
+            _log(Loc.Tr("[INFO] Kein aktuelles Windows-Design lesbar - Hintergrund und Einstellungen werden direkt eingetragen.",
+                        "[INFO] No current Windows theme readable - background and settings are written directly."));
+            return;
+        }
+
+        var inhalt = DesignDatei.FuerWiederherstellung(vorlage, Loc.Tr("Design aus der Sicherung (DaSi)", "Theme from the backup (DaSi)"),
+                                                       farbe, bild, h, werte);
+        _log(Loc.Tr("[INFO] Windows wendet das Design aus der Sicherung an - wie ein Doppelklick auf die Design-Datei ...",
+                    "[INFO] Windows applies the theme from the backup - like double-clicking the theme file ..."));
+        if (await DesignAnwendenUndWarten(ziel, inhalt, farbe, bild) is { } datei)
+        {
+            _angewandtesDesign = inhalt;
+            _log(Loc.Tr($"[ERFOLG] Windows hat das Design angewendet ({Path.GetFileName(datei)}, unter Personalisierung > Designs auswählbar).",
+                        $"[SUCCESS] Windows applied the theme ({Path.GetFileName(datei)}, selectable under Personalization > Themes)."));
+        }
+        else
+        {
+            _log(Loc.Tr("[WARNUNG] Windows hat das Design nicht (rechtzeitig) übernommen - Hintergrund und Einstellungen werden direkt eingetragen. Nach einem Neustart kann der alte Hintergrund zurückkommen.",
+                        "[WARNING] Windows did not apply the theme (in time) - background and settings are written directly. The old background may return after a restart."));
+        }
+    }
+
+    /// <summary>
+    /// Laesst Windows das Design anwenden (neue Datei unter ...\Themes im
+    /// Profil) und wartet bis 20 s, bis es uebernommen ist: Die Datei ist das
+    /// aktuelle Design, bei einer Volltonfarbe steht zudem die Farbe in der
+    /// Registry. Ein Bild setzt der Aufrufer danach ohnehin noch direkt - kennt
+    /// Windows es schon, aendert das Anwenden daran nichts.
+    /// </summary>
+    /// <returns>Die angewendete Datei - null, wenn Windows es nicht uebernommen hat.</returns>
+    private async Task<string?> DesignAnwendenUndWarten(DesignZiel ziel, string inhalt, (byte R, byte G, byte B)? farbe, string? bild)
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        var ordner = Path.Combine(SourcePath, @"AppData\Local\Microsoft\Windows\Themes");
+        bool Aktuell(string datei)
+            => string.Equals(DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath), datei, StringComparison.OrdinalIgnoreCase);
+        bool Da(string datei)
+            => Aktuell(datei) && (farbe is not { } c || Hintergrund.FarbeLesen(DesktopHintergrund.Lesen(ziel.Wurzel).Farbe) == c);
+        try
+        {
+            // Erst die Art: Steht "Volltonfarbe" darin, nimmt Windows aus dem
+            // Design nur die Farbe, nicht das Bild.
+            if (farbe is not null) DesktopHintergrund.ArtEintragen(ziel.Wurzel, 1);
+            else if (bild is not null) DesktopHintergrund.ArtEintragen(ziel.Wurzel, 0);
+            var r = await WindowsDesign.AnwendenUndWarten(ordner, inhalt, DesktopScreenshot.GetInteractiveUser()?.Name, Da, Aktuell,
+                                                          TimeSpan.FromSeconds(20));
+            if (!r.Gestartet)
+                _log(Loc.Tr($"[WARNUNG] Windows ließ das Design nicht anwenden: {r.Fehler}", $"[WARNING] Windows did not apply the theme: {r.Fehler}"));
+            return r.Uebernommen ? r.Datei : null;
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[WARNUNG] Die Design-Datei ließ sich nicht anlegen oder anwenden: {ex.Message}",
+                        $"[WARNING] The theme file could not be created or applied: {ex.Message}"));
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Wartet kurz und sieht nach, ob Registry und Desktop noch zeigen, was
+    /// gesetzt wurde. Wenn nicht: ins Protokoll, was anders ist und was es
+    /// sein koennte, und einmal erneut setzen.
+    /// </summary>
+    private async Task HintergrundKontrollieren(DesignZiel ziel, HintergrundStand soll, string wann)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        await Task.Delay(4000);
+        var problem = DesktopHintergrund.Unterschied(soll, DesktopHintergrund.Lesen(ziel.Wurzel), Loc.Tr)
+                      ?? DesktopHintergrund.Kontrolle(soll, Loc.Tr);
+        if (problem is null)
+        {
+            _log(Loc.Tr($"[INFO] {wann}: Der Desktop zeigt den gesetzten Hintergrund.", $"[INFO] {wann}: The desktop shows the background that was set."));
+            return;
+        }
+        _log(Loc.Tr($"[WARNUNG] {wann}: {problem}. Der Hintergrund wird erneut gesetzt.", $"[WARNING] {wann}: {problem}. Setting the background again."));
+        foreach (var e in DesktopHintergrund.Einfluesse(ziel.Wurzel, mitWechsel: true, Loc.Tr))
+            _log(Loc.Tr($"[INFO] Möglicher Grund: {e}.", $"[INFO] Possible reason: {e}."));
+        try
+        {
+            // Erst wieder ueber das Windows-Design - das aus diesem Lauf, sonst
+            // das aktuelle mit dem Soll-Hintergrund -, dann direkt (bei einer
+            // Volltonfarbe zeigt das Design noch sein Bild). Ohne das Design
+            // hielte der Explorer weiter seinen alten Stand und schriebe ihn
+            // beim naechsten Neustart zurueck.
+            var farbeSoll = soll.Bild is null ? Hintergrund.FarbeLesen(soll.Farbe) : null;
+            var inhalt = _angewandtesDesign;
+            if (inhalt is null && DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath) is { } aktuell && File.Exists(aktuell))
+                inhalt = DesignDatei.DateiLesen(aktuell).Inhalt;
+            if (inhalt is not null)
+            {
+                inhalt = DesignDatei.FuerWiederherstellung(inhalt, Loc.Tr("Design aus der Sicherung (DaSi)", "Theme from the backup (DaSi)"),
+                                                           farbeSoll, soll.Bild,
+                                                           new HintergrundEinstellung { Darstellung = soll.Stil, Kacheln = soll.Kacheln },
+                                                           Array.Empty<DesignEintrag>());
+                if (soll.Bild is null && farbeSoll is null) inhalt = null;
+            }
+            if (inhalt is not null)
+                await DesignAnwendenUndWarten(ziel, inhalt, farbeSoll, soll.Bild);
+            DesktopHintergrund.Erneut(ziel.Wurzel, ziel.EigenerBenutzer, soll, SourcePath);
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Der Hintergrund ließ sich nicht erneut setzen: {ex.Message}", $"[ERROR] The background could not be set again: {ex.Message}"));
+            return;
+        }
+        await Task.Delay(3000);
+        var nochmal = DesktopHintergrund.Unterschied(soll, DesktopHintergrund.Lesen(ziel.Wurzel), Loc.Tr)
+                      ?? DesktopHintergrund.Kontrolle(soll, Loc.Tr);
+        _log(nochmal is null
+            ? Loc.Tr("[ERFOLG] Hintergrund erneut gesetzt - jetzt zeigt der Desktop ihn.", "[SUCCESS] Background set again - the desktop now shows it.")
+            : Loc.Tr($"[WARNUNG] Windows ändert den Hintergrund weiterhin: {nochmal}. Bitte unter Einstellungen > Personalisierung > Hintergrund nachsehen.",
+                     $"[WARNING] Windows keeps changing the background: {nochmal}. Please check Settings > Personalization > Background."));
+    }
+
+    /// <summary>Wohin Hintergrund und Design-Einstellungen gehoeren.</summary>
+    /// <param name="Wurzel">HKEY_USERS\&lt;SID&gt; des angemeldeten Benutzers, sonst HKEY_CURRENT_USER.</param>
+    /// <param name="EigenerBenutzer">Laeuft das Tool unter genau diesem Benutzer? Sonst gilt Windows-Aufrufe, die in die
+    /// Registry des Prozesses schreiben, nur fuer die laufende Sitzung.</param>
+    /// <param name="Name">Der angemeldete Benutzer, falls bekannt.</param>
+    private sealed record DesignZiel(RegistryKey Wurzel, bool Eigen, bool EigenerBenutzer, string? Name) : IDisposable
+    {
+        public void Dispose() { if (Eigen) Wurzel.Dispose(); }
+    }
+
+    /// <summary>
+    /// Der Registry-Zweig fuer Hintergrund und Design-Einstellungen: der des
+    /// ANGEMELDETEN Benutzers (HKEY_USERS\&lt;SID&gt;) - das Tool laeuft mit
+    /// Adminrechten, womoeglich unter einem anderen Konto. Gehoert der
+    /// angemeldete Benutzer nicht zum gewaehlten Profil, null: Dann wuerden
+    /// Hintergrund und Einstellungen eines anderen gelesen bzw. veraendert.
+    /// </summary>
+    private DesignZiel? DesignZweig(bool schreiben)
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        var angemeldet = DesktopScreenshot.GetInteractiveUser();
+        if (angemeldet?.ProfilePath is { } eigenesProfil && !ProfileExcludes.SameFolder(eigenesProfil, SourcePath))
+        {
+            _log(Loc.Tr($"[FEHLER] Design: Angemeldet ist {angemeldet.Name} ({eigenesProfil}), gewählt ist aber {SourcePath}. "
+                        + "Hintergrund, Hell/Dunkel, Akzentfarbe & Co. gehören dem angemeldeten Benutzer - bitte als dieser Benutzer anmelden und das Tool dort starten.",
+                        $"[ERROR] Design: {angemeldet.Name} ({eigenesProfil}) is signed in, but {SourcePath} is selected. "
+                        + "Background, light/dark mode, accent color etc. belong to the signed-in user - please sign in as that user and run the tool there."));
+            return null;
+        }
+        var (wurzel, eigen) = BenutzerZweig(schreiben);
+        bool eigenerBenutzer = !eigen || DesktopHintergrund.IstProzessBenutzer(angemeldet?.Sid);
+        if (!eigenerBenutzer && angemeldet is not null)
+            _log(Loc.Tr($"[INFO] Das Tool läuft unter dem Konto {Environment.UserName}, angemeldet ist {angemeldet.Name} - Hintergrund und Design werden bei {angemeldet.Name} gelesen bzw. eingetragen.",
+                        $"[INFO] The tool runs under the account {Environment.UserName}, {angemeldet.Name} is signed in - background and design are read from / written to {angemeldet.Name}."));
+        return new DesignZiel(wurzel, eigen, eigenerBenutzer, angemeldet?.Name);
+    }
+
+    /// <summary>
+    /// HKEY_USERS\&lt;SID&gt; des angemeldeten Benutzers - sonst HKEY_CURRENT_USER.
+    /// Ob er zum gewaehlten Profil gehoert, prueft der Aufrufer.
+    /// </summary>
+    private static (RegistryKey Wurzel, bool Eigen) BenutzerZweig(bool schreiben)
+    {
+        if (OperatingSystem.IsWindows() && DesktopScreenshot.GetInteractiveUser()?.Sid is { } sid)
+        {
+            try
+            {
+                var k = Registry.Users.OpenSubKey(sid, schreiben);
+                if (k is not null) return (k, true);
+            }
+            catch { /* dann HKEY_CURRENT_USER */ }
+        }
+        return (Registry.CurrentUser, false);
+    }
+
+    /// <summary>Liest die Design-Einstellungen; null, wenn sie nicht gelesen werden (anderer Benutzer, Fehler).</summary>
+    private List<DesignEintrag>? DesignEinstellungenLesen(DesignZiel ziel)
+    {
+        try
+        {
+            var werte = DesignEinstellungen.Auslesen((s, n) => DesignRegistry.Lesen(ziel.Wurzel, s, n));
+            if (werte.Count == 0)
+            {
+                _log(Loc.Tr("[WARNUNG] Es wurden keine Design-Einstellungen gefunden.", "[WARNING] No design settings were found."));
+                return werte;
+            }
+            var kurz = DesignEinstellungen.Zusammenfassung(werte, Loc.Tr);
+            _log(Loc.Tr($"[ERFOLG] Design-Einstellungen gesichert ({werte.Count} Werte: {DesignEinstellungen.Gruppen(werte)}){(kurz.Length > 0 ? " - " + kurz : "")}.",
+                        $"[SUCCESS] Design settings backed up ({werte.Count} values: {DesignEinstellungen.Gruppen(werte)}){(kurz.Length > 0 ? " - " + kurz : "")}."));
+            return werte;
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Design-Einstellungen konnten nicht gelesen werden: {ex.Message}",
+                        $"[ERROR] The design settings could not be read: {ex.Message}"));
+            return null;
+        }
+    }
+
+    private void DesignEinstellungenSetzen(DesignSicherung sicherung, DesignZiel ziel)
+    {
+        try
+        {
+            // Schreiben und Windows Bescheid geben. Die Mauszeiger laedt Windows
+            // dabei aus der Registry des PROZESSES - laeuft das Tool unter einem
+            // anderen Konto, gelten sie erst ab der naechsten Anmeldung.
+            var ergebnis = DesignRegistry.Uebernehmen(ziel.Wurzel, sicherung.Werte, ziel.EigenerBenutzer);
+            var (gesetzt, ohneDatei, nichtSchreibbar) = (ergebnis.Gesetzt, ergebnis.OhneDatei, ergebnis.NichtSchreibbar);
+            bool zeiger = ergebnis.Zeiger;
+            // Hell/Dunkel, Akzentfarbe und Zeiger auch in der Design-Datei - die
+            // liest Windows beim Anmelden.
+            if (OperatingSystem.IsWindows())
+                DesignDateiProtokoll(DesktopHintergrund.DesignDateiAngleichen(ziel.Wurzel, SourcePath, t => DesignDatei.FuerDesign(t, gesetzt)));
+
+            var kurz = DesignEinstellungen.Zusammenfassung(gesetzt, Loc.Tr);
+            _log(Loc.Tr($"[ERFOLG] Design-Einstellungen übernommen ({gesetzt.Count} Werte: {DesignEinstellungen.Gruppen(gesetzt)}){(kurz.Length > 0 ? " - " + kurz : "")}.",
+                        $"[SUCCESS] Design settings applied ({gesetzt.Count} values: {DesignEinstellungen.Gruppen(gesetzt)}){(kurz.Length > 0 ? " - " + kurz : "")}."));
+            if (ohneDatei.Count > 0)
+                _log(Loc.Tr($"[INFO] {ohneDatei.Count} Mauszeiger aus einem eigenen Schema gibt es auf diesem Rechner nicht - dort bleibt der Standardzeiger: {string.Join(", ", ohneDatei)}.",
+                            $"[INFO] {ohneDatei.Count} pointers from a custom scheme do not exist on this machine - the default pointer remains: {string.Join(", ", ohneDatei)}."));
+            if (nichtSchreibbar.Count > 0)
+                _log(Loc.Tr($"[WARNUNG] {nichtSchreibbar.Count} Werte ließen sich nicht setzen: {string.Join(", ", nichtSchreibbar)}.",
+                            $"[WARNING] {nichtSchreibbar.Count} values could not be set: {string.Join(", ", nichtSchreibbar)}."));
+            _log(Loc.Tr("[INFO] Hell/Dunkel und Transparenz gelten sofort. Die Akzentfarbe auf Titelleisten und Taskleiste übernimmt Windows teils erst nach dem nächsten Anmelden.",
+                        "[INFO] Light/dark mode and transparency apply right away. Windows partly applies the accent color on title bars and the taskbar only after the next sign-in."));
+            if (zeiger && !ziel.EigenerBenutzer)
+                _log(Loc.Tr("[INFO] Die Mauszeiger übernimmt Windows erst nach der nächsten Anmeldung - das Tool läuft unter einem anderen Konto.",
+                            "[INFO] Windows only applies the mouse pointers after the next sign-in - the tool runs under another account."));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Design-Einstellungen konnten nicht übernommen werden: {ex.Message}",
+                        $"[ERROR] The design settings could not be applied: {ex.Message}"));
         }
     }
 
@@ -1131,6 +1727,20 @@ public sealed class BackupService
     }
 
     /// <summary>
+    /// Oeffnet ein Bild fuer den Benutzer. Fuer die Pruefungen ersetzbar - dort
+    /// soll keine Bildanzeige aufgehen.
+    /// </summary>
+    internal Action<string> BildOeffnen { get; set; } = datei =>
+    {
+        // Ueber explorer.exe statt direkt: Das Tool laeuft mit
+        // Administratorrechten, und die Fotos-App startet nicht mit
+        // erhoehten Rechten. explorer.exe gibt die Datei an den laufenden
+        // Explorer des Benutzers weiter, der sie mit normalen Rechten oeffnet.
+        using var _ = System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo("explorer.exe", Quote(datei)) { UseShellExecute = false });
+    };
+
+    /// <summary>
     /// Oeffnet das gesicherte Desktop-Foto, damit sich die Symbole danach von
     /// Hand wieder anordnen lassen. Automatisch zurueckstellen laesst sich die
     /// Anordnung nicht verlaesslich: Der Explorer ueberschreibt sie beim
@@ -1154,12 +1764,7 @@ public sealed class BackupService
         {
             try
             {
-                // Ueber explorer.exe statt direkt: Das Tool laeuft mit
-                // Administratorrechten, und die Fotos-App startet nicht mit
-                // erhoehten Rechten. explorer.exe gibt die Datei an den laufenden
-                // Explorer des Benutzers weiter, der sie mit normalen Rechten oeffnet.
-                using var _ = System.Diagnostics.Process.Start(
-                    new System.Diagnostics.ProcessStartInfo("explorer.exe", Quote(datei)) { UseShellExecute = false });
+                BildOeffnen(datei);
                 offen++;
             }
             catch (Exception ex)
@@ -1175,6 +1780,138 @@ public sealed class BackupService
     }
 
     // ------------------------------------------------------------ Desktop-Symbole (wie DesktopOK)
+
+    // ------------------------------------------------------------ Taskleisten-Symbole
+
+    /// <summary>
+    /// Sichert die an die Taskleiste angehefteten Symbole: die Verknuepfungen
+    /// aus "User Pinned\TaskBar" und den Registry-Schluessel Taskband
+    /// (Reihenfolge, auch angeheftete Store-Apps ohne Verknuepfung).
+    /// </summary>
+    private void TaskleisteSichern()
+    {
+        var pinOrdner = Taskleiste.PinOrdner(SourcePath);
+        var verknuepfungen = Taskleiste.Verknuepfungen(pinOrdner);
+        var taskband = new List<DesignEintrag>();
+        if (OperatingSystem.IsWindows())
+        {
+            var (wurzel, eigen) = BenutzerZweig(schreiben: false);
+            try
+            {
+                using var k = wurzel.OpenSubKey(Taskleiste.TaskbandSchluessel);
+                foreach (var name in k?.GetValueNames() ?? Array.Empty<string>())
+                    if (DesignRegistry.Lesen(wurzel, Taskleiste.TaskbandSchluessel, name) is { } v)
+                        taskband.Add(new DesignEintrag { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = name, Typ = v.Typ, Wert = v.Wert });
+            }
+            catch (Exception ex)
+            {
+                _log(Loc.Tr($"[WARNUNG] Die Reihenfolge der Taskleiste ließ sich nicht lesen: {ex.Message}",
+                            $"[WARNING] The taskbar order could not be read: {ex.Message}"));
+            }
+            finally { if (eigen) wurzel.Dispose(); }
+        }
+        if (verknuepfungen.Count == 0 && taskband.Count == 0)
+        {
+            _log(Loc.Tr("[WARNUNG] An die Taskleiste ist nichts angeheftet - es gibt keine Taskleisten-Symbole zu sichern.",
+                        "[WARNING] Nothing is pinned to the taskbar - there are no taskbar icons to back up."));
+            return;
+        }
+
+        try
+        {
+            var ziel = Taskleiste.SicherungsOrdner(BackupPath);
+            Directory.CreateDirectory(ziel);
+            // Erneut in denselben Ordner gesichert: fruehere Verknuepfungen weg.
+            foreach (var alt in Directory.GetFiles(ziel, "*.lnk")) File.Delete(alt);
+            foreach (var n in verknuepfungen) File.Copy(Path.Combine(pinOrdner, n), Path.Combine(ziel, n), overwrite: true);
+            Taskleiste.Speichern(BackupPath, new TaskleistenSicherung
+            {
+                Rechner = Environment.MachineName,
+                Erstellt = DateTime.Now,
+                Verknuepfungen = verknuepfungen,
+                Taskband = taskband,
+            });
+            _log(verknuepfungen.Count > 0
+                ? Loc.Tr($"[ERFOLG] Taskleiste gesichert: {verknuepfungen.Count} angeheftete Verknüpfungen ({Taskleiste.Namen(verknuepfungen)}) samt Reihenfolge und angehefteten Apps.",
+                         $"[SUCCESS] Taskbar backed up: {verknuepfungen.Count} pinned shortcuts ({Taskleiste.Namen(verknuepfungen)}) including order and pinned apps.")
+                : Loc.Tr("[ERFOLG] Taskleiste gesichert: Reihenfolge und angeheftete Apps.",
+                         "[SUCCESS] Taskbar backed up: order and pinned apps."));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Taskleisten-Symbole konnten nicht gesichert werden: {ex.Message}",
+                        $"[ERROR] The taskbar icons could not be backed up: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Heftet die gesicherten Symbole wieder an die Taskleiste: Verknuepfungen
+    /// zurueck, Taskband schreiben, Explorer neu starten.
+    /// </summary>
+    /// <returns>true, wenn der Explorer dafuer neu gestartet wurde.</returns>
+    private async Task<bool> TaskleisteZurueckschreiben(TaskleistenSicherung s)
+    {
+        var quelle = Taskleiste.SicherungsOrdner(BackupPath);
+        var ziel = Taskleiste.PinOrdner(SourcePath);
+        var zurueck = new List<string>();
+        var fehlend = new List<string>();
+        try
+        {
+            Directory.CreateDirectory(ziel);
+            foreach (var n in s.Verknuepfungen)
+            {
+                var q = Path.Combine(quelle, n);
+                if (File.Exists(q)) { File.Copy(q, Path.Combine(ziel, n), overwrite: true); zurueck.Add(n); }
+                else fehlend.Add(n);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Taskleisten-Verknüpfungen konnten nicht zurückgeschrieben werden: {ex.Message}",
+                        $"[ERROR] The taskbar shortcuts could not be restored: {ex.Message}"));
+            return false;
+        }
+
+        if (!OperatingSystem.IsWindows() || s.Taskband.Count == 0)
+        {
+            _log(Loc.Tr($"[WARNUNG] Die Sicherung enthält nur die Verknüpfungen der Taskleiste, nicht ihre Reihenfolge - angeheftet werden sie dadurch nicht: {Taskleiste.Namen(zurueck)}",
+                        $"[WARNING] The backup only contains the taskbar shortcuts, not their order - this does not pin them: {Taskleiste.Namen(zurueck)}"));
+            return false;
+        }
+
+        var (wurzel, eigen) = BenutzerZweig(schreiben: true);
+        try
+        {
+            foreach (var e in s.Taskband) DesignRegistry.Schreiben(wurzel, e);
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Reihenfolge der Taskleiste ließ sich nicht schreiben: {ex.Message}",
+                        $"[ERROR] The taskbar order could not be written: {ex.Message}"));
+            return false;
+        }
+        finally { if (eigen) wurzel.Dispose(); }
+
+        // Der Explorer liest die angehefteten Symbole nur beim Start.
+        _log(Loc.Tr("[INFO] Der Explorer startet kurz neu, damit die Taskleiste die gesicherten Symbole übernimmt - offene Explorer-Fenster schließen sich dabei.",
+                    "[INFO] Explorer restarts briefly so the taskbar picks up the saved icons - open Explorer windows close in the process."));
+        var (ok, vonSelbst) = await ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(20));
+        if (!ok)
+        {
+            _log(Loc.Tr("[WARNUNG] Der Explorer kam nicht zurück. Die Taskleiste zeigt die Symbole nach dem nächsten Anmelden. Notfalls im Task-Manager \"Neuen Task ausführen\" > explorer.exe.",
+                        "[WARNING] Explorer did not come back. The taskbar shows the icons after the next sign-in. If needed: Task Manager > \"Run new task\" > explorer.exe."));
+            return true;
+        }
+        if (!vonSelbst)
+            _log(Loc.Tr("[INFO] Windows hat den Explorer nicht selbst neu gestartet - das Tool hat ihn gestartet.",
+                        "[INFO] Windows did not restart Explorer by itself - the tool started it."));
+        _log(Loc.Tr($"[ERFOLG] Taskleiste wiederhergestellt: {(zurueck.Count > 0 ? $"{zurueck.Count} Verknüpfungen ({Taskleiste.Namen(zurueck)}) und " : "")}die angehefteten Apps in der gesicherten Reihenfolge.",
+                    $"[SUCCESS] Taskbar restored: {(zurueck.Count > 0 ? $"{zurueck.Count} shortcuts ({Taskleiste.Namen(zurueck)}) and " : "")}the pinned apps in the saved order."));
+        if (fehlend.Count > 0)
+            _log(Loc.Tr($"[WARNUNG] {fehlend.Count} Verknüpfungen fehlen in der Sicherung: {Taskleiste.Namen(fehlend)}",
+                        $"[WARNING] {fehlend.Count} shortcuts are missing from the backup: {Taskleiste.Namen(fehlend)}"));
+        return true;
+    }
 
     /// <summary>
     /// Der Explorer zeigt den Desktop des angemeldeten Benutzers. Gehoert das
@@ -1198,10 +1935,20 @@ public sealed class BackupService
         return true;
     }
 
-    /// <summary>Merkt sich, welches Desktop-Symbol wo liegt.</summary>
+    /// <summary>
+    /// "Symbolpositionen": merkt sich, welches Desktop-Symbol wo liegt, und
+    /// sichert die an die Taskleiste angehefteten Symbole.
+    /// </summary>
     public async Task BackupDesktopIcons()
     {
         if (!DesktopGehoertZumProfil("Keine Symbolpositionen gesichert", "No icon positions backed up")) return;
+        await DesktopSymbolpositionenSichern();
+        if (_cancel.IsCancelled) return;
+        TaskleisteSichern();
+    }
+
+    private async Task DesktopSymbolpositionenSichern()
+    {
 
         DesktopLayout layout;
         try
@@ -1246,25 +1993,63 @@ public sealed class BackupService
     {
         var datei = DesktopIcons.Datei(BackupPath);
         var layout = DesktopIcons.Laden(datei);
-        if (layout is null)
+        var taskleiste = Taskleiste.Laden(BackupPath);
+        if (layout is null && taskleiste is null)
         {
-            _log(Loc.Tr($"[FEHLER] In der Sicherung liegen keine Symbolpositionen: {datei}",
-                        $"[ERROR] The backup contains no icon positions: {datei}"));
+            _log(Loc.Tr($"[FEHLER] In der Sicherung liegen weder Symbolpositionen noch Taskleisten-Symbole: {datei}",
+                        $"[ERROR] The backup contains neither icon positions nor taskbar icons: {datei}"));
             return;
         }
         if (!DesktopGehoertZumProfil("Symbolpositionen nicht gesetzt", "Icon positions not applied")) return;
+
+        // Erst die Taskleiste: Dafuer startet der Explorer neu - danach erst
+        // die Desktop-Symbole an ihre Stelle, sonst ordnete der Neustart sie
+        // womoeglich neu.
+        HintergrundStand? hgVorher = null;
+        if (taskleiste is not null && OperatingSystem.IsWindows())
+        {
+            var (w, e) = BenutzerZweig(schreiben: false);
+            try { hgVorher = DesktopHintergrund.Lesen(w); } finally { if (e) w.Dispose(); }
+        }
+        var neuGestartet = taskleiste is not null && await TaskleisteZurueckschreiben(taskleiste);
+        if (_cancel.IsCancelled) return;
+
+        // Unter manchem Windows setzt der Neustart des Explorers den
+        // Hintergrund zurueck - nachsehen und notfalls erneut setzen.
+        if (neuGestartet && hgVorher is not null && OperatingSystem.IsWindows())
+        {
+            var angemeldet = DesktopScreenshot.GetInteractiveUser();
+            var (w, e) = BenutzerZweig(schreiben: true);
+            using var ziel = new DesignZiel(w, e, !e || DesktopHintergrund.IstProzessBenutzer(angemeldet?.Sid), angemeldet?.Name);
+            await HintergrundKontrollieren(ziel, hgVorher, Loc.Tr("Hintergrund nach dem Explorer-Neustart", "Background after the Explorer restart"));
+        }
+        if (layout is null)
+        {
+            _log(Loc.Tr("[INFO] Die Sicherung enthält keine Positionen von Desktop-Symbolen.", "[INFO] The backup contains no desktop icon positions."));
+            return;
+        }
 
         _log(Loc.Tr($"[INFO] Setze {layout.Symbole.Count} Desktop-Symbole an ihre gesicherte Stelle (gesichert am {layout.Erstellt:dd.MM.yyyy} auf {layout.Rechner})...",
                     $"[INFO] Moving {layout.Symbole.Count} desktop icons to their saved positions (saved on {layout.Erstellt:yyyy-MM-dd} on {layout.Rechner})..."));
         IconErgebnis erg;
         var sid = OperatingSystem.IsWindows() ? DesktopScreenshot.GetInteractiveUser()?.Sid : null;
-        try { erg = await Task.Run(() => DesktopIcons.Wiederherstellen(layout, TimeSpan.FromSeconds(10), k => SystemsymboleEinschalten(k, sid))); }
-        catch (Exception ex)
+        // Nach einem Neustart des Explorers erscheinen Desktop und Symbole erst
+        // nach und nach: laenger warten, und das Oeffnen des Desktops wiederholen.
+        var warten = TimeSpan.FromSeconds(neuGestartet ? 25 : 10);
+        IconErgebnis? ergebnis = null;
+        Exception? letzter = null;
+        for (int versuch = 0; versuch < (neuGestartet ? 10 : 1) && ergebnis is null; versuch++)
         {
-            _log(Loc.Tr($"[FEHLER] Die Symbolpositionen ließen sich nicht setzen: {ex.Message}",
-                        $"[ERROR] The icon positions could not be applied: {ex.Message}"));
+            try { ergebnis = await Task.Run(() => DesktopIcons.Wiederherstellen(layout, warten, k => SystemsymboleEinschalten(k, sid))); }
+            catch (Exception ex) { letzter = ex; if (neuGestartet) await Task.Delay(1500); }
+        }
+        if (ergebnis is null)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Symbolpositionen ließen sich nicht setzen: {letzter?.Message}",
+                        $"[ERROR] The icon positions could not be applied: {letzter?.Message}"));
             return;
         }
+        erg = ergebnis;
 
         if (erg.Eingeschaltet is { Count: > 0 } an)
         {
@@ -1286,12 +2071,24 @@ public sealed class BackupService
                         $"[INFO] The desktop here is {erg.BreiteJetzt} x {erg.HoeheJetzt} instead of {layout.Breite} x {layout.Hoehe} - the positions were scaled accordingly."));
         if (erg.Fehlend.Count > 0)
         {
-            var namen = string.Join(", ", erg.Fehlend.Take(10).Select(f => string.IsNullOrWhiteSpace(f.Anzeige) ? f.Name : f.Anzeige))
-                        + (erg.Fehlend.Count > 10 ? ", ..." : "");
-            _log(Loc.Tr($"[WARNUNG] {erg.Fehlend.Count} von {erg.Gesamt} Symbolen gibt es auf diesem Desktop nicht: {namen}. "
-                        + "Sie wurden ausgelassen - am besten zusammen mit dem Benutzerprofil und den Programmen wiederherstellen.",
-                        $"[WARNING] {erg.Fehlend.Count} of {erg.Gesamt} icons do not exist on this desktop: {namen}. "
-                        + "They were skipped - best restore them together with the user profile and the programs."));
+            static string Namen(List<DesktopIcon> l) =>
+                string.Join(", ", l.Take(10).Select(f => string.IsNullOrWhiteSpace(f.Anzeige) ? f.Name : f.Anzeige))
+                + (l.Count > 10 ? ", ..." : "");
+            var (imProfil, fremd) = DesktopIcons.NachHerkunft(erg.Fehlend, Path.Combine(BackupPath, "Benutzerprofil", "Desktop"));
+            if (imProfil.Count > 0)
+                _log(Loc.Tr($"[WARNUNG] {imProfil.Count} von {erg.Gesamt} Symbolen gibt es auf diesem Desktop nicht: {Namen(imProfil)}. "
+                            + "Sie wurden ausgelassen - am besten zusammen mit dem Benutzerprofil und den Programmen wiederherstellen.",
+                            $"[WARNING] {imProfil.Count} of {erg.Gesamt} icons do not exist on this desktop: {Namen(imProfil)}. "
+                            + "They were skipped - best restore them together with the user profile and the programs."));
+            // Nicht aus dem Profil: Diese Verknuepfungen legen Programme bei der
+            // Installation an - meist auf dem oeffentlichen Desktop.
+            if (fremd.Count > 0)
+                _log(Loc.Tr($"[WARNUNG] {fremd.Count} von {erg.Gesamt} Symbolen fehlen hier und stammen nicht aus dem Benutzerprofil: {Namen(fremd)}. "
+                            + "Solche Verknüpfungen liegen meist auf dem öffentlichen Desktop (für alle Benutzer) und erscheinen, sobald ihr Programm installiert ist. "
+                            + "Danach \"Desktop-Layout wiederherstellen\" noch einmal ausführen, dann kommen auch sie an ihre Stelle.",
+                            $"[WARNING] {fremd.Count} of {erg.Gesamt} icons are missing here and do not come from the user profile: {Namen(fremd)}. "
+                            + "Such shortcuts usually live on the public desktop (for all users) and appear once their program is installed. "
+                            + "Then run \"Restore desktop layout\" again to put them in place as well."));
         }
         _log(erg.Gesetzt > 0
             ? Loc.Tr($"[ERFOLG] {erg.Gesetzt} von {erg.Gesamt} Desktop-Symbolen an ihre gesicherte Stelle gesetzt.",
@@ -1352,20 +2149,85 @@ public sealed class BackupService
 
     // ------------------------------------------------------------ App-Install/Update
 
-    private async Task InstallApp(string appName, string exeName, string? wingetId)
+    /// <returns>true, wenn das Programm gerade eben installiert wurde.</returns>
+    private async Task<bool> InstallApp(string appName, string exeName, string? wingetId)
     {
-        if (_cancel.IsCancelled) return;
+        if (_cancel.IsCancelled) return false;
         _log(Loc.Tr($"[INFO] Prüfe, ob {appName} installiert ist...", $"[INFO] Checking whether {appName} is installed..."));
+        // Fuer alle Benutzer (HKLM) oder - wie Chrome ohne Adminrechte - nur
+        // fuer den Benutzer (HKCU) installiert.
         var appPathKey = $@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exeName}";
-        using var key = Registry.LocalMachine.OpenSubKey(appPathKey);
-        if (key != null) { _log(Loc.Tr($"[INFO] {appName} ist bereits installiert.", $"[INFO] {appName} is already installed.")); return; }
+        bool da;
+        using (var lm = Registry.LocalMachine.OpenSubKey(appPathKey))
+        using (var cu = Registry.CurrentUser.OpenSubKey(appPathKey))
+            da = lm != null || cu != null;
+        if (da) { _log(Loc.Tr($"[INFO] {appName} ist bereits installiert.", $"[INFO] {appName} is already installed.")); return false; }
 
         // Edge gehoert zu Windows, fuer ihn gibt es kein Paket.
-        if (wingetId is null) return;
-        await InstallViaWinget(appName, wingetId);
+        if (wingetId is null) return false;
+        return await InstallViaWinget(appName, wingetId);
     }
 
-    private async Task InstallViaWinget(string appName, string wingetId)
+    /// <summary>
+    /// Schliesst ein Programm vor dem Kopieren seines Profils - und wartet, bis
+    /// es wirklich beendet ist. Wurde es gerade erst installiert, wird vorher
+    /// kurz abgewartet: Manche Installer (Chrome) starten den Browser nach der
+    /// Installation von selbst, ein paar Sekunden spaeter. Lief er dann waehrend
+    /// des Kopierens, legte er ein frisches, leeres Profil an.
+    /// </summary>
+    /// <returns>false, wenn es sich nicht beenden liess.</returns>
+    private async Task<bool> ProgrammSchliessen(string name, bool frischInstalliert, params string[] prozesse)
+    {
+        if (!OperatingSystem.IsWindows()) return true;
+        if (frischInstalliert)
+        {
+            _log(Loc.Tr($"[INFO] {name} wurde gerade installiert - manche Installer starten das Programm danach von selbst. Kurz abwarten ...",
+                        $"[INFO] {name} has just been installed - some installers start the program afterwards. Waiting briefly ..."));
+            for (int i = 0; i < 12 && !Laeuft(prozesse) && !_cancel.IsCancelled; i++) await Task.Delay(1000);
+        }
+        _log(Loc.Tr($"[INFO] Beende {name}...", $"[INFO] Closing {name}..."));
+        return await BeendenUndWarten(TimeSpan.FromSeconds(20), prozesse);
+    }
+
+    /// <summary>Laeuft einer dieser Prozesse?</summary>
+    private static bool Laeuft(params string[] prozesse)
+    {
+        foreach (var name in prozesse)
+        {
+            try
+            {
+                var liste = System.Diagnostics.Process.GetProcessesByName(name);
+                var n = liste.Length;
+                foreach (var pr in liste) pr.Dispose();
+                if (n > 0) return true;
+            }
+            catch { /* naechster */ }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Beendet die Prozesse und wartet, bis keiner mehr laeuft - und es auch
+    /// eine Sekunde lang so bleibt (Browser starten Hilfsprozesse nach).
+    /// </summary>
+    private async Task<bool> BeendenUndWarten(TimeSpan hoechstens, params string[] prozesse)
+    {
+        var uhr = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            foreach (var name in prozesse) KillProcess(name);
+            await Task.Delay(700);
+            if (!Laeuft(prozesse))
+            {
+                await Task.Delay(1000);
+                if (!Laeuft(prozesse)) return true;
+            }
+            if (uhr.Elapsed > hoechstens || _cancel.IsCancelled) return !Laeuft(prozesse);
+        }
+    }
+
+    /// <returns>true, wenn winget das Programm gerade installiert hat.</returns>
+    private async Task<bool> InstallViaWinget(string appName, string wingetId)
     {
         _log(Loc.Tr($"[INFO] Versuche, {appName} via Winget zu installieren...", $"[INFO] Trying to install {appName} via winget..."));
         // Frueher immer "winget" aus dem Suchpfad - an der Pruefung und der
@@ -1389,7 +2251,11 @@ public sealed class BackupService
             _log(Loc.Tr($"[WARNUNG] {appName} ließ sich per winget nicht installieren ({WingetService.Beschreibung(r)}). Bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
                         $"[WARNING] {appName} could not be installed via winget ({WingetService.Beschreibung(r)}). Please install it manually - the profile is restored anyway."));
         else
+        {
             _log(Loc.Tr($"[INFO] {appName} wurde per winget installiert.", $"[INFO] {appName} was installed via winget."));
+            return true;
+        }
+        return false;
     }
 
     // ------------------------------------------------------------ Helpers

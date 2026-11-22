@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 
 namespace WindowsDaSiTool.Services;
 
@@ -104,6 +105,37 @@ public static class AppCatalog
     // ------------------------------------------------------------ Verfuegbarkeit
 
     /// <summary>
+    /// Hat dieser PC einen WLAN-Adapter? Austauschbar, damit sich die
+    /// Verfuegbarkeit auch ohne echten Adapter pruefen laesst.
+    /// </summary>
+    public static Func<bool> HatWlanAdapter { get; set; } = WlanAdapterVorhanden;
+
+    /// <summary>
+    /// Ein WLAN-Adapter, wie ihn Windows meldet - eingeschaltet, auch im
+    /// Flugmodus oder ohne Verbindung. Ein im Geraete-Manager deaktivierter
+    /// Adapter zaehlt nicht: Ohne ihn liefert "netsh wlan" weder Profile noch
+    /// nimmt es welche an. Laesst es sich nicht feststellen, wird nichts
+    /// gesperrt.
+    /// </summary>
+    public static bool WlanAdapterVorhanden()
+    {
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces()
+                                   .Any(n => n.NetworkInterfaceType == NetworkInterfaceType.Wireless80211);
+        }
+        catch { return true; }
+    }
+
+    private static readonly (string De, string En) KeinWlanSichern =
+        ("Dieser PC hat keinen WLAN-Adapter (oder er ist deaktiviert) - es gibt keine WLAN-Profile zu sichern.",
+         "This PC has no WiFi adapter (or it is disabled) - there are no WiFi profiles to back up.");
+
+    private static readonly (string De, string En) KeinWlanZurueck =
+        ("Dieser PC hat keinen WLAN-Adapter (oder er ist deaktiviert) - die WLAN-Profile aus der Sicherung lassen sich hier nicht einspielen.",
+         "This PC has no WiFi adapter (or it is disabled) - the WiFi profiles from the backup cannot be imported here.");
+
+    /// <summary>
     /// Ist der Punkt beim SICHERN waehlbar? null = ja, sonst der Grund.
     ///
     /// Gesperrt werden nur die Programmsicherungen: ohne Profil beim gewaehlten
@@ -112,6 +144,9 @@ public static class AppCatalog
     /// </summary>
     public static (string De, string En)? BeimSichern(Punkt p, string? profil)
     {
+        // WLAN haengt am Rechner, nicht am Benutzer: ohne Adapter keine Profile.
+        if (p == Punkt.Wlan) return HatWlanAdapter() ? null : KeinWlanSichern;
+
         if (string.IsNullOrWhiteSpace(profil) || !Directory.Exists(profil)) return null;
 
         if (p == Punkt.Opera)
@@ -145,15 +180,21 @@ public static class AppCatalog
     {
         var punkte = Enum.GetValues<Punkt>();
         var erg = punkte.ToDictionary(p => p, _ => ((string De, string En)?)null);
-        if (string.IsNullOrWhiteSpace(sicherung) || !Directory.Exists(sicherung)) return erg;
+        if (!string.IsNullOrWhiteSpace(sicherung) && Directory.Exists(sicherung))
+        {
+            var da = punkte.ToDictionary(p => p, p => Enthaelt(sicherung, p));
+            // Enthaelt der Ordner gar nichts davon, ist er keine Sicherung - meist
+            // ist der Ordner darueber gewaehlt (D:\DaSi statt D:\DaSi\DASI_...).
+            // Dann ein gemeinsamer Hinweis statt vierzehn einzelner Gruende.
+            bool keine = !da.Values.Any(x => x);
+            foreach (var p in punkte)
+                if (!da[p]) erg[p] = keine ? KeineSicherung : Fehlt(p);
+        }
 
-        var da = punkte.ToDictionary(p => p, p => Enthaelt(sicherung, p));
-        // Enthaelt der Ordner gar nichts davon, ist er keine Sicherung - meist
-        // ist der Ordner darueber gewaehlt (D:\DaSi statt D:\DaSi\DASI_...).
-        // Dann ein gemeinsamer Hinweis statt vierzehn einzelner Gruende.
-        bool keine = !da.Values.Any(x => x);
-        foreach (var p in punkte)
-            if (!da[p]) erg[p] = keine ? KeineSicherung : Fehlt(p);
+        // Liegen WLAN-Profile in der Sicherung, braucht es zum Einspielen
+        // trotzdem einen Adapter - "netsh wlan add profile" scheitert sonst.
+        // Fehlen sie in der Sicherung, bleibt das der Grund.
+        if (erg[Punkt.Wlan] is null && !HatWlanAdapter()) erg[Punkt.Wlan] = KeinWlanZurueck;
         return erg;
     }
 
@@ -187,7 +228,7 @@ public static class AppCatalog
             Punkt.Winget => ("keine Programmliste (Winget)", "no program list (winget)"),
             Punkt.Wlan => ("keine WLAN-Profile", "no WiFi profiles"),
             Punkt.Drucker => ("keine Drucker", "no printers"),
-            Punkt.Hintergrund => ("kein Hintergrundbild", "no wallpaper"),
+            Punkt.Hintergrund => ("kein Design (weder Hintergrund noch Design-Einstellungen)", "no design (neither wallpaper nor design settings)"),
             Punkt.DesktopShot => ("kein Desktop-Layout (weder Screenshot noch Symbolpositionen)", "no desktop layout (neither screenshot nor icon positions)"),
             Punkt.Opera => ("kein Opera-Profil", "no Opera profile"),
             _ => ($"kein {p}-Profil", $"no {p} profile"),
@@ -200,7 +241,11 @@ public static class AppCatalog
         => DesktopScreenshot.FindImages(Path.Combine(sicherung, DesktopScreenshot.FolderName)).Count > 0;
 
     /// <summary>Desktop-Layout, Variante Symbolpositionen: Datei in der Sicherung?</summary>
-    public static bool HatDesktopSymbole(string sicherung) => DesktopIcons.Vorhanden(sicherung);
+    public static bool HatDesktopSymbole(string sicherung) => DesktopIcons.Vorhanden(sicherung) || Taskleiste.Vorhanden(sicherung);
+
+    /// <summary>Hintergrund in der Sicherung - ein Bild oder eine Volltonfarbe (Hintergrund.json)?</summary>
+    public static bool HatHintergrund(string sicherung)
+        => HatDateien(Path.Combine(sicherung, "Hintergrundbild"), "*", ohne: ".txt");
 
     /// <summary>Liegt der Punkt in der Sicherung?</summary>
     private static bool Enthaelt(string sicherung, Punkt p)
@@ -216,7 +261,7 @@ public static class AppCatalog
                             || File.Exists(Path.Combine(sicherung, "Export.json")),
             Punkt.Wlan => HatDateien(Path.Combine(sicherung, "WLAN-Profile"), "*.xml"),
             Punkt.Drucker => File.Exists(Path.Combine(sicherung, "Drucker", "Drucker.printerExport")),
-            Punkt.Hintergrund => HatDateien(Path.Combine(sicherung, "Hintergrundbild"), "*", ohne: ".txt"),
+            Punkt.Hintergrund => HatHintergrund(sicherung) || DesignEinstellungen.Vorhanden(sicherung),
             Punkt.DesktopShot => HatDesktopScreenshot(sicherung) || HatDesktopSymbole(sicherung),
             _ => Programme.FirstOrDefault(a => a.Punkt == p) is { } app && Directory.Exists(Path.Combine(sicherung, app.BackupOrdner)),
         };

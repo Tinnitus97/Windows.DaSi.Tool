@@ -87,7 +87,8 @@ public static class WingetInstaller
     /// fuer den Benutzer, unter dem das Tool laeuft. true, wenn die
     /// Installation geklappt hat.
     /// </summary>
-    public static async Task<bool> InstallAsync(Action<string> log, Func<bool> abgebrochen, CancellationToken ct = default)
+    /// <param name="quelle">Wo die Dateien liegen - Vorgabe ist <see cref="ReleaseBase"/>; die Pruefungen geben einen eigenen Server an.</param>
+    public static async Task<bool> InstallAsync(Action<string> log, Func<bool> abgebrochen, CancellationToken ct = default, string quelle = ReleaseBase)
     {
         if (!OperatingSystem.IsWindows()) return false;
         var ordner = Path.Combine(Path.GetTempPath(), "DaSi-winget-" + Guid.NewGuid().ToString("N")[..8]);
@@ -102,8 +103,8 @@ public static class WingetInstaller
             using (var client = new HttpClient { Timeout = DownloadZeitgrenze })
             {
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("WindowsDaSiTool");
-                if (!await Laden(client, ReleaseBase + DependenciesFile, zip, Loc.Tr("Abhängigkeiten", "dependencies"), log, abgebrochen, ct)) return false;
-                if (!await Laden(client, ReleaseBase + BundleFile, bundle, "App-Installer", log, abgebrochen, ct)) return false;
+                if (!await Laden(client, quelle + DependenciesFile, zip, Loc.Tr("Abhängigkeiten", "dependencies"), log, abgebrochen, ct)) return false;
+                if (!await Laden(client, quelle + BundleFile, bundle, "App-Installer", log, abgebrochen, ct)) return false;
             }
 
             var entpackt = Path.Combine(ordner, "abhaengigkeiten");

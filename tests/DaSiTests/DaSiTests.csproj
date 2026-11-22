@@ -3,16 +3,20 @@
   <!--
     Prueft die Dienste ohne Oberflaeche.
 
-    Bewusst KEIN Testframework und KEIN net10.0-windows: Die geprueften Dateien
-    kommen ohne Avalonia aus, dadurch laeuft die Pruefung auf einem
-    Linux-Laeufer in wenigen Sekunden.
+    Bewusst KEIN Testframework und KEIN Avalonia: Die geprueften Dateien
+    kommen ohne Oberflaeche aus (die Oberflaeche prueft tests/DaSiGuiTests).
+    Das Programm laeuft nur unter Windows, die Pruefung deshalb ebenfalls -
+    in der CI auf einem Windows-Laeufer.
 
     Die Quelldateien werden eingebunden statt referenziert - das Hauptprojekt
     zielt auf Windows und liesse sich sonst nicht daneben uebersetzen.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Jede Warnung haelt die Pruefung an - so bleiben die Hinweise des
+         Compilers (z. B. CA1416) nicht unbemerkt im Protokoll stehen. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <RootNamespace>DaSiTests</RootNamespace>
@@ -23,6 +27,10 @@
 
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="DienstPruefungen.cs" />
+    <Compile Include="WingetPruefungen.cs" />
+    <Compile Include="SicherungsPruefungen.cs" />
+    <Compile Include="../Gemeinsam/*.cs" />
     <Compile Include="../../Services/UpdateService.cs" />
     <Compile Include="../../Services/CloudProviders.cs" />
     <Compile Include="../../Services/ProfileExcludes.cs" />
@@ -37,7 +45,33 @@
     <Compile Include="../../Services/DesktopIcons.cs" />
     <Compile Include="../../Services/WingetInstaller.cs" />
     <Compile Include="../../Services/WingetFehler.cs" />
+    <Compile Include="../../Services/ProfilAbgleich.cs" />
+    <Compile Include="../../Services/Hintergrund.cs" />
+    <Compile Include="../../Services/DesignEinstellungen.cs" />
+    <Compile Include="../../Services/DesignRegistry.cs" />
+    <Compile Include="../../Services/Taskleiste.cs" />
+    <Compile Include="../../Services/ExplorerNeustart.cs" />
+    <Compile Include="../../Services/DesktopHintergrund.cs" />
+    <Compile Include="../../Services/DesignDatei.cs" />
+    <Compile Include="../../Services/WindowsDesign.cs" />
     <Compile Include="../../Services/Localizer.cs" />
+    <Compile Include="../../Services/BackupService.cs" />
+    <Compile Include="../../Services/WingetService.cs" />
+    <Compile Include="../../Services/WingetModels.cs" />
+    <Compile Include="../../Services/ProcessRunner.cs" />
+    <Compile Include="../../Services/SystemHelpers.cs" />
+    <Compile Include="../../Services/PerformanceMode.cs" />
+    <Compile Include="../../Services/CancellationTokenState.cs" />
   </ItemGroup>
+
+  <!-- Die winget-Attrappe wird mitgebaut - in ihren eigenen Ordner. Ein
+       Projektverweis kopierte ihre Startdatei winget.exe (ohne winget.dll)
+       hierher, und Windows faende "winget" dann zuerst hier, im Ordner des
+       Pruefprogramms, statt im Suchpfad. -->
+  <Target Name="WingetAttrappeBauen" BeforeTargets="Build">
+    <!-- Erst Restore (eigene Eigenschaften = eigener Durchlauf), dann bauen. -->
+    <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Restore" Properties="Configuration=$(Configuration);DaSiRestore=true" />
+    <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
+  </Target>
 
 </Project>

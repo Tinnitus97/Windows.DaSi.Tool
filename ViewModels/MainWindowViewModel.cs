@@ -18,8 +18,7 @@ namespace WindowsDaSiTool.ViewModels;
 public partial class MainWindowViewModel : ObservableObject
 {
     // ---- Konstanten (entsprechen den $script:-Variablen) ----
-    private const string VersionString = "1.2.6";
-    private const string ProjectUrl = "https://github.com/Tinnitus97/Windows.DaSi.Tool";
+    private const string VersionString = "1.2.7";
 
     private readonly CancellationTokenState _cancel = new();
     private readonly ProcessRunner _runner;
@@ -321,7 +320,6 @@ public partial class MainWindowViewModel : ObservableObject
     private static string Tr(string de, string en) => Loc.Tr(de, en);
 
     // ---- Lokalisierte UI-Beschriftungen ----
-    public string LangLabel        => Tr("Sprache: Deutsch", "Language: English");
     public string SectionOptions   => Tr("Optionen & Verzeichnisse", "Options & directories");
     public string LabelUserProfile => Tr("Benutzerprofil:", "User profile:");
     public string LabelQuickSelect => Tr("Schnellauswahl:", "Quick select:");
@@ -330,7 +328,6 @@ public partial class MainWindowViewModel : ObservableObject
     public string AppSubtitle      => Tr("Backup & Wiederherstellung von Benutzerprofilen",
                                          "Backup & restore of user profiles");
     public string BtnClearPaths    => Tr("Pfade leeren", "Clear paths");
-    public string BtnExit          => Tr("Beenden", "Exit");
     public string BtnExecute       => Tr("Ausgewählte Aktionen starten", "Start selected actions");
     public string LogTitle         => Tr("Aktivitäts-Protokoll", "Activity log");
     public string BtnClearLog      => Tr("Log leeren", "Clear log");
@@ -450,7 +447,10 @@ public partial class MainWindowViewModel : ObservableObject
     public string? TipWinget      => Grund(Punkt.Winget);
     public string? TipWlan        => Grund(Punkt.Wlan);
     public string? TipPrinter     => Grund(Punkt.Drucker);
-    public string? TipWallpaper   => Grund(Punkt.Hintergrund);
+    // Auch im freien Zustand: was alles dazugehoert.
+    public string? TipWallpaper   => Grund(Punkt.Hintergrund)
+        ?? Tr("Hintergrund (Bild oder Volltonfarbe), Hell/Dunkel für Windows und Apps, Akzentfarbe, Transparenz, Mauszeiger, Taskleiste und Start",
+              "Wallpaper (image or solid color), light/dark mode for Windows and apps, accent color, transparency, mouse pointer, taskbar and Start");
     public string? TipDesktopShot => Grund(Punkt.DesktopShot);
     // Bei Opera auch im freien Zustand: welche Fassungen gefunden wurden.
     public string? TipOpera => Grund(Punkt.Opera)
@@ -534,7 +534,6 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TgPrinter));
         OnPropertyChanged(nameof(TgWallpaper));
         OnPropertyChanged(nameof(TgDesktopShot));
-        OnPropertyChanged(nameof(ModeTitle));
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
         ZielAnzeigen();
         VerfuegbarkeitPruefen();
@@ -552,8 +551,8 @@ public partial class MainWindowViewModel : ObservableObject
         ? Tr("Drucker & Treiber wiederherstellen", "Restore printers & drivers")
         : Tr("Drucker & Treiber sichern", "Back up printers & drivers");
     public string TgWallpaper => IsRestoreMode
-        ? Tr("Hintergrundbild wiederherstellen", "Restore wallpaper")
-        : Tr("Hintergrundbild sichern", "Back up wallpaper");
+        ? Tr("Design wiederherstellen", "Restore design")
+        : Tr("Design sichern", "Back up design");
     // Sichern: Foto des Desktops. Wiederherstellen: dieses Foto oeffnen, damit
     // sich die Symbole von Hand wieder anordnen lassen.
     public string TgDesktopShot => IsRestoreMode
@@ -581,7 +580,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     public string TgDesktopScreenshot => Tr("Screenshot", "Screenshot");
-    public string TgDesktopSymbole => Tr("Symbolpositionen", "Icon positions");
+    public string TgDesktopSymbole => Tr("Symbole + Taskleiste", "Icons + taskbar");
 
     // Beim Wiederherstellen: nur die Variante, die in der Sicherung liegt.
     private bool _hatScreenshot = true, _hatSymbole = true;
@@ -593,13 +592,24 @@ public partial class MainWindowViewModel : ObservableObject
             ? Tr("Öffnet das Foto des Desktops - die Symbole danach von Hand anordnen.", "Opens the picture of the desktop - then arrange the icons by hand.")
             : Tr("Fotografiert den Desktop, ein Bild pro Bildschirm.", "Takes a picture of the desktop, one per screen.");
     public string TipDesktopSymbole => !_hatSymbole
-        ? Tr("Die gewählte Sicherung enthält keine Symbolpositionen.", "The selected backup contains no icon positions.")
+        ? Tr("Die gewählte Sicherung enthält weder Symbolpositionen noch Taskleisten-Symbole.", "The selected backup contains neither icon positions nor taskbar icons.")
         : IsRestoreMode
-            ? Tr("Setzt jedes Desktop-Symbol wieder an seine gesicherte Stelle (wie DesktopOK).", "Puts every desktop icon back in its saved position (like DesktopOK).")
-            : Tr("Merkt sich, welches Desktop-Symbol wo liegt (wie DesktopOK).", "Remembers where each desktop icon is (like DesktopOK).");
-    public string ModeTitle => IsRestoreMode
-        ? Tr("Wiederherstellen", "Restore")
-        : Tr("Sichern", "Backup");
+            ? Tr("Heftet die gesicherten Symbole wieder an die Taskleiste (der Explorer startet dafür kurz neu) und setzt jedes Desktop-Symbol an seine Stelle (wie DesktopOK).",
+                 "Pins the saved icons to the taskbar again (Explorer restarts briefly) and puts every desktop icon back in its place (like DesktopOK).")
+            : Tr("Merkt sich, welches Desktop-Symbol wo liegt (wie DesktopOK), und sichert die an die Taskleiste angehefteten Symbole.",
+                 "Remembers where each desktop icon is (like DesktopOK) and backs up the icons pinned to the taskbar.");
+
+    // ---- Haken fuer die Pruefungen (tests/DaSiGuiTests) ----
+
+    /// <summary>Ersetzt den Ordner-Dialog des Systems - null: der echte.</summary>
+    internal Func<string, Task<string?>>? OrdnerDialog { get; set; }
+
+    /// <summary>Oeffnet eine Adresse im Browser.</summary>
+    internal Func<string, bool> Oeffnen { get; set; } = SystemHelpers.Oeffnen;
+
+    /// <summary>Die Dienste hinter der Oberflaeche - fuer die winget-Attrappe und die Bild-Anzeige.</summary>
+    internal WingetService Winget => _winget;
+    internal BackupService Sicherung => _backup;
 
     public MainWindowViewModel()
     {
@@ -623,6 +633,9 @@ public partial class MainWindowViewModel : ObservableObject
         _isEnglish = lang == "en";
         _selectedLanguageIndex = _isEnglish ? 1 : 0;
         Localizer.I.Lang = _isEnglish ? AppLang.En : AppLang.De;
+        // Frueher blieb hier "Log: aus" stehen - auch in englischer Umgebung,
+        // bis die Sprache einmal gewechselt wurde.
+        _loggingLabel = Tr("Log: aus", "Log: off");
 
         // Hell-/Dunkelmodus aus Windows uebernehmen.
         _isLightTheme = SystemHelpers.IsWindowsLightTheme();
@@ -732,7 +745,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (SelThunderbird) list.Add("Thunderbird-Profil");
         if (SelWlan)        list.Add("WLAN-Profile");
         if (SelPrinter)     list.Add("Drucker");
-        if (SelWallpaper)   list.Add("Hintergrundbild");
+        if (SelWallpaper)   { list.Add("Hintergrundbild"); list.Add(DesignEinstellungen.Ordner); }
         // Winget-Liste ist nur eine kleine Textdatei; vernachlaessigbar.
         return list;
     }
@@ -933,9 +946,6 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ToggleLanguage() => IsEnglish = !IsEnglish;
-
-    [RelayCommand]
     private void ClearLog()
     {
         lock (_logLock)
@@ -998,9 +1008,6 @@ public partial class MainWindowViewModel : ObservableObject
             Tr("Das ausgewählte Laufwerk ist NICHT mit NTFS formatiert!\nRobocopy benötigt zwingend NTFS.",
                "The selected drive is NOT formatted as NTFS!\nRobocopy strictly requires NTFS."));
     }
-
-    [RelayCommand]
-    private void Exit() => GetMainWindow()?.Close();
 
     /// <summary>
     /// Warnt, bevor Cloud-Ordner mitgesichert oder zurueckgeschrieben werden.
@@ -1344,10 +1351,17 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelWinget)      t.Add("Import-Winget");
             if (SelWlan)        t.Add("Import-Wlan");
             if (SelPrinter)     t.Add("Import-Printer");
-            if (SelWallpaper)   t.Add("Import-Wallpaper");
+            // Symbole und Taskleiste VOR dem Design: Fuer die Taskleiste wird
+            // der Explorer neu gestartet. Unter Windows 11 holt ein hart
+            // beendeter Explorer beim Start seinen zuletzt gespeicherten
+            // Hintergrund zurueck - danach gesetzt, war die wiederhergestellte
+            // Farbe sofort und nach dem Neustart von Windows wieder weg (auch
+            // eine ueber die Einstellungen gewaehlte).
+            if (SelDesktopShot && DesktopSymbole) t.Add("Restore-DesktopIcons");
+            if (SelWallpaper)   t.Add("Import-Design");
             // Zuletzt: Das Foto soll offen sein, wenn alles andere fertig ist
             // und es ans Anordnen der Symbole geht.
-            if (SelDesktopShot) t.Add(DesktopSymbole ? "Restore-DesktopIcons" : "Show-DesktopShot");
+            if (SelDesktopShot && !DesktopSymbole) t.Add("Show-DesktopShot");
         }
         else
         {
@@ -1371,7 +1385,7 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelWinget)      t.Add("Export-Winget");
             if (SelWlan)        t.Add("Export-Wlan");
             if (SelPrinter)     t.Add("Export-Printer");
-            if (SelWallpaper)   t.Add("Export-Wallpaper");
+            if (SelWallpaper)   t.Add("Export-Design");
         }
         return t;
     }
@@ -1414,7 +1428,7 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Export-Winget":      await _winget.ExportAsync(_laufZiel); break;
                     case "Export-Wlan":        await _backup.ExportWlan(); break;
                     case "Export-Printer":     await _backup.ExportPrinters(); break;
-                    case "Export-Wallpaper":   await _backup.ExportWallpaper(); break;
+                    case "Export-Design":      await _backup.ExportDesign(); break;
                     case "Capture-DesktopShot":
                         await _backup.CaptureDesktop();
                         await BringMainWindowToFront();
@@ -1433,7 +1447,7 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Import-Winget":       await _winget.ImportAsync(wingetSelection ?? new List<WingetPackage>()); break;
                     case "Import-Wlan":         await _backup.ImportWlan(); break;
                     case "Import-Printer":      await _backup.ImportPrinters(); break;
-                    case "Import-Wallpaper":    await _backup.ImportWallpaper(); break;
+                    case "Import-Design":       await _backup.ImportDesign(); break;
                     case "Show-DesktopShot":    await _backup.ShowDesktopScreenshot(); break;
                     case "Restore-DesktopIcons": await _backup.RestoreDesktopIcons(); break;
                 }
@@ -1544,9 +1558,9 @@ public partial class MainWindowViewModel : ObservableObject
             "Export-Winget" or "Import-Winget"            => Tr("Programme (Winget)", "Programs (winget)"),
             "Export-Wlan" or "Import-Wlan"                => Tr("WLAN-Profile", "WiFi profiles"),
             "Export-Printer" or "Import-Printer"          => Tr("Drucker & Treiber", "Printers & drivers"),
-            "Export-Wallpaper" or "Import-Wallpaper"      => Tr("Hintergrundbild", "Wallpaper"),
+            "Export-Design" or "Import-Design"            => Tr("Design (Hintergrund, Farben, Mauszeiger, Taskleiste)", "Design (wallpaper, colors, pointer, taskbar)"),
             "Capture-DesktopShot" or "Show-DesktopShot"   => Tr("Desktop-Screenshot", "Desktop screenshot"),
-            "Backup-DesktopIcons" or "Restore-DesktopIcons" => Tr("Desktop-Symbolpositionen", "Desktop icon positions"),
+            "Backup-DesktopIcons" or "Restore-DesktopIcons" => Tr("Desktop-Symbole und Taskleiste", "Desktop icons and taskbar"),
             _ => choice
         };
     }
@@ -1666,12 +1680,7 @@ public partial class MainWindowViewModel : ObservableObject
             ? UpdateService.ReleasesPageUrl
             : _manifest!.Program.Notes;
 
-        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
-    }
-
-    public void OpenProjectPage()
-    {
-        try { Process.Start(new ProcessStartInfo(ProjectUrl) { UseShellExecute = true }); } catch { }
+        Oeffnen(url);
     }
 
     public void RequestCancelAndKill()
@@ -1704,6 +1713,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     private async Task<string?> PickFolder(string title)
     {
+        if (OrdnerDialog is not null) return await OrdnerDialog(title);
         var win = GetMainWindow();
         if (win?.StorageProvider is not { } sp) return null;
 

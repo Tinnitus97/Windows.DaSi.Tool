@@ -7,6 +7,232 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [1.2.7] - 2026-11-22
+
+### Neu
+
+- **Taskleisten-Symbole.** Die Option *Symbolpositionen* der Kachel *Desktop-Layout*
+  heißt jetzt **Symbole + Taskleiste**. Sie sichert zusätzlich die an die Taskleiste
+  angehefteten Symbole: die Verknüpfungen aus `User Pinned\TaskBar` und ihre
+  Reihenfolge samt angehefteter Store-Apps (Registry-Schlüssel `Taskband`). Abgelegt
+  wird das unter `Desktop-Symbole\Taskleiste\`. Beim Wiederherstellen heftet das Tool
+  sie wieder an und startet dafür den Explorer kurz neu, denn er liest die Taskleiste
+  nur beim Start. Erst danach setzt es die Desktop-Symbole an ihre Stelle. Windows
+  startet die Shell normalerweise selbst wieder. Tut es das nicht, startet das Tool sie.
+
+- **„Design sichern / wiederherstellen“ statt „Hintergrundbild“.** Der Punkt sichert
+  weiterhin den Hintergrund (Bild oder Volltonfarbe). Dazu kommen die
+  Design-Einstellungen von Windows (*Personalisierung*). Alles liegt in **einem**
+  Ordner `Design`: `Design.json` mit Hintergrund und Einstellungen, bei einem Bild
+  die Bilddatei daneben. Sicherungen im alten Format (Ordner `Hintergrundbild`)
+  lassen sich weiter wiederherstellen. Eine Sicherung im neuen Format können
+  Fassungen bis 1.2.6 nicht mehr zurückschreiben. Gesichert werden:
+  - *Hell/Dunkel* für Windows und für Apps, *Transparenzeffekte*;
+  - *Akzentfarbe*: die Farbe selbst, „automatisch aus dem Hintergrund“ und ob sie
+    auf Start, Taskleiste und Titelleisten erscheint;
+  - *Mauszeiger*: Schema, Größe und die einzelnen Zeiger. Zeiger aus einem eigenen
+    Schema, deren Datei es auf dem neuen Rechner nicht gibt, werden ausgelassen;
+  - *Taskleiste*: Ausrichtung, Suche, Taskansicht, Gruppieren, mehrere Bildschirme;
+  - *Start*: Layout, zuletzt geöffnete Elemente und Empfehlungen.
+
+  Gesichert wird eine feste Liste, nicht der ganze Registry-Zweig. Daneben liegen
+  rechnergebundene Werte (Bildschirmpositionen, Kennungen), und manche Werte schützt
+  Windows inzwischen (Widgets-Knopf). Gelesen und gesetzt wird beim angemeldeten
+  Benutzer, auch wenn das Tool unter einem anderen Admin-Konto läuft. Ist ein
+  anderes Profil gewählt als das des angemeldeten Benutzers, bleibt das Design mit
+  einer Fehlermeldung außen vor. Hell/Dunkel und Transparenz gelten sofort, die Akzentfarbe auf
+  Titelleisten und Taskleiste teils erst nach dem nächsten Anmelden. Das Protokoll
+  fasst zusammen, was gesichert bzw. übernommen wurde, etwa „Windows dunkel, Apps
+  dunkel, Transparenz an, Akzentfarbe #0063B1, Taskleiste links“. Ältere Sicherungen
+  mit nur dem Hintergrund lassen sich weiter wiederherstellen.
+
+- **Volltonfarbe als Hintergrund.** Ist unter *Personalisierung > Hintergrund*
+  statt eines Bildes eine Volltonfarbe eingestellt, sichert das Tool jetzt die Farbe.
+  Bisher meldete es nur „kein aktuelles Hintergrundbild gefunden“. Beim
+  Wiederherstellen setzt es die Farbe wieder, sofort sichtbar und dauerhaft, und die
+  Einstellungen-App zeigt wieder „Volltonfarbe“. Im Protokoll steht die Farbe als
+  RGB-Wert und Hexcode, etwa `RGB 0, 99, 177 (#0063B1)`.
+- **Hintergrundbild samt Darstellung.** Zum Bild werden jetzt auch *Füllen*,
+  *Anpassen*, *Strecken*, *Kacheln* usw. und die Randfarbe gesichert und
+  wiederhergestellt. Bei einer Diashow oder Windows-Blickpunkt ohne festes Bild sagt
+  das Protokoll das jetzt ausdrücklich.
+
+- **WLAN-Profile nur, wenn der PC WLAN hat.** Ohne WLAN-Adapter (oder mit
+  deaktiviertem) ist der Punkt jetzt ausgegraut, wie die übrigen Kacheln, die nichts
+  zu tun hätten. Der Tooltip nennt den Grund. Beim Wiederherstellen ist er nur frei,
+  wenn die Sicherung WLAN-Profile enthält und dieser PC einen Adapter hat, in den sie
+  sich einspielen lassen. Bisher scheiterte `netsh wlan` erst während des Laufs.
+
+### Behoben
+
+- **„Log: aus“ in englischer Umgebung.** Startete das Tool auf einem englischen
+  Windows, stand auf dem Knopf für das ausführliche Protokoll „Log: aus“ statt
+  „Log: off“ – bis die Sprache einmal gewechselt wurde. Aufgefallen beim
+  Aufnehmen der README-Bilder.
+
+- **Drucker wiederherstellen meldete Erfolg, obwohl PrintBrm scheiterte.**
+  PrintBrm endet auch bei manchem Fehlschlag mit dem Rückgabewert 0 – etwa bei
+  einer unbrauchbaren Sicherungsdatei („The following error occurred:
+  0x80070057. The parameter is incorrect.“). Das Tool schrieb dann „[ERFOLG]
+  Drucker wiederhergestellt“ ins Protokoll und in die Bilanz. Jetzt zählt auch
+  der Fehlercode in der Ausgabe von PrintBrm; das Protokoll nennt ihn samt
+  Erklärung. Aufgefallen durch die neue Prüfung des Sicherungsdienstes.
+
+- **Hintergrund nach einem Neustart wieder schwarz bzw. weg.** Nach dem
+  Wiederherstellen war der Hintergrund zu sehen. Nach einem Neustart von Windows
+  bzw. der nächsten Anmeldung war er schwarz bzw. wieder der alte. Der
+  Explorer-Neustart für die Taskleiste ist es nicht: Er liest den Hintergrund
+  nicht neu ein, das ist unter Windows geprüft. Ursachen und Abhilfe:
+  - **Hauptursache: der Designdienst von Windows.** Er hält das aktuelle Design im
+    Speicher und schreibt es beim Neustart des Explorers und beim Abmelden zurück,
+    in die Registry und in `Custom.theme`. In einer Windows-11-VM schrieb das Tool
+    genau dieselben Werte wie die Einstellungen-App, belegt per Vergleich der
+    Registry vorher und nachher. Trotzdem war die Farbe nach dem Explorer-Neustart
+    wieder `0 0 0`: Die Einstellungen-App ändert das Design im Dienst, das Tool
+    änderte nur die Dateien. Jetzt lässt das Tool **Windows selbst das Design
+    anwenden**, wie bei einem Doppelklick auf eine `.theme`-Datei:
+    - Aus der aktuellen Design-Datei baut es `DaSi-Wiederherstellung-<Zeitpunkt>.theme`
+      mit Hintergrund, Hell/Dunkel, Akzentfarbe und Mauszeigern aus der Sicherung.
+      Sie ist danach unter *Personalisierung > Designs* auswählbar. Jede Anwendung
+      bekommt einen eigenen Namen, denn ein schon aktives Design wendet Windows nicht
+      noch einmal an. Frühere DaSi-Designs räumt das Tool danach weg.
+    - Angewendet wird sie als der angemeldete Benutzer: Eine kurzlebige geplante
+      Aufgabe startet `explorer.exe` mit der Datei, wie in CLInstall. Das gilt auch,
+      wenn das Tool unter einem anderen Konto läuft (Administratorschutz „ADMIN_…“
+      oder fremde Anmeldedaten).
+    - Bei einer Volltonfarbe bleibt in der Datei ein Bild eingetragen, wie bei der
+      Einstellungen-App. Ein leeres oder ein Blickpunkt-Bild deutet Windows 11 als
+      Windows-Blickpunkt. Danach schaltet das Tool auf die Farbe um, über dieselbe
+      Schnittstelle wie die Einstellungen-App (`IDesktopWallpaper`).
+    - Erst danach trägt es die übrigen Einstellungen ein. Hätten Hell/Dunkel vorher
+      schon in der Registry gestanden, sähe Windows keinen Wechsel und sagte den
+      Fenstern nicht Bescheid.
+    - Klappt das Anwenden nicht, setzt das Tool alles wie bisher direkt und sagt im
+      Protokoll, dass der alte Hintergrund nach einem Neustart zurückkommen kann.
+  - **Explorer-Neustart vor dem Design.** In einer Windows-11-VM (Canary) holt ein
+    hart beendeter Explorer beim Start den zuletzt von ihm gespeicherten
+    Hintergrund zurück. Das gilt auch für eine über die Einstellungen gewählte
+    Farbe. Das Tool beendet den Explorer für die Taskleiste. Beim Wiederherstellen
+    kommen *Symbole + Taskleiste* deshalb jetzt vor dem Design dran, danach wird der
+    Explorer nicht mehr neu gestartet. Setzt ein Explorer-Neustart den Hintergrund
+    trotzdem zurück, wendet das Tool das Design erneut über Windows an, auch ohne
+    Design-Wiederherstellung im selben Lauf.
+  - **Die Design-Datei von Windows.** Windows führt das aktuelle
+    Design zusätzlich in einer Datei, meist `…\AppData\Local\Microsoft\Windows\Themes\Custom.theme`.
+    Beim Anmelden übernimmt es Werte daraus wieder in die Registry. In einer
+    Windows-11-VM stand dort `Background=0 0 0`: Die wiederhergestellte Volltonfarbe
+    war vor dem Neustart da, danach wieder schwarz. Eine über die Einstellungen
+    gewählte Farbe blieb erhalten, denn die Einstellungen-App schreibt auch in diese
+    Datei. Jetzt trägt das Tool dort ebenfalls ein, was es setzt:
+    - beim Hintergrund das Bild samt Darstellung bzw. die Volltonfarbe (das Bild
+      bleibt dabei stehen, wie bei der Einstellungen-App), und eine Diashow fällt weg;
+    - bei den Design-Einstellungen Hell/Dunkel, Akzentfarbe, „automatisch“ und die
+      Mauszeiger, soweit die Datei sie führt.
+
+    Die Kodierung der Datei (meist UTF-16) bleibt erhalten, geschrieben wird über
+    eine Zwischendatei. Angefasst wird nur eine Datei im Profil des Benutzers, nie
+    ein Windows-Design unter `C:\Windows`.
+  - Das Tool trug den Hintergrund in die Registry des Kontos ein, **unter dem es
+    läuft**. Gibt jemand bei der Admin-Abfrage die Daten eines anderen Kontos ein,
+    ist das nicht der angemeldete Benutzer. Sofort zu sehen war der Hintergrund
+    trotzdem, dauerhaft aber nicht. Jetzt schreibt das Tool Bild, Darstellung, Farbe
+    und Art direkt beim angemeldeten Benutzer, wie schon die Design-Einstellungen.
+    Den Windows-Aufruf nutzt es nur noch für die sofortige Anzeige. Dazu verwirft es
+    Windows' Kopie des alten Hintergrunds in diesem Profil, damit Windows bei der
+    nächsten Anmeldung das neue Bild einliest. Danach prüft es,
+    ob der Hintergrund wirklich eingetragen ist. Ist er es nicht, meldet das
+    Protokoll einen Fehler statt „gesetzt“. Läuft das Tool unter einem anderen Konto,
+    steht das als Hinweis im Protokoll. Auch das Sichern liest jetzt beim
+    angemeldeten Benutzer und nicht beim Admin-Konto.
+  - Windows 11 kann sich für jeden virtuellen Desktop einen eigenen Hintergrund
+    merken. Solche Einträge gleicht das Tool jetzt an, damit kein alter Hintergrund
+    zurückkommt.
+  - Zeigte der alte Rechner ein Bild aus Windows' Zwischenspeicher
+    (`Themes\TranscodedWallpaper`, `CachedFiles`), schrieb das Tool es dorthin zurück
+    und trug es als Hintergrund ein. Diese Dateien überschreibt bzw. löscht Windows
+    selbst. Jetzt wird so ein Bild als `Hintergrundbild.jpg` (passende Endung)
+    gesichert und unter *Bilder* abgelegt. Ältere Sicherungen werden beim
+    Wiederherstellen genauso behandelt. Ist das eingetragene Bild gelöscht, zeigt
+    Windows es aber noch, wird jetzt das gezeigte Bild gesichert.
+  - Mauszeiger übernimmt Windows beim fremden Konto erst nach der nächsten Anmeldung.
+    Bisher lud es dabei die Zeiger des Admin-Kontos.
+  - **Kontrolle danach.** Ein paar Sekunden nach dem Setzen und noch einmal nach dem
+    Explorer-Neustart für die Taskleiste sieht das Tool nach, ob Registry und
+    Desktop noch zeigen, was gesetzt wurde. Dafür bildet es das Desktop-Fenster
+    selbst ab, auch unter anderen Fenstern. Hat Windows den Hintergrund geändert,
+    steht im Protokoll, was anders ist und was es sein könnte: eine Richtlinie,
+    Windows-Blickpunkt oder eine Diashow. Dann setzt das Tool ihn einmal neu. Eine
+    Richtlinie, die den Hintergrund festlegt, meldet es schon vorher als Warnung.
+    Unter Windows 11 25H2 und Windows Server geprüft: Hier blieben Volltonfarbe
+    und Bild auch nach dem Explorer-Neustart stehen.
+
+- **Chrome war nach der Wiederherstellung leer**, obwohl die Sicherung vollständig
+  war. Von Hand bei geschlossenem Chrome in den Profilordner kopiert, war alles da.
+  Wahrscheinliche Ursache: Chrome lief während des Kopierens. Der Installer startet
+  Chrome nach der Installation manchmal von selbst, ein paar Sekunden später. Dann
+  legt Chrome ein frisches Profil an und schreibt beim Beenden „Local State“ und
+  „Preferences“ über die zurückgeschriebenen. Für alle Browser und Thunderbird gilt
+  jetzt:
+  - Nach einer frischen Installation wird kurz abgewartet, ob der Installer das
+    Programm startet. Danach wird es beendet, und das Tool **wartet, bis es wirklich
+    weg ist**, statt pauschal zwei Sekunden.
+  - Startet es während des Kopierens trotzdem, wird es beendet und das Profil
+    **noch einmal** zurückgeschrieben.
+  - Danach prüft das Tool, ob die Dateien, an denen das Profil hängt (`Local State`,
+    `Preferences`, `Bookmarks`, `History`, bei Firefox `profiles.ini`, `prefs.js` …),
+    so im Ziel stehen wie in der Sicherung. Das Protokoll nennt die
+    wiederhergestellten Profile (`Default, Profile 1`) – oder als Fehler die
+    abweichenden Dateien.
+  - Lässt sich der Browser nicht beenden, wird das Profil nicht zurückgeschrieben,
+    sondern eine Meldung samt Abhilfe ausgegeben.
+  - Chrome, das nur für den Benutzer installiert ist, gilt als installiert. Bisher
+    wurde dann zusätzlich eine zweite Chrome-Installation für alle Benutzer angestoßen.
+- **Profil mit AppData zurückschreiben endete weiter mit „Robocopy Fehlercode: 11“.**
+  Das Protokoll mit 1.2.6 zeigte vier Gründe:
+  - **Das Tool selbst lief vom Desktop des Zielprofils.** In der Sicherung lag eine
+    ältere `WindowsDaSiTool.exe` an derselben Stelle. Sie wird jetzt ausgelassen,
+    statt am Ende als Fehler 32 zu scheitern.
+  - **30 App-Aliase in `AppData\Local\Microsoft\WindowsApps`** (Fehler 1920). Das
+    sind Verweise, die Windows für installierte Apps anlegt, keine Dateien. Sie
+    bleiben jetzt beim Sichern und beim Zurückschreiben draußen.
+  - **Fehler 1224**: eine Datei, die ein laufendes Programm in den Speicher
+    eingeblendet hat. Gilt jetzt wie Fehler 32 als „gesperrt“.
+  - **Verschränkte Meldungen.** robocopy kopiert mit 32 Threads gleichzeitig, und
+    deren Meldungen schieben sich ineinander. Zeilen landeten dadurch im Protokoll
+    statt in der Zusammenfassung. Sie werden jetzt der richtigen Datei zugeordnet.
+- **Fehlende Desktop-Symbole: Hinweis auf die Herkunft.** Verknüpfungen, die nicht
+  im Desktop-Ordner des gesicherten Profils lagen, stammen meist vom öffentlichen
+  Desktop für alle Benutzer und erscheinen erst mit ihrem Programm. Das Protokoll
+  nennt sie getrennt und rät, *Desktop-Layout wiederherstellen* danach noch einmal
+  auszuführen.
+
+### Geändert
+
+- **Prüfungen nur noch unter Windows.** Das Programm läuft ausschließlich unter
+  Windows; der zusätzliche Linux-Lauf in `build.yml` prüfte nur dasselbe noch
+  einmal und ist entfallen. Alle Prüfungen laufen weiterhin bei jedem Push auf
+  dem Windows-Läufer – dort auch die, die echtes Windows brauchen. Das
+  Prüfprojekt zielt deshalb auf `net10.0-windows`; die Warnungen CA1416
+  („nur unter Windows unterstützt“) sind damit weg, und jede Warnung gilt in
+  den Prüfprojekten als Fehler.
+- **Jede Funktion hat eine Prüfung.** Neu geprüft werden der Sicherungsdienst
+  (jede Aktion der Warteschlange an einem Testprofil mit echtem robocopy, netsh
+  und PrintBrm; Design, Desktop-Foto, Symbole und Taskleiste am echten
+  Desktop), winget (Bereitschaft, Reparatur, Export, Import – gegen eine
+  Attrappe, die antwortet wie winget), Prozessstart, Systemhelfer,
+  Leistungsmodus, Update und das Nachinstallieren von winget über einen eigenen
+  Webserver. Dazu kommt die Oberfläche (`tests/DaSiGuiTests`): das echte
+  Hauptfenster ohne Bildschirm, bedient mit Mausklicks – Pfade, Moduswechsel,
+  gesperrte Kacheln, jede Rückfrage, die Warteschlange, Update-Streifen,
+  Winget-Auswahl, Schließen mit laufender Aktion – und ein echter Start der
+  EXE. Die CI misst mit coverlet, welche Funktionen die Prüfungen ausführen;
+  `tools/abdeckung.py` meldet jede, die keine Prüfung erreicht.
+- **Toter Code entfernt:** ein „Beenden“-Befehl ohne Knopf, ein zweiter
+  Sprachumschalter neben der Auswahlliste, drei nicht angezeigte Beschriftungen
+  und eine nicht benutzte Eigenschaft im Sicherungsdienst.
+
+---
+
 ## [1.2.6] - 2026-11-18
 
 ### Behoben
@@ -506,6 +732,7 @@ PowerShell/WPF-Skripts als native C#-Anwendung mit Avalonia.
 
 ---
 
+[1.2.7]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.7
 [1.2.6]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.6
 [1.2.5]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.5
 [1.2.1]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.1

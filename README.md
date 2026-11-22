@@ -6,7 +6,7 @@
 
 **Datensicherung und Wiederherstellung von Windows-Benutzerprofilen — portabel, schnell, ohne Installation.**
 
-[![Version](https://img.shields.io/badge/Version-1.2.6-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.7-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)](https://github.com/Tinnitus97/Windows.DaSi.Tool)
 [![.NET](https://img.shields.io/badge/.NET-10%20LTS-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![License](https://img.shields.io/badge/Lizenz-MIT-green)](LICENSE)
@@ -18,7 +18,7 @@
 Entwickelt für IT-Administratoren und Power-User. Das Tool vereint die Robustheit
 von **Robocopy** mit einer modernen, zweisprachigen Oberfläche und sichert in einem
 Durchgang Benutzerprofile, Browserdaten, installierte Programme, WLAN-Zugänge,
-Drucker und das Hintergrundbild — und stellt sie auf dem neuen Rechner wieder her.
+Drucker und das Design (Hintergrund, Hell/Dunkel, Akzentfarbe …) — und stellt sie auf dem neuen Rechner wieder her.
 Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 
 <div align="center">
@@ -32,13 +32,13 @@ Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 | Bereich | Inhalt |
 | --- | --- |
 | **Windows-Benutzerprofil** | Dokumente, Bilder, Desktop, Downloads und alles Weitere im Profil, auch versteckte und Systemdateien. Zwischenspeicher, Temp-Ordner, die Registry-Dateien (`NTUSER.DAT`) und Windows-Altlasten (Verknüpfungspunkte wie *Anwendungsdaten*) bleiben draußen. Zeigt ein Ordner als Verknüpfung aus dem Profil hinaus (z. B. `Dokumente\Spiele` → `D:\Spiele`), steht das als Warnung im Protokoll. **AppData** und **Cloud-Ordner** wahlweise, auch einzeln ohne den Rest des Profils — Vorgabe: aus |
-| **Browser-Profile** | Firefox, Edge, Chrome, Brave und Opera — inklusive Lesezeichen, Verlauf und Einstellungen. Bei Opera jede Fassung, die beim Benutzer eingerichtet ist: Opera, Opera GX, Beta, Developer, Air … |
+| **Browser-Profile** | Firefox, Edge, Chrome, Brave und Opera — inklusive Lesezeichen, Verlauf und Einstellungen. Bei Opera jede Fassung, die beim Benutzer eingerichtet ist: Opera, Opera GX, Beta, Developer, Air … Vor dem Zurückschreiben wird der Browser beendet, bis er wirklich weg ist. Danach prüft das Tool, ob das Profil vollständig im Ziel steht, und nennt die wiederhergestellten Profile |
 | **E-Mail** | Thunderbird-Profil mit Konten und lokalen Ordnern |
 | **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog. Programme ohne Winget-Paket landen in einer eigenen Liste |
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
 | **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen über PrintBRM in einer Datei |
-| **Hintergrundbild** | Sichert das Desktop-Hintergrundbild und stellt es an derselben Stelle im gewählten Profil wieder her, auch wenn der Benutzer dort anders heißt |
-| **Desktop-Layout** | Wahlweise die Positionen der Desktop-Symbole (wie DesktopOK, beim Wiederherstellen automatisch zurückgesetzt) oder ein Foto des Desktops, ein Bild pro Monitor |
+| **Design** | Der **Hintergrund**: das Bild samt Darstellung (*Füllen*, *Anpassen* …), an derselben Stelle im gewählten Profil, auch wenn der Benutzer dort anders heißt – oder eine **Volltonfarbe**. Dazu die **Design-Einstellungen** von Windows: *Hell/Dunkel* für Windows und Apps, *Akzentfarbe* (auch „automatisch“ und auf Start, Taskleiste und Titelleisten), *Transparenz*, *Mauszeiger* (Schema und Größe), *Taskleiste* (Ausrichtung, Suche, Taskansicht, Gruppieren) und *Start*. Gelesen und gesetzt wird beim angemeldeten Benutzer, auch wenn das Tool per Admin-Abfrage unter einem anderen Konto läuft, damit der Hintergrund nach einem Neustart bleibt; Hell/Dunkel gilt sofort, die Akzentfarbe auf Titelleisten teils erst nach dem nächsten Anmelden. Alles liegt im Ordner `Design` der Sicherung (`Design.json`, bei einem Bild die Datei daneben) |
+| **Desktop-Layout** | Wahlweise die Positionen der Desktop-Symbole (wie DesktopOK, beim Wiederherstellen automatisch zurückgesetzt) samt der an die Taskleiste angehefteten Symbole – oder ein Foto des Desktops, ein Bild pro Monitor |
 
 > **WLAN-Schlüssel liegen im Klartext in der Sicherung.** Damit sie auf einem anderen
 > Rechner funktionieren, exportiert das Tool sie mit `key=clear` — verschlüsselt wären
@@ -67,11 +67,14 @@ Punkte, die nichts zu tun hätten, sind **ausgegraut** und lassen sich nicht ank
 
 - **Sichern:** Eine Programmsicherung (Firefox, Edge, Chrome, Brave, Opera,
   Thunderbird) ist gesperrt, wenn das Programm beim gewählten Benutzer nicht
-  eingerichtet ist, also kein Profil hat. Oben im Bild: Brave.
+  eingerichtet ist, also kein Profil hat. Oben im Bild: Brave. *WLAN-Profile* sind
+  gesperrt, wenn der PC keinen WLAN-Adapter hat (oder er deaktiviert ist).
 - **Wiederherstellen:** Jeder Punkt ist gesperrt, den die gewählte Sicherung nicht
   enthält. Unten im Bild: Gesichert wurden Profil samt AppData, Firefox, Edge,
   Opera, die Programmliste und die Symbolpositionen des Desktops. Alles andere ist
-  grau, auch die Auswahl *Screenshot*.
+  grau, auch die Auswahl *Screenshot*. *WLAN-Profile* sind nur frei, wenn die
+  Sicherung welche enthält und dieser PC einen WLAN-Adapter hat, in den sie sich
+  einspielen lassen.
 
 Fährt man mit der Maus über einen grauen Punkt, nennt der Tooltip den Grund, etwa
 *Chrome ist bei diesem Benutzer nicht eingerichtet - kein Profil unter …* oder *Die
@@ -79,7 +82,7 @@ gewählte Sicherung enthält kein Chrome-Profil.* Ist statt einer Sicherung der 
 darüber gewählt (`D:\DaSi` statt `D:\DaSi\DASI_…`), sagt der Tooltip genau das. Wird ein
 Punkt durch einen Wechsel von Benutzer, Sicherung oder Modus gesperrt, verliert er
 auch seinen Haken. Solange noch kein vorhandenes Profil bzw. kein vorhandener Ordner
-gewählt ist, bleibt alles frei.
+gewählt ist, bleibt alles frei (bis auf *WLAN-Profile* ohne WLAN-Adapter).
 
 ### Opera in jeder Fassung
 
@@ -114,9 +117,12 @@ Wiederherstellung sie findet.
   Fehler wie *Zugriff verweigert* oder ein volles Ziellaufwerk bleiben Fehler.
   Beim **Zurückschreiben** gilt dasselbe: Vorher schließt das Tool die Browser und
   Mailprogramme. Was im Profil trotzdem gesperrt ist, behält seine vorhandene Fassung
-  und steht in `AppData-nicht-wiederhergestellt.txt`.
+  und steht in `AppData-nicht-wiederhergestellt.txt`. Läuft das Tool selbst vom
+  Desktop des Zielprofils, überschreibt es seine eigene Programmdatei nicht mit der
+  Fassung aus der Sicherung.
   Nie mitgenommen wird der **rechnergebundene Zustand** von Windows-Bestandteilen:
-  der des App-Installers (winget) und der Windows-Shell (Suche, Widgets). Die
+  der des App-Installers (winget), der Windows-Shell (Suche, Widgets) und die
+  App-Aliase in `WindowsApps`. Die
   Datenbanken eines neueren winget legen das ältere auf einem frisch eingerichteten
   Rechner sonst lahm (`0x8A150009`). Das gilt auch beim Zurückschreiben älterer
   Sicherungen, die ihn noch enthalten.
@@ -170,8 +176,9 @@ Nach einer Neuinstallation ist der Desktop leer, und kaum jemand weiß noch, wo 
 Verknüpfungen lagen. Der Punkt **Desktop-Layout** bietet dafür zwei Wege, gewählt
 über die beiden Knöpfe in der Kachel:
 
-**Symbolpositionen** (wie *DesktopOK*): Das Tool merkt sich, welches Symbol wo liegt,
-und setzt beim Wiederherstellen jedes wieder an seine Stelle — automatisch.
+**Symbole + Taskleiste** (wie *DesktopOK*): Das Tool merkt sich, welches Symbol wo liegt,
+und setzt beim Wiederherstellen jedes wieder an seine Stelle — automatisch. Dazu sichert
+es die **an die Taskleiste angehefteten Symbole** und heftet sie wieder an.
 
 - Gelesen und gesetzt wird über die Schnittstelle, die der Explorer für seinen
   Desktop selbst anbietet. Zugeordnet wird über den Namen im Desktop-Ordner
@@ -189,8 +196,19 @@ und setzt beim Wiederherstellen jedes wieder an seine Stelle — automatisch.
   ihre Stelle, auch wenn der Benutzerordner hier anders heißt.
 - Symbole, die es auf dem neuen Desktop (noch) nicht gibt, nennt das Protokoll. Am
   besten läuft der Punkt deshalb zusammen mit Benutzerprofil und Programmen — er
-  kommt in der Warteschlange ohnehin zuletzt.
-- Gespeichert wird `Desktop-Symbole\Symbolpositionen.json` im Backup-Ziel.
+  kommt in der Warteschlange ohnehin zuletzt. Verknüpfungen, die nicht aus dem
+  Profil stammen (meist vom öffentlichen Desktop für alle Benutzer), nennt es
+  getrennt: Sie erscheinen erst mit ihrem Programm. Danach den Punkt einfach noch
+  einmal ausführen.
+- **Taskleiste:** Gesichert werden die angehefteten Verknüpfungen (Ordner
+  `User Pinned\TaskBar` im Profil) und ihre Reihenfolge samt angehefteter Store-Apps
+  (Registry-Schlüssel `Taskband`). Der Explorer liest beides nur beim Start. Beim
+  Wiederherstellen startet er deshalb kurz neu, offene Explorer-Fenster schließen sich
+  dabei. Erst danach kommen die Desktop-Symbole an ihre Stelle. Symbole von Programmen,
+  die auf dem neuen Rechner noch fehlen, werden erst mit dem Programm sichtbar. Der
+  Punkt läuft deshalb nach dem Winget-Import.
+- Gespeichert wird `Desktop-Symbole\Symbolpositionen.json`, für die Taskleiste
+  `Desktop-Symbole\Taskleiste\` (`Taskleiste.json` und die Verknüpfungen) im Backup-Ziel.
 
 **Screenshot**: Das Tool fotografiert den Desktop, und zwar **ein Bild pro Monitor**:
 alle im selben Moment, jedes in Größe und voller Auflösung seines Monitors, auch bei
@@ -210,7 +228,7 @@ denen unter *Einstellungen → Anzeige → Identifizieren* überein. Beim
 Nachsehen und Anordnen von Hand.
 
 Beim Wiederherstellen ist nur wählbar, was in der Sicherung liegt: Enthält sie nur
-Symbolpositionen, ist *Screenshot* ausgegraut und umgekehrt.
+Symbole und Taskleiste, ist *Screenshot* ausgegraut und umgekehrt.
 
 > Beides betrifft den Desktop, der gerade zu sehen ist. Ist ein anderer Benutzer
 > angemeldet als der, dessen Profil gewählt ist — etwa der Techniker —, tut das Tool
@@ -431,7 +449,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | **Dateioperationen** | Robocopy mit Spiegelung, Ausschlusslisten und Multithreading |
 | **Prozess-Handling** | Browser und Thunderbird werden vor dem Backup automatisch geschlossen, um Dateikonflikte zu vermeiden |
 | **Fehlerbehandlung** | Unerwartete Fehler landen in `%USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log` |
-| **Prüfungen** | `tests/DaSiTests` — Ausschlusslisten, Cloud-Erkennung, Opera-Fassungen, gesperrte Punkte, Sicherungsordner, Symbolpositionen, Bilanz, Update-Logik. Läuft bei jedem Push unter Linux und Windows; unter Windows werden dabei das Austauschskript der Selbstaktualisierung echt ausgeführt und ein Desktop-Symbol am echten Explorer-Desktop versetzt und zurückgesetzt |
+| **Prüfungen** | `tests/DaSiTests` prüft die Dienste: jede Aktion der Warteschlange an einem Testprofil, mit echtem robocopy, netsh und PrintBrm, dazu Design, Desktop-Foto, Symbole und Taskleiste am echten Desktop sowie das Austauschskript der Selbstaktualisierung. `tests/DaSiGuiTests` prüft die Oberfläche: das echte Hauptfenster ohne Bildschirm (Avalonia.Headless), bedient mit Mausklicks – Rückfragen, Warteschlange, Update-Streifen, Dialoge. winget ersetzt eine Attrappe (`tests/WingetAttrappe`), installiert wird nichts. Läuft bei jedem Push unter Windows; `tools/abdeckung.py` meldet jede Funktion, die keine Prüfung ausführt |
 
 ### Selbst bauen
 
@@ -469,10 +487,23 @@ Die fertige EXE liegt anschließend im Ordner `publish`.
 > `$env:MSBuildEnableWorkloadResolver = 'false'`. Dauerhaft beheben lässt es sich
 > durch Reparieren oder Neuinstallieren des .NET SDK.
 
-Die Prüfungen laufen ohne Oberfläche und auf jedem System:
+Die Prüfungen (unter Windows, als Administrator – sie stellen Hintergrund,
+Taskleiste und Desktop-Symbole wirklich um und wieder zurück):
 
 ```powershell
-dotnet run --project tests/DaSiTests -c Release
+dotnet run --project tests/DaSiTests -c Release     # Dienste
+dotnet run --project tests/DaSiGuiTests -c Release  # Oberfläche
+```
+
+Mit Abdeckungsbericht wie in der CI (`dotnet tool restore` holt coverlet):
+
+```powershell
+dotnet tool restore
+dotnet build tests/DaSiGuiTests -c Release -p:DebugType=portable -p:DebugSymbols=true
+dotnet coverlet tests/DaSiGuiTests/bin/Release/net10.0-windows/DaSiGuiTests.dll `
+  --target tests/DaSiGuiTests/bin/Release/net10.0-windows/DaSiGuiTests.exe `
+  --include "[WindowsDaSiTool]*" --format cobertura --output abdeckung/gui.xml
+python tools/abdeckung.py abdeckung/gui.xml
 ```
 
 ---

@@ -42,11 +42,13 @@ public sealed class RobocopySkips
     /// <summary>
     /// Fehlerarten, die bei AppData dazugehoeren: waehrend der Sicherung
     /// geloescht oder umbenannt (2, 3), von einem laufenden Programm gesperrt
-    /// (32, 33), vom System nicht lesbar - etwa die App-Aliase in
-    /// "WindowsApps" (1920). Alles andere - Zugriff verweigert, Platte voll -
-    /// bleibt ein Fehler.
+    /// (32, 33) oder von ihm in den Speicher eingeblendet (1224 - "Datei mit
+    /// einem geoeffneten Bereich, der einem Benutzer zugeordnet ist", etwa die
+    /// Programmdatei oder Datenbank eines laufenden Programms), vom System
+    /// nicht lesbar - etwa die App-Aliase in "WindowsApps" (1920). Alles andere
+    /// - Zugriff verweigert, Platte voll - bleibt ein Fehler.
     /// </summary>
-    public static readonly IReadOnlySet<int> Expected = new HashSet<int> { 2, 3, 32, 33, 1920 };
+    public static readonly IReadOnlySet<int> Expected = new HashSet<int> { 2, 3, 32, 33, 1224, 1920 };
 
     // Kopfzeile eines Fehlers, in jeder Sprache gleich gebaut:
     // "<Datum> <Zeit> <FEHLER|ERROR|...> <Nummer> (0x<Nummer hexadezimal>) <Vorgang> <Pfad>".
@@ -71,7 +73,19 @@ public sealed class RobocopySkips
     private static readonly Regex Wiederholung =
         new(@"\d.*\.\.\.\s*$", RegexOptions.CultureInvariant);
 
-    private enum Erwartet { Nichts, Grund, Abschluss }
+    /// <summary>Eine Meldung, deren Grund oder Abschluss noch aussteht.</summary>
+    private sealed class Offen
+    {
+        /// <summary>Die Datei liegt im Ordner - die Zeilen der Meldung werden geschluckt.</summary>
+        public bool Innen;
+        public int Code;
+        /// <summary>Mit dieser Meldung erstmals gezaehlt (sonst null).</summary>
+        public string? Gezaehlt;
+        public bool HatGrund;
+    }
+
+    /// <summary>So viele Meldungen werden hoechstens gleichzeitig offen gehalten.</summary>
+    private const int MaxOffen = 64;
 
     private readonly string _rootAnzeige;
     private readonly string _root;
@@ -80,10 +94,11 @@ public sealed class RobocopySkips
     private readonly Dictionary<int, string> _grund = new();
     private readonly List<(int Code, string Path)> _pfade = new();
     private readonly HashSet<string> _gesehen = new(StringComparer.OrdinalIgnoreCase);
-    private Erwartet _erwartet = Erwartet.Nichts;
-    private int _code;
-    // Die Datei des laufenden Blocks, falls sie mit ihm erst gezaehlt wurde.
-    private string? _gezaehlt;
+    // Meldungen in der Reihenfolge ihrer Kopfzeilen. Mit /MT:32 kopieren 32
+    // Threads gleichzeitig, und ihre Meldungen koennen sich verschraenken:
+    // Kopf A, Kopf B, Grund A, Grund B ... Grund- und Abschlusszeilen werden
+    // deshalb der aeltesten Meldung zugeordnet, die noch darauf wartet.
+    private readonly List<Offen> _offen = new();
 
     /// <param name="root">Der Ordner, dessen Meldungen zusammengefasst werden, z. B. "C:\Users\Max\AppData".</param>
     /// <param name="zurueck">
@@ -127,71 +142,77 @@ public sealed class RobocopySkips
 
         if (TryParseHeader(line, out var code, out var pfad))
         {
-            if (pfad is not null && IsUnder(pfad, _root))
+            var meldung = new Offen { Innen = pfad is not null && IsUnder(pfad, _root), Code = code };
+            if (meldung.Innen)
             {
                 // Jede Datei nur einmal - auch wenn robocopy sie mehrfach meldet.
-                _gezaehlt = null;
-                if (_gesehen.Add(pfad))
+                if (_gesehen.Add(pfad!))
                 {
                     Count++;
                     _anzahl[code] = _anzahl.TryGetValue(code, out var n) ? n + 1 : 1;
-                    if (_pfade.Count < MaxPaths) _pfade.Add((code, pfad));
-                    _gezaehlt = pfad;
+                    if (_pfade.Count < MaxPaths) _pfade.Add((code, pfad!));
+                    meldung.Gezaehlt = pfad;
                 }
-                _code = code;
-                _erwartet = Erwartet.Grund;
-                return true;
             }
-            OtherErrors++;
-            _erwartet = Erwartet.Nichts;
-            return false;
+            else
+            {
+                OtherErrors++;
+            }
+            _offen.Add(meldung);
+            if (_offen.Count > MaxOffen) _offen.RemoveAt(0);
+            return meldung.Innen;
         }
 
-        if (_erwartet == Erwartet.Nichts) return false;
+        if (_offen.Count == 0) return false;
 
         // Dateizeilen anderer Kopier-Threads (/MT) sind eingerueckt und koennen
         // dazwischenrutschen - sie gehoeren nicht zur Meldung.
         if (line[0] == ' ' || line[0] == '\t') return false;
 
-        if (Abschluss.IsMatch(line))
+        // Die Trennlinie vor der Bilanz: Danach kommt nichts mehr dazu.
+        if (line.StartsWith("---", StringComparison.Ordinal))
         {
-            _erwartet = Erwartet.Nichts;
-            return true;
+            _offen.Clear();
+            return false;
         }
-        if (_erwartet == Erwartet.Grund)
+
+        bool abschluss = Abschluss.IsMatch(line);
+        if (abschluss || Wiederholung.IsMatch(line))
         {
-            if (!_grund.ContainsKey(_code)) _grund[_code] = line.Trim();
-            _erwartet = Erwartet.Abschluss;
-            return true;
+            var fertig = _offen.FirstOrDefault(o => o.HatGrund) ?? _offen[0];
+            _offen.Remove(fertig);
+            // Mit /R:1 und mehr: noch nicht aufgegeben - Zaehlung zuruecknehmen.
+            // Scheitert auch der naechste Versuch, kommt eine neue Meldung;
+            // klappt er, wurde die Datei kopiert und gehoert nicht in die Liste.
+            if (!abschluss && fertig.Innen) Zuruecknehmen(fertig);
+            return fertig.Innen;
         }
-        if (Wiederholung.IsMatch(line))
+
+        var ohneGrund = _offen.FirstOrDefault(o => !o.HatGrund);
+        if (ohneGrund is null)
         {
-            // Noch nicht aufgegeben: Zaehlung zuruecknehmen. Scheitert auch
-            // der naechste Versuch, kommt ein neuer Block; klappt er, wurde
-            // die Datei kopiert und gehoert nicht in die Liste.
-            Zuruecknehmen();
-            _erwartet = Erwartet.Nichts;
-            return true;
+            // Statt des Abschlusses kam etwas anderes - das gehoert nicht mehr dazu.
+            _offen.Clear();
+            return false;
         }
-        // Statt des Abschlusses kam etwas anderes - das gehoert nicht mehr dazu.
-        _erwartet = Erwartet.Nichts;
-        return false;
+        ohneGrund.HatGrund = true;
+        if (ohneGrund.Innen && !_grund.ContainsKey(ohneGrund.Code)) _grund[ohneGrund.Code] = line.Trim();
+        return ohneGrund.Innen;
     }
 
-    private void Zuruecknehmen()
+    private void Zuruecknehmen(Offen meldung)
     {
-        if (_gezaehlt is null) return;
-        _gesehen.Remove(_gezaehlt);
+        if (meldung.Gezaehlt is null) return;
+        _gesehen.Remove(meldung.Gezaehlt);
         Count--;
-        if (_anzahl.TryGetValue(_code, out var n))
+        if (_anzahl.TryGetValue(meldung.Code, out var n))
         {
-            if (n <= 1) _anzahl.Remove(_code); else _anzahl[_code] = n - 1;
+            if (n <= 1) _anzahl.Remove(meldung.Code); else _anzahl[meldung.Code] = n - 1;
         }
         for (int i = _pfade.Count - 1; i >= 0; i--)
         {
-            if (string.Equals(_pfade[i].Path, _gezaehlt, StringComparison.OrdinalIgnoreCase)) { _pfade.RemoveAt(i); break; }
+            if (string.Equals(_pfade[i].Path, meldung.Gezaehlt, StringComparison.OrdinalIgnoreCase)) { _pfade.RemoveAt(i); break; }
         }
-        _gezaehlt = null;
     }
 
     /// <summary>Erkennt die Kopfzeile einer robocopy-Fehlermeldung.</summary>

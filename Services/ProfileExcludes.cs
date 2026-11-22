@@ -76,6 +76,10 @@ public static class ProfileExcludes
     /// - Windows-Shell (Suche, Widgets, Startmenue): ihr App-Index und ihre
     ///   eingebettete Browser-Ansicht. Beides legt Windows selbst neu an, und
     ///   im laufenden Betrieb ist es ohnehin gesperrt.
+    /// - "WindowsApps": die App-Aliase (winget.exe, python.exe ...), die
+    ///   Windows fuer installierte Apps anlegt. Es sind Verweise, keine
+    ///   Dateien - lesen laesst sich keiner (Fehler 1920), und auf dem neuen
+    ///   Rechner gehoeren sie zu den dort installierten Apps.
     ///
     /// Sie bleiben in beide Richtungen draussen: beim Sichern und - auch fuer
     /// Sicherungen von frueher, die sie noch enthalten - beim Zurueckschreiben.
@@ -86,6 +90,7 @@ public static class ProfileExcludes
         @"AppData\Local\Packages\Microsoft.Winget.Source_8wekyb3d8bbwe",
         @"AppData\Local\Packages\MicrosoftWindows.Client.CBS_cw5n1h2txyewy",
         @"AppData\Local\Packages\MicrosoftWindows.Client.Core_cw5n1h2txyewy",
+        @"AppData\Local\Microsoft\WindowsApps",
     };
 
     /// <summary>
@@ -184,6 +189,28 @@ public static class ProfileExcludes
         // Dublettenfrei: dieselbe Angabe zweimal an robocopy zu uebergeben ist
         // zwar harmlos, macht die Befehlszeile aber unnoetig lang.
         return excluded.Distinct(System.StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// Laeuft das Tool selbst aus dem Zielprofil heraus - typisch:
+    /// "Desktop\WindowsDaSiTool.exe" -, die Datei an derselben Stelle der
+    /// Sicherung. Sie wird beim Zurueckschreiben ausgelassen: Die laufende
+    /// Programmdatei laesst sich ohnehin nicht ueberschreiben (Fehler 32),
+    /// und in der Sicherung liegt meist eine aeltere Fassung. Sonst null.
+    /// </summary>
+    /// <param name="zielProfil">Das Profil, in das zurueckgeschrieben wird.</param>
+    /// <param name="sicherungsProfil">Der Ordner "Benutzerprofil" der Sicherung.</param>
+    /// <param name="programmPfad">Pfad des laufenden Programms (Environment.ProcessPath).</param>
+    public static string? LaufendesProgrammInSicherung(string zielProfil, string sicherungsProfil, string? programmPfad)
+    {
+        if (string.IsNullOrWhiteSpace(programmPfad) || !IsInside(programmPfad, zielProfil) || SameFolder(programmPfad, zielProfil))
+            return null;
+        try
+        {
+            var rel = Path.GetRelativePath(Path.GetFullPath(zielProfil), Path.GetFullPath(programmPfad));
+            return Path.Combine(sicherungsProfil, rel);
+        }
+        catch { return null; }
     }
 
     /// <summary>

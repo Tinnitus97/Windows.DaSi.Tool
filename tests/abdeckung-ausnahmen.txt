@@ -1,0 +1,6 @@
+# Funktionen, die keine Pruefung ausfuehren kann - jede mit Begruendung.
+#
+# Format: "<Datei>: <Klasse>.<Funktion> | <Begruendung>" - genau so, wie
+# tools/abdeckung.py die Funktion nennt. Steht hier etwas, das inzwischen
+# doch geprueft wird, meldet die CI das ebenfalls: Die Liste bleibt so kurz
+# wie moeglich.

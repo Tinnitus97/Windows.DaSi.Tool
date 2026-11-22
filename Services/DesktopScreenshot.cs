@@ -222,6 +222,81 @@ public static class DesktopScreenshot
         }
     }
 
+    /// <summary>
+    /// Das Desktop-Fenster selbst (Progman, mit Hintergrund) - per
+    /// PrintWindow, also auch dann, wenn Fenster darueber liegen. null, wenn
+    /// es das Fenster nicht gibt oder es sich nicht abbilden laesst.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public static byte[]? CaptureDesktopWindow()
+    {
+        var h = FindWindowW("Progman", null);
+        if (h == IntPtr.Zero || !GetWindowRect(h, out var r)) return null;
+        int w = r.Right - r.Left, hoehe = r.Bottom - r.Top;
+        if (w <= 0 || hoehe <= 0) return null;
+        var screenDc = GetDC(IntPtr.Zero);
+        if (screenDc == IntPtr.Zero) return null;
+        var memDc = IntPtr.Zero; var bitmap = IntPtr.Zero; var alt = IntPtr.Zero;
+        try
+        {
+            memDc = CreateCompatibleDC(screenDc);
+            var info = new BITMAPINFO
+            {
+                bmiHeader = new BITMAPINFOHEADER
+                {
+                    biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>(),
+                    biWidth = w, biHeight = -hoehe, biPlanes = 1, biBitCount = 32, biCompression = 0
+                }
+            };
+            bitmap = CreateDIBSection(memDc, ref info, 0, out var bits, IntPtr.Zero, 0);
+            if (bitmap == IntPtr.Zero || bits == IntPtr.Zero) return null;
+            alt = SelectObject(memDc, bitmap);
+            if (!PrintWindow(h, memDc, 2 /* PW_RENDERFULLCONTENT */)) return null;
+            var pixel = new byte[(long)w * hoehe * 4];
+            Marshal.Copy(bits, pixel, 0, pixel.Length);
+            return pixel;
+        }
+        catch { return null; }
+        finally
+        {
+            if (alt != IntPtr.Zero) SelectObject(memDc, alt);
+            if (bitmap != IntPtr.Zero) DeleteObject(bitmap);
+            if (memDc != IntPtr.Zero) DeleteDC(memDc);
+            ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+
+    /// <summary>Anteil der Bildpunkte (Stichprobe), die ungefaehr diese Farbe haben.</summary>
+    public static double ColorShare(ReadOnlySpan<byte> bgra, (byte R, byte G, byte B) f, int toleranz = 24)
+    {
+        int pixel = bgra.Length / 4, schritt = Math.Max(1, pixel / 20000), treffer = 0, gesamt = 0;
+        for (int i = 0; i < pixel; i += schritt)
+        {
+            int o = i * 4;
+            gesamt++;
+            if (Math.Abs(bgra[o] - f.B) <= toleranz && Math.Abs(bgra[o + 1] - f.G) <= toleranz && Math.Abs(bgra[o + 2] - f.R) <= toleranz)
+                treffer++;
+        }
+        return gesamt == 0 ? 0 : (double)treffer / gesamt;
+    }
+
+    /// <summary>Die haeufigste Farbe (auf 16 Stufen je Kanal gerundet) und ihr Anteil, z. B. ("#6666DD", 0.98).</summary>
+    public static (string Farbe, double Anteil) MostCommonColor(ReadOnlySpan<byte> bgra)
+    {
+        int pixel = bgra.Length / 4, schritt = Math.Max(1, pixel / 20000), gesamt = 0;
+        var zaehler = new Dictionary<int, int>();
+        for (int i = 0; i < pixel; i += schritt)
+        {
+            int o = i * 4;
+            int k = ((bgra[o + 2] >> 4) << 8) | ((bgra[o + 1] >> 4) << 4) | (bgra[o] >> 4);
+            zaehler[k] = zaehler.GetValueOrDefault(k) + 1;
+            gesamt++;
+        }
+        if (gesamt == 0) return ("-", 0);
+        var top = zaehler.OrderByDescending(x => x.Value).First();
+        return ($"#{((top.Key >> 8) & 0xF) * 17:X2}{((top.Key >> 4) & 0xF) * 17:X2}{(top.Key & 0xF) * 17:X2}", (double)top.Value / gesamt);
+    }
+
     /// <summary>Alle Monitore mit Flaeche, Hauptbildschirm-Kennung und Geraetenamen.</summary>
     [SupportedOSPlatform("windows")]
     private static List<MonitorArea> EnumMonitors()
@@ -478,6 +553,8 @@ public static class DesktopScreenshot
     [DllImport("wtsapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool WTSQuerySessionInformationW(IntPtr server, int sessionId, int infoClass, out IntPtr buffer, out int bytes);
     [DllImport("wtsapi32.dll")] private static extern void WTSFreeMemory(IntPtr memory);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowW(string? cls, string? title);
+    [DllImport("user32.dll")] private static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
 
     private const int SW_MINIMIZE = 6, SW_RESTORE = 9, GWL_EXSTYLE = -20, GW_OWNER = 4, DWMWA_CLOAKED = 14;
     private const long WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000;

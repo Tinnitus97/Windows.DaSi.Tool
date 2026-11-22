@@ -20,7 +20,7 @@
     <AssemblyName>WindowsDaSiTool</AssemblyName>
     <Product>Windows DaSi Tool</Product>
     <AssemblyTitle>Windows DaSi Tool</AssemblyTitle>
-    <Version>1.2.6</Version>
+    <Version>1.2.7</Version>
     <Description>Backup- und Restore-Tool fuer Windows-Benutzerprofile</Description>
 
     <!-- Fenster-Icon der EXE -->
@@ -54,6 +54,12 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
+
+  <!-- Die Oberflaechen-Pruefung (tests/DaSiGuiTests) setzt die Haken fuer
+       Ordner-Dialog, Browser und winget-Attrappe, die nur intern sichtbar sind. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="DaSiGuiTests" />
   </ItemGroup>
 
   <!--
