@@ -94,6 +94,15 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
     Windows es aber noch, wird jetzt das gezeigte Bild gesichert.
   - Mauszeiger übernimmt Windows beim fremden Konto erst nach der nächsten Anmeldung.
     Bisher lud es dabei die Zeiger des Admin-Kontos.
+  - **Kontrolle danach.** Ein paar Sekunden nach dem Setzen und noch einmal nach dem
+    Explorer-Neustart für die Taskleiste sieht das Tool nach, ob Registry und
+    Desktop noch zeigen, was gesetzt wurde. Dafür bildet es das Desktop-Fenster
+    selbst ab, auch unter anderen Fenstern. Hat Windows den Hintergrund geändert,
+    steht im Protokoll, was anders ist und was es sein könnte: eine Richtlinie,
+    Windows-Blickpunkt oder eine Diashow. Dann setzt das Tool ihn einmal neu. Eine
+    Richtlinie, die den Hintergrund festlegt, meldet es schon vorher als Warnung.
+    Unter Windows 11 25H2 und Windows Server geprüft: Hier blieben Volltonfarbe
+    und Bild auch nach dem Explorer-Neustart stehen.
 
 - **Chrome war nach der Wiederherstellung leer**, obwohl die Sicherung vollständig
   war. Von Hand bei geschlossenem Chrome in den Profilordner kopiert, war alles da.

@@ -2197,6 +2197,8 @@ internal static class Program
         return _failed == 0 ? 0 : 1;
     }
 
+    private static string Deutsch(string de, string en) => de;
+
     /// <summary>
     /// Hintergrund echt: setzen wie das Tool, den Explorer neu starten und am
     /// Bildschirm nachsehen. Dazu der Ablauf aus dem Protokoll eines Anwenders
@@ -2284,6 +2286,26 @@ internal static class Program
             Check("echt: Volltonfarbe eingetragen", r4.Eingetragen);
             var a4 = HintergrundEcht.Sichtbar(lila);
             Check("echt: die Volltonfarbe ist auf dem Bildschirm", a4 > 0.5, $"{a4:P0} lila");
+            var standLila = DesktopHintergrund.Lesen(hgWurzel);
+            var k1 = DesktopHintergrund.Kontrolle(standLila, Deutsch);
+            Check("echt: Kontrolle bestaetigt die gesetzte Volltonfarbe", k1 is null, k1);
+            var desktopFoto = DesktopScreenshot.CaptureDesktopWindow();
+            Console.WriteLine($"         Desktop-Fenster (PrintWindow): {(desktopFoto is null ? "nicht abbildbar" : $"{DesktopScreenshot.ColorShare(desktopFoto, lila):P0} lila, meist {DesktopScreenshot.MostCommonColor(desktopFoto)}")}");
+
+            // Kontrolle bemerkt, wenn der Desktop etwas anderes zeigt, und Erneut repariert es.
+            DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, tuerkis, hgNutzer?.ProfilePath);
+            HintergrundEcht.Sichtbar(tuerkis);
+            var k2 = DesktopHintergrund.Kontrolle(standLila, Deutsch);
+            Console.WriteLine($"         Kontrolle bei falscher Farbe: {k2 ?? "(nichts bemerkt)"}");
+            Check("echt: Kontrolle bemerkt eine andere Farbe", k2 is not null);
+            Check("echt: Unterschied in der Registry wird benannt",
+                DesktopHintergrund.Unterschied(standLila, DesktopHintergrund.Lesen(hgWurzel), Deutsch)?.Contains("Farbe") == true);
+            DesktopHintergrund.Erneut(hgWurzel, hgEigen, standLila, hgNutzer?.ProfilePath);
+            HintergrundEcht.Sichtbar(lila);
+            var k3 = DesktopHintergrund.Kontrolle(standLila, Deutsch);
+            Check("echt: erneut gesetzt - Kontrolle wieder zufrieden", k3 is null, k3);
+            var einfluesse = string.Join("; ", DesktopHintergrund.Einfluesse(hgWurzel, true, Deutsch));
+            Console.WriteLine($"         Einfluesse: {(einfluesse.Length > 0 ? einfluesse : "keine")}");
             Neustart("Volltonfarbe");
             var a5 = HintergrundEcht.Sichtbar(lila);
             Check("echt: nach dem Explorer-Neustart ist die Volltonfarbe noch da", a5 > 0.5, $"{a5:P0} lila");

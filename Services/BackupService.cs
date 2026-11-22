@@ -1232,30 +1232,83 @@ public sealed class BackupService
                          "[INFO] The backup contains no design settings (older version of the tool) - only the wallpaper is restored."));
         if (_cancel.IsCancelled) return;
 
+        // Legt eine Richtlinie den Hintergrund fest, gewinnt sie - vorher sagen.
+        if (OperatingSystem.IsWindows())
+            foreach (var e in DesktopHintergrund.Einfluesse(ziel.Wurzel, mitWechsel: false, Loc.Tr))
+                _log("[WARNUNG] " + e + ".");
+
+        bool gesetzt = false;
         if (design?.Hintergrund is { } h)
         {
             if (Hintergrund.IstVolltonfarbe(h))
             {
                 VolltonfarbeSetzen(ziel, Hintergrund.FarbeLesen(h.Farbe)!.Value);
-                return;
+                gesetzt = true;
             }
-            var bild = h.Bild is null ? null : Path.Combine(BackupPath, DesignEinstellungen.Ordner, h.Bild);
-            if (bild is null || !File.Exists(bild))
+            else
             {
-                _log(Loc.Tr($"[FEHLER] Das Hintergrundbild fehlt in der Sicherung: {bild ?? "(kein Name)"}",
-                            $"[ERROR] The wallpaper is missing from the backup: {bild ?? "(no name)"}"));
-                return;
+                var bild = h.Bild is null ? null : Path.Combine(BackupPath, DesignEinstellungen.Ordner, h.Bild);
+                if (bild is null || !File.Exists(bild))
+                {
+                    _log(Loc.Tr($"[FEHLER] Das Hintergrundbild fehlt in der Sicherung: {bild ?? "(kein Name)"}",
+                                $"[ERROR] The wallpaper is missing from the backup: {bild ?? "(no name)"}"));
+                    return;
+                }
+                await HintergrundbildSetzen(ziel, bild, h.BildPfad, h.Profil, h);
+                gesetzt = true;
             }
-            await HintergrundbildSetzen(ziel, bild, h.BildPfad, h.Profil, h);
         }
         else if (AppCatalog.HatHintergrund(BackupPath))
         {
             await HintergrundAusAlterSicherung(ziel);
+            gesetzt = true;
         }
         else
         {
             _log(Loc.Tr("[INFO] Die Sicherung enthält keinen Hintergrund.", "[INFO] The backup contains no wallpaper."));
         }
+
+        // Ein paar Sekunden spaeter nachsehen, ob Windows ihn stehen laesst.
+        if (gesetzt && OperatingSystem.IsWindows() && !_cancel.IsCancelled)
+            await HintergrundKontrollieren(ziel, DesktopHintergrund.Lesen(ziel.Wurzel),
+                                           Loc.Tr("Kontrolle nach dem Setzen", "Check after setting"));
+    }
+
+    /// <summary>
+    /// Wartet kurz und sieht nach, ob Registry und Desktop noch zeigen, was
+    /// gesetzt wurde. Wenn nicht: ins Protokoll, was anders ist und was es
+    /// sein koennte, und einmal erneut setzen.
+    /// </summary>
+    private async Task HintergrundKontrollieren(DesignZiel ziel, HintergrundStand soll, string wann)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        await Task.Delay(4000);
+        var problem = DesktopHintergrund.Unterschied(soll, DesktopHintergrund.Lesen(ziel.Wurzel), Loc.Tr)
+                      ?? DesktopHintergrund.Kontrolle(soll, Loc.Tr);
+        if (problem is null)
+        {
+            _log(Loc.Tr($"[INFO] {wann}: Der Desktop zeigt den gesetzten Hintergrund.", $"[INFO] {wann}: The desktop shows the background that was set."));
+            return;
+        }
+        _log(Loc.Tr($"[WARNUNG] {wann}: {problem}. Der Hintergrund wird erneut gesetzt.", $"[WARNING] {wann}: {problem}. Setting the background again."));
+        foreach (var e in DesktopHintergrund.Einfluesse(ziel.Wurzel, mitWechsel: true, Loc.Tr))
+            _log(Loc.Tr($"[INFO] Möglicher Grund: {e}.", $"[INFO] Possible reason: {e}."));
+        try
+        {
+            DesktopHintergrund.Erneut(ziel.Wurzel, ziel.EigenerBenutzer, soll, SourcePath);
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] Der Hintergrund ließ sich nicht erneut setzen: {ex.Message}", $"[ERROR] The background could not be set again: {ex.Message}"));
+            return;
+        }
+        await Task.Delay(3000);
+        var nochmal = DesktopHintergrund.Unterschied(soll, DesktopHintergrund.Lesen(ziel.Wurzel), Loc.Tr)
+                      ?? DesktopHintergrund.Kontrolle(soll, Loc.Tr);
+        _log(nochmal is null
+            ? Loc.Tr("[ERFOLG] Hintergrund erneut gesetzt - jetzt zeigt der Desktop ihn.", "[SUCCESS] Background set again - the desktop now shows it.")
+            : Loc.Tr($"[WARNUNG] Windows ändert den Hintergrund weiterhin: {nochmal}. Bitte unter Einstellungen > Personalisierung > Hintergrund nachsehen.",
+                     $"[WARNING] Windows keeps changing the background: {nochmal}. Please check Settings > Personalization > Background."));
     }
 
     /// <summary>Wohin Hintergrund und Design-Einstellungen gehoeren.</summary>
@@ -1770,8 +1823,24 @@ public sealed class BackupService
         // Erst die Taskleiste: Dafuer startet der Explorer neu - danach erst
         // die Desktop-Symbole an ihre Stelle, sonst ordnete der Neustart sie
         // womoeglich neu.
+        HintergrundStand? hgVorher = null;
+        if (taskleiste is not null && OperatingSystem.IsWindows())
+        {
+            var (w, e) = BenutzerZweig(schreiben: false);
+            try { hgVorher = DesktopHintergrund.Lesen(w); } finally { if (e) w.Dispose(); }
+        }
         var neuGestartet = taskleiste is not null && await TaskleisteZurueckschreiben(taskleiste);
         if (_cancel.IsCancelled) return;
+
+        // Unter manchem Windows setzt der Neustart des Explorers den
+        // Hintergrund zurueck - nachsehen und notfalls erneut setzen.
+        if (neuGestartet && hgVorher is not null && OperatingSystem.IsWindows())
+        {
+            var angemeldet = DesktopScreenshot.GetInteractiveUser();
+            var (w, e) = BenutzerZweig(schreiben: true);
+            using var ziel = new DesignZiel(w, e, !e || DesktopHintergrund.IstProzessBenutzer(angemeldet?.Sid), angemeldet?.Name);
+            await HintergrundKontrollieren(ziel, hgVorher, Loc.Tr("Hintergrund nach dem Explorer-Neustart", "Background after the Explorer restart"));
+        }
         if (layout is null)
         {
             _log(Loc.Tr("[INFO] Die Sicherung enthält keine Positionen von Desktop-Symbolen.", "[INFO] The backup contains no desktop icon positions."));

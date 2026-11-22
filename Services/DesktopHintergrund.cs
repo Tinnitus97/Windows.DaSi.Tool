@@ -208,6 +208,100 @@ public static class DesktopHintergrund
         catch { /* gesperrt - Windows vergleicht ohnehin den Pfad */ }
     }
 
+    /// <summary>
+    /// Zeigt der Desktop, was <paramref name="soll"/> sagt? Dafuer wird das
+    /// Desktop-Fenster selbst abgebildet (auch unter anderen Fenstern).
+    /// Volltonfarbe: Ueberwiegt die Farbe? Bild: Ist der Desktop nicht schwarz?
+    /// </summary>
+    /// <returns>null, wenn ja oder wenn es sich nicht pruefen laesst - sonst, was nicht stimmt.</returns>
+    public static string? Kontrolle(HintergrundStand soll, Func<string, string, string> tr)
+    {
+        var bild = DesktopScreenshot.CaptureDesktopWindow();
+        if (bild is null) return null;
+        var (meist, anteil) = DesktopScreenshot.MostCommonColor(bild);
+        // Bleibt das Abbild des Desktop-Fensters schwarz, kann das auch an
+        // PrintWindow liegen - dann zaehlt es nur, wenn auch der Bildschirm
+        // ueberwiegend schwarz ist.
+        bool schwarz = DesktopScreenshot.IsBlank(bild);
+        if (soll.Bild is null)
+        {
+            if (Hintergrund.FarbeLesen(soll.Farbe) is not { } f) return null;
+            if (DesktopScreenshot.ColorShare(bild, f) >= 0.5) return null;
+            if (schwarz && !SchirmSchwarz()) return null;
+            return tr($"Der Desktop zeigt nicht die Farbe {Hintergrund.Hex(f)}, sondern meist {meist} ({anteil:P0})",
+                      $"The desktop does not show the color {Hintergrund.Hex(f)} but mostly {meist} ({anteil:P0})");
+        }
+        return schwarz && SchirmSchwarz()
+            ? tr($"Der Desktop ist schwarz statt des Bildes {soll.Bild}", $"The desktop is black instead of the image {soll.Bild}")
+            : null;
+    }
+
+    private static bool SchirmSchwarz()
+    {
+        try { return DesktopScreenshot.ColorShare(DesktopScreenshot.CaptureVirtualScreen().Bgra, (0, 0, 0), 10) >= 0.5; }
+        catch { return false; }
+    }
+
+    /// <summary>Was sich in der Registry gegenueber <paramref name="soll"/> geaendert hat - null, wenn nichts.</summary>
+    public static string? Unterschied(HintergrundStand soll, HintergrundStand jetzt, Func<string, string, string> tr)
+    {
+        if (!string.Equals(soll.Bild ?? "", jetzt.Bild ?? "", StringComparison.OrdinalIgnoreCase))
+            return tr($"Windows hat das Bild geändert: {soll.Bild ?? "(keins)"} -> {jetzt.Bild ?? "(keins)"}",
+                      $"Windows changed the image: {soll.Bild ?? "(none)"} -> {jetzt.Bild ?? "(none)"}");
+        if (soll.Bild is null && Hintergrund.FarbeLesen(soll.Farbe) != Hintergrund.FarbeLesen(jetzt.Farbe))
+            return tr($"Windows hat die Farbe geändert: {soll.Farbe} -> {jetzt.Farbe}", $"Windows changed the color: {soll.Farbe} -> {jetzt.Farbe}");
+        if (soll.Typ is { } t && jetzt.Typ != t)
+            return tr($"Windows hat die Art geändert: {t} -> {jetzt.Typ?.ToString() ?? "-"} (0 Bild, 1 Farbe, 2 Diashow, 3 Blickpunkt)",
+                      $"Windows changed the type: {t} -> {jetzt.Typ?.ToString() ?? "-"} (0 image, 1 color, 2 slideshow, 3 Spotlight)");
+        return null;
+    }
+
+    /// <summary>Den Stand <paramref name="soll"/> noch einmal setzen.</summary>
+    public static HintergrundGesetzt Erneut(RegistryKey wurzel, bool eigenerBenutzer, HintergrundStand soll, string? profil)
+        => soll.Bild is { } b
+            ? BildSetzen(wurzel, eigenerBenutzer, b, new HintergrundEinstellung { Darstellung = soll.Stil, Kacheln = soll.Kacheln }, profil)
+            : FarbeSetzen(wurzel, eigenerBenutzer, Hintergrund.FarbeLesen(soll.Farbe) ?? ((byte)0, (byte)0, (byte)0), profil);
+
+    /// <summary>Was den Hintergrund von aussen festlegen oder wechseln kann - Richtlinien, Blickpunkt, Diashow.</summary>
+    /// <param name="mitWechsel">Auch Blickpunkt und Diashow nennen (die schaltet Windows beim Setzen normalerweise selbst ab).</param>
+    public static List<string> Einfluesse(RegistryKey wurzel, bool mitWechsel, Func<string, string, string> tr)
+    {
+        var l = new List<string>();
+        try
+        {
+            using var k = wurzel.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\System");
+            if (k?.GetValue("Wallpaper") is string w)
+                l.Add(tr($"Eine Gruppenrichtlinie legt den Hintergrund fest: \"{w}\" - sie gewinnt bei jeder Anmeldung",
+                         $"A group policy sets the background: \"{w}\" - it wins at every sign-in"));
+        }
+        catch { /* weiter */ }
+        try
+        {
+            using var k = wurzel.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\ActiveDesktop");
+            if (k?.GetValue("NoChangingWallPaper") is int n && n != 0)
+                l.Add(tr("Eine Richtlinie verbietet das Ändern des Hintergrunds", "A policy prevents changing the background"));
+        }
+        catch { /* weiter */ }
+        try
+        {
+            using var k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP");
+            if ((k?.GetValue("DesktopImagePath") ?? k?.GetValue("DesktopImageUrl")) is string p)
+                l.Add(tr($"Die Geräteverwaltung (Intune/MDM) legt das Desktopbild fest: {p}", $"Device management (Intune/MDM) sets the desktop image: {p}"));
+        }
+        catch { /* weiter */ }
+        if (!mitWechsel) return l;
+        try
+        {
+            using var k = wurzel.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings");
+            if (k?.GetValue("EnabledState") is int e && e != 0)
+                l.Add(tr("Windows-Blickpunkt für den Desktop ist noch eingeschaltet", "Windows Spotlight for the desktop is still on"));
+        }
+        catch { /* weiter */ }
+        if (Schnittstelle.Diashow() == true)
+            l.Add(tr("Eine Diashow wechselt den Hintergrund", "A slideshow changes the background"));
+        return l;
+    }
+
     private static bool IstEingetragen(RegistryKey wurzel, string pfad)
         => string.Equals(Lesen(wurzel).Bild, pfad, StringComparison.OrdinalIgnoreCase);
 
@@ -309,6 +403,13 @@ public static class DesktopHintergrund
                     return $"Bild={(bild.Length == 0 ? "-" : bild)}, Farbe={farbe}, Position={dw.GetPosition()}, Status={status}, Monitore={dw.GetMonitorDevicePathCount()}";
                 });
             }
+            catch { return null; }
+        }
+
+        /// <summary>Laeuft eine Diashow? null, wenn nicht erreichbar.</summary>
+        public static bool? Diashow()
+        {
+            try { return Sta(dw => (dw.GetStatus() & 2) != 0); }   // DSS_SLIDESHOW
             catch { return null; }
         }
 
