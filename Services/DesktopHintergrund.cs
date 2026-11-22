@@ -22,7 +22,9 @@ public sealed record HintergrundStand(string? Bild, string? Farbe, int? Typ, str
 /// <param name="Angezeigt">Hat Windows ihn fuer die laufende Sitzung uebernommen?</param>
 /// <param name="VirtuelleDesktops">So viele virtuelle Desktops hatten einen eigenen Hintergrund - angeglichen.</param>
 /// <param name="DesignDatei">Was mit der Design-Datei von Windows (Custom.theme) geschah.</param>
-public sealed record HintergrundGesetzt(bool Eingetragen, bool Angezeigt, int VirtuelleDesktops, DesignDateiErgebnis? DesignDatei = null);
+/// <param name="ExplorerFehler">null: ueber den Explorer (IDesktopWallpaper) gesetzt; sonst warum nicht - dann ueber SystemParametersInfo.</param>
+public sealed record HintergrundGesetzt(bool Eingetragen, bool Angezeigt, int VirtuelleDesktops, DesignDateiErgebnis? DesignDatei = null,
+                                        string? ExplorerFehler = null);
 
 /// <param name="Datei">Die aktuelle Design-Datei, falls bekannt.</param>
 /// <param name="Geaendert">Wurde sie angepasst?</param>
@@ -125,8 +127,8 @@ public static class DesktopHintergrund
         // Wie die Einstellungen-App ueber den Explorer (IDesktopWallpaper) -
         // dann merkt er es sich auch selbst. Sonst bzw. wenn das nicht geht:
         // SystemParametersInfo.
-        bool angezeigt = eigenerBenutzer && UeberExplorer(() => Schnittstelle.BildSetzen(pfad, e))
-                         || SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, pfad, Flags(eigenerBenutzer));
+        var explorer = eigenerBenutzer ? UeberExplorer(() => Schnittstelle.BildSetzen(pfad, e)) : "Tool läuft unter einem anderen Konto";
+        bool angezeigt = explorer is null || SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, pfad, Flags(eigenerBenutzer));
         if (Hintergrund.FarbeLesen(e?.Farbe) is { } rand) SitzungsFarbe(rand);
 
         // Mit SPIF_UPDATEINIFILE schreibt Windows den Pfad selbst noch einmal -
@@ -138,7 +140,7 @@ public static class DesktopHintergrund
             eingetragen = IstEingetragen(wurzel, pfad);
         }
         var datei = DesignDateiAngleichen(wurzel, profil, t => DesignDatei.FuerBild(t, pfad, e));
-        return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei);
+        return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei, explorer);
     }
 
     /// <summary>
@@ -175,8 +177,8 @@ public static class DesktopHintergrund
         // Unter Windows 11 merkt er sich die Farbe auch selbst und schrieb beim
         // Neustart sonst die alte zurueck. Sonst bzw. wenn das nicht geht:
         // ohne Bild zeigt der Desktop die Farbe der Sitzung.
-        if (!(eigenerBenutzer && UeberExplorer(() => Schnittstelle.FarbeSetzen(farbe, abschalten: false))))
-            SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, "", Flags(eigenerBenutzer));
+        var explorer = eigenerBenutzer ? UeberExplorer(() => Schnittstelle.FarbeSetzen(farbe, abschalten: false)) : "Tool läuft unter einem anderen Konto";
+        if (explorer is not null) SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, "", Flags(eigenerBenutzer));
         bool angezeigt = SitzungsFarbe(farbe);
 
         bool eingetragen = IstFarbeEingetragen(wurzel, farbe);
@@ -186,14 +188,14 @@ public static class DesktopHintergrund
             eingetragen = IstFarbeEingetragen(wurzel, farbe);
         }
         var datei = DesignDateiAngleichen(wurzel, profil, t => DesignDatei.FuerFarbe(t, farbe));
-        return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei);
+        return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei, explorer);
     }
 
-    /// <summary>true, wenn der Aufruf ueber IDesktopWallpaper geklappt hat.</summary>
-    private static bool UeberExplorer(Action tun)
+    /// <summary>null, wenn der Aufruf ueber IDesktopWallpaper geklappt hat - sonst der Grund.</summary>
+    private static string? UeberExplorer(Action tun)
     {
-        try { tun(); return true; }
-        catch { return false; }
+        try { tun(); return null; }
+        catch (Exception ex) { return $"{ex.GetType().Name}: {ex.Message}"; }
     }
 
     /// <summary>

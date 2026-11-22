@@ -1158,6 +1158,10 @@ public sealed class BackupService
             _log(Loc.Tr($"[INFO] {r.VirtuelleDesktops} virtuelle(r) Desktop(s) hatte(n) einen eigenen Hintergrund - angeglichen.",
                         $"[INFO] {r.VirtuelleDesktops} virtual desktop(s) had their own background - adjusted."));
         DesignDateiProtokoll(r.DesignDatei);
+        _log(r.ExplorerFehler is null
+            ? Loc.Tr("[INFO] Gesetzt über den Explorer (IDesktopWallpaper), wie die Einstellungen-App.", "[INFO] Set via Explorer (IDesktopWallpaper), like the Settings app.")
+            : Loc.Tr($"[INFO] Gesetzt über SystemParametersInfo - der Weg über den Explorer ging nicht: {r.ExplorerFehler}",
+                     $"[INFO] Set via SystemParametersInfo - the Explorer route failed: {r.ExplorerFehler}"));
         var fuer = ziel.EigenerBenutzer || ziel.Name is null ? "" : Loc.Tr($" (eingetragen für {ziel.Name})", $" (set for {ziel.Name})");
         if (r.Eingetragen && r.Angezeigt)
             _log(Loc.Tr($"[ERFOLG] Hintergrund gesetzt: {was}{fuer}.", $"[SUCCESS] Background set: {was}{fuer}."));
