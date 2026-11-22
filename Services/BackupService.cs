@@ -1382,23 +1382,20 @@ public sealed class BackupService
 
     /// <summary>
     /// Laesst Windows das Design anwenden (neue Datei unter ...\Themes im
-    /// Profil) und wartet bis 20 s, bis es uebernommen ist: die Farbe bzw. das
-    /// Bild in der Registry, sonst das Design als aktuelles.
+    /// Profil) und wartet bis 20 s, bis es uebernommen ist: Die Datei ist das
+    /// aktuelle Design, bei einer Volltonfarbe steht zudem die Farbe in der
+    /// Registry. Ein Bild setzt der Aufrufer danach ohnehin noch direkt - kennt
+    /// Windows es schon, aendert das Anwenden daran nichts.
     /// </summary>
     /// <returns>Die angewendete Datei - null, wenn Windows es nicht uebernommen hat.</returns>
     private async Task<string?> DesignAnwendenUndWarten(DesignZiel ziel, string inhalt, (byte R, byte G, byte B)? farbe, string? bild)
     {
         if (!OperatingSystem.IsWindows()) return null;
         var ordner = Path.Combine(SourcePath, @"AppData\Local\Microsoft\Windows\Themes");
-        bool Da(string datei)
-        {
-            var s = DesktopHintergrund.Lesen(ziel.Wurzel);
-            if (farbe is { } c) return Hintergrund.FarbeLesen(s.Farbe) == c;
-            if (bild is not null) return string.Equals(s.Bild, bild, StringComparison.OrdinalIgnoreCase);
-            return string.Equals(DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath), datei, StringComparison.OrdinalIgnoreCase);
-        }
         bool Aktuell(string datei)
             => string.Equals(DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath), datei, StringComparison.OrdinalIgnoreCase);
+        bool Da(string datei)
+            => Aktuell(datei) && (farbe is not { } c || Hintergrund.FarbeLesen(DesktopHintergrund.Lesen(ziel.Wurzel).Farbe) == c);
         try
         {
             // Erst die Art: Steht "Volltonfarbe" darin, nimmt Windows aus dem

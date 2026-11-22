@@ -2479,12 +2479,12 @@ internal static class Program
             {
                 var themesWd = Path.Combine(profilWd, @"AppData\Local\Microsoft\Windows\Themes");
                 var dateiWd = "";
+                bool Aktuell(string d) => string.Equals(DesktopHintergrund.DesignDateiPfad(hgWurzel, profilWd), d, StringComparison.OrdinalIgnoreCase);
                 bool Anwenden(string inhalt, int art, Func<bool> da)
                 {
                     var uhr = System.Diagnostics.Stopwatch.StartNew();
                     DesktopHintergrund.ArtEintragen(hgWurzel, art);
-                    var r = WindowsDesign.AnwendenUndWarten(themesWd, inhalt, hgNutzer.Name, _ => da(),
-                        d => string.Equals(DesktopHintergrund.DesignDateiPfad(hgWurzel, profilWd), d, StringComparison.OrdinalIgnoreCase),
+                    var r = WindowsDesign.AnwendenUndWarten(themesWd, inhalt, hgNutzer.Name, d => Aktuell(d) && da(), Aktuell,
                         TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
                     dateiWd = r.Datei;
                     Console.WriteLine($"         angewendet: {r.Gestartet} {r.Fehler}, uebernommen: {r.Uebernommen} nach {uhr.Elapsed.TotalSeconds:F1} s ({Path.GetFileName(r.Datei)})");
@@ -2510,8 +2510,7 @@ internal static class Program
 
                 var themaBild = DesignDatei.FuerWiederherstellung(DesignDatei.DateiLesen(dateiWd).Inhalt, "DaSi-Pruefung", null, rotBild, strecken, Array.Empty<DesignEintrag>());
                 var ersteDatei = dateiWd;
-                Check("echt: Windows wendet das Design mit dem Bild an (Bild in der Registry)",
-                    Anwenden(themaBild, 0, () => string.Equals(DesktopHintergrund.Lesen(hgWurzel).Bild, rotBild, StringComparison.OrdinalIgnoreCase)));
+                Check("echt: Windows wendet das Design mit dem Bild an (ist das aktuelle)", Anwenden(themaBild, 0, () => true));
                 Check("echt: zweites Anwenden unter neuem Namen, das fruehere DaSi-Design ist weg",
                     dateiWd != ersteDatei && File.Exists(dateiWd) && !File.Exists(ersteDatei));
                 DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken, hgNutzer.ProfilePath);
