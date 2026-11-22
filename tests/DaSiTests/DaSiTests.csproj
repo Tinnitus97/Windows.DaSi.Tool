@@ -3,9 +3,9 @@
   <!--
     Prueft die Dienste ohne Oberflaeche.
 
-    Bewusst KEIN Testframework und KEIN net10.0-windows: Die geprueften Dateien
-    kommen ohne Avalonia aus, dadurch laeuft die Pruefung auf einem
-    Linux-Laeufer in wenigen Sekunden.
+    Bewusst KEIN Testframework und KEIN Avalonia: Die geprueften Dateien
+    kommen ohne Oberflaeche aus. Was echtes Windows braucht, steht hinter
+    OperatingSystem.IsWindows() - die Pruefung laeuft in der CI unter Windows.
 
     Die Quelldateien werden eingebunden statt referenziert - das Hauptprojekt
     zielt auf Windows und liesse sich sonst nicht daneben uebersetzen.

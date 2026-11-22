@@ -193,6 +193,13 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   nennt sie getrennt und rät, *Desktop-Layout wiederherstellen* danach noch einmal
   auszuführen.
 
+### Geändert
+
+- **Prüfungen nur noch unter Windows.** Das Programm läuft ausschließlich unter
+  Windows; der zusätzliche Linux-Lauf in `build.yml` prüfte nur dasselbe noch
+  einmal und ist entfallen. Alle Prüfungen laufen weiterhin bei jedem Push auf
+  dem Windows-Läufer – dort auch die, die echtes Windows brauchen.
+
 ---
 
 ## [1.2.6] - 2026-11-18

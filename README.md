@@ -449,7 +449,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | **Dateioperationen** | Robocopy mit Spiegelung, Ausschlusslisten und Multithreading |
 | **Prozess-Handling** | Browser und Thunderbird werden vor dem Backup automatisch geschlossen, um Dateikonflikte zu vermeiden |
 | **Fehlerbehandlung** | Unerwartete Fehler landen in `%USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log` |
-| **Prüfungen** | `tests/DaSiTests` — Ausschlusslisten, Cloud-Erkennung, Opera-Fassungen, gesperrte Punkte, Sicherungsordner, Symbolpositionen, Bilanz, Update-Logik. Läuft bei jedem Push unter Linux und Windows; unter Windows werden dabei das Austauschskript der Selbstaktualisierung echt ausgeführt und ein Desktop-Symbol am echten Explorer-Desktop versetzt und zurückgesetzt |
+| **Prüfungen** | `tests/DaSiTests` — Ausschlusslisten, Cloud-Erkennung, Opera-Fassungen, gesperrte Punkte, Sicherungsordner, Symbolpositionen, Bilanz, Update-Logik. Läuft bei jedem Push unter Windows; dabei werden das Austauschskript der Selbstaktualisierung echt ausgeführt und ein Desktop-Symbol am echten Explorer-Desktop versetzt und zurückgesetzt |
 
 ### Selbst bauen
 
