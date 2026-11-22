@@ -69,7 +69,9 @@
        hierher, und Windows faende "winget" dann zuerst hier, im Ordner des
        Pruefprogramms, statt im Suchpfad. -->
   <Target Name="WingetAttrappeBauen" BeforeTargets="Build">
-    <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Properties="Configuration=$(Configuration)" />
+    <!-- Erst Restore (eigene Eigenschaften = eigener Durchlauf), dann bauen. -->
+    <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Restore" Properties="Configuration=$(Configuration);DaSiRestore=true" />
+    <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
   </Target>
 
 </Project>
