@@ -53,12 +53,14 @@ public static class WindowsDesign
     /// <paramref name="ordner"/>, laesst Windows sie anwenden und wartet, bis
     /// <paramref name="uebernommen"/> (bekommt den Pfad der neuen Datei) zutrifft
     /// (hoechstens <paramref name="hoechstens"/>).
-    /// Schliesst das dabei geoeffnete Einstellungen-Fenster und raeumt danach
-    /// fruehere DaSi-Designs weg - bzw. die neue Datei, wenn Windows sie nicht
-    /// uebernommen hat.
+    /// Schliesst das dabei geoeffnete Einstellungen-Fenster. Ist die neue Datei
+    /// danach das aktuelle Design (<paramref name="istAktuell"/>), werden
+    /// fruehere DaSi-Designs geloescht; sonst die neue Datei. Das aktuelle
+    /// Design wird nie geloescht.
     /// </summary>
     public static async Task<Ergebnis> AnwendenUndWarten(string ordner, string inhalt, string? benutzer,
-                                                         Func<string, bool> uebernommen, TimeSpan hoechstens)
+                                                         Func<string, bool> uebernommen, Func<string, bool> istAktuell,
+                                                         TimeSpan hoechstens)
     {
         Directory.CreateDirectory(ordner);
         var datei = Path.Combine(ordner, NeuerDateiName());
@@ -73,7 +75,8 @@ public static class WindowsDesign
             await Task.Delay(1500);
             EinstellungenSchliessen(start);
         }
-        Aufraeumen(ordner, da ? datei : null, verwerfen: da ? null : datei);
+        bool aktuell = istAktuell(datei);
+        Aufraeumen(ordner, aktuell ? datei : null, verwerfen: aktuell ? null : datei);
         return new Ergebnis(ok, da, datei, fehler);
     }
 

@@ -1397,9 +1397,16 @@ public sealed class BackupService
             if (bild is not null) return string.Equals(s.Bild, bild, StringComparison.OrdinalIgnoreCase);
             return string.Equals(DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath), datei, StringComparison.OrdinalIgnoreCase);
         }
+        bool Aktuell(string datei)
+            => string.Equals(DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath), datei, StringComparison.OrdinalIgnoreCase);
         try
         {
-            var r = await WindowsDesign.AnwendenUndWarten(ordner, inhalt, DesktopScreenshot.GetInteractiveUser()?.Name, Da, TimeSpan.FromSeconds(20));
+            // Erst die Art: Steht "Volltonfarbe" darin, nimmt Windows aus dem
+            // Design nur die Farbe, nicht das Bild.
+            if (farbe is not null) DesktopHintergrund.ArtEintragen(ziel.Wurzel, 1);
+            else if (bild is not null) DesktopHintergrund.ArtEintragen(ziel.Wurzel, 0);
+            var r = await WindowsDesign.AnwendenUndWarten(ordner, inhalt, DesktopScreenshot.GetInteractiveUser()?.Name, Da, Aktuell,
+                                                          TimeSpan.FromSeconds(20));
             if (!r.Gestartet)
                 _log(Loc.Tr($"[WARNUNG] Windows ließ das Design nicht anwenden: {r.Fehler}", $"[WARNING] Windows did not apply the theme: {r.Fehler}"));
             return r.Uebernommen ? r.Datei : null;

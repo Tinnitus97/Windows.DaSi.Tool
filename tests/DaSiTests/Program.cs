@@ -2479,10 +2479,13 @@ internal static class Program
             {
                 var themesWd = Path.Combine(profilWd, @"AppData\Local\Microsoft\Windows\Themes");
                 var dateiWd = "";
-                bool Anwenden(string inhalt, Func<bool> da)
+                bool Anwenden(string inhalt, int art, Func<bool> da)
                 {
                     var uhr = System.Diagnostics.Stopwatch.StartNew();
-                    var r = WindowsDesign.AnwendenUndWarten(themesWd, inhalt, hgNutzer.Name, _ => da(), TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+                    DesktopHintergrund.ArtEintragen(hgWurzel, art);
+                    var r = WindowsDesign.AnwendenUndWarten(themesWd, inhalt, hgNutzer.Name, _ => da(),
+                        d => string.Equals(DesktopHintergrund.DesignDateiPfad(hgWurzel, profilWd), d, StringComparison.OrdinalIgnoreCase),
+                        TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
                     dateiWd = r.Datei;
                     Console.WriteLine($"         angewendet: {r.Gestartet} {r.Fehler}, uebernommen: {r.Uebernommen} nach {uhr.Elapsed.TotalSeconds:F1} s ({Path.GetFileName(r.Datei)})");
                     return r.Uebernommen;
@@ -2492,7 +2495,7 @@ internal static class Program
                 var vorlageWd = DesignDatei.DateiLesen(aktuellesDesign).Inhalt;
                 var themaFarbe = DesignDatei.FuerWiederherstellung(vorlageWd, "DaSi-Pruefung", gruenFarbe, null, null, HintergrundEcht.AnwenderDesign());
                 Check("echt: Windows wendet das Design mit der Volltonfarbe an (Farbe in der Registry)",
-                    Anwenden(themaFarbe, () => Hintergrund.FarbeLesen(DesktopHintergrund.Lesen(hgWurzel).Farbe) == gruenFarbe));
+                    Anwenden(themaFarbe, 1, () => Hintergrund.FarbeLesen(DesktopHintergrund.Lesen(hgWurzel).Farbe) == gruenFarbe));
                 var rWd = DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, gruenFarbe, hgNutzer.ProfilePath);
                 Console.WriteLine($"         danach Volltonfarbe direkt: eingetragen {rWd.Eingetragen}, Explorer {(rWd.ExplorerFehler ?? "ok")}");
                 HintergrundEcht.Zustand("Design + Farbe", hgWurzel, hgNutzer.ProfilePath);
@@ -2508,7 +2511,7 @@ internal static class Program
                 var themaBild = DesignDatei.FuerWiederherstellung(DesignDatei.DateiLesen(dateiWd).Inhalt, "DaSi-Pruefung", null, rotBild, strecken, Array.Empty<DesignEintrag>());
                 var ersteDatei = dateiWd;
                 Check("echt: Windows wendet das Design mit dem Bild an (Bild in der Registry)",
-                    Anwenden(themaBild, () => string.Equals(DesktopHintergrund.Lesen(hgWurzel).Bild, rotBild, StringComparison.OrdinalIgnoreCase)));
+                    Anwenden(themaBild, 0, () => string.Equals(DesktopHintergrund.Lesen(hgWurzel).Bild, rotBild, StringComparison.OrdinalIgnoreCase)));
                 Check("echt: zweites Anwenden unter neuem Namen, das fruehere DaSi-Design ist weg",
                     dateiWd != ersteDatei && File.Exists(dateiWd) && !File.Exists(ersteDatei));
                 DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken, hgNutzer.ProfilePath);

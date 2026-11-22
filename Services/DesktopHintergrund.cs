@@ -388,7 +388,14 @@ public static class DesktopHintergrund
     private static uint Flags(bool eigenerBenutzer)
         => eigenerBenutzer ? SPIF_UPDATEINIFILE | SPIF_SENDCHANGE : SPIF_SENDCHANGE;
 
-    /// <summary>BackgroundType, damit Windows und die Einstellungen-App die richtige Art kennen: 0 Bild, 1 Volltonfarbe.</summary>
+    /// <summary>
+    /// BackgroundType, damit Windows und die Einstellungen-App die richtige Art
+    /// kennen: 0 Bild, 1 Volltonfarbe. Auch vor dem Anwenden einer
+    /// Design-Datei: Steht "Volltonfarbe" darin, uebernimmt Windows aus der
+    /// Datei nur die Farbe, nicht das Bild (unter Windows 11 geprueft).
+    /// </summary>
+    public static void ArtEintragen(RegistryKey wurzel, int typ) => TypEintragen(wurzel, typ);
+
     private static void TypEintragen(RegistryKey wurzel, int typ)
     {
         try
