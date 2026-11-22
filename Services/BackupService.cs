@@ -966,12 +966,14 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Hintergrund aus einer Sicherung im alten Format: Ordner
+    /// Hintergrund aus einer Sicherung im alten Format lesen: Ordner
     /// "Hintergrundbild" mit dem Bild, Hintergrundbild-Pfad.txt,
     /// Hintergrundbild-Profil.txt und ggf. Hintergrund.json (Volltonfarbe,
-    /// Darstellung).
+    /// Darstellung). Gesetzt wird er wie beim neuen Format - ueber das
+    /// Windows-Design.
     /// </summary>
-    private async Task HintergrundAusAlterSicherung(DesignZiel ziel)
+    /// <returns>Die Einstellung (Art, Farbe, Darstellung, Originalpfad, Profil) und das gesicherte Bild - (null, null), wenn nichts Brauchbares da ist.</returns>
+    private async Task<(HintergrundEinstellung? Einstellung, string? Bild)> AlteSicherungLesen()
     {
         var srcDir = Path.Combine(BackupPath, "Hintergrundbild");
         var pathFile = Path.Combine(srcDir, WallpaperPathFile);
@@ -980,16 +982,12 @@ public sealed class BackupService
         {
             _log(Loc.Tr("[FEHLER] Keine Hintergrundbild-Sicherung gefunden.",
                         "[ERROR] No wallpaper backup found."));
-            return;
+            return (null, null);
         }
 
         // Volltonfarbe statt Bild?
         var einstellung = Hintergrund.Laden(srcDir);
-        if (Hintergrund.IstVolltonfarbe(einstellung))
-        {
-            VolltonfarbeSetzen(ziel, Hintergrund.FarbeLesen(einstellung!.Farbe)!.Value);
-            return;
-        }
+        if (Hintergrund.IstVolltonfarbe(einstellung)) return (einstellung, null);
 
         // Originalpfad und gesichertes Profil einlesen (falls vorhanden).
         string? originalPath = null, originalProfile = null;
@@ -1027,21 +1025,14 @@ public sealed class BackupService
         {
             _log(Loc.Tr("[FEHLER] In der Sicherung wurde kein Bild gefunden.",
                         "[ERROR] No image was found in the backup."));
-            return;
+            return (null, null);
         }
 
-        await HintergrundbildSetzen(ziel, backupImage, originalPath, originalProfile, einstellung);
-    }
-
-    /// <summary>
-    /// Legt das Bild aus der Sicherung ins gewaehlte Profil (an die Stelle, an
-    /// der es auf dem alten Rechner lag) und setzt es als Hintergrund - samt
-    /// Darstellung und Randfarbe, falls gesichert.
-    /// </summary>
-    private async Task HintergrundbildSetzen(DesignZiel ziel, string backupImage, string? originalPath, string? originalProfile, HintergrundEinstellung? einstellung)
-    {
-        var ziel_pfad = await HintergrundbildBereitstellen(backupImage, originalPath, originalProfile);
-        if (ziel_pfad is not null) BildDirektSetzen(ziel, ziel_pfad, einstellung);
+        var e = einstellung ?? new HintergrundEinstellung();
+        e.Art = "Bild";
+        e.BildPfad = originalPath;
+        e.Profil = originalProfile;
+        return (e, backupImage);
     }
 
     /// <summary>Als Hintergrund setzen - Registry, Sitzung, Design-Datei - samt Darstellung und Randfarbe.</summary>
@@ -1273,13 +1264,17 @@ public sealed class BackupService
             foreach (var e in DesktopHintergrund.Einfluesse(ziel.Wurzel, mitWechsel: false, Loc.Tr))
                 _log("[WARNUNG] " + e + ".");
 
-        // 1. Den Hintergrund bereitlegen: Farbe oder Bild (ins Profil kopiert).
+        // 1. Den Hintergrund bereitlegen: Farbe oder Bild (ins Profil kopiert) -
+        //    aus Design.json oder aus einer Sicherung im alten Format
+        //    (Ordner "Hintergrundbild", bis Version 1.2.6).
         var h = design?.Hintergrund;
+        string? gesichert = h?.Bild is null ? null : Path.Combine(BackupPath, DesignEinstellungen.Ordner, h.Bild);
+        if (h is null && AppCatalog.HatHintergrund(BackupPath))
+            (h, gesichert) = await AlteSicherungLesen();
         (byte R, byte G, byte B)? farbe = Hintergrund.IstVolltonfarbe(h) ? Hintergrund.FarbeLesen(h!.Farbe) : null;
         string? bild = null;
         if (h is not null && farbe is null)
         {
-            var gesichert = h.Bild is null ? null : Path.Combine(BackupPath, DesignEinstellungen.Ordner, h.Bild);
             if (gesichert is null || !File.Exists(gesichert))
             {
                 _log(Loc.Tr($"[FEHLER] Das Hintergrundbild fehlt in der Sicherung: {gesichert ?? "(kein Name)"}",
@@ -1321,12 +1316,7 @@ public sealed class BackupService
             BildDirektSetzen(ziel, bild, h);
             gesetzt = true;
         }
-        else if (h is null && AppCatalog.HatHintergrund(BackupPath))
-        {
-            await HintergrundAusAlterSicherung(ziel);
-            gesetzt = true;
-        }
-        else if (h is null)
+        else if (h is null && !AppCatalog.HatHintergrund(BackupPath))
         {
             _log(Loc.Tr("[INFO] Die Sicherung enthält keinen Hintergrund.", "[INFO] The backup contains no wallpaper."));
         }
