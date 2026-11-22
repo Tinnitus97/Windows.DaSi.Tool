@@ -738,6 +738,23 @@ public sealed class BackupService
 
     private const string PrinterFileName = "Drucker.printerExport";
 
+    /// <summary>
+    /// Der Fehler, den PrintBrm in seiner Ausgabe nennt - null, wenn keiner.
+    ///
+    /// PrintBrm endet auch dann mit Exit-Code 0, wenn es scheitert, etwa an
+    /// einer unbrauchbaren Sicherungsdatei: "The following error occurred:
+    /// 0x80070057. / The parameter is incorrect." (unter Windows geprueft).
+    /// Erkennbar ist das am Fehlercode (HRESULT 0x8...) - in jeder Sprache.
+    /// </summary>
+    internal static string? PrintBrmFehler(string? ausgabe)
+    {
+        if (string.IsNullOrWhiteSpace(ausgabe)) return null;
+        var zeilen = ausgabe.Split('\n').Select(z => z.Trim()).Where(z => z.Length > 0).ToList();
+        var i = zeilen.FindIndex(z => System.Text.RegularExpressions.Regex.IsMatch(z, @"\b0x8[0-9A-Fa-f]{7}\b"));
+        // Die Zeile mit dem Code und die Erklaerung dahinter.
+        return i < 0 ? null : string.Join(" ", zeilen.Skip(i).Take(2));
+    }
+
     public async Task ExportPrinters()
     {
         var brm = FindPrintBrm();
@@ -854,7 +871,10 @@ public sealed class BackupService
             return;
         }
 
-        if (r.ExitCode == 0)
+        // PrintBrm endet auch bei manchem Fehlschlag mit 0 - etwa bei einer
+        // unbrauchbaren Sicherungsdatei. Frueher stand dann "[ERFOLG]" da.
+        var fehler = PrintBrmFehler(r.Output);
+        if (r.ExitCode == 0 && fehler is null)
         {
             _log(Loc.Tr("[ERFOLG] Drucker wiederhergestellt.", "[SUCCESS] Printers restored."));
             _log(Loc.Tr("[INFO] Hinweis: Netzwerkdrucker sind nur erreichbar, wenn der Druckserver verfügbar ist.",
@@ -862,8 +882,8 @@ public sealed class BackupService
         }
         else
         {
-            _log(Loc.Tr($"[FEHLER] Druckerwiederherstellung fehlgeschlagen (ExitCode: {r.ExitCode}).",
-                        $"[ERROR] Printer restore failed (ExitCode: {r.ExitCode})."));
+            _log(Loc.Tr($"[FEHLER] Druckerwiederherstellung fehlgeschlagen (ExitCode: {r.ExitCode}{(fehler is null ? "" : ", " + fehler)}).",
+                        $"[ERROR] Printer restore failed (ExitCode: {r.ExitCode}{(fehler is null ? "" : ", " + fehler)})."));
             if (!string.IsNullOrWhiteSpace(r.Output))
                 _log(Loc.Tr("[INFO] PrintBrm-Ausgabe: ", "[INFO] PrintBrm output: ") + r.Output.Trim());
         }

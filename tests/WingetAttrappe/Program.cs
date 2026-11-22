@@ -10,6 +10,7 @@ using System.Linq;
 //   source list             Ausgabe von "source list"        ("winget  https://cdn.winget.microsoft.com/cache")
 //   source list.code        Rueckgabe                        (0)
 //   source reset.code / source update.code                   (0)
+//   source list.warte       so viele Millisekunden warten    (0)
 //   export.datei            Datei, die nach -o kopiert wird  (keine -> keine Datei)
 //   export.ausgabe / export.code
 //   show.<Id>.code          (1 = unbekannt)
@@ -42,6 +43,7 @@ switch (befehl)
 
     case "source":
         var was = "source " + (args.Length > 1 ? args[1] : "");
+        System.Threading.Thread.Sleep(Code(was + ".warte", 0));
         if (was == "source list")
             Console.WriteLine(Wert("source list", "Name   Argument\n-----------------------------------------\nwinget https://cdn.winget.microsoft.com/cache"));
         return Code(was + ".code", 0);

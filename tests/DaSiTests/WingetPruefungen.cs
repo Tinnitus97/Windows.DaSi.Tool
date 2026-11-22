@@ -99,6 +99,25 @@ internal static partial class Program
         Check("Abbruch: Pruefung meldet 'Abgebrochen'", !stand.Ready && stand.Problem == "Abgebrochen.", stand.Problem);
         c.Reset();
 
+        // Abbruch, waehrend winget seine Paketquellen liest.
+        log.Leeren();
+        Attrappen.WingetSzenario(root, Szenario(("source list.warte", "8000")));
+        var laeuft = Neu().CheckReadinessAsync();
+        System.Threading.Thread.Sleep(2000);
+        c.RequestCancel();
+        stand = laeuft.GetAwaiter().GetResult();
+        c.Reset();
+        Check("Abbruch waehrend der Paketquellen-Pruefung: 'Abgebrochen'", !stand.Ready && stand.Problem == "Abgebrochen." && !log.Hat("setze sie zurück"), $"{stand.Problem} {log.Text}");
+
+        // Ohne Attrappe: das winget dieses Rechners suchen (Suchpfad, Alias, App-Installer-Ordner).
+        log.Leeren();
+        Environment.SetEnvironmentVariable("DASI_WINGET_ATTRAPPE", null);
+        var echt = new WingetService(runner, c, log.Schreiben) { Nachinstallation = () => System.Threading.Tasks.Task.FromResult(false) };
+        var echtStand = echt.CheckReadinessAsync().GetAwaiter().GetResult();
+        Console.WriteLine($"         winget dieses Rechners: {(echtStand.Ready ? "bereit, " + echtStand.Version : echtStand.Problem)}");
+        Check("winget dieses Rechners: gefunden und bereit - oder nicht bereit mit Grund",
+            (echtStand.Ready && log.Hat("Verwende winget")) || (!echtStand.Ready && !string.IsNullOrEmpty(echtStand.Hint)), log.Text);
+
         // ---- Export ----
         Console.WriteLine("\n== winget-Export: Filter, Bekannt-Liste, alte Liste bleibt bei Fehlern ==");
         var sicherung = Path.Combine(root, "winget-sicherung");

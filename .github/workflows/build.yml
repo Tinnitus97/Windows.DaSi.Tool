@@ -64,7 +64,7 @@ jobs:
       # Ausnahmen nur mit Begruendung in tests/abdeckung-ausnahmen.txt.
       - name: Jede Funktion geprüft?
         if: always()
-        run: python tools/abdeckung.py abdeckung/dienste.xml abdeckung/gui.xml
+        run: python tools/abdeckung.py abdeckung/dienste.xml abdeckung/gui.xml --pflicht
 
       - uses: actions/upload-artifact@v7
         if: always()

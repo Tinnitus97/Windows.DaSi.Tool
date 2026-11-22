@@ -115,6 +115,16 @@ internal static partial class Program
 
         DesktopSymboleUeberDienst(root, c, runner);
 
+        Console.WriteLine("\n== PrintBrm: Fehler in der Ausgabe trotz Exit-Code 0 ==");
+        // Genau so von PrintBrm unter Windows Server 2025 ausgegeben (Exit-Code 0).
+        var englisch = "Operation mode: restore\r\nTarget server: local machine\r\nThe following error occurred: 0x80070057.\r\nThe parameter is incorrect.\r\n\r\nCheck the eventlog for detailed information about the error which occurred.";
+        Check("Fehlercode und Erklaerung erkannt (englisch)",
+            BackupService.PrintBrmFehler(englisch) == "The following error occurred: 0x80070057. The parameter is incorrect.", BackupService.PrintBrmFehler(englisch));
+        Check("Fehlercode erkannt (deutsch)", BackupService.PrintBrmFehler("Betriebsmodus: Wiederherstellen\nFolgender Fehler ist aufgetreten: 0x80070002.\nDas System kann die Datei nicht finden.")
+            ?.Contains("0x80070002") == true);
+        Check("Erfolg ohne Fehlercode: kein Fehler", BackupService.PrintBrmFehler("Operation mode: restore\nSuccessfully finished operation.") is null
+            && BackupService.PrintBrmFehler(null) is null && BackupService.PrintBrmFehler("") is null);
+
         if (!OperatingSystem.IsWindows()) return;
 
         // ---- Profil, AppData, Cloud mit echtem robocopy ----
@@ -366,7 +376,8 @@ internal static partial class Program
         }
         log.Leeren();
         d.ImportPrinters().Wait();
-        Check("Drucker-Import: Ergebnis gemeldet", log.Hat("Drucker wiederhergestellt") || log.Hat("Druckerwiederherstellung fehlgeschlagen"), log.Text);
+        Check("Drucker-Import: unbrauchbare Sicherung - trotz Exit-Code 0 als Fehler erkannt",
+            log.Hat("Druckerwiederherstellung fehlgeschlagen") && log.Hat("0x8") && !log.Hat("[ERFOLG]"), log.Text);
     }
 
     /// <summary>
@@ -493,6 +504,43 @@ internal static partial class Program
         Check("alte Sicherung: Hintergrund gesetzt", log.Hat("[ERFOLG] Hintergrund gesetzt") || log.Hat("[WARNUNG] Hintergrund eingetragen"), log.Text);
         Check("alte Sicherung: ohne Design-Einstellungen nur der Hintergrund", log.Hat("enthält keine Design-Einstellungen"), log.Text);
 
+        // Eine Sicherung mit Volltonfarbe statt Bild.
+        var farbig = Path.Combine(root, "echt", "Volltonfarbe");
+        DesignEinstellungen.Speichern(farbig, new DesignSicherung
+        {
+            Rechner = "ALT", Erstellt = DateTime.Now,
+            Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "30 90 150" },
+        });
+        log.Leeren();
+        new BackupService(runner, c, log.Schreiben) { SourcePath = profil, BackupPath = farbig }.ImportDesign().Wait();
+        Check("Volltonfarbe aus der Sicherung gesetzt", log.Hat("Volltonfarbe RGB 30, 90, 150") && Hintergrund.FarbeLesen(DesktopHintergrund.Lesen(Microsoft.Win32.Registry.CurrentUser).Farbe) == (30, 90, 150), log.Text);
+
+        // Laeuft das Tool unter einem anderen Konto: nur eintragen, Windows zeigt es nach der Anmeldung.
+        var fremd = DesktopHintergrund.FarbeSetzen(Microsoft.Win32.Registry.CurrentUser, eigenerBenutzer: false, (40, 40, 40), profil);
+        Check("anderes Konto: eingetragen, ohne den Weg ueber den Explorer", fremd.Eingetragen && fremd.ExplorerFehler == "Tool läuft unter einem anderen Konto", fremd.ExplorerFehler);
+
+        // Schwarzer Desktop, erwartet war ein Bild: Kontrolle sieht auch auf den Bildschirm.
+        DesktopHintergrund.FarbeSetzen(Microsoft.Win32.Registry.CurrentUser, eigenerBenutzer: true, (0, 0, 0), profil);
+        Thread.Sleep(1500);
+        var schwarz = DesktopHintergrund.Kontrolle(new HintergrundStand(@"C:\Bilder\Urlaub.png", "0 0 0", 0, "10", "0", Array.Empty<string>()), Deutsch);
+        Console.WriteLine($"         Kontrolle bei schwarzem Desktop: {schwarz ?? "(Bildschirm nicht ueberwiegend schwarz)"}");
+        Check("schwarzer Desktop statt Bild: erkannt (oder Bildschirm nicht schwarz)", schwarz is null || schwarz.Contains("schwarz statt des Bildes"), schwarz);
+
+        // Ein Design anwenden ohne bekannten Benutzer (direkt ueber explorer.exe) - und mit einem, den es nicht gibt.
+        var aktuell = DesktopHintergrund.DesignDateiPfad(Microsoft.Win32.Registry.CurrentUser, profil);
+        if (aktuell is not null && File.Exists(aktuell))
+        {
+            var kopie = Path.Combine(Path.GetDirectoryName(aktuell)!, WindowsDesign.NeuerDateiName());
+            File.Copy(aktuell, kopie);
+            var seit = DateTime.Now;
+            var (ok, fehler) = WindowsDesign.Anwenden(kopie, null).GetAwaiter().GetResult();
+            Check("Design ohne bekannten Benutzer: direkt ueber explorer.exe", ok, fehler);
+            Thread.Sleep(4000);
+            WindowsDesign.EinstellungenSchliessen(seit);
+            var (ok2, fehler2) = WindowsDesign.Anwenden(kopie, @"NIEMAND\gibt-es-nicht").GetAwaiter().GetResult();
+            Check("Design fuer einen unbekannten Benutzer: abgelehnt, mit Grund", !ok2 && !string.IsNullOrWhiteSpace(fehler2), fehler2);
+        }
+
         log.Leeren();
         d.ImportDesign().Wait();
         Check("eigenes Design zurueck: Einstellungen uebernommen", log.Hat("[ERFOLG] Design-Einstellungen übernommen"), log.Text);
@@ -515,9 +563,34 @@ internal static partial class Program
         Check("echte Symbole: gesichert oder leerer Desktop gemeldet",
             log.Hat("Desktop-Symbolen gesichert") || log.Hat("keine Symbole"), log.Text);
         Check("echte Taskleiste: gesichert oder nichts angeheftet", log.Hat("Taskleiste gesichert") || log.Hat("nichts angeheftet"), log.Text);
+
+        // Die Sicherung so abwandeln, dass am echten Desktop alles umgestellt
+        // wird: anderes Raster, automatisch anordnen, ein Systemsymbol mehr.
+        var ordner = Path.Combine(d.BackupPath, DesktopIcons.FolderName);
+        var layout = DesktopIcons.Laden(DesktopIcons.Datei(d.BackupPath)) ?? new DesktopLayout
+        {
+            Rechner = Environment.MachineName, Benutzer = Environment.UserName, Erstellt = DateTime.Now, Breite = 1024, Hoehe = 768,
+            Symbole = { new DesktopIcon("::{645FF040-5081-101B-9F08-00AA002F954E}", "Papierkorb", 20, 20) },
+        };
+        DesktopIcons.Speichern(Path.Combine(root, "echt", "SymboleOriginal", DesktopIcons.FolderName), layout);
+        layout.AmRasterAusrichten = !layout.AmRasterAusrichten;
+        layout.AutomatischAnordnen = true;
+        layout.Symbole.Add(new DesktopIcon("::{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}", "Netzwerk", 120, 20));
+        DesktopIcons.Speichern(ordner, layout);
+
         log.Leeren();
         d.RestoreDesktopIcons().Wait();
-        Check("echte Symbole und Taskleiste zurueck", log.Hat("Taskleiste wiederhergestellt") || log.Hat("Desktop-Symbolen an ihre gesicherte Stelle gesetzt")
-            || log.Hat("keine Positionen"), log.Text);
+        Check("echte Symbole und Taskleiste zurueck", log.Hat("Taskleiste wiederhergestellt") || log.Hat("Desktop-Symbolen an ihre gesicherte Stelle gesetzt"), log.Text);
+        Check("echter Desktop: Raster wie in der Sicherung umgestellt", log.Hat("am Raster ausrichten"), log.Text);
+        Check("echter Desktop: automatisch anordnen wieder an", log.Hat("so ist es jetzt auch hier"), log.Text);
+        Check("echter Desktop: Systemsymbol 'Netzwerk' eingeschaltet", log.Hat("Systemsymbole eingeschaltet") && log.Hat("Netzwerk"), log.Text);
+
+        // Und wieder wie vorher.
+        var zurueck = new BackupService(new ProcessRunner(c), c, log.Schreiben)
+        {
+            SourcePath = d.SourcePath,
+            BackupPath = Path.Combine(root, "echt", "SymboleOriginal"),
+        };
+        zurueck.RestoreDesktopIcons().Wait();
     }
 }

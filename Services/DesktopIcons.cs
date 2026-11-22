@@ -66,7 +66,7 @@ public interface IDesktopView : IDisposable
     /// <summary>Setzt das Symbol mit diesem Index (aus dem letzten <see cref="Symbole"/>) an eine Stelle.</summary>
     void Setzen(int index, int x, int y);
     /// <summary>Laesst den Explorer den Desktop neu einlesen (wie F5).</summary>
-    void Aktualisieren() { }
+    void Aktualisieren();
 }
 
 /// <summary>

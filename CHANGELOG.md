@@ -65,6 +65,14 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Behoben
 
+- **Drucker wiederherstellen meldete Erfolg, obwohl PrintBrm scheiterte.**
+  PrintBrm endet auch bei manchem Fehlschlag mit dem Rückgabewert 0 – etwa bei
+  einer unbrauchbaren Sicherungsdatei („The following error occurred:
+  0x80070057. The parameter is incorrect.“). Das Tool schrieb dann „[ERFOLG]
+  Drucker wiederhergestellt“ ins Protokoll und in die Bilanz. Jetzt zählt auch
+  der Fehlercode in der Ausgabe von PrintBrm; das Protokoll nennt ihn samt
+  Erklärung. Aufgefallen durch die neue Prüfung des Sicherungsdienstes.
+
 - **Hintergrund nach einem Neustart wieder schwarz bzw. weg.** Nach dem
   Wiederherstellen war der Hintergrund zu sehen. Nach einem Neustart von Windows
   bzw. der nächsten Anmeldung war er schwarz bzw. wieder der alte. Der
