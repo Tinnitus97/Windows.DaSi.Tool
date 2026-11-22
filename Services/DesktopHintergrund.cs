@@ -122,7 +122,11 @@ public static class DesktopHintergrund
     {
         int vd = BildEintragen(wurzel, pfad, e);
         if (!eigenerBenutzer) ZwischenspeicherVerwerfen(wurzel, profil);
-        bool angezeigt = SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, pfad, Flags(eigenerBenutzer));
+        // Wie die Einstellungen-App ueber den Explorer (IDesktopWallpaper) -
+        // dann merkt er es sich auch selbst. Sonst bzw. wenn das nicht geht:
+        // SystemParametersInfo.
+        bool angezeigt = eigenerBenutzer && UeberExplorer(() => Schnittstelle.BildSetzen(pfad, e))
+                         || SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, pfad, Flags(eigenerBenutzer));
         if (Hintergrund.FarbeLesen(e?.Farbe) is { } rand) SitzungsFarbe(rand);
 
         // Mit SPIF_UPDATEINIFILE schreibt Windows den Pfad selbst noch einmal -
@@ -167,8 +171,12 @@ public static class DesktopHintergrund
     {
         int vd = FarbeEintragen(wurzel, farbe);
         if (!eigenerBenutzer) ZwischenspeicherVerwerfen(wurzel, profil);
-        // Ohne Bild zeigt der Desktop die Farbe.
-        SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, "", Flags(eigenerBenutzer));
+        // Wie die Einstellungen-App ueber den Explorer (IDesktopWallpaper):
+        // Unter Windows 11 merkt er sich die Farbe auch selbst und schrieb beim
+        // Neustart sonst die alte zurueck. Sonst bzw. wenn das nicht geht:
+        // ohne Bild zeigt der Desktop die Farbe der Sitzung.
+        if (!(eigenerBenutzer && UeberExplorer(() => Schnittstelle.FarbeSetzen(farbe, abschalten: false))))
+            SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, "", Flags(eigenerBenutzer));
         bool angezeigt = SitzungsFarbe(farbe);
 
         bool eingetragen = IstFarbeEingetragen(wurzel, farbe);
@@ -179,6 +187,13 @@ public static class DesktopHintergrund
         }
         var datei = DesignDateiAngleichen(wurzel, profil, t => DesignDatei.FuerFarbe(t, farbe));
         return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei);
+    }
+
+    /// <summary>true, wenn der Aufruf ueber IDesktopWallpaper geklappt hat.</summary>
+    private static bool UeberExplorer(Action tun)
+    {
+        try { tun(); return true; }
+        catch { return false; }
     }
 
     /// <summary>

@@ -1288,39 +1288,22 @@ public sealed class BackupService
         }
         var werte = design?.Werte ?? new List<DesignEintrag>();
 
-        // 2. Windows das Design selbst anwenden lassen - wie ein Doppelklick
-        //    auf eine .theme-Datei. Nur so bleibt es auch nach dem Neustart des
-        //    Explorers bzw. von Windows (Windows 11 merkt sich den Hintergrund
-        //    zusaetzlich selbst).
-        bool hintergrundDa = false;
-        if (OperatingSystem.IsWindows() && (farbe is not null || bild is not null || werte.Count > 0))
-            hintergrundDa = await DesignVonWindowsAnwenden(ziel, farbe, bild, h, werte);
-        if (_cancel.IsCancelled) return;
-
-        // 3. Die Einstellungen ausdruecklich eintragen - erst JETZT: Stuenden
-        //    sie vorher schon da, saehe Windows beim Anwenden keinen Wechsel
-        //    und sagte Taskleiste und Fenstern nicht Bescheid (CLInstall).
-        //    Taskleiste und Start stehen ohnehin nicht in der Design-Datei.
+        // 2. Die Design-Einstellungen (Hell/Dunkel, Akzentfarbe, Zeiger ...).
         if (werte.Count > 0) DesignEinstellungenSetzen(design!, ziel);
         else _log(Loc.Tr("[INFO] Die Sicherung enthält keine Design-Einstellungen (ältere Fassung des Tools) - nur der Hintergrund wird wiederhergestellt.",
                          "[INFO] The backup contains no design settings (older version of the tool) - only the wallpaper is restored."));
         if (_cancel.IsCancelled) return;
 
-        // 4. Den Hintergrund direkt setzen - nur, wenn er mit dem Design nicht kam.
+        // 3. Der Hintergrund.
         bool gesetzt = false;
         if (farbe is { } f)
         {
-            if (hintergrundDa)
-                _log(Loc.Tr($"[ERFOLG] Hintergrund gesetzt: Volltonfarbe RGB {f.R}, {f.G}, {f.B} ({Hintergrund.Hex(f)}) - über das Windows-Design.",
-                            $"[SUCCESS] Background set: solid color RGB {f.R}, {f.G}, {f.B} ({Hintergrund.Hex(f)}) - via the Windows theme."));
-            else VolltonfarbeSetzen(ziel, f);
+            VolltonfarbeSetzen(ziel, f);
             gesetzt = true;
         }
         else if (bild is not null)
         {
-            if (hintergrundDa)
-                _log(Loc.Tr($"[ERFOLG] Hintergrund gesetzt: {bild} - über das Windows-Design.", $"[SUCCESS] Background set: {bild} - via the Windows theme."));
-            else BildDirektSetzen(ziel, bild, h);
+            BildDirektSetzen(ziel, bild, h);
             gesetzt = true;
         }
         else if (h is null && AppCatalog.HatHintergrund(BackupPath))
@@ -1337,86 +1320,6 @@ public sealed class BackupService
         if (gesetzt && OperatingSystem.IsWindows() && !_cancel.IsCancelled)
             await HintergrundKontrollieren(ziel, DesktopHintergrund.Lesen(ziel.Wurzel),
                                            Loc.Tr("Kontrolle nach dem Setzen", "Check after setting"));
-    }
-
-    /// <summary>Die Design-Datei, die Windows in diesem Lauf angewendet hat - fuer ein erneutes Anwenden.</summary>
-    private string? _angewandtesDesign;
-
-    /// <summary>
-    /// Baut aus der aktuellen Design-Datei des Benutzers eine mit den Werten
-    /// der Sicherung (Hintergrund, Hell/Dunkel, Akzentfarbe, Mauszeiger) und
-    /// laesst Windows sie als der angemeldete Benutzer anwenden.
-    /// </summary>
-    /// <returns>true, wenn der Hintergrund danach in der Registry steht.</returns>
-    private async Task<bool> DesignVonWindowsAnwenden(DesignZiel ziel, (byte R, byte G, byte B)? farbe, string? bild,
-                                                      HintergrundEinstellung? h, List<DesignEintrag> werte)
-    {
-        if (!OperatingSystem.IsWindows()) return false;
-        string? vorlage = null;
-        try
-        {
-            if (DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath) is { } aktuell && File.Exists(aktuell))
-                vorlage = DesignDatei.DateiLesen(aktuell).Inhalt;
-        }
-        catch { /* dann ohne */ }
-        if (vorlage is null)
-        {
-            _log(Loc.Tr("[INFO] Kein aktuelles Windows-Design lesbar - Hintergrund und Einstellungen werden direkt eingetragen.",
-                        "[INFO] No current Windows theme readable - background and settings are written directly."));
-            return false;
-        }
-
-        var inhalt = DesignDatei.ZumAnwenden(vorlage, Loc.Tr("Design aus der Sicherung (DaSi)", "Theme from the backup (DaSi)"));
-        if (farbe is { } f) inhalt = DesignDatei.FuerFarbe(inhalt, f);
-        else if (bild is not null) inhalt = DesignDatei.FuerBild(inhalt, bild, h);
-        if (werte.Count > 0) inhalt = DesignDatei.FuerDesign(inhalt, werte);
-
-        var datei = Path.Combine(SourcePath, @"AppData\Local\Microsoft\Windows\Themes", WindowsDesign.DateiName);
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(datei)!);
-            DesignDatei.DateiSchreiben(datei, inhalt, new System.Text.UnicodeEncoding(false, true));
-        }
-        catch (Exception ex)
-        {
-            _log(Loc.Tr($"[WARNUNG] Die Design-Datei ließ sich nicht anlegen ({ex.Message}) - es wird direkt eingetragen.",
-                        $"[WARNING] The theme file could not be created ({ex.Message}) - writing directly instead."));
-            return false;
-        }
-
-        _log(Loc.Tr("[INFO] Windows wendet das Design aus der Sicherung an - wie ein Doppelklick auf die Design-Datei ...",
-                    "[INFO] Windows applies the theme from the backup - like double-clicking the theme file ..."));
-        var start = DateTime.Now;
-        var benutzer = DesktopScreenshot.GetInteractiveUser()?.Name;
-        var (ok, fehler) = await WindowsDesign.Anwenden(datei, benutzer);
-        if (!ok)
-        {
-            _log(Loc.Tr($"[WARNUNG] Windows ließ das Design nicht anwenden ({fehler}) - es wird direkt eingetragen.",
-                        $"[WARNING] Windows did not apply the theme ({fehler}) - writing directly instead."));
-            return false;
-        }
-        _angewandtesDesign = datei;
-
-        // Warten, bis Windows es uebernommen hat (bis 20 s).
-        bool Da()
-        {
-            var s = DesktopHintergrund.Lesen(ziel.Wurzel);
-            if (farbe is { } c) return s.Bild is null && Hintergrund.FarbeLesen(s.Farbe) == c;
-            if (bild is not null) return string.Equals(s.Bild, bild, StringComparison.OrdinalIgnoreCase);
-            return string.Equals(DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath), datei, StringComparison.OrdinalIgnoreCase);
-        }
-        var uhr = System.Diagnostics.Stopwatch.StartNew();
-        bool da;
-        while (!(da = Da()) && uhr.Elapsed < TimeSpan.FromSeconds(20)) await Task.Delay(500);
-        await Task.Delay(1500);
-        WindowsDesign.EinstellungenSchliessen(start);
-
-        _log(da
-            ? Loc.Tr($"[ERFOLG] Windows hat das Design aus der Sicherung angewendet ({WindowsDesign.DateiName}, unter Personalisierung > Designs auswählbar).",
-                     $"[SUCCESS] Windows applied the theme from the backup ({WindowsDesign.DateiName}, selectable under Personalization > Themes).")
-            : Loc.Tr("[WARNUNG] Windows hat das Design nicht (rechtzeitig) übernommen - Hintergrund und Einstellungen werden direkt eingetragen.",
-                     "[WARNING] Windows did not apply the theme (in time) - background and settings are written directly."));
-        return da && (farbe is not null || bild is not null);
     }
 
     /// <summary>
@@ -1440,19 +1343,7 @@ public sealed class BackupService
             _log(Loc.Tr($"[INFO] Möglicher Grund: {e}.", $"[INFO] Possible reason: {e}."));
         try
         {
-            if (_angewandtesDesign is { } d && File.Exists(d) && OperatingSystem.IsWindows())
-            {
-                var start = DateTime.Now;
-                await WindowsDesign.Anwenden(d, DesktopScreenshot.GetInteractiveUser()?.Name);
-                await Task.Delay(3000);
-                WindowsDesign.EinstellungenSchliessen(start);
-                if (DesktopHintergrund.Unterschied(soll, DesktopHintergrund.Lesen(ziel.Wurzel), Loc.Tr) is not null)
-                    DesktopHintergrund.Erneut(ziel.Wurzel, ziel.EigenerBenutzer, soll, SourcePath);
-            }
-            else
-            {
-                DesktopHintergrund.Erneut(ziel.Wurzel, ziel.EigenerBenutzer, soll, SourcePath);
-            }
+            DesktopHintergrund.Erneut(ziel.Wurzel, ziel.EigenerBenutzer, soll, SourcePath);
         }
         catch (Exception ex)
         {

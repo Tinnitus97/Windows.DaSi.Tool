@@ -45,7 +45,6 @@
     <Compile Include="../../Services/ExplorerNeustart.cs" />
     <Compile Include="../../Services/DesktopHintergrund.cs" />
     <Compile Include="../../Services/DesignDatei.cs" />
-    <Compile Include="../../Services/WindowsDesign.cs" />
     <Compile Include="../../Services/Localizer.cs" />
   </ItemGroup>
 

@@ -70,21 +70,13 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   bzw. der nächsten Anmeldung war er schwarz bzw. wieder der alte. Der
   Explorer-Neustart für die Taskleiste ist es nicht: Er liest den Hintergrund
   nicht neu ein, das ist unter Windows geprüft. Ursachen und Abhilfe:
-  - **Windows wendet das Design jetzt selbst an.** Unter Windows 11 merkt sich der
-    Explorer den Hintergrund auch in einem eigenen Speicher. Beim Neustart des
-    Explorers bzw. von Windows schrieb er die alte Farbe zurück, obwohl Registry
-    und Design-Datei stimmten. Über die Einstellungen gewählt, blieb sie. Das Tool
-    baut deshalb aus der aktuellen Design-Datei eine eigene mit den Werten der
-    Sicherung: Hintergrund, Hell/Dunkel, Akzentfarbe und Mauszeiger. Gespeichert
-    wird sie als `DaSi-Wiederherstellung.theme`, unter *Personalisierung > Designs*
-    auswählbar. Windows wendet sie wie bei einem Doppelklick an, und zwar als der
-    angemeldete Benutzer: Eine kurzlebige geplante Aufgabe startet `explorer.exe`
-    mit der Datei, wie in CLInstall. Das gilt auch, wenn das Tool unter einem
-    anderen Konto läuft (Administratorschutz „ADMIN_…“ oder fremde Anmeldedaten).
-    Erst danach trägt das Tool die übrigen Einstellungen ein, etwa Taskleiste und
-    Start. Hätten Hell/Dunkel vorher schon in der Registry gestanden, sähe Windows
-    keinen Wechsel und sagte den Fenstern nicht Bescheid. Klappt das Anwenden
-    nicht, setzt das Tool Hintergrund und Einstellungen wie bisher direkt.
+  - **Über den Explorer wie die Einstellungen-App.** Unter Windows 11 merkt sich
+    der Explorer den Hintergrund auch selbst. Beim Neustart des Explorers bzw. von
+    Windows schrieb er die alte Farbe zurück, obwohl Registry und Design-Datei
+    stimmten. Über die Einstellungen gewählt, blieb sie. Läuft das Tool als der
+    angemeldete Benutzer, setzt es Bild bzw. Volltonfarbe jetzt über dieselbe
+    Schnittstelle wie die Einstellungen-App (`IDesktopWallpaper`). Nur wenn das
+    nicht geht, nutzt es wie bisher `SystemParametersInfo`.
   - **Hauptursache: die Design-Datei von Windows.** Windows führt das aktuelle
     Design zusätzlich in einer Datei, meist `…\AppData\Local\Microsoft\Windows\Themes\Custom.theme`.
     Beim Anmelden übernimmt es Werte daraus wieder in die Registry. In einer
@@ -92,8 +84,8 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
     war vor dem Neustart da, danach wieder schwarz. Eine über die Einstellungen
     gewählte Farbe blieb erhalten, denn die Einstellungen-App schreibt auch in diese
     Datei. Jetzt trägt das Tool dort ebenfalls ein, was es setzt:
-    - beim Hintergrund das Bild samt Darstellung bzw. die Volltonfarbe, und eine
-      Diashow fällt weg;
+    - beim Hintergrund das Bild samt Darstellung bzw. die Volltonfarbe (das Bild
+      bleibt dabei stehen, wie bei der Einstellungen-App), und eine Diashow fällt weg;
     - bei den Design-Einstellungen Hell/Dunkel, Akzentfarbe, „automatisch“ und die
       Mauszeiger, soweit die Datei sie führt.
 
