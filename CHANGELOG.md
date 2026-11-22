@@ -70,6 +70,21 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   bzw. der nächsten Anmeldung war er schwarz bzw. wieder der alte. Der
   Explorer-Neustart für die Taskleiste ist es nicht: Er liest den Hintergrund
   nicht neu ein, das ist unter Windows geprüft. Ursachen und Abhilfe:
+  - **Windows wendet das Design jetzt selbst an.** Unter Windows 11 merkt sich der
+    Explorer den Hintergrund auch in einem eigenen Speicher. Beim Neustart des
+    Explorers bzw. von Windows schrieb er die alte Farbe zurück, obwohl Registry
+    und Design-Datei stimmten. Über die Einstellungen gewählt, blieb sie. Das Tool
+    baut deshalb aus der aktuellen Design-Datei eine eigene mit den Werten der
+    Sicherung: Hintergrund, Hell/Dunkel, Akzentfarbe und Mauszeiger. Gespeichert
+    wird sie als `DaSi-Wiederherstellung.theme`, unter *Personalisierung > Designs*
+    auswählbar. Windows wendet sie wie bei einem Doppelklick an, und zwar als der
+    angemeldete Benutzer: Eine kurzlebige geplante Aufgabe startet `explorer.exe`
+    mit der Datei, wie in CLInstall. Das gilt auch, wenn das Tool unter einem
+    anderen Konto läuft (Administratorschutz „ADMIN_…“ oder fremde Anmeldedaten).
+    Erst danach trägt das Tool die übrigen Einstellungen ein, etwa Taskleiste und
+    Start. Hätten Hell/Dunkel vorher schon in der Registry gestanden, sähe Windows
+    keinen Wechsel und sagte den Fenstern nicht Bescheid. Klappt das Anwenden
+    nicht, setzt das Tool Hintergrund und Einstellungen wie bisher direkt.
   - **Hauptursache: die Design-Datei von Windows.** Windows führt das aktuelle
     Design zusätzlich in einer Datei, meist `…\AppData\Local\Microsoft\Windows\Themes\Custom.theme`.
     Beim Anmelden übernimmt es Werte daraus wieder in die Registry. In einer

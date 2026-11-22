@@ -192,22 +192,12 @@ public static class DesktopHintergrund
     /// <param name="profil">Profilordner des Benutzers; null: der des Prozesses.</param>
     public static DesignDateiErgebnis DesignDateiAngleichen(RegistryKey wurzel, string? profil, Func<string, string> anpassen)
     {
-        string? pfad;
-        try
-        {
-            using var k = wurzel.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes");
-            pfad = k?.GetValue("CurrentTheme") as string;
-        }
-        catch (Exception ex) { return new DesignDateiErgebnis(null, false, ex.Message); }
-        if (string.IsNullOrWhiteSpace(pfad)) return new DesignDateiErgebnis(null, false, "kein aktuelles Design eingetragen");
-
         profil ??= Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var p = profil.TrimEnd('\\', '/');
-        // %LOCALAPPDATA% & Co. gehoeren zum Benutzer der Datei, nicht zum Prozess.
-        pfad = pfad.Replace("%LOCALAPPDATA%", p + @"\AppData\Local", StringComparison.OrdinalIgnoreCase)
-                   .Replace("%APPDATA%", p + @"\AppData\Roaming", StringComparison.OrdinalIgnoreCase)
-                   .Replace("%USERPROFILE%", p, StringComparison.OrdinalIgnoreCase);
-        pfad = Environment.ExpandEnvironmentVariables(pfad);
+        string? pfad;
+        try { pfad = DesignDateiPfad(wurzel, profil); }
+        catch (Exception ex) { return new DesignDateiErgebnis(null, false, ex.Message); }
+        if (pfad is null) return new DesignDateiErgebnis(null, false, "kein aktuelles Design eingetragen");
         if (!pfad.StartsWith(p + "\\", StringComparison.OrdinalIgnoreCase))
             return new DesignDateiErgebnis(pfad, false, "Windows-Design außerhalb des Profils - bleibt unverändert");
         if (!System.IO.File.Exists(pfad)) return new DesignDateiErgebnis(pfad, false, "Datei fehlt");
@@ -349,6 +339,24 @@ public static class DesktopHintergrund
         if (Schnittstelle.Diashow() == true)
             l.Add(tr("Eine Diashow wechselt den Hintergrund", "A slideshow changes the background"));
         return l;
+    }
+
+    /// <summary>
+    /// Die aktuelle Design-Datei des Benutzers (CurrentTheme), ausgeschrieben -
+    /// %LOCALAPPDATA% &amp; Co. bezogen auf SEIN Profil, nicht das des Prozesses.
+    /// null, wenn keine eingetragen ist.
+    /// </summary>
+    public static string? DesignDateiPfad(RegistryKey wurzel, string? profil)
+    {
+        string? pfad;
+        using (var k = wurzel.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes"))
+            pfad = k?.GetValue("CurrentTheme") as string;
+        if (string.IsNullOrWhiteSpace(pfad)) return null;
+        var p = (profil ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)).TrimEnd('\\', '/');
+        pfad = pfad.Replace("%LOCALAPPDATA%", p + @"\AppData\Local", StringComparison.OrdinalIgnoreCase)
+                   .Replace("%APPDATA%", p + @"\AppData\Roaming", StringComparison.OrdinalIgnoreCase)
+                   .Replace("%USERPROFILE%", p, StringComparison.OrdinalIgnoreCase);
+        return Environment.ExpandEnvironmentVariables(pfad);
     }
 
     private static bool IstEingetragen(RegistryKey wurzel, string pfad)

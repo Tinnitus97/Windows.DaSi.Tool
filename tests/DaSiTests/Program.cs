@@ -1449,6 +1449,12 @@ internal static class Program
                 DesignDatei.Lesen(ohneFarben, DesignDatei.FarbenAbschnitt, "Background") == "1 2 3" && ohneFarben.Contains("[Control Panel\\Desktop]\nWallpaper=") && !ohneFarben.Contains('\r'));
             var neuerSchluessel = DesignDatei.Setzen("[A]\r\nx=1\r\n\r\n[B]\r\ny=2\r\n", "A", "z", "3");
             Check("neuer Schluessel ans Ende seines Abschnitts, vor die Leerzeile", neuerSchluessel == "[A]\r\nx=1\r\nz=3\r\n\r\n[B]\r\ny=2\r\n", neuerSchluessel);
+            var eigenes = DesignDatei.ZumAnwenden("[Theme]\r\nDisplayName=@%SystemRoot%\\x.dll,-1\r\nThemeId={1234}\r\nSetLogonBackground=0\r\n\r\n[Control Panel\\Desktop]\r\nWallpaper=a.jpg\r\n", "Design aus der Sicherung (DaSi)");
+            Check("zum Anwenden: eigener Name, ohne ThemeId, Rest bleibt",
+                DesignDatei.Lesen(eigenes, "Theme", "DisplayName") == "Design aus der Sicherung (DaSi)" && DesignDatei.Lesen(eigenes, "Theme", "ThemeId") is null
+                && eigenes.Contains("SetLogonBackground=0\r\n") && DesignDatei.Lesen(eigenes, DesignDatei.DesktopAbschnitt, "Wallpaper") == "a.jpg", eigenes);
+            Check("Schluessel entfernen: fehlender Schluessel/Abschnitt aendert nichts",
+                DesignDatei.SchluesselEntfernen("[A]\nx=1\n", "A", "y") == "[A]\nx=1\n" && DesignDatei.SchluesselEntfernen("[A]\nx=1\n", "B", "x") == "[A]\nx=1\n");
             Check("Gross-/Kleinschreibung bei Abschnitt und Schluessel egal",
                 DesignDatei.Lesen("[control panel\\COLORS]\r\nbackground = 9 9 9\r\n", DesignDatei.FarbenAbschnitt, "Background") == "9 9 9");
 
@@ -2447,6 +2453,48 @@ internal static class Program
             using (var vd = hgWurzel.OpenSubKey(DesktopHintergrund.VirtuelleDesktopsSchluessel, true))
                 foreach (var n in vd?.GetSubKeyNames() ?? Array.Empty<string>())
                     using (var d = vd!.OpenSubKey(n, true)) d?.DeleteValue("Wallpaper", false);
+
+            // 5c. Wie das Tool jetzt: aus der aktuellen Design-Datei eine eigene
+            //     bauen (Volltonfarbe) und Windows sie ALS der angemeldete
+            //     Benutzer anwenden lassen - geplante Aufgabe, explorer.exe.
+            Console.WriteLine("   -- Windows wendet das Design an (geplante Aufgabe, explorer.exe) --");
+            var aktuellesDesign = DesktopHintergrund.DesignDateiPfad(hgWurzel, hgNutzer?.ProfilePath);
+            Console.WriteLine($"         aktuelles Design: {aktuellesDesign ?? "-"}");
+            if (aktuellesDesign is not null && File.Exists(aktuellesDesign) && hgNutzer?.ProfilePath is { } profilWd)
+            {
+                var gruenFarbe = ((byte)16, (byte)124, (byte)16);
+                var themaWd = DesignDatei.FuerFarbe(DesignDatei.ZumAnwenden(DesignDatei.DateiLesen(aktuellesDesign).Inhalt, "DaSi-Pruefung"), gruenFarbe);
+                var dateiWd = Path.Combine(profilWd, @"AppData\Local\Microsoft\Windows\Themes", WindowsDesign.DateiName);
+                Directory.CreateDirectory(Path.GetDirectoryName(dateiWd)!);
+                DesignDatei.DateiSchreiben(dateiWd, themaWd, new System.Text.UnicodeEncoding(false, true));
+                var startWd = DateTime.Now;
+                var (okWd, fehlerWd) = WindowsDesign.Anwenden(dateiWd, hgNutzer.Name).GetAwaiter().GetResult();
+                Console.WriteLine($"         angewendet: {okWd} {fehlerWd}");
+                Check("echt: Windows laesst das Design ueber eine geplante Aufgabe anwenden", okWd, fehlerWd);
+                var uhrWd = System.Diagnostics.Stopwatch.StartNew();
+                while (uhrWd.Elapsed < TimeSpan.FromSeconds(20)
+                       && Hintergrund.FarbeLesen(DesktopHintergrund.Lesen(hgWurzel).Farbe) != gruenFarbe)
+                    System.Threading.Thread.Sleep(500);
+                System.Threading.Thread.Sleep(1500);
+                WindowsDesign.EinstellungenSchliessen(startWd);
+                Console.WriteLine($"         nach {uhrWd.Elapsed.TotalSeconds:F1} s");
+                HintergrundEcht.Zustand("nach dem Anwenden", hgWurzel, hgNutzer.ProfilePath);
+                var stWd = DesktopHintergrund.Lesen(hgWurzel);
+                Check("echt: Windows hat die Volltonfarbe aus dem Design uebernommen (Registry)",
+                    stWd.Bild is null && Hintergrund.FarbeLesen(stWd.Farbe) == gruenFarbe, $"Bild={stWd.Bild}, Farbe={stWd.Farbe}");
+                Check("echt: das angewendete Design ist jetzt das aktuelle",
+                    string.Equals(DesktopHintergrund.DesignDateiPfad(hgWurzel, hgNutzer.ProfilePath), dateiWd, StringComparison.OrdinalIgnoreCase),
+                    DesktopHintergrund.DesignDateiPfad(hgWurzel, hgNutzer.ProfilePath));
+                var vWd = HintergrundEcht.Verlauf("Design angewendet", gruenFarbe, 1, 3);
+                Check("echt: der Desktop zeigt die Farbe aus dem Design", vWd > 0.5, $"{vWd:P0}");
+                Neustart("Design angewendet");
+                var v2Wd = HintergrundEcht.Verlauf("Design angewendet, nach dem Explorer-Neustart", gruenFarbe, 1, 4);
+                Check("echt: nach dem Explorer-Neustart noch da", v2Wd > 0.5, $"{v2Wd:P0}");
+            }
+            else
+            {
+                Console.WriteLine("         (keine Design-Datei - uebersprungen)");
+            }
 
             // 6./7. Dasselbe ueber IDesktopWallpaper - die Schnittstelle der Einstellungen-App.
             Console.WriteLine($"   -- IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Stand() ?? "nicht erreichbar"} --");

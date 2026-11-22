@@ -84,6 +84,17 @@ public static class DesignDatei
         return t;
     }
 
+    /// <summary>
+    /// Aus der aktuellen Design-Datei eine eigene machen, die Windows anwenden
+    /// soll: eigener Anzeigename, ohne die Kennung des Vorbilds (ThemeId) -
+    /// sonst hielte Windows sie fuer dasselbe Design.
+    /// </summary>
+    public static string ZumAnwenden(string vorlage, string anzeigename)
+    {
+        var t = Setzen(vorlage, "Theme", "DisplayName", anzeigename);
+        return SchluesselEntfernen(t, "Theme", "ThemeId");
+    }
+
     // ------------------------------------------------------------ INI
 
     /// <summary>Wert eines Schluessels - null, wenn es Abschnitt oder Schluessel nicht gibt.</summary>
@@ -129,6 +140,18 @@ public static class DesignDatei
     /// <summary>Setzt einen Schluessel nur, wenn es ihn schon gibt.</summary>
     public static string NurWennVorhanden(string inhalt, string abschnitt, string schluessel, string wert)
         => Lesen(inhalt, abschnitt, schluessel) is null ? inhalt : Setzen(inhalt, abschnitt, schluessel, wert);
+
+    /// <summary>Entfernt einen Schluessel, falls es ihn gibt.</summary>
+    public static string SchluesselEntfernen(string inhalt, string abschnitt, string schluessel)
+    {
+        var (zeilen, umbruch, schlussUmbruch) = Zerlegen(inhalt);
+        var (von, bis) = Bereich(zeilen, abschnitt);
+        if (von < 0) return inhalt;
+        int i = Zeile(zeilen, von, bis, schluessel);
+        if (i < 0) return inhalt;
+        zeilen.RemoveAt(i);
+        return Zusammensetzen(zeilen, umbruch, schlussUmbruch);
+    }
 
     /// <summary>Entfernt einen ganzen Abschnitt samt Kopfzeile.</summary>
     public static string AbschnittEntfernen(string inhalt, string abschnitt)
