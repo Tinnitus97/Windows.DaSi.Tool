@@ -21,7 +21,13 @@ public sealed record HintergrundStand(string? Bild, string? Farbe, int? Typ, str
 /// <param name="Eingetragen">Steht der Hintergrund danach in der Registry des Benutzers?</param>
 /// <param name="Angezeigt">Hat Windows ihn fuer die laufende Sitzung uebernommen?</param>
 /// <param name="VirtuelleDesktops">So viele virtuelle Desktops hatten einen eigenen Hintergrund - angeglichen.</param>
-public sealed record HintergrundGesetzt(bool Eingetragen, bool Angezeigt, int VirtuelleDesktops);
+/// <param name="DesignDatei">Was mit der Design-Datei von Windows (Custom.theme) geschah.</param>
+public sealed record HintergrundGesetzt(bool Eingetragen, bool Angezeigt, int VirtuelleDesktops, DesignDateiErgebnis? DesignDatei = null);
+
+/// <param name="Datei">Die aktuelle Design-Datei, falls bekannt.</param>
+/// <param name="Geaendert">Wurde sie angepasst?</param>
+/// <param name="Grund">Warum nicht - null, wenn sie schon passte oder angepasst wurde.</param>
+public sealed record DesignDateiErgebnis(string? Datei, bool Geaendert, string? Grund);
 
 /// <summary>
 /// Liest und setzt den Desktop-Hintergrund eines Benutzers.
@@ -127,7 +133,8 @@ public static class DesktopHintergrund
             BildEintragen(wurzel, pfad, e);
             eingetragen = IstEingetragen(wurzel, pfad);
         }
-        return new HintergrundGesetzt(eingetragen, angezeigt, vd);
+        var datei = DesignDateiAngleichen(wurzel, profil, t => DesignDatei.FuerBild(t, pfad, e));
+        return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei);
     }
 
     /// <summary>
@@ -170,7 +177,49 @@ public static class DesktopHintergrund
             FarbeEintragen(wurzel, farbe);
             eingetragen = IstFarbeEingetragen(wurzel, farbe);
         }
-        return new HintergrundGesetzt(eingetragen, angezeigt, vd);
+        var datei = DesignDateiAngleichen(wurzel, profil, t => DesignDatei.FuerFarbe(t, farbe));
+        return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei);
+    }
+
+    /// <summary>
+    /// Traegt eine Aenderung auch in die aktuelle Design-Datei des Benutzers ein
+    /// (CurrentTheme, meist ...\Themes\Custom.theme). Windows uebernimmt beim
+    /// Anmelden Werte daraus wieder in die Registry - ohne diesen Schritt war
+    /// eine Volltonfarbe nach dem Neustart wieder die alte. Angefasst wird nur
+    /// eine Datei im Profil des Benutzers, nie ein Windows-Design unter
+    /// C:\Windows.
+    /// </summary>
+    /// <param name="profil">Profilordner des Benutzers; null: der des Prozesses.</param>
+    public static DesignDateiErgebnis DesignDateiAngleichen(RegistryKey wurzel, string? profil, Func<string, string> anpassen)
+    {
+        string? pfad;
+        try
+        {
+            using var k = wurzel.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes");
+            pfad = k?.GetValue("CurrentTheme") as string;
+        }
+        catch (Exception ex) { return new DesignDateiErgebnis(null, false, ex.Message); }
+        if (string.IsNullOrWhiteSpace(pfad)) return new DesignDateiErgebnis(null, false, "kein aktuelles Design eingetragen");
+
+        profil ??= Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var p = profil.TrimEnd('\\', '/');
+        // %LOCALAPPDATA% & Co. gehoeren zum Benutzer der Datei, nicht zum Prozess.
+        pfad = pfad.Replace("%LOCALAPPDATA%", p + @"\AppData\Local", StringComparison.OrdinalIgnoreCase)
+                   .Replace("%APPDATA%", p + @"\AppData\Roaming", StringComparison.OrdinalIgnoreCase)
+                   .Replace("%USERPROFILE%", p, StringComparison.OrdinalIgnoreCase);
+        pfad = Environment.ExpandEnvironmentVariables(pfad);
+        if (!pfad.StartsWith(p + "\\", StringComparison.OrdinalIgnoreCase))
+            return new DesignDateiErgebnis(pfad, false, "Windows-Design außerhalb des Profils - bleibt unverändert");
+        if (!System.IO.File.Exists(pfad)) return new DesignDateiErgebnis(pfad, false, "Datei fehlt");
+        try
+        {
+            var (inhalt, kodierung) = DesignDatei.DateiLesen(pfad);
+            var neu = anpassen(inhalt);
+            if (neu == inhalt) return new DesignDateiErgebnis(pfad, false, null);
+            DesignDatei.DateiSchreiben(pfad, neu, kodierung);
+            return new DesignDateiErgebnis(pfad, true, null);
+        }
+        catch (Exception ex) { return new DesignDateiErgebnis(pfad, false, ex.Message); }
     }
 
     /// <summary>Nur die Registry: Farbe, kein Bild, Art "Volltonfarbe".</summary>

@@ -1136,6 +1136,7 @@ public sealed class BackupService
         if (r.VirtuelleDesktops > 0)
             _log(Loc.Tr($"[INFO] {r.VirtuelleDesktops} virtuelle(r) Desktop(s) hatte(n) einen eigenen Hintergrund - angeglichen.",
                         $"[INFO] {r.VirtuelleDesktops} virtual desktop(s) had their own background - adjusted."));
+        DesignDateiProtokoll(r.DesignDatei);
         var fuer = ziel.EigenerBenutzer || ziel.Name is null ? "" : Loc.Tr($" (eingetragen für {ziel.Name})", $" (set for {ziel.Name})");
         if (r.Eingetragen && r.Angezeigt)
             _log(Loc.Tr($"[ERFOLG] Hintergrund gesetzt: {was}{fuer}.", $"[SUCCESS] Background set: {was}{fuer}."));
@@ -1145,6 +1146,19 @@ public sealed class BackupService
         else
             _log(Loc.Tr($"[FEHLER] Der Hintergrund ließ sich nicht dauerhaft eintragen ({was}) - nach einem Neustart wäre er wieder weg.",
                         $"[ERROR] The background could not be saved permanently ({was}) - it would be gone after a restart."));
+    }
+
+    /// <summary>Was mit der Design-Datei von Windows geschah - ins Protokoll.</summary>
+    private void DesignDateiProtokoll(DesignDateiErgebnis? d)
+    {
+        if (d is null) return;
+        var name = d.Datei is null ? "" : Path.GetFileName(d.Datei);
+        if (d.Geaendert)
+            _log(Loc.Tr($"[INFO] Auch in der Design-Datei von Windows eingetragen ({name}) - sonst setzt Windows beim nächsten Anmelden den alten Stand zurück.",
+                        $"[INFO] Also written to the Windows theme file ({name}) - otherwise Windows restores the old state at the next sign-in."));
+        else if (d.Grund is not null)
+            _log(Loc.Tr($"[INFO] Design-Datei von Windows nicht angepasst ({(d.Datei ?? "-")}): {d.Grund}.",
+                        $"[INFO] Windows theme file not adjusted ({(d.Datei ?? "-")}): {d.Grund}."));
     }
 
     /// <summary>Die ersten Bytes einer Datei - fuer die Bildart. Leer, wenn sie sich nicht lesen laesst.</summary>
@@ -1400,6 +1414,10 @@ public sealed class BackupService
             var ergebnis = DesignRegistry.Uebernehmen(ziel.Wurzel, sicherung.Werte, ziel.EigenerBenutzer);
             var (gesetzt, ohneDatei, nichtSchreibbar) = (ergebnis.Gesetzt, ergebnis.OhneDatei, ergebnis.NichtSchreibbar);
             bool zeiger = ergebnis.Zeiger;
+            // Hell/Dunkel, Akzentfarbe und Zeiger auch in der Design-Datei - die
+            // liest Windows beim Anmelden.
+            if (OperatingSystem.IsWindows())
+                DesignDateiProtokoll(DesktopHintergrund.DesignDateiAngleichen(ziel.Wurzel, SourcePath, t => DesignDatei.FuerDesign(t, gesetzt)));
 
             var kurz = DesignEinstellungen.Zusammenfassung(gesetzt, Loc.Tr);
             _log(Loc.Tr($"[ERFOLG] Design-Einstellungen übernommen ({gesetzt.Count} Werte: {DesignEinstellungen.Gruppen(gesetzt)}){(kurz.Length > 0 ? " - " + kurz : "")}.",

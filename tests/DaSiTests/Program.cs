@@ -1419,6 +1419,88 @@ internal static class Program
                 AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerHg)?.De);
         }
 
+        Console.WriteLine("\n== Design-Datei von Windows (Custom.theme) ==");
+        {
+            // So sah sie beim Anwender aus (gekuerzt): Windows setzte beim
+            // Anmelden Background=0 0 0 zurueck in die Registry.
+            const string thema = "; Copyright © Microsoft Corp.\r\n\r\n[Theme]\r\nDisplayName=Benutzerdefiniert\r\nSetLogonBackground=0\r\n\r\n"
+                + "[Control Panel\\Cursors]\r\nArrow=%SystemRoot%\\cursors\\aero_arrow.cur\r\nDefaultValue=Windows Default\r\n\r\n"
+                + "[Control Panel\\Desktop]\r\nWallpaper=%SystemRoot%\\web\\wallpaper\\Windows\\img0.jpg\r\nTileWallpaper=0\r\nWallpaperStyle=10\r\n\r\n"
+                + "[VisualStyles]\r\nPath=%ResourceDir%\\Themes\\Aero\\Aero.msstyles\r\nColorStyle=NormalColor\r\nAutoColorization=0\r\nColorizationColor=0XC40078D4\r\nSystemMode=Light\r\nAppMode=Light\r\n\r\n"
+                + "[Slideshow]\r\nInterval=1800000\r\nShuffle=1\r\n\r\n"
+                + "[Control Panel\\Colors]\r\nBackground=0 0 0\r\n";
+            var farbe = DesignDatei.FuerFarbe(thema, ((byte)107, (byte)105, (byte)214));
+            Check("Volltonfarbe: Background in [Control Panel\\Colors] ersetzt", DesignDatei.Lesen(farbe, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214");
+            Check("Volltonfarbe: kein Bild mehr, keine Diashow",
+                DesignDatei.Lesen(farbe, DesignDatei.DesktopAbschnitt, "Wallpaper") == "" && !farbe.Contains("[Slideshow]") && !farbe.Contains("Interval="));
+            Check("Volltonfarbe: alles andere unveraendert, Zeilenenden CRLF",
+                farbe.Contains("DisplayName=Benutzerdefiniert\r\n") && farbe.Contains("ColorizationColor=0XC40078D4") && farbe.Contains("TileWallpaper=0")
+                && !farbe.Replace("\r\n", "").Contains('\n') && farbe.EndsWith("\r\n"));
+            var bild = DesignDatei.FuerBild(thema, @"C:\Users\Anwender\Pictures\Urlaub.jpg",
+                new HintergrundEinstellung { Darstellung = "6", Kacheln = "0", Farbe = "0 99 177" });
+            Check("Bild: Pfad, Darstellung und Randfarbe eingetragen",
+                DesignDatei.Lesen(bild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\Anwender\Pictures\Urlaub.jpg"
+                && DesignDatei.Lesen(bild, DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "6"
+                && DesignDatei.Lesen(bild, DesignDatei.FarbenAbschnitt, "Background") == "0 99 177" && !bild.Contains("[Slideshow]"));
+            Check("WallpaperStyle ist nicht Wallpaper (Schluessel genau verglichen)",
+                DesignDatei.Lesen(DesignDatei.Setzen(thema, DesignDatei.DesktopAbschnitt, "Wallpaper", "x"), DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "10");
+            var ohneFarben = DesignDatei.FuerFarbe("[Theme]\nDisplayName=x\n", ((byte)1, (byte)2, (byte)3));
+            Check("fehlende Abschnitte werden angelegt (LF bleibt LF)",
+                DesignDatei.Lesen(ohneFarben, DesignDatei.FarbenAbschnitt, "Background") == "1 2 3" && ohneFarben.Contains("[Control Panel\\Desktop]\nWallpaper=") && !ohneFarben.Contains('\r'));
+            var neuerSchluessel = DesignDatei.Setzen("[A]\r\nx=1\r\n\r\n[B]\r\ny=2\r\n", "A", "z", "3");
+            Check("neuer Schluessel ans Ende seines Abschnitts, vor die Leerzeile", neuerSchluessel == "[A]\r\nx=1\r\nz=3\r\n\r\n[B]\r\ny=2\r\n", neuerSchluessel);
+            Check("Gross-/Kleinschreibung bei Abschnitt und Schluessel egal",
+                DesignDatei.Lesen("[control panel\\COLORS]\r\nbackground = 9 9 9\r\n", DesignDatei.FarbenAbschnitt, "Background") == "9 9 9");
+
+            var design = DesignDatei.FuerDesign(thema, new[]
+            {
+                new DesignEintrag { Gruppe = "Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = "SystemUsesLightTheme", Typ = "DWord", Wert = "0" },
+                new DesignEintrag { Gruppe = "Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = "AppsUseLightTheme", Typ = "DWord", Wert = "1" },
+                new DesignEintrag { Gruppe = "Akzentfarbe", Schluessel = @"Software\Microsoft\Windows\DWM", Name = "ColorizationColor", Typ = "DWord", Wert = "-1006602028" },
+                new DesignEintrag { Gruppe = "Akzentfarbe", Schluessel = @"Control Panel\Desktop", Name = "AutoColorization", Typ = "String", Wert = "1" },
+                new DesignEintrag { Gruppe = "Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = "", Typ = "String", Wert = "Windows-Voreinstellung (groß)" },
+                new DesignEintrag { Gruppe = "Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = "Arrow", Typ = "ExpandString", Wert = @"%SystemRoot%\cursors\aero_arrow_l.cur" },
+                new DesignEintrag { Gruppe = "Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = "Hand", Typ = "String", Wert = @"C:\x.cur" },
+            });
+            Check("Design: Hell/Dunkel als SystemMode/AppMode",
+                DesignDatei.Lesen(design, DesignDatei.StilAbschnitt, "SystemMode") == "Dark" && DesignDatei.Lesen(design, DesignDatei.StilAbschnitt, "AppMode") == "Light");
+            Check("Design: Akzentfarbe als 0X-Wert, automatisch uebernommen",
+                DesignDatei.Lesen(design, DesignDatei.StilAbschnitt, "ColorizationColor") == "0XC40078D4"
+                && DesignDatei.Lesen(design, DesignDatei.StilAbschnitt, "AutoColorization") == "1");
+            Check("Design: Zeigerschema als DefaultValue, Zeiger ersetzt, unbekannte nicht angelegt",
+                DesignDatei.Lesen(design, DesignDatei.ZeigerAbschnitt, "DefaultValue") == "Windows-Voreinstellung (groß)"
+                && DesignDatei.Lesen(design, DesignDatei.ZeigerAbschnitt, "Arrow") == @"%SystemRoot%\cursors\aero_arrow_l.cur"
+                && DesignDatei.Lesen(design, DesignDatei.ZeigerAbschnitt, "Hand") is null);
+
+            // Kodierung bleibt: UTF-16 mit BOM, UTF-8 mit BOM, ASCII; Umlaut in ASCII -> UTF-16.
+            var dd = Path.Combine(root, "design-datei");
+            Directory.CreateDirectory(dd);
+            foreach (var (name, kod) in new (string, System.Text.Encoding)[]
+            {
+                ("utf16", new System.Text.UnicodeEncoding(false, true)), ("utf8", new System.Text.UTF8Encoding(true)), ("ascii", System.Text.Encoding.ASCII),
+            })
+            {
+                var thDatei = Path.Combine(dd, name + ".theme");
+                var thStart = "[Control Panel\\Colors]\r\nBackground=0 0 0\r\n";
+                File.WriteAllBytes(thDatei, kod.GetPreamble().Concat(kod.GetBytes(thStart)).ToArray());
+                var (gelesen, erkannt) = DesignDatei.DateiLesen(thDatei);
+                DesignDatei.DateiSchreiben(thDatei, DesignDatei.FuerFarbe(gelesen, ((byte)107, (byte)105, (byte)214)), erkannt);
+                var thBytes = File.ReadAllBytes(thDatei);
+                var bomGleich = thBytes.Take(kod.GetPreamble().Length).SequenceEqual(kod.GetPreamble());
+                var (wieder, _) = DesignDatei.DateiLesen(thDatei);
+                Check($"Kodierung {name}: erkannt, gleich zurueckgeschrieben, lesbar",
+                    gelesen == thStart && bomGleich && DesignDatei.Lesen(wieder, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214"
+                    && !File.Exists(thDatei + ".dasi-neu"));
+            }
+            var asciiDatei = Path.Combine(dd, "ascii.theme");
+            var (asciiText, asciiKod) = DesignDatei.DateiLesen(asciiDatei);
+            DesignDatei.DateiSchreiben(asciiDatei, DesignDatei.FuerBild(asciiText, @"C:\Users\Jürgen\Bilder\Strand.jpg", null), asciiKod);
+            var asciiBytes = File.ReadAllBytes(asciiDatei);
+            Check("Umlaut in einer ASCII-Datei: als UTF-16 mit BOM geschrieben und wieder lesbar",
+                asciiBytes[0] == 0xFF && asciiBytes[1] == 0xFE
+                && DesignDatei.Lesen(DesignDatei.DateiLesen(asciiDatei).Inhalt, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\Jürgen\Bilder\Strand.jpg");
+        }
+
         Console.WriteLine("\n== Design: Einstellungen von Windows ==");
         {
             var designKat = DesignEinstellungen.Katalog;
@@ -2286,6 +2368,19 @@ internal static class Program
             Check("echt: Volltonfarbe eingetragen", r4.Eingetragen);
             var a4 = HintergrundEcht.Sichtbar(lila);
             Check("echt: die Volltonfarbe ist auf dem Bildschirm", a4 > 0.5, $"{a4:P0} lila");
+            Console.WriteLine($"         Design-Datei: {r4.DesignDatei?.Datei ?? "-"}, geaendert {r4.DesignDatei?.Geaendert}, {r4.DesignDatei?.Grund ?? "ok"}");
+            if (r4.DesignDatei is { Datei: { } themaDatei } && File.Exists(themaDatei)
+                && themaDatei.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), StringComparison.OrdinalIgnoreCase))
+            {
+                var themaText = DesignDatei.DateiLesen(themaDatei).Inhalt;
+                Check("echt: Volltonfarbe steht auch in der Design-Datei (Custom.theme)",
+                    DesignDatei.Lesen(themaText, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214"
+                    && DesignDatei.Lesen(themaText, DesignDatei.DesktopAbschnitt, "Wallpaper") == "");
+            }
+            else
+            {
+                Check("echt: Windows-Design ausserhalb des Profils bleibt unangetastet", r4.DesignDatei is { Geaendert: false });
+            }
             var standLila = DesktopHintergrund.Lesen(hgWurzel);
             var k1 = DesktopHintergrund.Kontrolle(standLila, Deutsch);
             Check("echt: Kontrolle bestaetigt die gesetzte Volltonfarbe", k1 is null, k1);

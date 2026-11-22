@@ -70,6 +70,21 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   bzw. der nächsten Anmeldung war er schwarz bzw. wieder der alte. Der
   Explorer-Neustart für die Taskleiste ist es nicht: Er liest den Hintergrund
   nicht neu ein, das ist unter Windows geprüft. Ursachen und Abhilfe:
+  - **Hauptursache: die Design-Datei von Windows.** Windows führt das aktuelle
+    Design zusätzlich in einer Datei, meist `…\AppData\Local\Microsoft\Windows\Themes\Custom.theme`.
+    Beim Anmelden übernimmt es Werte daraus wieder in die Registry. In einer
+    Windows-11-VM stand dort `Background=0 0 0`: Die wiederhergestellte Volltonfarbe
+    war vor dem Neustart da, danach wieder schwarz. Eine über die Einstellungen
+    gewählte Farbe blieb erhalten, denn die Einstellungen-App schreibt auch in diese
+    Datei. Jetzt trägt das Tool dort ebenfalls ein, was es setzt:
+    - beim Hintergrund das Bild samt Darstellung bzw. die Volltonfarbe, und eine
+      Diashow fällt weg;
+    - bei den Design-Einstellungen Hell/Dunkel, Akzentfarbe, „automatisch“ und die
+      Mauszeiger, soweit die Datei sie führt.
+
+    Die Kodierung der Datei (meist UTF-16) bleibt erhalten, geschrieben wird über
+    eine Zwischendatei. Angefasst wird nur eine Datei im Profil des Benutzers, nie
+    ein Windows-Design unter `C:\Windows`.
   - Das Tool trug den Hintergrund in die Registry des Kontos ein, **unter dem es
     läuft**. Gibt jemand bei der Admin-Abfrage die Daten eines anderen Kontos ein,
     ist das nicht der angemeldete Benutzer. Sofort zu sehen war der Hintergrund
