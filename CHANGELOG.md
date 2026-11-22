@@ -78,9 +78,11 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
     wieder `0 0 0`: Die Einstellungen-App ändert das Design im Dienst, das Tool
     änderte nur die Dateien. Jetzt lässt das Tool **Windows selbst das Design
     anwenden**, wie bei einem Doppelklick auf eine `.theme`-Datei:
-    - Aus der aktuellen Design-Datei baut es `DaSi-Wiederherstellung.theme` mit
-      Hintergrund, Hell/Dunkel, Akzentfarbe und Mauszeigern aus der Sicherung. Sie
-      ist danach unter *Personalisierung > Designs* auswählbar.
+    - Aus der aktuellen Design-Datei baut es `DaSi-Wiederherstellung-<Zeitpunkt>.theme`
+      mit Hintergrund, Hell/Dunkel, Akzentfarbe und Mauszeigern aus der Sicherung.
+      Sie ist danach unter *Personalisierung > Designs* auswählbar. Jede Anwendung
+      bekommt einen eigenen Namen, denn ein schon aktives Design wendet Windows nicht
+      noch einmal an. Frühere DaSi-Designs räumt das Tool danach weg.
     - Angewendet wird sie als der angemeldete Benutzer: Eine kurzlebige geplante
       Aufgabe startet `explorer.exe` mit der Datei, wie in CLInstall. Das gilt auch,
       wenn das Tool unter einem anderen Konto läuft (Administratorschutz „ADMIN_…“

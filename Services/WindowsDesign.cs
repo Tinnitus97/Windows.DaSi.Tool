@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.Versioning;
 using System.Threading;
@@ -32,8 +33,64 @@ namespace WindowsDaSiTool.Services;
 [SupportedOSPlatform("windows")]
 public static class WindowsDesign
 {
-    /// <summary>So heisst die Datei unter ...\Themes im Profil.</summary>
-    public const string DateiName = "DaSi-Wiederherstellung.theme";
+    /// <summary>So beginnen die Dateien unter ...\Themes im Profil.</summary>
+    public const string DateiPraefix = "DaSi-Wiederherstellung";
+
+    /// <summary>
+    /// Ein neuer Name fuer jedes Anwenden: Eine Design-Datei, die schon die
+    /// aktuelle ist, wendet Windows nicht noch einmal an (unter Windows 11
+    /// geprueft) - ein zweites Wiederherstellen haette sonst nichts bewirkt.
+    /// </summary>
+    public static string NeuerDateiName() => $"{DateiPraefix}-{DateTime.Now:yyyyMMdd-HHmmss-fff}.theme";
+
+    /// <summary>Was <see cref="AnwendenUndWarten"/> ergab.</summary>
+    /// <param name="Gestartet">Liess sich das Anwenden starten?</param>
+    /// <param name="Uebernommen">Hat Windows es innerhalb der Wartezeit uebernommen?</param>
+    public sealed record Ergebnis(bool Gestartet, bool Uebernommen, string Datei, string? Fehler);
+
+    /// <summary>
+    /// Schreibt <paramref name="inhalt"/> als neue Design-Datei in
+    /// <paramref name="ordner"/>, laesst Windows sie anwenden und wartet, bis
+    /// <paramref name="uebernommen"/> (bekommt den Pfad der neuen Datei) zutrifft
+    /// (hoechstens <paramref name="hoechstens"/>).
+    /// Schliesst das dabei geoeffnete Einstellungen-Fenster und raeumt danach
+    /// fruehere DaSi-Designs weg - bzw. die neue Datei, wenn Windows sie nicht
+    /// uebernommen hat.
+    /// </summary>
+    public static async Task<Ergebnis> AnwendenUndWarten(string ordner, string inhalt, string? benutzer,
+                                                         Func<string, bool> uebernommen, TimeSpan hoechstens)
+    {
+        Directory.CreateDirectory(ordner);
+        var datei = Path.Combine(ordner, NeuerDateiName());
+        DesignDatei.DateiSchreiben(datei, inhalt, new System.Text.UnicodeEncoding(false, true));
+        var start = DateTime.Now;
+        var (ok, fehler) = await Anwenden(datei, benutzer);
+        bool da = false;
+        if (ok)
+        {
+            var uhr = Stopwatch.StartNew();
+            while (!(da = uebernommen(datei)) && uhr.Elapsed < hoechstens) await Task.Delay(500);
+            await Task.Delay(1500);
+            EinstellungenSchliessen(start);
+        }
+        Aufraeumen(ordner, da ? datei : null, verwerfen: da ? null : datei);
+        return new Ergebnis(ok, da, datei, fehler);
+    }
+
+    /// <summary>Fruehere DaSi-Designs loeschen - ausser <paramref name="behalten"/>; <paramref name="verwerfen"/> in jedem Fall.</summary>
+    private static void Aufraeumen(string ordner, string? behalten, string? verwerfen)
+    {
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(ordner, DateiPraefix + "*.theme"))
+            {
+                bool weg = string.Equals(f, verwerfen, StringComparison.OrdinalIgnoreCase)
+                           || (behalten is not null && !string.Equals(f, behalten, StringComparison.OrdinalIgnoreCase));
+                if (weg) try { File.Delete(f); } catch { /* naechste */ }
+            }
+        }
+        catch { /* bleibt eben liegen */ }
+    }
 
     /// <summary>
     /// Wendet die Design-Datei an. Mit bekanntem Benutzer ("DOMAENE\Name")

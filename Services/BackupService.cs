@@ -1337,7 +1337,7 @@ public sealed class BackupService
                                            Loc.Tr("Kontrolle nach dem Setzen", "Check after setting"));
     }
 
-    /// <summary>Die Design-Datei, die Windows in diesem Lauf angewendet hat - fuer ein erneutes Anwenden.</summary>
+    /// <summary>Das Design, das Windows in diesem Lauf angewendet hat - fuer ein erneutes Anwenden.</summary>
     private string? _angewandtesDesign;
 
     /// <summary>
@@ -1365,26 +1365,13 @@ public sealed class BackupService
 
         var inhalt = DesignDatei.FuerWiederherstellung(vorlage, Loc.Tr("Design aus der Sicherung (DaSi)", "Theme from the backup (DaSi)"),
                                                        farbe, bild, h, werte);
-        var datei = Path.Combine(SourcePath, @"AppData\Local\Microsoft\Windows\Themes", WindowsDesign.DateiName);
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(datei)!);
-            DesignDatei.DateiSchreiben(datei, inhalt, new System.Text.UnicodeEncoding(false, true));
-        }
-        catch (Exception ex)
-        {
-            _log(Loc.Tr($"[WARNUNG] Die Design-Datei ließ sich nicht anlegen ({ex.Message}) - es wird direkt eingetragen.",
-                        $"[WARNING] The theme file could not be created ({ex.Message}) - writing directly instead."));
-            return;
-        }
-
         _log(Loc.Tr("[INFO] Windows wendet das Design aus der Sicherung an - wie ein Doppelklick auf die Design-Datei ...",
                     "[INFO] Windows applies the theme from the backup - like double-clicking the theme file ..."));
-        if (await DesignAnwendenUndWarten(ziel, datei, farbe, bild))
+        if (await DesignAnwendenUndWarten(ziel, inhalt, farbe, bild) is { } datei)
         {
-            _angewandtesDesign = datei;
-            _log(Loc.Tr($"[ERFOLG] Windows hat das Design angewendet ({WindowsDesign.DateiName}, unter Personalisierung > Designs auswählbar).",
-                        $"[SUCCESS] Windows applied the theme ({WindowsDesign.DateiName}, selectable under Personalization > Themes)."));
+            _angewandtesDesign = inhalt;
+            _log(Loc.Tr($"[ERFOLG] Windows hat das Design angewendet ({Path.GetFileName(datei)}, unter Personalisierung > Designs auswählbar).",
+                        $"[SUCCESS] Windows applied the theme ({Path.GetFileName(datei)}, selectable under Personalization > Themes)."));
         }
         else
         {
@@ -1394,34 +1381,35 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Laesst Windows die Design-Datei anwenden und wartet (bis 20 s), bis
-    /// es sie uebernommen hat: die Farbe bzw. das Bild in der Registry, sonst
-    /// das Design als aktuelles. Das dabei geoeffnete Einstellungen-Fenster
-    /// wird wieder geschlossen.
+    /// Laesst Windows das Design anwenden (neue Datei unter ...\Themes im
+    /// Profil) und wartet bis 20 s, bis es uebernommen ist: die Farbe bzw. das
+    /// Bild in der Registry, sonst das Design als aktuelles.
     /// </summary>
-    private async Task<bool> DesignAnwendenUndWarten(DesignZiel ziel, string datei, (byte R, byte G, byte B)? farbe, string? bild)
+    /// <returns>Die angewendete Datei - null, wenn Windows es nicht uebernommen hat.</returns>
+    private async Task<string?> DesignAnwendenUndWarten(DesignZiel ziel, string inhalt, (byte R, byte G, byte B)? farbe, string? bild)
     {
-        if (!OperatingSystem.IsWindows()) return false;
-        var start = DateTime.Now;
-        var (ok, fehler) = await WindowsDesign.Anwenden(datei, DesktopScreenshot.GetInteractiveUser()?.Name);
-        if (!ok)
-        {
-            _log(Loc.Tr($"[WARNUNG] Windows ließ das Design nicht anwenden: {fehler}", $"[WARNING] Windows did not apply the theme: {fehler}"));
-            return false;
-        }
-        bool Da()
+        if (!OperatingSystem.IsWindows()) return null;
+        var ordner = Path.Combine(SourcePath, @"AppData\Local\Microsoft\Windows\Themes");
+        bool Da(string datei)
         {
             var s = DesktopHintergrund.Lesen(ziel.Wurzel);
             if (farbe is { } c) return Hintergrund.FarbeLesen(s.Farbe) == c;
             if (bild is not null) return string.Equals(s.Bild, bild, StringComparison.OrdinalIgnoreCase);
             return string.Equals(DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath), datei, StringComparison.OrdinalIgnoreCase);
         }
-        var uhr = System.Diagnostics.Stopwatch.StartNew();
-        bool da;
-        while (!(da = Da()) && uhr.Elapsed < TimeSpan.FromSeconds(20)) await Task.Delay(500);
-        await Task.Delay(1500);
-        WindowsDesign.EinstellungenSchliessen(start);
-        return da;
+        try
+        {
+            var r = await WindowsDesign.AnwendenUndWarten(ordner, inhalt, DesktopScreenshot.GetInteractiveUser()?.Name, Da, TimeSpan.FromSeconds(20));
+            if (!r.Gestartet)
+                _log(Loc.Tr($"[WARNUNG] Windows ließ das Design nicht anwenden: {r.Fehler}", $"[WARNING] Windows did not apply the theme: {r.Fehler}"));
+            return r.Uebernommen ? r.Datei : null;
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[WARNUNG] Die Design-Datei ließ sich nicht anlegen oder anwenden: {ex.Message}",
+                        $"[WARNING] The theme file could not be created or applied: {ex.Message}"));
+            return null;
+        }
     }
 
     /// <summary>
@@ -1447,7 +1435,7 @@ public sealed class BackupService
         {
             // Erst wieder ueber das Windows-Design, dann direkt (bei einer
             // Volltonfarbe zeigt das Design noch sein Bild).
-            if (_angewandtesDesign is { } d && File.Exists(d))
+            if (_angewandtesDesign is { } d)
                 await DesignAnwendenUndWarten(ziel, d, soll.Bild is null ? Hintergrund.FarbeLesen(soll.Farbe) : null, soll.Bild);
             DesktopHintergrund.Erneut(ziel.Wurzel, ziel.EigenerBenutzer, soll, SourcePath);
         }

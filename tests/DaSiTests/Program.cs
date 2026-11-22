@@ -2477,19 +2477,15 @@ internal static class Program
             Console.WriteLine($"   -- Windows wendet das Design an (aktuell: {aktuellesDesign ?? "-"}) --");
             if (aktuellesDesign is not null && File.Exists(aktuellesDesign) && hgNutzer?.ProfilePath is { } profilWd)
             {
-                var dateiWd = Path.Combine(profilWd, @"AppData\Local\Microsoft\Windows\Themes", WindowsDesign.DateiName);
-                Directory.CreateDirectory(Path.GetDirectoryName(dateiWd)!);
+                var themesWd = Path.Combine(profilWd, @"AppData\Local\Microsoft\Windows\Themes");
+                var dateiWd = "";
                 bool Anwenden(string inhalt, Func<bool> da)
                 {
-                    DesignDatei.DateiSchreiben(dateiWd, inhalt, new System.Text.UnicodeEncoding(false, true));
-                    var start = DateTime.Now;
-                    var (ok, fehler) = WindowsDesign.Anwenden(dateiWd, hgNutzer.Name).GetAwaiter().GetResult();
                     var uhr = System.Diagnostics.Stopwatch.StartNew();
-                    while (ok && !da() && uhr.Elapsed < TimeSpan.FromSeconds(20)) System.Threading.Thread.Sleep(500);
-                    System.Threading.Thread.Sleep(1500);
-                    WindowsDesign.EinstellungenSchliessen(start);
-                    Console.WriteLine($"         angewendet: {ok} {fehler}, uebernommen: {da()} nach {uhr.Elapsed.TotalSeconds:F1} s");
-                    return ok && da();
+                    var r = WindowsDesign.AnwendenUndWarten(themesWd, inhalt, hgNutzer.Name, _ => da(), TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+                    dateiWd = r.Datei;
+                    Console.WriteLine($"         angewendet: {r.Gestartet} {r.Fehler}, uebernommen: {r.Uebernommen} nach {uhr.Elapsed.TotalSeconds:F1} s ({Path.GetFileName(r.Datei)})");
+                    return r.Uebernommen;
                 }
 
                 var gruenFarbe = ((byte)16, (byte)124, (byte)16);
@@ -2510,8 +2506,11 @@ internal static class Program
                 Check("echt: Design + Farbe - nach dem Explorer-Neustart noch da", v2Wd > 0.5, $"{v2Wd:P0}");
 
                 var themaBild = DesignDatei.FuerWiederherstellung(DesignDatei.DateiLesen(dateiWd).Inhalt, "DaSi-Pruefung", null, rotBild, strecken, Array.Empty<DesignEintrag>());
+                var ersteDatei = dateiWd;
                 Check("echt: Windows wendet das Design mit dem Bild an (Bild in der Registry)",
                     Anwenden(themaBild, () => string.Equals(DesktopHintergrund.Lesen(hgWurzel).Bild, rotBild, StringComparison.OrdinalIgnoreCase)));
+                Check("echt: zweites Anwenden unter neuem Namen, das fruehere DaSi-Design ist weg",
+                    dateiWd != ersteDatei && File.Exists(dateiWd) && !File.Exists(ersteDatei));
                 DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken, hgNutzer.ProfilePath);
                 var v3Wd = HintergrundEcht.Verlauf("Design + Bild", rot, 1, 3);
                 Check("echt: Design + Bild - der Desktop zeigt das Bild", v3Wd > 0.5, $"{v3Wd:P0}");
