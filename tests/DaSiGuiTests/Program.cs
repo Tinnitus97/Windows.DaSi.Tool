@@ -617,6 +617,7 @@ internal static class Program
             Check("Windows englisch -> Englisch", SystemHelpers.GetWindowsLanguage() == "en");
             var englisch = new MainWindowViewModel();
             Check("neues Fenster in englischer Umgebung startet englisch", englisch.IsEnglish && englisch.SelectedLanguageIndex == 1 && englisch.LogText.Contains("Waiting for input"));
+            Check("englisch von Anfang an: auch der Log-Knopf", englisch.LoggingLabel == "Log: off", englisch.LoggingLabel);
             englisch.IsEnglish = false;
             CultureInfo.CurrentUICulture = new CultureInfo("de-DE");
             Check("Windows deutsch -> Deutsch", SystemHelpers.GetWindowsLanguage() == "de");

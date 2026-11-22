@@ -7,7 +7,7 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
-## [Unveröffentlicht]
+## [1.2.7] - 2026-11-22
 
 ### Neu
 
@@ -64,6 +64,11 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   sich einspielen lassen. Bisher scheiterte `netsh wlan` erst während des Laufs.
 
 ### Behoben
+
+- **„Log: aus“ in englischer Umgebung.** Startete das Tool auf einem englischen
+  Windows, stand auf dem Knopf für das ausführliche Protokoll „Log: aus“ statt
+  „Log: off“ – bis die Sprache einmal gewechselt wurde. Aufgefallen beim
+  Aufnehmen der README-Bilder.
 
 - **Drucker wiederherstellen meldete Erfolg, obwohl PrintBrm scheiterte.**
   PrintBrm endet auch bei manchem Fehlschlag mit dem Rückgabewert 0 – etwa bei
@@ -727,6 +732,7 @@ PowerShell/WPF-Skripts als native C#-Anwendung mit Avalonia.
 
 ---
 
+[1.2.7]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.7
 [1.2.6]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.6
 [1.2.5]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.5
 [1.2.1]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.1

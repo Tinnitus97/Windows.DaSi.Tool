@@ -6,7 +6,7 @@
 
 **Datensicherung und Wiederherstellung von Windows-Benutzerprofilen — portabel, schnell, ohne Installation.**
 
-[![Version](https://img.shields.io/badge/Version-1.2.6-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.7-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)](https://github.com/Tinnitus97/Windows.DaSi.Tool)
 [![.NET](https://img.shields.io/badge/.NET-10%20LTS-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![License](https://img.shields.io/badge/Lizenz-MIT-green)](LICENSE)
@@ -228,7 +228,7 @@ denen unter *Einstellungen → Anzeige → Identifizieren* überein. Beim
 Nachsehen und Anordnen von Hand.
 
 Beim Wiederherstellen ist nur wählbar, was in der Sicherung liegt: Enthält sie nur
-Symbolpositionen, ist *Screenshot* ausgegraut und umgekehrt.
+Symbole und Taskleiste, ist *Screenshot* ausgegraut und umgekehrt.
 
 > Beides betrifft den Desktop, der gerade zu sehen ist. Ist ein anderer Benutzer
 > angemeldet als der, dessen Profil gewählt ist — etwa der Techniker —, tut das Tool

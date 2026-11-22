@@ -18,7 +18,7 @@ namespace WindowsDaSiTool.ViewModels;
 public partial class MainWindowViewModel : ObservableObject
 {
     // ---- Konstanten (entsprechen den $script:-Variablen) ----
-    private const string VersionString = "1.2.6";
+    private const string VersionString = "1.2.7";
 
     private readonly CancellationTokenState _cancel = new();
     private readonly ProcessRunner _runner;
@@ -633,6 +633,9 @@ public partial class MainWindowViewModel : ObservableObject
         _isEnglish = lang == "en";
         _selectedLanguageIndex = _isEnglish ? 1 : 0;
         Localizer.I.Lang = _isEnglish ? AppLang.En : AppLang.De;
+        // Frueher blieb hier "Log: aus" stehen - auch in englischer Umgebung,
+        // bis die Sprache einmal gewechselt wurde.
+        _loggingLabel = Tr("Log: aus", "Log: off");
 
         // Hell-/Dunkelmodus aus Windows uebernehmen.
         _isLightTheme = SystemHelpers.IsWindowsLightTheme();
