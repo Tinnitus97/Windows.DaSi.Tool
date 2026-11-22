@@ -1707,12 +1707,6 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Oeffnet das gesicherte Desktop-Foto, damit sich die Symbole danach von
-    /// Hand wieder anordnen lassen. Automatisch zurueckstellen laesst sich die
-    /// Anordnung nicht verlaesslich: Der Explorer ueberschreibt sie beim
-    /// naechsten Abmelden mit seinem eigenen Stand.
-    /// </summary>
-    /// <summary>
     /// Oeffnet ein Bild fuer den Benutzer. Fuer die Pruefungen ersetzbar - dort
     /// soll keine Bildanzeige aufgehen.
     /// </summary>
@@ -1726,6 +1720,12 @@ public sealed class BackupService
             new System.Diagnostics.ProcessStartInfo("explorer.exe", Quote(datei)) { UseShellExecute = false });
     };
 
+    /// <summary>
+    /// Oeffnet das gesicherte Desktop-Foto, damit sich die Symbole danach von
+    /// Hand wieder anordnen lassen. Automatisch zurueckstellen laesst sich die
+    /// Anordnung nicht verlaesslich: Der Explorer ueberschreibt sie beim
+    /// naechsten Abmelden mit seinem eigenen Stand.
+    /// </summary>
     public Task ShowDesktopScreenshot()
     {
         var ordner = Path.Combine(BackupPath, DesktopScreenshot.FolderName);

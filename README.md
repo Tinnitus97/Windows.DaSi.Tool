@@ -449,7 +449,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | **Dateioperationen** | Robocopy mit Spiegelung, Ausschlusslisten und Multithreading |
 | **Prozess-Handling** | Browser und Thunderbird werden vor dem Backup automatisch geschlossen, um Dateikonflikte zu vermeiden |
 | **Fehlerbehandlung** | Unerwartete Fehler landen in `%USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log` |
-| **Prüfungen** | `tests/DaSiTests` — Ausschlusslisten, Cloud-Erkennung, Opera-Fassungen, gesperrte Punkte, Sicherungsordner, Symbolpositionen, Bilanz, Update-Logik. Läuft bei jedem Push unter Windows; dabei werden das Austauschskript der Selbstaktualisierung echt ausgeführt und ein Desktop-Symbol am echten Explorer-Desktop versetzt und zurückgesetzt |
+| **Prüfungen** | `tests/DaSiTests` prüft die Dienste: jede Aktion der Warteschlange an einem Testprofil, mit echtem robocopy, netsh und PrintBrm, dazu Design, Desktop-Foto, Symbole und Taskleiste am echten Desktop sowie das Austauschskript der Selbstaktualisierung. `tests/DaSiGuiTests` prüft die Oberfläche: das echte Hauptfenster ohne Bildschirm (Avalonia.Headless), bedient mit Mausklicks – Rückfragen, Warteschlange, Update-Streifen, Dialoge. winget ersetzt eine Attrappe (`tests/WingetAttrappe`), installiert wird nichts. Läuft bei jedem Push unter Windows; `tools/abdeckung.py` meldet jede Funktion, die keine Prüfung ausführt |
 
 ### Selbst bauen
 
@@ -487,10 +487,23 @@ Die fertige EXE liegt anschließend im Ordner `publish`.
 > `$env:MSBuildEnableWorkloadResolver = 'false'`. Dauerhaft beheben lässt es sich
 > durch Reparieren oder Neuinstallieren des .NET SDK.
 
-Die Prüfungen laufen ohne Oberfläche und auf jedem System:
+Die Prüfungen (unter Windows, als Administrator – sie stellen Hintergrund,
+Taskleiste und Desktop-Symbole wirklich um und wieder zurück):
 
 ```powershell
-dotnet run --project tests/DaSiTests -c Release
+dotnet run --project tests/DaSiTests -c Release     # Dienste
+dotnet run --project tests/DaSiGuiTests -c Release  # Oberfläche
+```
+
+Mit Abdeckungsbericht wie in der CI (`dotnet tool restore` holt coverlet):
+
+```powershell
+dotnet tool restore
+dotnet build tests/DaSiGuiTests -c Release -p:DebugType=portable -p:DebugSymbols=true
+dotnet coverlet tests/DaSiGuiTests/bin/Release/net10.0-windows/DaSiGuiTests.dll `
+  --target tests/DaSiGuiTests/bin/Release/net10.0-windows/DaSiGuiTests.exe `
+  --include "[WindowsDaSiTool]*" --format cobertura --output abdeckung/gui.xml
+python tools/abdeckung.py abdeckung/gui.xml
 ```
 
 ---

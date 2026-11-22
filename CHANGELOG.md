@@ -198,7 +198,25 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 - **Prüfungen nur noch unter Windows.** Das Programm läuft ausschließlich unter
   Windows; der zusätzliche Linux-Lauf in `build.yml` prüfte nur dasselbe noch
   einmal und ist entfallen. Alle Prüfungen laufen weiterhin bei jedem Push auf
-  dem Windows-Läufer – dort auch die, die echtes Windows brauchen.
+  dem Windows-Läufer – dort auch die, die echtes Windows brauchen. Das
+  Prüfprojekt zielt deshalb auf `net10.0-windows`; die Warnungen CA1416
+  („nur unter Windows unterstützt“) sind damit weg, und jede Warnung gilt in
+  den Prüfprojekten als Fehler.
+- **Jede Funktion hat eine Prüfung.** Neu geprüft werden der Sicherungsdienst
+  (jede Aktion der Warteschlange an einem Testprofil mit echtem robocopy, netsh
+  und PrintBrm; Design, Desktop-Foto, Symbole und Taskleiste am echten
+  Desktop), winget (Bereitschaft, Reparatur, Export, Import – gegen eine
+  Attrappe, die antwortet wie winget), Prozessstart, Systemhelfer,
+  Leistungsmodus, Update und das Nachinstallieren von winget über einen eigenen
+  Webserver. Dazu kommt die Oberfläche (`tests/DaSiGuiTests`): das echte
+  Hauptfenster ohne Bildschirm, bedient mit Mausklicks – Pfade, Moduswechsel,
+  gesperrte Kacheln, jede Rückfrage, die Warteschlange, Update-Streifen,
+  Winget-Auswahl, Schließen mit laufender Aktion – und ein echter Start der
+  EXE. Die CI misst mit coverlet, welche Funktionen die Prüfungen ausführen;
+  `tools/abdeckung.py` meldet jede, die keine Prüfung erreicht.
+- **Toter Code entfernt:** ein „Beenden“-Befehl ohne Knopf, ein zweiter
+  Sprachumschalter neben der Auswahlliste, drei nicht angezeigte Beschriftungen
+  und eine nicht benutzte Eigenschaft im Sicherungsdienst.
 
 ---
 
