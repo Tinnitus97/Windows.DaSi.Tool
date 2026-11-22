@@ -274,6 +274,20 @@ public static class SystemHelpers
         return i == 0 ? $"{val:0} {units[i]}" : $"{val:0.0} {units[i]}";
     }
 
+    /// <summary>
+    /// Oeffnet eine Adresse oder Datei mit dem zustaendigen Programm (Browser,
+    /// Bildanzeige). false, wenn das nicht ging - der Aufrufer bleibt stehen.
+    /// </summary>
+    public static bool Oeffnen(string ziel)
+    {
+        try
+        {
+            using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(ziel) { UseShellExecute = true });
+            return true;
+        }
+        catch { return false; }
+    }
+
     public static bool IsNtfsDrive(string path)
     {
         try

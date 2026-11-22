@@ -42,10 +42,24 @@ public sealed class WingetService
         _log = log;
     }
 
+    /// <summary>
+    /// Fuer die Pruefungen: nur diese Programme als winget versuchen - eine
+    /// Attrappe, die antwortet wie winget. So laeuft jeder Weg dieses Dienstes,
+    /// ohne dass auf dem Pruefrechner etwas installiert wird.
+    /// </summary>
+    internal IReadOnlyList<string>? FesteKandidaten { get; set; }
+
+    /// <summary>
+    /// Fuer die Pruefungen: ersetzt das Nachinstallieren des App-Installers von
+    /// GitHub (rund 300 MB).
+    /// </summary>
+    internal Func<Task<bool>>? Nachinstallation { get; set; }
+
     // ---------------------------------------------------------------- Launcher
 
     private IEnumerable<string> GetCandidatePaths()
     {
+        if (FesteKandidaten is not null) return FesteKandidaten;
         var list = new List<string>();
 
         // 1) PATH
@@ -215,7 +229,9 @@ public sealed class WingetService
         _githubVersucht = true;
         _log(Loc.Tr("[INFO] winget ist nicht installiert oder nicht nutzbar - versuche, den App-Installer von GitHub zu installieren.",
                     "[INFO] winget is not installed or not usable - trying to install the App Installer from GitHub."));
-        return await WingetInstaller.InstallAsync(_log, () => _cancel.IsCancelled);
+        return Nachinstallation is not null
+            ? await Nachinstallation()
+            : await WingetInstaller.InstallAsync(_log, () => _cancel.IsCancelled);
     }
 
     /// <summary>Paketquellen zuruecksetzen und neu laden (braucht Adminrechte - die hat das Tool).</summary>

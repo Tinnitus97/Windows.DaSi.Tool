@@ -19,7 +19,6 @@ public partial class MainWindowViewModel : ObservableObject
 {
     // ---- Konstanten (entsprechen den $script:-Variablen) ----
     private const string VersionString = "1.2.6";
-    private const string ProjectUrl = "https://github.com/Tinnitus97/Windows.DaSi.Tool";
 
     private readonly CancellationTokenState _cancel = new();
     private readonly ProcessRunner _runner;
@@ -321,7 +320,6 @@ public partial class MainWindowViewModel : ObservableObject
     private static string Tr(string de, string en) => Loc.Tr(de, en);
 
     // ---- Lokalisierte UI-Beschriftungen ----
-    public string LangLabel        => Tr("Sprache: Deutsch", "Language: English");
     public string SectionOptions   => Tr("Optionen & Verzeichnisse", "Options & directories");
     public string LabelUserProfile => Tr("Benutzerprofil:", "User profile:");
     public string LabelQuickSelect => Tr("Schnellauswahl:", "Quick select:");
@@ -330,7 +328,6 @@ public partial class MainWindowViewModel : ObservableObject
     public string AppSubtitle      => Tr("Backup & Wiederherstellung von Benutzerprofilen",
                                          "Backup & restore of user profiles");
     public string BtnClearPaths    => Tr("Pfade leeren", "Clear paths");
-    public string BtnExit          => Tr("Beenden", "Exit");
     public string BtnExecute       => Tr("Ausgewählte Aktionen starten", "Start selected actions");
     public string LogTitle         => Tr("Aktivitäts-Protokoll", "Activity log");
     public string BtnClearLog      => Tr("Log leeren", "Clear log");
@@ -537,7 +534,6 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TgPrinter));
         OnPropertyChanged(nameof(TgWallpaper));
         OnPropertyChanged(nameof(TgDesktopShot));
-        OnPropertyChanged(nameof(ModeTitle));
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
         ZielAnzeigen();
         VerfuegbarkeitPruefen();
@@ -602,9 +598,18 @@ public partial class MainWindowViewModel : ObservableObject
                  "Pins the saved icons to the taskbar again (Explorer restarts briefly) and puts every desktop icon back in its place (like DesktopOK).")
             : Tr("Merkt sich, welches Desktop-Symbol wo liegt (wie DesktopOK), und sichert die an die Taskleiste angehefteten Symbole.",
                  "Remembers where each desktop icon is (like DesktopOK) and backs up the icons pinned to the taskbar.");
-    public string ModeTitle => IsRestoreMode
-        ? Tr("Wiederherstellen", "Restore")
-        : Tr("Sichern", "Backup");
+
+    // ---- Haken fuer die Pruefungen (tests/DaSiGuiTests) ----
+
+    /// <summary>Ersetzt den Ordner-Dialog des Systems - null: der echte.</summary>
+    internal Func<string, Task<string?>>? OrdnerDialog { get; set; }
+
+    /// <summary>Oeffnet eine Adresse im Browser.</summary>
+    internal Func<string, bool> Oeffnen { get; set; } = SystemHelpers.Oeffnen;
+
+    /// <summary>Die Dienste hinter der Oberflaeche - fuer die winget-Attrappe und die Bild-Anzeige.</summary>
+    internal WingetService Winget => _winget;
+    internal BackupService Sicherung => _backup;
 
     public MainWindowViewModel()
     {
@@ -938,9 +943,6 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ToggleLanguage() => IsEnglish = !IsEnglish;
-
-    [RelayCommand]
     private void ClearLog()
     {
         lock (_logLock)
@@ -1003,9 +1005,6 @@ public partial class MainWindowViewModel : ObservableObject
             Tr("Das ausgewählte Laufwerk ist NICHT mit NTFS formatiert!\nRobocopy benötigt zwingend NTFS.",
                "The selected drive is NOT formatted as NTFS!\nRobocopy strictly requires NTFS."));
     }
-
-    [RelayCommand]
-    private void Exit() => GetMainWindow()?.Close();
 
     /// <summary>
     /// Warnt, bevor Cloud-Ordner mitgesichert oder zurueckgeschrieben werden.
@@ -1678,12 +1677,7 @@ public partial class MainWindowViewModel : ObservableObject
             ? UpdateService.ReleasesPageUrl
             : _manifest!.Program.Notes;
 
-        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
-    }
-
-    public void OpenProjectPage()
-    {
-        try { Process.Start(new ProcessStartInfo(ProjectUrl) { UseShellExecute = true }); } catch { }
+        Oeffnen(url);
     }
 
     public void RequestCancelAndKill()
@@ -1716,6 +1710,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     private async Task<string?> PickFolder(string title)
     {
+        if (OrdnerDialog is not null) return await OrdnerDialog(title);
         var win = GetMainWindow();
         if (win?.StorageProvider is not { } sp) return null;
 

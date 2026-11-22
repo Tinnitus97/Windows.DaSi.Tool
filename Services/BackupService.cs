@@ -664,8 +664,6 @@ public sealed class BackupService
             : Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt.", $"[SUCCESS] {name} profile restored."));
     }
 
-    public string[] ChromiumExcludes => ChromiumCacheExcludes;
-
     // ------------------------------------------------------------ WLAN
 
     public async Task ExportWlan()
@@ -1714,6 +1712,20 @@ public sealed class BackupService
     /// Anordnung nicht verlaesslich: Der Explorer ueberschreibt sie beim
     /// naechsten Abmelden mit seinem eigenen Stand.
     /// </summary>
+    /// <summary>
+    /// Oeffnet ein Bild fuer den Benutzer. Fuer die Pruefungen ersetzbar - dort
+    /// soll keine Bildanzeige aufgehen.
+    /// </summary>
+    internal Action<string> BildOeffnen { get; set; } = datei =>
+    {
+        // Ueber explorer.exe statt direkt: Das Tool laeuft mit
+        // Administratorrechten, und die Fotos-App startet nicht mit
+        // erhoehten Rechten. explorer.exe gibt die Datei an den laufenden
+        // Explorer des Benutzers weiter, der sie mit normalen Rechten oeffnet.
+        using var _ = System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo("explorer.exe", Quote(datei)) { UseShellExecute = false });
+    };
+
     public Task ShowDesktopScreenshot()
     {
         var ordner = Path.Combine(BackupPath, DesktopScreenshot.FolderName);
@@ -1732,12 +1744,7 @@ public sealed class BackupService
         {
             try
             {
-                // Ueber explorer.exe statt direkt: Das Tool laeuft mit
-                // Administratorrechten, und die Fotos-App startet nicht mit
-                // erhoehten Rechten. explorer.exe gibt die Datei an den laufenden
-                // Explorer des Benutzers weiter, der sie mit normalen Rechten oeffnet.
-                using var _ = System.Diagnostics.Process.Start(
-                    new System.Diagnostics.ProcessStartInfo("explorer.exe", Quote(datei)) { UseShellExecute = false });
+                BildOeffnen(datei);
                 offen++;
             }
             catch (Exception ex)

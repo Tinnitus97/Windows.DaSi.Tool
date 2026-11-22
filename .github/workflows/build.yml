@@ -16,25 +16,61 @@ on:
 # Zeitlimits: Ohne Angabe darf ein Job bis zu 6 Stunden laufen. Bleibt ein
 # Läufer hängen (schon vorgekommen: der Schritt stand, selbst der Abbruch kam
 # nicht an), blockiert er sonst einen halben Tag lang den Status des Zweigs.
-# Die Grenzen liegen weit über der üblichen Dauer (~2 min), damit ein
-# langsamer Paketabruf nicht schon als Fehler gilt.
+# Die Grenzen liegen weit über der üblichen Dauer, damit ein langsamer
+# Paketabruf nicht schon als Fehler gilt.
 
 # Das Programm läuft nur unter Windows - deshalb wird auch nur dort geprüft.
 jobs:
   uebersetzen:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/dotnet-lts
 
-      # Alle Prüfungen - auch die, die echtes Windows brauchen: Das
-      # Austauschskript der Selbstaktualisierung wird wirklich von cmd.exe
-      # ausgeführt (mit Umlauten im Pfad), robocopy, Explorer-Desktop,
-      # Taskleiste und Hintergrund werden echt angesprochen.
-      - name: Prüfungen
-        run: dotnet run --project tests/DaSiTests -c Release
+      # coverlet misst, welche Zeilen die Pruefungen ausfuehren (dotnet-tools.json).
+      - name: Werkzeuge holen
+        run: dotnet tool restore
+
+      # Alle Prüfungen der Dienste - auch die, die echtes Windows brauchen:
+      # Das Austauschskript der Selbstaktualisierung wird wirklich von cmd.exe
+      # ausgeführt (mit Umlauten im Pfad), robocopy, netsh, PrintBrm,
+      # Explorer-Desktop, Taskleiste und Hintergrund werden echt angesprochen,
+      # winget durch eine Attrappe ersetzt (tests/WingetAttrappe).
+      - name: Prüfungen der Dienste
+        shell: pwsh
+        run: |
+          dotnet build tests/DaSiTests -c Release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $bin = 'tests/DaSiTests/bin/Release/net10.0-windows'
+          dotnet coverlet "$bin/DaSiTests.dll" --target "$bin/DaSiTests.exe" `
+            --include-test-assembly --format cobertura --output abdeckung/dienste.xml
+
+      # Die Oberflaeche: das echte Hauptfenster ohne Bildschirm (Avalonia.Headless),
+      # bedient mit Mausklicks. Mit Debug-Symbolen gebaut - nur fuer die Messung,
+      # die ausgelieferte EXE (release.yml) bleibt ohne.
+      - name: Prüfungen der Oberfläche
+        shell: pwsh
+        run: |
+          dotnet build tests/DaSiGuiTests -c Release -p:DebugType=portable -p:DebugSymbols=true
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $bin = 'tests/DaSiGuiTests/bin/Release/net10.0-windows'
+          dotnet coverlet "$bin/DaSiGuiTests.dll" --target "$bin/DaSiGuiTests.exe" `
+            --include "[WindowsDaSiTool]*" --format cobertura --output abdeckung/gui.xml
+
+      # Jede Funktion des Programms muss von einer Pruefung ausgefuehrt werden -
+      # Ausnahmen nur mit Begruendung in tests/abdeckung-ausnahmen.txt.
+      - name: Jede Funktion geprüft?
+        if: always()
+        run: python tools/abdeckung.py abdeckung/dienste.xml abdeckung/gui.xml
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: Abdeckung
+          path: abdeckung/
+          retention-days: 7
 
       # Bewusst OHNE --warnaserror: Eine neue Avalonia-Fassung bringt gelegentlich
       # eine zusätzliche Warnung mit. Das soll auffallen, aber nicht den Zweig

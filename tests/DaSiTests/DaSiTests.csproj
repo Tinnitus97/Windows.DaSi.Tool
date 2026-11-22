@@ -4,15 +4,19 @@
     Prueft die Dienste ohne Oberflaeche.
 
     Bewusst KEIN Testframework und KEIN Avalonia: Die geprueften Dateien
-    kommen ohne Oberflaeche aus. Was echtes Windows braucht, steht hinter
-    OperatingSystem.IsWindows() - die Pruefung laeuft in der CI unter Windows.
+    kommen ohne Oberflaeche aus (die Oberflaeche prueft tests/DaSiGuiTests).
+    Das Programm laeuft nur unter Windows, die Pruefung deshalb ebenfalls -
+    in der CI auf einem Windows-Laeufer.
 
     Die Quelldateien werden eingebunden statt referenziert - das Hauptprojekt
     zielt auf Windows und liesse sich sonst nicht daneben uebersetzen.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Jede Warnung haelt die Pruefung an - so bleiben die Hinweise des
+         Compilers (z. B. CA1416) nicht unbemerkt im Protokoll stehen. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <RootNamespace>DaSiTests</RootNamespace>
@@ -23,6 +27,10 @@
 
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="DienstPruefungen.cs" />
+    <Compile Include="WingetPruefungen.cs" />
+    <Compile Include="SicherungsPruefungen.cs" />
+    <Compile Include="../Gemeinsam/*.cs" />
     <Compile Include="../../Services/UpdateService.cs" />
     <Compile Include="../../Services/CloudProviders.cs" />
     <Compile Include="../../Services/ProfileExcludes.cs" />
@@ -47,6 +55,19 @@
     <Compile Include="../../Services/DesignDatei.cs" />
     <Compile Include="../../Services/WindowsDesign.cs" />
     <Compile Include="../../Services/Localizer.cs" />
+    <Compile Include="../../Services/BackupService.cs" />
+    <Compile Include="../../Services/WingetService.cs" />
+    <Compile Include="../../Services/WingetModels.cs" />
+    <Compile Include="../../Services/ProcessRunner.cs" />
+    <Compile Include="../../Services/SystemHelpers.cs" />
+    <Compile Include="../../Services/PerformanceMode.cs" />
+    <Compile Include="../../Services/CancellationTokenState.cs" />
+  </ItemGroup>
+
+  <!-- Die winget-Attrappe wird mitgebaut; eingebunden wird sie nicht - die
+       Pruefungen starten sie als eigenes Programm. -->
+  <ItemGroup>
+    <ProjectReference Include="../WingetAttrappe/WingetAttrappe.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

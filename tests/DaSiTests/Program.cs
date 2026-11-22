@@ -7,7 +7,7 @@ using WindowsDaSiTool.Services;
 
 namespace DaSiTests;
 
-internal static class Program
+internal static partial class Program
 {
     private static int _passed, _failed;
 
@@ -74,6 +74,9 @@ internal static class Program
 
     public static int Main()
     {
+        // Wie im Programm (Program.Main): Codepage 850 & Co. fuer die Ausgabe
+        // von robocopy, netsh und PrintBrm.
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
         var root = Path.Combine(Path.GetTempPath(), "dasi-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
 
@@ -2264,6 +2267,17 @@ internal static class Program
             Console.WriteLine($"         (alt: NTUSER.DAT danach \"{File.ReadAllText(Path.Combine(anwenderAlt, "NTUSER.DAT"))}\")");
         }
 
+        // Die Dienste, die anfangs keine eigenen Pruefungen hatten.
+        LocalizerPruefen();
+        SystemHelferPruefen(root);
+        AbbruchUndLeistungPruefen();
+        ProzessePruefen(root);
+        UpdateUeberHttpPruefen(root);
+        WingetInstallerPruefen(root);
+        WingetDienstPruefen(root);
+        SicherungsdienstPruefen(root);
+        SicherungsdienstAmEchtenDesktop(root);
+
         // Zuletzt: den Explorer neu starten - wie beim Zurueckschreiben der
         // Taskleiste. Laeuft als letzte Pruefung, weil danach der Desktop kurz weg ist.
         if (OperatingSystem.IsWindows())
@@ -2291,6 +2305,8 @@ internal static class Program
                 Check("echt: nach dem Neustart ist die Taskleiste wieder da", neuOk);
             }
         }
+
+        SymboleAmEchtenDesktop(root);
 
         // Hintergrund: so setzen wie das Tool, Explorer neu starten, auf dem
         // Bildschirm nachsehen. Ganz am Ende, der Desktop wechselt dabei mehrfach.
