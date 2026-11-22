@@ -38,8 +38,9 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Gesichert wird eine feste Liste, nicht der ganze Registry-Zweig. Daneben liegen
   rechnergebundene Werte (Bildschirmpositionen, Kennungen), und manche Werte schützt
   Windows inzwischen (Widgets-Knopf). Gelesen und gesetzt wird beim angemeldeten
-  Benutzer. Ist ein anderes Profil gewählt, bleiben die Einstellungen mit einer
-  Warnung außen vor. Hell/Dunkel und Transparenz gelten sofort, die Akzentfarbe auf
+  Benutzer, auch wenn das Tool unter einem anderen Admin-Konto läuft. Ist ein
+  anderes Profil gewählt als das des angemeldeten Benutzers, bleibt das Design mit
+  einer Fehlermeldung außen vor. Hell/Dunkel und Transparenz gelten sofort, die Akzentfarbe auf
   Titelleisten und Taskleiste teils erst nach dem nächsten Anmelden. Das Protokoll
   fasst zusammen, was gesichert bzw. übernommen wurde, etwa „Windows dunkel, Apps
   dunkel, Transparenz an, Akzentfarbe #0063B1, Taskleiste links“. Ältere Sicherungen
@@ -63,6 +64,33 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   sich einspielen lassen. Bisher scheiterte `netsh wlan` erst während des Laufs.
 
 ### Behoben
+
+- **Hintergrund nach einem Neustart wieder schwarz bzw. weg.** Nach dem
+  Wiederherstellen war der Hintergrund zu sehen. Nach einem Neustart von Windows
+  oder dem Explorer-Neustart für die Taskleiste war er schwarz bzw. wieder der alte.
+  Ursachen und Abhilfe:
+  - Das Tool trug den Hintergrund in die Registry des Kontos ein, **unter dem es
+    läuft**. Gibt jemand bei der Admin-Abfrage die Daten eines anderen Kontos ein,
+    ist das nicht der angemeldete Benutzer. Sofort zu sehen war der Hintergrund
+    trotzdem, dauerhaft aber nicht. Jetzt schreibt das Tool Bild, Darstellung, Farbe
+    und Art direkt beim angemeldeten Benutzer, wie schon die Design-Einstellungen.
+    Den Windows-Aufruf nutzt es nur noch für die sofortige Anzeige. Danach prüft es,
+    ob der Hintergrund wirklich eingetragen ist. Ist er es nicht, meldet das
+    Protokoll einen Fehler statt „gesetzt“. Läuft das Tool unter einem anderen Konto,
+    steht das als Hinweis im Protokoll. Auch das Sichern liest jetzt beim
+    angemeldeten Benutzer und nicht beim Admin-Konto.
+  - Windows 11 merkt sich für jeden virtuellen Desktop einen eigenen Hintergrund
+    und setzt ihn beim Start des Explorers wieder. Diese Einträge gleicht das Tool
+    jetzt an.
+  - Zeigte der alte Rechner ein Bild aus Windows' Zwischenspeicher
+    (`Themes\TranscodedWallpaper`, `CachedFiles`), schrieb das Tool es dorthin zurück
+    und trug es als Hintergrund ein. Diese Dateien überschreibt bzw. löscht Windows
+    selbst. Jetzt wird so ein Bild als `Hintergrundbild.jpg` (passende Endung)
+    gesichert und unter *Bilder* abgelegt. Ältere Sicherungen werden beim
+    Wiederherstellen genauso behandelt. Ist das eingetragene Bild gelöscht, zeigt
+    Windows es aber noch, wird jetzt das gezeigte Bild gesichert.
+  - Mauszeiger übernimmt Windows beim fremden Konto erst nach der nächsten Anmeldung.
+    Bisher lud es dabei die Zeiger des Admin-Kontos.
 
 - **Chrome war nach der Wiederherstellung leer**, obwohl die Sicherung vollständig
   war. Von Hand bei geschlossenem Chrome in den Profilordner kopiert, war alles da.

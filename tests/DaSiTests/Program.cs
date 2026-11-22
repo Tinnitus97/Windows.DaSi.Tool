@@ -1351,6 +1351,37 @@ internal static class Program
             Check("Diashow mit aktuellem Bild: das Bild", Hintergrund.Bestimmen(@"C:\x\TranscodedWallpaper", true, 2, null) == HintergrundArt.Bild);
             Check("Bildpfad ohne Datei: unbekannt", Hintergrund.Bestimmen(@"C:\weg.jpg", false, 0, "0 0 0") == HintergrundArt.Unbekannt);
 
+            // Windows' Zwischenspeicher ist kein Ort fuer den Hintergrund.
+            Check("Zwischenspeicher: TranscodedWallpaper und CachedFiles erkannt",
+                Hintergrund.IstWindowsZwischenspeicher(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper")
+                && Hintergrund.IstWindowsZwischenspeicher(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\CachedFiles\CachedImage_1920_1080_POS4.jpg")
+                && Hintergrund.IstWindowsZwischenspeicher(@"D:\DASI_PC_01_01_2026\Design\TranscodedWallpaper"));
+            Check("Zwischenspeicher: gewoehnliche Bilder und installierte Designs nicht",
+                !Hintergrund.IstWindowsZwischenspeicher(@"C:\Users\A\Pictures\Urlaub.jpg")
+                && !Hintergrund.IstWindowsZwischenspeicher(@"C:\Users\A\AppData\Local\Microsoft\Windows\Themes\Natur\DesktopBackground\img1.jpg")
+                && !Hintergrund.IstWindowsZwischenspeicher(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg")
+                && !Hintergrund.IstWindowsZwischenspeicher(null) && !Hintergrund.IstWindowsZwischenspeicher(""));
+            Check("Zwischenspeicher eines Profils",
+                Hintergrund.Zwischenspeicher(Path.Combine(root, "Anwender"))!.EndsWith(Path.Combine("Themes", "TranscodedWallpaper"))
+                && Hintergrund.Zwischenspeicher(null) is null);
+            byte[] kJpg = { 0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10 }, kPng = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A },
+                   kBmp = { 0x42, 0x4D, 1, 2 }, kGif = { 0x47, 0x49, 0x46, 0x38, 0x39, 0x61 },
+                   kWebp = { 0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50 }, kSonst = { 1, 2, 3, 4 };
+            Check("Bildart an den ersten Bytes",
+                Hintergrund.BildEndung(kJpg) == ".jpg" && Hintergrund.BildEndung(kPng) == ".png" && Hintergrund.BildEndung(kBmp) == ".bmp"
+                && Hintergrund.BildEndung(kGif) == ".gif" && Hintergrund.BildEndung(kWebp) == ".webp"
+                && Hintergrund.BildEndung(kSonst) is null && Hintergrund.BildEndung(ReadOnlySpan<byte>.Empty) is null);
+            Check("Name: Zwischenspeicher wird zu Hintergrundbild.<Endung>",
+                Hintergrund.SicherungsName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", kJpg) == "Hintergrundbild.jpg"
+                && Hintergrund.SicherungsName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", kPng) == "Hintergrundbild.png"
+                && Hintergrund.SicherungsName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\CachedFiles\CachedImage_1920_1080_POS4.jpg", kJpg) == "Hintergrundbild.jpg"
+                && Hintergrund.SicherungsName(@"D:\DASI\Design\TranscodedWallpaper", kSonst) == "Hintergrundbild.jpg");
+            Check("Name: gewoehnliches Bild behaelt seinen Namen, ohne Endung bekommt es die passende",
+                Hintergrund.SicherungsName(@"C:\Users\A\Pictures\Urlaub.jpg", kJpg) == "Urlaub.jpg"
+                && Hintergrund.SicherungsName(@"C:\Users\A\Pictures\Urlaub.jpeg", kPng) == "Urlaub.jpeg"
+                && Hintergrund.SicherungsName(@"C:\x\Bild", kPng) == "Bild.png"
+                && Hintergrund.SicherungsName(@"C:\x\Bild", kSonst) == "Bild");
+
             // Gespeichert und wieder gelesen.
             var hg = Path.Combine(root, "hintergrund", "Hintergrundbild");
             Directory.CreateDirectory(hg);
@@ -2146,6 +2177,98 @@ internal static class Program
             }
         }
 
+        // Hintergrund: so setzen wie das Tool, Explorer neu starten, auf dem
+        // Bildschirm nachsehen. Ganz am Ende, der Desktop wechselt dabei mehrfach.
+        if (OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("\n== Hintergrund echt: setzen, Explorer neu starten, Bildschirm pruefen ==");
+            if (!ExplorerNeustart.TaskleisteDa())
+            {
+                Console.WriteLine("         (keine Taskleiste auf diesem Laeufer - uebersprungen)");
+            }
+            else
+            {
+                var hgNutzer = DesktopScreenshot.GetInteractiveUser();
+                using var hgHku = hgNutzer?.Sid is { } hgSid ? Microsoft.Win32.Registry.Users.OpenSubKey(hgSid, true) : null;
+                var hgWurzel = hgHku ?? Microsoft.Win32.Registry.CurrentUser;
+                bool hgEigen = DesktopHintergrund.IstProzessBenutzer(hgNutzer?.Sid);
+                var hgVorher = DesktopHintergrund.Lesen(hgWurzel);
+                Console.WriteLine($"         Zweig: {(hgHku is null ? "HKCU" : @"HKU\" + hgNutzer!.Sid)}, Tool laeuft als dieser Benutzer: {hgEigen}");
+                Console.WriteLine($"         vorher: Bild={hgVorher.Bild ?? "-"}, Farbe={hgVorher.Farbe}, Typ={hgVorher.Typ?.ToString() ?? "-"}, "
+                                  + $"Stil={hgVorher.Stil ?? "-"}, virtuelle Desktops mit eigenem Bild: {hgVorher.DesktopBilder.Count}");
+
+                var hgOrdner = Path.Combine(root, "hintergrund-echt");
+                Directory.CreateDirectory(hgOrdner);
+                var rot = ((byte)200, (byte)30, (byte)30);
+                var gruen = ((byte)30, (byte)170, (byte)60);
+                var lila = ((byte)107, (byte)105, (byte)214);
+                var tuerkis = ((byte)0, (byte)150, (byte)160);
+                string rotBild = Path.Combine(hgOrdner, "rot.png"), gruenBild = Path.Combine(hgOrdner, "gruen.png");
+                HintergrundEcht.EinfarbigesPng(rotBild, rot);
+                HintergrundEcht.EinfarbigesPng(gruenBild, gruen);
+                var strecken = new HintergrundEinstellung { Darstellung = "2", Kacheln = "0" };
+                void Neustart(string wozu)
+                {
+                    var (ok, _) = ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(25)).GetAwaiter().GetResult();
+                    Console.WriteLine($"         Explorer neu gestartet ({wozu}): {(ok ? "ok" : "Taskleiste NICHT wieder da")}");
+                }
+
+                var hgWeg = DesktopScreenshot.HideWindows();
+                try
+                {
+                    // 1. Ein Bild - wie das Tool es setzt.
+                    var r1 = DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken);
+                    Console.WriteLine($"         Bild: eingetragen {r1.Eingetragen}, angezeigt {r1.Angezeigt}, virtuelle Desktops {r1.VirtuelleDesktops}");
+                    Check("echt: Bild beim angemeldeten Benutzer eingetragen", r1.Eingetragen);
+                    Check("echt: Windows zeigt das Bild sofort", r1.Angezeigt);
+                    var a1 = HintergrundEcht.Sichtbar(rot);
+                    Check("echt: das Bild ist auf dem Bildschirm", a1 > 0.5, $"{a1:P0} rot");
+                    Neustart("Bild");
+                    var a2 = HintergrundEcht.Sichtbar(rot);
+                    Check("echt: nach dem Explorer-Neustart ist das Bild noch da", a2 > 0.5, $"{a2:P0} rot");
+
+                    // 2. So sieht es beim angemeldeten Benutzer aus, wenn das Tool
+                    //    unter einem ANDEREN Konto laeuft: Nur seine Registry
+                    //    stimmt, Windows' Zwischenspeicher zeigt noch das alte Bild.
+                    DesktopHintergrund.BildEintragen(hgWurzel, gruenBild, strecken);
+                    Neustart("nur eingetragen");
+                    var a3 = HintergrundEcht.Sichtbar(gruen);
+                    Check("echt: nur eingetragen - nach dem Explorer-Neustart zeigt Windows das neue Bild", a3 > 0.5,
+                        $"{a3:P0} gruen, {HintergrundEcht.Anteil(rot):P0} rot");
+
+                    // 3. Volltonfarbe.
+                    var r4 = DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, lila);
+                    Console.WriteLine($"         Volltonfarbe: eingetragen {r4.Eingetragen}, angezeigt {r4.Angezeigt}");
+                    Check("echt: Volltonfarbe eingetragen", r4.Eingetragen);
+                    var a4 = HintergrundEcht.Sichtbar(lila);
+                    Check("echt: die Volltonfarbe ist auf dem Bildschirm", a4 > 0.5, $"{a4:P0} lila");
+                    Neustart("Volltonfarbe");
+                    var a5 = HintergrundEcht.Sichtbar(lila);
+                    Check("echt: nach dem Explorer-Neustart ist die Volltonfarbe noch da", a5 > 0.5, $"{a5:P0} lila");
+
+                    // 4. Nur eingetragene Farbe - zur Auskunft, woher der Explorer sie nimmt.
+                    DesktopHintergrund.FarbeEintragen(hgWurzel, tuerkis);
+                    Neustart("Farbe nur eingetragen");
+                    System.Threading.Thread.Sleep(3000);
+                    Console.WriteLine($"         nur eingetragene Farbe nach dem Neustart: {HintergrundEcht.Anteil(tuerkis):P0} tuerkis (Registry), "
+                                      + $"{HintergrundEcht.Anteil(lila):P0} lila (Sitzung)");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (hgVorher.Bild is { } altBild && File.Exists(altBild))
+                            DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, altBild,
+                                new HintergrundEinstellung { Darstellung = hgVorher.Stil, Kacheln = hgVorher.Kacheln });
+                        else if (Hintergrund.FarbeLesen(hgVorher.Farbe) is { } altFarbe)
+                            DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, altFarbe);
+                    }
+                    catch { /* Laeufer */ }
+                    DesktopScreenshot.RestoreWindows(hgWeg);
+                }
+            }
+        }
+
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
         try { Directory.Delete(root, true); } catch { }
         return _failed == 0 ? 0 : 1;
@@ -2192,6 +2315,51 @@ internal sealed class TestDesktop : IDesktopView
     public (int, int) Stelle(string name) => _symbole.First(s => s.Name == name) is var s ? (s.X, s.Y) : (-1, -1);
 
     public void Dispose() { }
+}
+
+/// <summary>Fuer die echte Hintergrund-Pruefung: einfarbige Bilder und was auf dem Bildschirm zu sehen ist.</summary>
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+internal static class HintergrundEcht
+{
+    public static void EinfarbigesPng(string pfad, (byte R, byte G, byte B) f)
+    {
+        const int n = 64;
+        var px = new byte[n * n * 4];
+        for (int i = 0; i < n * n; i++)
+        {
+            px[i * 4] = f.B; px[i * 4 + 1] = f.G; px[i * 4 + 2] = f.R; px[i * 4 + 3] = 255;
+        }
+        using var s = File.Create(pfad);
+        PngWriter.WriteBgra(s, n, n, px);
+    }
+
+    /// <summary>Welcher Anteil des Bildschirms hat (ungefaehr) diese Farbe?</summary>
+    public static double Anteil((byte R, byte G, byte B) f)
+    {
+        var a = DesktopScreenshot.CaptureVirtualScreen();
+        var b = a.Bgra;
+        int pixel = b.Length / 4, schritt = Math.Max(1, pixel / 20000), treffer = 0, gesamt = 0;
+        for (int i = 0; i < pixel; i += schritt)
+        {
+            int o = i * 4;
+            gesamt++;
+            if (Math.Abs(b[o] - f.B) <= 24 && Math.Abs(b[o + 1] - f.G) <= 24 && Math.Abs(b[o + 2] - f.R) <= 24) treffer++;
+        }
+        return gesamt == 0 ? 0 : (double)treffer / gesamt;
+    }
+
+    /// <summary>Wartet bis zu 15 Sekunden, bis die Farbe ueberwiegt - der Desktop braucht nach dem Setzen einen Moment.</summary>
+    public static double Sichtbar((byte R, byte G, byte B) f)
+    {
+        var uhr = System.Diagnostics.Stopwatch.StartNew();
+        double a;
+        while (true)
+        {
+            a = Anteil(f);
+            if (a > 0.5 || uhr.Elapsed.TotalSeconds > 15) return a;
+            System.Threading.Thread.Sleep(1000);
+        }
+    }
 }
 
 internal static class FarbeEcht

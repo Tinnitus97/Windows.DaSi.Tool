@@ -877,21 +877,8 @@ public sealed class BackupService
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool SystemParametersInfo(uint uAction, uint uParam, string? lpvParam, uint fuWinIni);
 
-    private const uint SPI_SETDESKWALLPAPER = 0x0014;
     private const uint SPIF_UPDATEINIFILE   = 0x01;
     private const uint SPIF_SENDCHANGE       = 0x02;
-
-    // Die Desktopfarbe der laufenden Sitzung (COLOR_DESKTOP = COLOR_BACKGROUND).
-    private const int COLOR_DESKTOP = 1;
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern uint GetSysColor(int nIndex);
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    private static extern bool SetSysColors(int cElements, int[] lpaElements, int[] lpaRgbValues);
-
-    private const string WallpapersKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers";
 
     // Merkt sich neben dem Bild auch dessen Originalpfad ...
     private const string WallpaperPathFile = "Hintergrundbild-Pfad.txt";
@@ -901,70 +888,28 @@ public sealed class BackupService
     private const string WallpaperProfileFile = "Hintergrundbild-Profil.txt";
 
     /// <summary>
-    /// Liest den Pfad des aktuellen Desktop-Hintergrundbilds aus der Registry.
-    /// </summary>
-    private static string? GetCurrentWallpaperPath()
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop");
-            var p = key?.GetValue("WallPaper") as string;
-            return string.IsNullOrWhiteSpace(p) ? null : p;
-        }
-        catch { return null; }
-    }
-
-    /// <summary>
-    /// Was neben dem Bildpfad zum Hintergrund gehoert: die Farbe (Registry,
-    /// sonst die der laufenden Sitzung), die Art (BackgroundType) und die
-    /// Darstellung ("Füllen", "Anpassen" ...).
-    /// </summary>
-    private static (string? Farbe, int? Typ, string? Stil, string? Kacheln) HintergrundRegistry()
-    {
-        string? farbe = null, stil = null, kacheln = null;
-        int? typ = null;
-        try
-        {
-            using var k = Registry.CurrentUser.OpenSubKey(@"Control Panel\Colors");
-            farbe = k?.GetValue("Background") as string;
-        }
-        catch { /* dann aus der Sitzung */ }
-        if (Hintergrund.FarbeLesen(farbe) is null && OperatingSystem.IsWindows())
-        {
-            try
-            {
-                var c = GetSysColor(COLOR_DESKTOP);
-                farbe = Hintergrund.FarbeText(((byte)(c & 0xFF), (byte)((c >> 8) & 0xFF), (byte)((c >> 16) & 0xFF)));
-            }
-            catch { /* bleibt leer */ }
-        }
-        try
-        {
-            using var k = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop");
-            stil = k?.GetValue("WallpaperStyle") as string;
-            kacheln = k?.GetValue("TileWallpaper") as string;
-        }
-        catch { /* ohne Darstellung */ }
-        try
-        {
-            using var k = Registry.CurrentUser.OpenSubKey(WallpapersKey);
-            if (k?.GetValue("BackgroundType") is int t) typ = t;
-        }
-        catch { /* aelteres Windows */ }
-        return (farbe, typ, stil, kacheln);
-    }
-
-    /// <summary>
     /// Sichert den Hintergrund in den Ordner "Design": ein Bild (die Datei
     /// daneben) oder eine Volltonfarbe. null, wenn es nichts Festes zu sichern
     /// gibt (Diashow, Blickpunkt, Bild verschwunden) - das steht dann im
     /// Protokoll.
     /// </summary>
-    private async Task<HintergrundEinstellung?> HintergrundSichern(string ordner)
+    private async Task<HintergrundEinstellung?> HintergrundSichern(string ordner, DesignZiel ziel)
     {
-        var src = GetCurrentWallpaperPath();
-        var (farbeText, typ, stil, kacheln) = HintergrundRegistry();
-        var art = Hintergrund.Bestimmen(src, src is not null && File.Exists(src), typ, farbeText);
+        var stand = DesktopHintergrund.Lesen(ziel.Wurzel);
+        var src = stand.Bild;
+        string? farbeText = stand.Farbe, stil = stand.Stil, kacheln = stand.Kacheln;
+        var art = Hintergrund.Bestimmen(src, src is not null && File.Exists(src), stand.Typ, farbeText);
+
+        // Das eingetragene Bild ist geloescht, Windows zeigt es aber weiter -
+        // aus seinem Zwischenspeicher. Dann eben das sichern.
+        if (art == HintergrundArt.Unbekannt && src is not null && !File.Exists(src)
+            && Hintergrund.Zwischenspeicher(SourcePath) is { } zwischen && File.Exists(zwischen))
+        {
+            _log(Loc.Tr($"[INFO] Das eingetragene Hintergrundbild gibt es nicht mehr ({src}) - gesichert wird das Bild, das Windows gerade zeigt.",
+                        $"[INFO] The configured wallpaper no longer exists ({src}) - the image Windows currently shows is backed up."));
+            src = zwischen;
+            art = HintergrundArt.Bild;
+        }
 
         // Volltonfarbe: Es gibt kein Bild - gesichert wird die Farbe.
         if (art == HintergrundArt.Volltonfarbe && Hintergrund.FarbeLesen(farbeText) is { } farbe)
@@ -990,8 +935,13 @@ public sealed class BackupService
             return null;
         }
 
-        // Bild unter seinem Originalnamen neben Design.json.
-        var fileName = Path.GetFileName(src);
+        // Bild unter seinem Originalnamen neben Design.json - Windows'
+        // Zwischenspeicher ("TranscodedWallpaper", ohne Endung) als
+        // "Hintergrundbild.jpg".
+        var fileName = Hintergrund.SicherungsName(src, KopfLesen(src));
+        if (Hintergrund.IstWindowsZwischenspeicher(src))
+            _log(Loc.Tr($"[INFO] Der Hintergrund liegt nur in Windows' Zwischenspeicher ({src}) - gesichert als {fileName}.",
+                        $"[INFO] The wallpaper only exists in Windows' cache ({src}) - backed up as {fileName}."));
         if (string.Equals(fileName, DesignEinstellungen.DateiName, StringComparison.OrdinalIgnoreCase)
             || string.Equals(fileName, DesignEinstellungen.AlterDateiName, StringComparison.OrdinalIgnoreCase))
             fileName = "Hintergrund-" + fileName;
@@ -1028,7 +978,7 @@ public sealed class BackupService
     /// Hintergrundbild-Profil.txt und ggf. Hintergrund.json (Volltonfarbe,
     /// Darstellung).
     /// </summary>
-    private async Task HintergrundAusAlterSicherung()
+    private async Task HintergrundAusAlterSicherung(DesignZiel ziel)
     {
         var srcDir = Path.Combine(BackupPath, "Hintergrundbild");
         var pathFile = Path.Combine(srcDir, WallpaperPathFile);
@@ -1044,7 +994,7 @@ public sealed class BackupService
         var einstellung = Hintergrund.Laden(srcDir);
         if (Hintergrund.IstVolltonfarbe(einstellung))
         {
-            VolltonfarbeSetzen(Hintergrund.FarbeLesen(einstellung!.Farbe)!.Value);
+            VolltonfarbeSetzen(ziel, Hintergrund.FarbeLesen(einstellung!.Farbe)!.Value);
             return;
         }
 
@@ -1087,7 +1037,7 @@ public sealed class BackupService
             return;
         }
 
-        await HintergrundbildSetzen(backupImage, originalPath, originalProfile, einstellung);
+        await HintergrundbildSetzen(ziel, backupImage, originalPath, originalProfile, einstellung);
     }
 
     /// <summary>
@@ -1095,7 +1045,7 @@ public sealed class BackupService
     /// der es auf dem alten Rechner lag) und setzt es als Hintergrund - samt
     /// Darstellung und Randfarbe, falls gesichert.
     /// </summary>
-    private async Task HintergrundbildSetzen(string backupImage, string? originalPath, string? originalProfile, HintergrundEinstellung? einstellung)
+    private async Task HintergrundbildSetzen(DesignZiel ziel, string backupImage, string? originalPath, string? originalProfile, HintergrundEinstellung? einstellung)
     {
         // Zielpfad bestimmen - IMMER im gewaehlten Zielprofil.
         //
@@ -1105,13 +1055,19 @@ public sealed class BackupService
         // ein Profil, das es dort nicht gibt. Und ohne gespeicherten Pfad ging
         // das Bild in "Bilder" dessen, der das Tool ausfuehrt, nicht des
         // Zielprofils.
+        //
+        // Lag es in Windows' Zwischenspeicher (Themes\TranscodedWallpaper,
+        // CachedFiles): NICHT dorthin zurueck. Die Dateien verwaltet Windows
+        // selbst - als Hintergrund eingetragen, ueberschreibt bzw. loescht es
+        // sie, und nach dem naechsten Neustart ist der Desktop schwarz.
         string targetPath;
-        var imZielprofil = ProfilePaths.MapIntoProfile(originalPath, originalProfile, SourcePath);
+        bool zwischenspeicher = Hintergrund.IstWindowsZwischenspeicher(originalPath);
+        var imZielprofil = zwischenspeicher ? null : ProfilePaths.MapIntoProfile(originalPath, originalProfile, SourcePath);
         if (imZielprofil is not null)
         {
             targetPath = imZielprofil;
         }
-        else if (!string.IsNullOrWhiteSpace(originalPath) && File.Exists(originalPath)
+        else if (!zwischenspeicher && !string.IsNullOrWhiteSpace(originalPath) && File.Exists(originalPath)
                  && FilesAreEqual(backupImage, originalPath))
         {
             // Ein Windows-Hintergrund ausserhalb jedes Profils (C:\Windows\Web\...),
@@ -1120,7 +1076,7 @@ public sealed class BackupService
         }
         else
         {
-            targetPath = Path.Combine(SourcePath, "Pictures", Path.GetFileName(backupImage));
+            targetPath = Path.Combine(SourcePath, "Pictures", Hintergrund.SicherungsName(backupImage, KopfLesen(backupImage)));
         }
         if (!string.IsNullOrWhiteSpace(originalPath)
             && !string.Equals(originalPath, targetPath, StringComparison.OrdinalIgnoreCase))
@@ -1147,19 +1103,11 @@ public sealed class BackupService
                             $"[INFO] Wallpaper restored to: {targetPath}"));
             }
 
-            // Darstellung wie gesichert ("Füllen", "Anpassen" ...) - sie gilt ab
-            // dem naechsten Setzen des Bildes, also davor schreiben.
-            if (einstellung is not null) DarstellungSetzen(einstellung);
-
-            // Als Desktop-Hintergrund setzen.
-            bool ok = SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, targetPath,
-                                           SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
-            if (ok) HintergrundTypSetzen(0);
-            if (ok)
-                _log(Loc.Tr("[ERFOLG] Hintergrundbild gesetzt.", "[SUCCESS] Wallpaper set."));
-            else
-                _log(Loc.Tr("[WARNUNG] Das Bild wurde bereitgestellt, konnte aber nicht automatisch gesetzt werden.",
-                            "[WARNING] The image was placed but could not be set automatically."));
+            // Als Desktop-Hintergrund setzen - samt Darstellung ("Füllen",
+            // "Anpassen" ...) und Randfarbe, eingetragen beim angemeldeten
+            // Benutzer.
+            var r = DesktopHintergrund.BildSetzen(ziel.Wurzel, ziel.EigenerBenutzer, targetPath, einstellung);
+            HintergrundErgebnis(ziel, r, Loc.Tr("Hintergrundbild", "Wallpaper"));
         }
         catch (Exception ex)
         {
@@ -1172,23 +1120,15 @@ public sealed class BackupService
     /// <summary>
     /// Setzt eine Volltonfarbe als Hintergrund - wie unter Einstellungen >
     /// Personalisierung > Hintergrund > Volltonfarbe: Bild entfernen, Farbe
-    /// fuer die laufende Sitzung und dauerhaft in der Registry setzen.
+    /// fuer die laufende Sitzung und dauerhaft beim angemeldeten Benutzer.
     /// </summary>
-    private void VolltonfarbeSetzen((byte R, byte G, byte B) farbe)
+    private void VolltonfarbeSetzen(DesignZiel ziel, (byte R, byte G, byte B) farbe)
     {
         try
         {
-            using (var k = Registry.CurrentUser.CreateSubKey(@"Control Panel\Colors"))
-                k.SetValue("Background", Hintergrund.FarbeText(farbe));
-            // Ohne Bild zeigt der Desktop die Farbe.
-            SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, "", SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
-            bool ok = SetSysColors(1, new[] { COLOR_DESKTOP }, new[] { Hintergrund.ColorRef(farbe) });
-            HintergrundTypSetzen(1);
-            _log(ok
-                ? Loc.Tr($"[ERFOLG] Volltonfarbe als Hintergrund gesetzt: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)}).",
-                         $"[SUCCESS] Solid color background set: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)}).")
-                : Loc.Tr($"[WARNUNG] Die Volltonfarbe {Hintergrund.Hex(farbe)} ist eingetragen, wird aber erst nach der nächsten Anmeldung sichtbar.",
-                         $"[WARNING] The solid color {Hintergrund.Hex(farbe)} is set, but only becomes visible after the next sign-in."));
+            var r = DesktopHintergrund.FarbeSetzen(ziel.Wurzel, ziel.EigenerBenutzer, farbe);
+            HintergrundErgebnis(ziel, r, Loc.Tr($"Volltonfarbe RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})",
+                                                $"Solid color RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})"));
         }
         catch (Exception ex)
         {
@@ -1197,37 +1137,34 @@ public sealed class BackupService
         }
     }
 
-    /// <summary>Darstellung und Randfarbe eines Bildes wie gesichert.</summary>
-    private static void DarstellungSetzen(HintergrundEinstellung e)
+    /// <summary>Was beim Setzen des Hintergrunds herauskam - ins Protokoll.</summary>
+    private void HintergrundErgebnis(DesignZiel ziel, HintergrundGesetzt r, string was)
     {
-        try
-        {
-            using var k = Registry.CurrentUser.CreateSubKey(@"Control Panel\Desktop");
-            if (!string.IsNullOrWhiteSpace(e.Darstellung)) k.SetValue("WallpaperStyle", e.Darstellung);
-            if (!string.IsNullOrWhiteSpace(e.Kacheln)) k.SetValue("TileWallpaper", e.Kacheln);
-        }
-        catch { /* dann eben die aktuelle Darstellung */ }
-        if (Hintergrund.FarbeLesen(e.Farbe) is { } farbe)
-        {
-            try
-            {
-                using (var c = Registry.CurrentUser.CreateSubKey(@"Control Panel\Colors"))
-                    c.SetValue("Background", Hintergrund.FarbeText(farbe));
-                SetSysColors(1, new[] { COLOR_DESKTOP }, new[] { Hintergrund.ColorRef(farbe) });
-            }
-            catch { /* Randfarbe ist Nebensache */ }
-        }
+        if (r.VirtuelleDesktops > 0)
+            _log(Loc.Tr($"[INFO] {r.VirtuelleDesktops} virtuelle(r) Desktop(s) hatte(n) einen eigenen Hintergrund - angeglichen.",
+                        $"[INFO] {r.VirtuelleDesktops} virtual desktop(s) had their own background - adjusted."));
+        var fuer = ziel.EigenerBenutzer || ziel.Name is null ? "" : Loc.Tr($" (eingetragen für {ziel.Name})", $" (set for {ziel.Name})");
+        if (r.Eingetragen && r.Angezeigt)
+            _log(Loc.Tr($"[ERFOLG] Hintergrund gesetzt: {was}{fuer}.", $"[SUCCESS] Background set: {was}{fuer}."));
+        else if (r.Eingetragen)
+            _log(Loc.Tr($"[WARNUNG] Hintergrund eingetragen: {was}{fuer} - Windows zeigt ihn erst nach der nächsten Anmeldung.",
+                        $"[WARNING] Background configured: {was}{fuer} - Windows only shows it after the next sign-in."));
+        else
+            _log(Loc.Tr($"[FEHLER] Der Hintergrund ließ sich nicht dauerhaft eintragen ({was}) - nach einem Neustart wäre er wieder weg.",
+                        $"[ERROR] The background could not be saved permanently ({was}) - it would be gone after a restart."));
     }
 
-    /// <summary>BackgroundType, damit die Einstellungen-App die richtige Art anzeigt: 0 Bild, 1 Volltonfarbe.</summary>
-    private static void HintergrundTypSetzen(int typ)
+    /// <summary>Die ersten Bytes einer Datei - fuer die Bildart. Leer, wenn sie sich nicht lesen laesst.</summary>
+    private static byte[] KopfLesen(string pfad)
     {
         try
         {
-            using var k = Registry.CurrentUser.CreateSubKey(WallpapersKey);
-            k.SetValue("BackgroundType", typ, RegistryValueKind.DWord);
+            using var f = File.OpenRead(pfad);
+            var kopf = new byte[16];
+            int n = f.Read(kopf, 0, kopf.Length);
+            return kopf[..n];
         }
-        catch { /* aelteres Windows */ }
+        catch { return Array.Empty<byte>(); }
     }
 
     // ------------------------------------------------------------ Design
@@ -1241,9 +1178,11 @@ public sealed class BackupService
     public async Task ExportDesign()
     {
         var ordner = Path.Combine(BackupPath, DesignEinstellungen.Ordner);
-        var hintergrund = await HintergrundSichern(ordner);
+        using var ziel = DesignZweig(schreiben: false);
+        if (ziel is null) return;
+        var hintergrund = await HintergrundSichern(ordner, ziel);
         if (_cancel.IsCancelled) return;
-        var werte = DesignEinstellungenLesen();
+        var werte = DesignEinstellungenLesen(ziel);
         if (hintergrund is null && (werte is null || werte.Count == 0)) return;
         try
         {
@@ -1293,7 +1232,9 @@ public sealed class BackupService
     public async Task ImportDesign()
     {
         var design = DesignEinstellungen.Laden(BackupPath);
-        if (design is { Werte.Count: > 0 }) DesignEinstellungenSetzen(design);
+        using var ziel = DesignZweig(schreiben: true);
+        if (ziel is null) return;
+        if (design is { Werte.Count: > 0 }) DesignEinstellungenSetzen(design, ziel);
         else _log(Loc.Tr("[INFO] Die Sicherung enthält keine Design-Einstellungen (ältere Fassung des Tools) - nur der Hintergrund wird wiederhergestellt.",
                          "[INFO] The backup contains no design settings (older version of the tool) - only the wallpaper is restored."));
         if (_cancel.IsCancelled) return;
@@ -1302,7 +1243,7 @@ public sealed class BackupService
         {
             if (Hintergrund.IstVolltonfarbe(h))
             {
-                VolltonfarbeSetzen(Hintergrund.FarbeLesen(h.Farbe)!.Value);
+                VolltonfarbeSetzen(ziel, Hintergrund.FarbeLesen(h.Farbe)!.Value);
                 return;
             }
             var bild = h.Bild is null ? null : Path.Combine(BackupPath, DesignEinstellungen.Ordner, h.Bild);
@@ -1312,11 +1253,11 @@ public sealed class BackupService
                             $"[ERROR] The wallpaper is missing from the backup: {bild ?? "(no name)"}"));
                 return;
             }
-            await HintergrundbildSetzen(bild, h.BildPfad, h.Profil, h);
+            await HintergrundbildSetzen(ziel, bild, h.BildPfad, h.Profil, h);
         }
         else if (AppCatalog.HatHintergrund(BackupPath))
         {
-            await HintergrundAusAlterSicherung();
+            await HintergrundAusAlterSicherung(ziel);
         }
         else
         {
@@ -1324,26 +1265,41 @@ public sealed class BackupService
         }
     }
 
-    /// <summary>
-    /// Der Registry-Zweig fuer die Design-Einstellungen: der des ANGEMELDETEN
-    /// Benutzers (HKEY_USERS\&lt;SID&gt;) - das Tool laeuft mit Adminrechten,
-    /// womoeglich unter einem anderen Konto. Gehoert der angemeldete Benutzer
-    /// nicht zum gewaehlten Profil, null: Dann wuerden die Einstellungen eines
-    /// anderen gelesen bzw. veraendert.
-    /// </summary>
-    private (RegistryKey? Wurzel, bool Eigen) DesignZweig(bool schreiben)
+    /// <summary>Wohin Hintergrund und Design-Einstellungen gehoeren.</summary>
+    /// <param name="Wurzel">HKEY_USERS\&lt;SID&gt; des angemeldeten Benutzers, sonst HKEY_CURRENT_USER.</param>
+    /// <param name="EigenerBenutzer">Laeuft das Tool unter genau diesem Benutzer? Sonst gilt Windows-Aufrufe, die in die
+    /// Registry des Prozesses schreiben, nur fuer die laufende Sitzung.</param>
+    /// <param name="Name">Der angemeldete Benutzer, falls bekannt.</param>
+    private sealed record DesignZiel(RegistryKey Wurzel, bool Eigen, bool EigenerBenutzer, string? Name) : IDisposable
     {
-        if (!OperatingSystem.IsWindows()) return (null, false);
+        public void Dispose() { if (Eigen) Wurzel.Dispose(); }
+    }
+
+    /// <summary>
+    /// Der Registry-Zweig fuer Hintergrund und Design-Einstellungen: der des
+    /// ANGEMELDETEN Benutzers (HKEY_USERS\&lt;SID&gt;) - das Tool laeuft mit
+    /// Adminrechten, womoeglich unter einem anderen Konto. Gehoert der
+    /// angemeldete Benutzer nicht zum gewaehlten Profil, null: Dann wuerden
+    /// Hintergrund und Einstellungen eines anderen gelesen bzw. veraendert.
+    /// </summary>
+    private DesignZiel? DesignZweig(bool schreiben)
+    {
+        if (!OperatingSystem.IsWindows()) return null;
         var angemeldet = DesktopScreenshot.GetInteractiveUser();
         if (angemeldet?.ProfilePath is { } eigenesProfil && !ProfileExcludes.SameFolder(eigenesProfil, SourcePath))
         {
-            _log(Loc.Tr($"[WARNUNG] Design-Einstellungen: Angemeldet ist {angemeldet.Name} ({eigenesProfil}), gewählt ist aber {SourcePath}. "
-                        + "Hell/Dunkel, Akzentfarbe & Co. gehören dem angemeldeten Benutzer - bitte als dieser Benutzer anmelden und das Tool dort starten.",
-                        $"[WARNING] Design settings: {angemeldet.Name} ({eigenesProfil}) is signed in, but {SourcePath} is selected. "
-                        + "Light/dark mode, accent color etc. belong to the signed-in user - please sign in as that user and run the tool there."));
-            return (null, false);
+            _log(Loc.Tr($"[FEHLER] Design: Angemeldet ist {angemeldet.Name} ({eigenesProfil}), gewählt ist aber {SourcePath}. "
+                        + "Hintergrund, Hell/Dunkel, Akzentfarbe & Co. gehören dem angemeldeten Benutzer - bitte als dieser Benutzer anmelden und das Tool dort starten.",
+                        $"[ERROR] Design: {angemeldet.Name} ({eigenesProfil}) is signed in, but {SourcePath} is selected. "
+                        + "Background, light/dark mode, accent color etc. belong to the signed-in user - please sign in as that user and run the tool there."));
+            return null;
         }
-        return BenutzerZweig(schreiben);
+        var (wurzel, eigen) = BenutzerZweig(schreiben);
+        bool eigenerBenutzer = !eigen || DesktopHintergrund.IstProzessBenutzer(angemeldet?.Sid);
+        if (!eigenerBenutzer && angemeldet is not null)
+            _log(Loc.Tr($"[INFO] Das Tool läuft unter dem Konto {Environment.UserName}, angemeldet ist {angemeldet.Name} - Hintergrund und Design werden bei {angemeldet.Name} gelesen bzw. eingetragen.",
+                        $"[INFO] The tool runs under the account {Environment.UserName}, {angemeldet.Name} is signed in - background and design are read from / written to {angemeldet.Name}."));
+        return new DesignZiel(wurzel, eigen, eigenerBenutzer, angemeldet?.Name);
     }
 
     /// <summary>
@@ -1365,13 +1321,11 @@ public sealed class BackupService
     }
 
     /// <summary>Liest die Design-Einstellungen; null, wenn sie nicht gelesen werden (anderer Benutzer, Fehler).</summary>
-    private List<DesignEintrag>? DesignEinstellungenLesen()
+    private List<DesignEintrag>? DesignEinstellungenLesen(DesignZiel ziel)
     {
-        var (wurzel, eigen) = DesignZweig(schreiben: false);
-        if (wurzel is null) return null;
         try
         {
-            var werte = DesignEinstellungen.Auslesen((s, n) => DesignRegistry.Lesen(wurzel, s, n));
+            var werte = DesignEinstellungen.Auslesen((s, n) => DesignRegistry.Lesen(ziel.Wurzel, s, n));
             if (werte.Count == 0)
             {
                 _log(Loc.Tr("[WARNUNG] Es wurden keine Design-Einstellungen gefunden.", "[WARNING] No design settings were found."));
@@ -1388,16 +1342,11 @@ public sealed class BackupService
                         $"[ERROR] The design settings could not be read: {ex.Message}"));
             return null;
         }
-        finally
-        {
-            if (eigen) wurzel.Dispose();
-        }
     }
 
-    private void DesignEinstellungenSetzen(DesignSicherung sicherung)
+    private void DesignEinstellungenSetzen(DesignSicherung sicherung, DesignZiel ziel)
     {
-        var (wurzel, eigen) = DesignZweig(schreiben: true);
-        if (wurzel is null) return;
+        var wurzel = ziel.Wurzel;
         try
         {
             var gesetzt = new List<DesignEintrag>();
@@ -1414,8 +1363,12 @@ public sealed class BackupService
                 catch { nichtSchreibbar.Add(e.Name.Length == 0 ? e.Schluessel : e.Name); }
             }
 
-            // Windows und den laufenden Programmen Bescheid geben.
-            if (gesetzt.Any(e => e.Gruppe == "Mauszeiger"))
+            // Windows und den laufenden Programmen Bescheid geben. Die Mauszeiger
+            // laedt Windows dabei aus der Registry des PROZESSES - laeuft das
+            // Tool unter einem anderen Konto, gelten sie erst ab der naechsten
+            // Anmeldung.
+            bool zeiger = gesetzt.Any(e => e.Gruppe == "Mauszeiger");
+            if (zeiger && ziel.EigenerBenutzer)
                 SystemParametersInfo(SPI_SETCURSORS, 0, null, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
             foreach (var bereich in new[] { "ImmersiveColorSet", "WindowsThemeElement", "TraySettings" })
                 SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero, bereich, SMTO_ABORTIFHUNG, 2000, out _);
@@ -1431,15 +1384,14 @@ public sealed class BackupService
                             $"[WARNING] {nichtSchreibbar.Count} values could not be set: {string.Join(", ", nichtSchreibbar)}."));
             _log(Loc.Tr("[INFO] Hell/Dunkel und Transparenz gelten sofort. Die Akzentfarbe auf Titelleisten und Taskleiste übernimmt Windows teils erst nach dem nächsten Anmelden.",
                         "[INFO] Light/dark mode and transparency apply right away. Windows partly applies the accent color on title bars and the taskbar only after the next sign-in."));
+            if (zeiger && !ziel.EigenerBenutzer)
+                _log(Loc.Tr("[INFO] Die Mauszeiger übernimmt Windows erst nach der nächsten Anmeldung - das Tool läuft unter einem anderen Konto.",
+                            "[INFO] Windows only applies the mouse pointers after the next sign-in - the tool runs under another account."));
         }
         catch (Exception ex)
         {
             _log(Loc.Tr($"[FEHLER] Die Design-Einstellungen konnten nicht übernommen werden: {ex.Message}",
                         $"[ERROR] The design settings could not be applied: {ex.Message}"));
-        }
-        finally
-        {
-            if (eigen) wurzel.Dispose();
         }
     }
 

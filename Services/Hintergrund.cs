@@ -111,6 +111,60 @@ public static class Hintergrund
         return FarbeLesen(farbe) is null ? HintergrundArt.Unbekannt : HintergrundArt.Volltonfarbe;
     }
 
+    /// <summary>Windows' eigene Kopie des Hintergrunds, relativ zum Profil.</summary>
+    public const string ZwischenspeicherRel = @"AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper";
+
+    /// <summary>Die Kopie des gerade gezeigten Hintergrunds in einem Profil.</summary>
+    public static string? Zwischenspeicher(string? profil)
+        => string.IsNullOrWhiteSpace(profil) ? null : AppCatalog.Pfad(profil, ZwischenspeicherRel);
+
+    /// <summary>
+    /// Liegt das Bild in Windows' Zwischenspeicher - "TranscodedWallpaper"
+    /// oder "CachedFiles" unter AppData\Roaming\Microsoft\Windows\Themes? Diese
+    /// Dateien verwaltet Windows selbst: Als Hintergrund eingetragen, werden
+    /// sie beim naechsten Setzen ueberschrieben oder geloescht.
+    /// </summary>
+    public static bool IstWindowsZwischenspeicher(string? pfad)
+    {
+        if (string.IsNullOrWhiteSpace(pfad)) return false;
+        var p = pfad.Replace('/', '\\');
+        if (p.Contains(@"\Roaming\Microsoft\Windows\Themes\", StringComparison.OrdinalIgnoreCase)) return true;
+        var name = DateiName(p);
+        return name.StartsWith("TranscodedWallpaper", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Die Endung zur Bildart nach den ersten Bytes - null, wenn unbekannt.</summary>
+    public static string? BildEndung(ReadOnlySpan<byte> kopf)
+    {
+        if (kopf.Length >= 3 && kopf[0] == 0xFF && kopf[1] == 0xD8 && kopf[2] == 0xFF) return ".jpg";
+        if (kopf.Length >= 4 && kopf[0] == 0x89 && kopf[1] == 0x50 && kopf[2] == 0x4E && kopf[3] == 0x47) return ".png";
+        if (kopf.Length >= 4 && kopf[0] == 0x47 && kopf[1] == 0x49 && kopf[2] == 0x46 && kopf[3] == 0x38) return ".gif";
+        if (kopf.Length >= 12 && kopf[0] == 0x52 && kopf[1] == 0x49 && kopf[2] == 0x46 && kopf[3] == 0x46
+            && kopf[8] == 0x57 && kopf[9] == 0x45 && kopf[10] == 0x42 && kopf[11] == 0x50) return ".webp";
+        if (kopf.Length >= 2 && kopf[0] == 0x42 && kopf[1] == 0x4D) return ".bmp";
+        return null;
+    }
+
+    /// <summary>
+    /// Unter welchem Namen das Bild gesichert bzw. in "Bilder" abgelegt wird:
+    /// sein eigener - Windows' Zwischenspeicher aber als "Hintergrundbild.jpg"
+    /// (passende Endung), und eine Datei ohne Endung bekommt die zur Bildart.
+    /// </summary>
+    public static string SicherungsName(string pfad, ReadOnlySpan<byte> kopf)
+    {
+        var endung = BildEndung(kopf);
+        if (IstWindowsZwischenspeicher(pfad)) return "Hintergrundbild" + (endung ?? ".jpg");
+        var name = DateiName(pfad.Replace('/', '\\'));
+        if (name.Length == 0) return "Hintergrundbild" + (endung ?? ".jpg");
+        return name.Contains('.') || endung is null ? name : name + endung;
+    }
+
+    private static string DateiName(string windowsPfad)
+    {
+        int i = windowsPfad.LastIndexOf('\\');
+        return i < 0 ? windowsPfad : windowsPfad[(i + 1)..];
+    }
+
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     public static void Speichern(string ordner, HintergrundEinstellung e)
