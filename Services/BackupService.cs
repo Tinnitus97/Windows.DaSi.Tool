@@ -873,13 +873,6 @@ public sealed class BackupService
 
     // ------------------------------------------------------------ Hintergrundbild
 
-    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
-    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    private static extern bool SystemParametersInfo(uint uAction, uint uParam, string? lpvParam, uint fuWinIni);
-
-    private const uint SPIF_UPDATEINIFILE   = 0x01;
-    private const uint SPIF_SENDCHANGE       = 0x02;
-
     // Merkt sich neben dem Bild auch dessen Originalpfad ...
     private const string WallpaperPathFile = "Hintergrundbild-Pfad.txt";
     // ... und das gesicherte Profil, damit sich der Pfad beim Zurueckschreiben
@@ -1346,32 +1339,14 @@ public sealed class BackupService
 
     private void DesignEinstellungenSetzen(DesignSicherung sicherung, DesignZiel ziel)
     {
-        var wurzel = ziel.Wurzel;
         try
         {
-            var gesetzt = new List<DesignEintrag>();
-            var ohneDatei = new List<string>();
-            var nichtSchreibbar = new List<string>();
-            foreach (var e in sicherung.Werte)
-            {
-                if (DesignEinstellungen.ZeigerFehlt(e, p => File.Exists(Environment.ExpandEnvironmentVariables(p))))
-                {
-                    ohneDatei.Add(e.Name);
-                    continue;
-                }
-                try { DesignRegistry.Schreiben(wurzel, e); gesetzt.Add(e); }
-                catch { nichtSchreibbar.Add(e.Name.Length == 0 ? e.Schluessel : e.Name); }
-            }
-
-            // Windows und den laufenden Programmen Bescheid geben. Die Mauszeiger
-            // laedt Windows dabei aus der Registry des PROZESSES - laeuft das
-            // Tool unter einem anderen Konto, gelten sie erst ab der naechsten
-            // Anmeldung.
-            bool zeiger = gesetzt.Any(e => e.Gruppe == "Mauszeiger");
-            if (zeiger && ziel.EigenerBenutzer)
-                SystemParametersInfo(SPI_SETCURSORS, 0, null, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
-            foreach (var bereich in new[] { "ImmersiveColorSet", "WindowsThemeElement", "TraySettings" })
-                SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero, bereich, SMTO_ABORTIFHUNG, 2000, out _);
+            // Schreiben und Windows Bescheid geben. Die Mauszeiger laedt Windows
+            // dabei aus der Registry des PROZESSES - laeuft das Tool unter einem
+            // anderen Konto, gelten sie erst ab der naechsten Anmeldung.
+            var ergebnis = DesignRegistry.Uebernehmen(ziel.Wurzel, sicherung.Werte, ziel.EigenerBenutzer);
+            var (gesetzt, ohneDatei, nichtSchreibbar) = (ergebnis.Gesetzt, ergebnis.OhneDatei, ergebnis.NichtSchreibbar);
+            bool zeiger = ergebnis.Zeiger;
 
             var kurz = DesignEinstellungen.Zusammenfassung(gesetzt, Loc.Tr);
             _log(Loc.Tr($"[ERFOLG] Design-Einstellungen übernommen ({gesetzt.Count} Werte: {DesignEinstellungen.Gruppen(gesetzt)}){(kurz.Length > 0 ? " - " + kurz : "")}.",
@@ -1394,15 +1369,6 @@ public sealed class BackupService
                         $"[ERROR] The design settings could not be applied: {ex.Message}"));
         }
     }
-
-    private const uint SPI_SETCURSORS = 0x0057;
-    private static readonly IntPtr HWND_BROADCAST = new(0xFFFF);
-    private const uint WM_SETTINGCHANGE = 0x001A;
-    private const uint SMTO_ABORTIFHUNG = 0x0002;
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
-    private static extern IntPtr SendMessageTimeoutW(IntPtr hWnd, uint msg, UIntPtr wParam, string lParam,
-                                                     uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 
     // ------------------------------------------------------------ Desktop-Screenshot
 

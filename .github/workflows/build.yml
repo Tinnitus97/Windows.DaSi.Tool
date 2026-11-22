@@ -77,3 +77,23 @@ jobs:
           name: WindowsDaSiTool-Testbau
           path: publish/WindowsDaSiTool.exe
           retention-days: 3
+
+  # Der Hintergrund verhaelt sich unter Windows 11 anders als unter Windows
+  # Server (windows-latest): Dort ueberlebt eine Volltonfarbe den Neustart des
+  # Explorers, bei einem Anwender unter Windows 11 nicht. Deshalb dieselbe
+  # echte Pruefung auf einem Windows-11-Laeufer (ARM64, fuer oeffentliche
+  # Repositories frei) - nur der Hintergrund-Teil (DASI_NUR=hintergrund).
+  # Vorerst zur Auskunft: Ein Fehlschlag hier haelt den Zweig nicht auf.
+  hintergrund-windows11:
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/dotnet-lts
+
+      - name: Hintergrund unter Windows 11
+        env:
+          DASI_NUR: hintergrund
+        run: dotnet run --project tests/DaSiTests -c Release

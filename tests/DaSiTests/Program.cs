@@ -76,6 +76,16 @@ internal static class Program
         var root = Path.Combine(Path.GetTempPath(), "dasi-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
 
+        // DASI_NUR=hintergrund: nur die echte Hintergrund-Pruefung - fuer den
+        // Windows-11-Laeufer, auf dem es um genau das geht.
+        if (Environment.GetEnvironmentVariable("DASI_NUR") == "hintergrund")
+        {
+            if (OperatingSystem.IsWindows()) HintergrundEchtPruefen(root);
+            Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
+            try { Directory.Delete(root, true); } catch { }
+            return _failed == 0 ? 0 : 1;
+        }
+
         Console.WriteLine("== update.json auswerten ==");
         var json = """
             {
@@ -2179,114 +2189,171 @@ internal static class Program
 
         // Hintergrund: so setzen wie das Tool, Explorer neu starten, auf dem
         // Bildschirm nachsehen. Ganz am Ende, der Desktop wechselt dabei mehrfach.
-        if (OperatingSystem.IsWindows())
-        {
-            Console.WriteLine("\n== Hintergrund echt: setzen, Explorer neu starten, Bildschirm pruefen ==");
-            if (!ExplorerNeustart.TaskleisteDa())
-            {
-                Console.WriteLine("         (keine Taskleiste auf diesem Laeufer - uebersprungen)");
-            }
-            else
-            {
-                var hgNutzer = DesktopScreenshot.GetInteractiveUser();
-                using var hgHku = hgNutzer?.Sid is { } hgSid ? Microsoft.Win32.Registry.Users.OpenSubKey(hgSid, true) : null;
-                var hgWurzel = hgHku ?? Microsoft.Win32.Registry.CurrentUser;
-                bool hgEigen = DesktopHintergrund.IstProzessBenutzer(hgNutzer?.Sid);
-                var hgVorher = DesktopHintergrund.Lesen(hgWurzel);
-                Console.WriteLine($"         Zweig: {(hgHku is null ? "HKCU" : @"HKU\" + hgNutzer!.Sid)}, Tool laeuft als dieser Benutzer: {hgEigen}");
-                Console.WriteLine($"         vorher: Bild={hgVorher.Bild ?? "-"}, Farbe={hgVorher.Farbe}, Typ={hgVorher.Typ?.ToString() ?? "-"}, "
-                                  + $"Stil={hgVorher.Stil ?? "-"}, virtuelle Desktops mit eigenem Bild: {hgVorher.DesktopBilder.Count}");
-
-                var hgOrdner = Path.Combine(root, "hintergrund-echt");
-                Directory.CreateDirectory(hgOrdner);
-                var rot = ((byte)200, (byte)30, (byte)30);
-                var gruen = ((byte)30, (byte)170, (byte)60);
-                var lila = ((byte)107, (byte)105, (byte)214);
-                var tuerkis = ((byte)0, (byte)150, (byte)160);
-                string rotBild = Path.Combine(hgOrdner, "rot.png"), gruenBild = Path.Combine(hgOrdner, "gruen.png");
-                HintergrundEcht.EinfarbigesPng(rotBild, rot);
-                HintergrundEcht.EinfarbigesPng(gruenBild, gruen);
-                var strecken = new HintergrundEinstellung { Darstellung = "2", Kacheln = "0" };
-                void Neustart(string wozu)
-                {
-                    var (ok, _) = ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(25)).GetAwaiter().GetResult();
-                    Console.WriteLine($"         Explorer neu gestartet ({wozu}): {(ok ? "ok" : "Taskleiste NICHT wieder da")}");
-                }
-
-                var hgWeg = DesktopScreenshot.HideWindows();
-                try
-                {
-                    // 1. Ein Bild - wie das Tool es setzt.
-                    var r1 = DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken);
-                    Console.WriteLine($"         Bild: eingetragen {r1.Eingetragen}, angezeigt {r1.Angezeigt}, virtuelle Desktops {r1.VirtuelleDesktops}");
-                    Check("echt: Bild beim angemeldeten Benutzer eingetragen", r1.Eingetragen);
-                    Check("echt: Windows zeigt das Bild sofort", r1.Angezeigt);
-                    var a1 = HintergrundEcht.Sichtbar(rot);
-                    Check("echt: das Bild ist auf dem Bildschirm", a1 > 0.5, $"{a1:P0} rot");
-                    Neustart("Bild");
-                    var a2 = HintergrundEcht.Sichtbar(rot);
-                    Check("echt: nach dem Explorer-Neustart ist das Bild noch da", a2 > 0.5, $"{a2:P0} rot");
-
-                    // 2. Nur in der Registry - so steht es beim angemeldeten Benutzer,
-                    //    wenn das Tool unter einem ANDEREN Konto laeuft. Ein
-                    //    Explorer-Neustart liest den Hintergrund nicht neu ein (er
-                    //    gehoert zur Sitzung) - der Neustart fuer die Taskleiste kann
-                    //    ihn also nicht verlieren. Erst die Anmeldung liest die Registry.
-                    DesktopHintergrund.BildEintragen(hgWurzel, gruenBild, strecken);
-                    Neustart("nur eingetragen");
-                    System.Threading.Thread.Sleep(3000);
-                    var a3 = HintergrundEcht.Anteil(rot);
-                    Check("echt: ein Explorer-Neustart laesst den Hintergrund der Sitzung stehen", a3 > 0.5,
-                        $"{a3:P0} rot, {HintergrundEcht.Anteil(gruen):P0} gruen");
-
-                    // Zur Auskunft: was die Anmeldung taete (UpdatePerUserSystemParameters
-                    // liest die Registry wie beim Anmelden) - erst mit altem
-                    // Zwischenspeicher, dann verworfen wie beim fremden Konto.
-                    HintergrundEcht.WieBeimAnmelden();
-                    Console.WriteLine($"         wie beim Anmelden, alter Zwischenspeicher: {HintergrundEcht.Anteil(gruen):P0} gruen (Registry), {HintergrundEcht.Anteil(rot):P0} rot (alt)");
-                    DesktopHintergrund.ZwischenspeicherVerwerfen(hgWurzel, hgNutzer?.ProfilePath);
-                    HintergrundEcht.WieBeimAnmelden();
-                    Console.WriteLine($"         wie beim Anmelden, Zwischenspeicher verworfen: {HintergrundEcht.Anteil(gruen):P0} gruen (Registry), {HintergrundEcht.Anteil(rot):P0} rot (alt)");
-
-                    // 3. Volltonfarbe.
-                    var r4 = DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, lila);
-                    Console.WriteLine($"         Volltonfarbe: eingetragen {r4.Eingetragen}, angezeigt {r4.Angezeigt}");
-                    Check("echt: Volltonfarbe eingetragen", r4.Eingetragen);
-                    var a4 = HintergrundEcht.Sichtbar(lila);
-                    Check("echt: die Volltonfarbe ist auf dem Bildschirm", a4 > 0.5, $"{a4:P0} lila");
-                    Neustart("Volltonfarbe");
-                    var a5 = HintergrundEcht.Sichtbar(lila);
-                    Check("echt: nach dem Explorer-Neustart ist die Volltonfarbe noch da", a5 > 0.5, $"{a5:P0} lila");
-
-                    // 4. Nur eingetragene Farbe: Der Explorer-Neustart laesst die der Sitzung stehen.
-                    DesktopHintergrund.FarbeEintragen(hgWurzel, tuerkis);
-                    Neustart("Farbe nur eingetragen");
-                    System.Threading.Thread.Sleep(3000);
-                    var a6 = HintergrundEcht.Anteil(lila);
-                    Check("echt: auch die Volltonfarbe der Sitzung bleibt beim Explorer-Neustart stehen", a6 > 0.5,
-                        $"{a6:P0} lila, {HintergrundEcht.Anteil(tuerkis):P0} tuerkis");
-                    HintergrundEcht.WieBeimAnmelden();
-                    Console.WriteLine($"         wie beim Anmelden: {HintergrundEcht.Anteil(tuerkis):P0} tuerkis (Registry), {HintergrundEcht.Anteil(lila):P0} lila (Sitzung)");
-                }
-                finally
-                {
-                    try
-                    {
-                        if (hgVorher.Bild is { } altBild && File.Exists(altBild))
-                            DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, altBild,
-                                new HintergrundEinstellung { Darstellung = hgVorher.Stil, Kacheln = hgVorher.Kacheln });
-                        else if (Hintergrund.FarbeLesen(hgVorher.Farbe) is { } altFarbe)
-                            DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, altFarbe);
-                    }
-                    catch { /* Laeufer */ }
-                    DesktopScreenshot.RestoreWindows(hgWeg);
-                }
-            }
-        }
+        if (OperatingSystem.IsWindows()) HintergrundEchtPruefen(root);
 
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
         try { Directory.Delete(root, true); } catch { }
         return _failed == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Hintergrund echt: setzen wie das Tool, den Explorer neu starten und am
+    /// Bildschirm nachsehen. Dazu der Ablauf aus dem Protokoll eines Anwenders
+    /// (Design-Werte, Volltonfarbe, Explorer-Neustart fuer die Taskleiste) und
+    /// zum Vergleich die Schnittstelle der Einstellungen-App (IDesktopWallpaper).
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void HintergrundEchtPruefen(string root)
+    {
+        Console.WriteLine("\n== Hintergrund echt: setzen, Explorer neu starten, Bildschirm pruefen ==");
+        HintergrundEcht.WindowsFassung();
+        if (!ExplorerNeustart.TaskleisteDa())
+        {
+            Console.WriteLine("         (keine Taskleiste auf diesem Laeufer - uebersprungen)");
+            return;
+        }
+        var hgNutzer = DesktopScreenshot.GetInteractiveUser();
+        using var hgHku = hgNutzer?.Sid is { } hgSid ? Microsoft.Win32.Registry.Users.OpenSubKey(hgSid, true) : null;
+        var hgWurzel = hgHku ?? Microsoft.Win32.Registry.CurrentUser;
+        bool hgEigen = DesktopHintergrund.IstProzessBenutzer(hgNutzer?.Sid);
+        var hgVorher = DesktopHintergrund.Lesen(hgWurzel);
+        Console.WriteLine($"         Zweig: {(hgHku is null ? "HKCU" : @"HKU\" + hgNutzer!.Sid)}, Tool laeuft als dieser Benutzer: {hgEigen}");
+        Console.WriteLine($"         vorher: Bild={hgVorher.Bild ?? "-"}, Farbe={hgVorher.Farbe}, Typ={hgVorher.Typ?.ToString() ?? "-"}, "
+                          + $"Stil={hgVorher.Stil ?? "-"}, virtuelle Desktops mit eigenem Bild: {hgVorher.DesktopBilder.Count}");
+
+        var hgOrdner = Path.Combine(root, "hintergrund-echt");
+        Directory.CreateDirectory(hgOrdner);
+        var rot = ((byte)200, (byte)30, (byte)30);
+        var gruen = ((byte)30, (byte)170, (byte)60);
+        var lila = ((byte)107, (byte)105, (byte)214);
+        var tuerkis = ((byte)0, (byte)150, (byte)160);
+        string rotBild = Path.Combine(hgOrdner, "rot.png"), gruenBild = Path.Combine(hgOrdner, "gruen.png");
+        HintergrundEcht.EinfarbigesPng(rotBild, rot);
+        HintergrundEcht.EinfarbigesPng(gruenBild, gruen);
+        var strecken = new HintergrundEinstellung { Darstellung = "2", Kacheln = "0" };
+        void Neustart(string wozu)
+        {
+            var (ok, _) = ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(25)).GetAwaiter().GetResult();
+            Console.WriteLine($"         Explorer neu gestartet ({wozu}): {(ok ? "ok" : "Taskleiste NICHT wieder da")}");
+        }
+
+        HintergrundEcht.Zustand("Ausgangslage", hgWurzel, hgNutzer?.ProfilePath);
+        var hgWeg = DesktopScreenshot.HideWindows();
+        try
+        {
+            // 1. Ein Bild - wie das Tool es setzt.
+            var r1 = DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken);
+            Console.WriteLine($"         Bild: eingetragen {r1.Eingetragen}, angezeigt {r1.Angezeigt}, virtuelle Desktops {r1.VirtuelleDesktops}");
+            Check("echt: Bild beim angemeldeten Benutzer eingetragen", r1.Eingetragen);
+            Check("echt: Windows zeigt das Bild sofort", r1.Angezeigt);
+            var a1 = HintergrundEcht.Sichtbar(rot);
+            Check("echt: das Bild ist auf dem Bildschirm", a1 > 0.5, $"{a1:P0} rot");
+            Neustart("Bild");
+            var a2 = HintergrundEcht.Sichtbar(rot);
+            Check("echt: nach dem Explorer-Neustart ist das Bild noch da", a2 > 0.5, $"{a2:P0} rot");
+
+            // 2. Nur in der Registry - so steht es beim angemeldeten Benutzer,
+            //    wenn das Tool unter einem ANDEREN Konto laeuft. Ein
+            //    Explorer-Neustart liest den Hintergrund nicht neu ein (er
+            //    gehoert zur Sitzung) - der Neustart fuer die Taskleiste kann
+            //    ihn also nicht verlieren. Erst die Anmeldung liest die Registry.
+            DesktopHintergrund.BildEintragen(hgWurzel, gruenBild, strecken);
+            Neustart("nur eingetragen");
+            System.Threading.Thread.Sleep(3000);
+            var a3 = HintergrundEcht.Anteil(rot);
+            Check("echt: ein Explorer-Neustart laesst den Hintergrund der Sitzung stehen", a3 > 0.5,
+                $"{a3:P0} rot, {HintergrundEcht.Anteil(gruen):P0} gruen");
+
+            // Zur Auskunft: was die Anmeldung taete (UpdatePerUserSystemParameters
+            // liest die Registry wie beim Anmelden) - erst mit altem
+            // Zwischenspeicher, dann verworfen wie beim fremden Konto.
+            HintergrundEcht.WieBeimAnmelden();
+            Console.WriteLine($"         wie beim Anmelden, alter Zwischenspeicher: {HintergrundEcht.Anteil(gruen):P0} gruen (Registry), {HintergrundEcht.Anteil(rot):P0} rot (alt)");
+            DesktopHintergrund.ZwischenspeicherVerwerfen(hgWurzel, hgNutzer?.ProfilePath);
+            HintergrundEcht.WieBeimAnmelden();
+            Console.WriteLine($"         wie beim Anmelden, Zwischenspeicher verworfen: {HintergrundEcht.Anteil(gruen):P0} gruen (Registry), {HintergrundEcht.Anteil(rot):P0} rot (alt)");
+
+            // 3. Volltonfarbe.
+            var r4 = DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, lila);
+            Console.WriteLine($"         Volltonfarbe: eingetragen {r4.Eingetragen}, angezeigt {r4.Angezeigt}");
+            Check("echt: Volltonfarbe eingetragen", r4.Eingetragen);
+            var a4 = HintergrundEcht.Sichtbar(lila);
+            Check("echt: die Volltonfarbe ist auf dem Bildschirm", a4 > 0.5, $"{a4:P0} lila");
+            Neustart("Volltonfarbe");
+            var a5 = HintergrundEcht.Sichtbar(lila);
+            Check("echt: nach dem Explorer-Neustart ist die Volltonfarbe noch da", a5 > 0.5, $"{a5:P0} lila");
+
+            // 4. Nur eingetragene Farbe: Der Explorer-Neustart laesst die der Sitzung stehen.
+            DesktopHintergrund.FarbeEintragen(hgWurzel, tuerkis);
+            Neustart("Farbe nur eingetragen");
+            System.Threading.Thread.Sleep(3000);
+            var a6 = HintergrundEcht.Anteil(lila);
+            Check("echt: auch die Volltonfarbe der Sitzung bleibt beim Explorer-Neustart stehen", a6 > 0.5,
+                $"{a6:P0} lila, {HintergrundEcht.Anteil(tuerkis):P0} tuerkis");
+            HintergrundEcht.WieBeimAnmelden();
+            Console.WriteLine($"         wie beim Anmelden: {HintergrundEcht.Anteil(tuerkis):P0} tuerkis (Registry), {HintergrundEcht.Anteil(lila):P0} lila (Sitzung)");
+
+            // 5. Ablauf wie beim Anwender (Protokoll vom 22.11.2026): erst die
+            //    Design-Werte (seine 33), dann die Volltonfarbe #6B69D6, dann der
+            //    Explorer-Neustart fuer die Taskleiste. Ausgangslage: ein Bild.
+            Console.WriteLine("   -- Ablauf wie beim Anwender: Design-Werte, Volltonfarbe, Explorer-Neustart --");
+            DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
+            HintergrundEcht.Sichtbar(rot);
+            var ue = DesignRegistry.Uebernehmen(hgWurzel, HintergrundEcht.AnwenderDesign(), hgEigen);
+            Console.WriteLine($"         Design-Werte: {ue.Gesetzt.Count} gesetzt, {ue.OhneDatei.Count} ohne Datei, {ue.NichtSchreibbar.Count} nicht schreibbar");
+            var r5 = DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, lila, hgNutzer?.ProfilePath);
+            Console.WriteLine($"         Volltonfarbe (Tool): eingetragen {r5.Eingetragen}, angezeigt {r5.Angezeigt}");
+            HintergrundEcht.Verlauf("Volltonfarbe (Tool)", lila, 1, 3, 6);
+            Neustart("wie beim Anwender");
+            var v5 = HintergrundEcht.Verlauf("nach dem Explorer-Neustart", lila, 1, 4, 8);
+            HintergrundEcht.Zustand("danach", hgWurzel, hgNutzer?.ProfilePath);
+            Check("echt: Volltonfarbe nach Design-Werten und Explorer-Neustart noch da (Ablauf des Anwenders)", v5 > 0.5, $"{v5:P0} lila");
+
+            // 6./7. Dasselbe ueber IDesktopWallpaper - die Schnittstelle der Einstellungen-App.
+            Console.WriteLine($"   -- IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Stand() ?? "nicht erreichbar"} --");
+            foreach (var abschalten in new[] { false, true })
+            {
+                var was = abschalten ? "Farbe + Enable(false)" : "Farbe + SetWallpaper(\"\")";
+                DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
+                HintergrundEcht.Sichtbar(rot);
+                try
+                {
+                    DesktopHintergrund.FarbeEintragen(hgWurzel, tuerkis);
+                    DesktopHintergrund.Schnittstelle.FarbeSetzen(tuerkis, abschalten);
+                    HintergrundEcht.Verlauf($"IDesktopWallpaper {was}", tuerkis, 1, 3);
+                    Neustart(was);
+                    HintergrundEcht.Verlauf($"IDesktopWallpaper {was}, nach dem Explorer-Neustart", tuerkis, 1, 4, 8);
+                    HintergrundEcht.Zustand("danach", hgWurzel, hgNutzer?.ProfilePath);
+                }
+                catch (Exception ex) { Console.WriteLine($"         IDesktopWallpaper {was}: {ex.GetType().Name}: {ex.Message}"); }
+                finally
+                {
+                    if (abschalten) try { DesktopHintergrund.Schnittstelle.Einschalten(); } catch { }
+                }
+            }
+            try
+            {
+                DesktopHintergrund.Schnittstelle.BildSetzen(gruenBild, strecken);
+                HintergrundEcht.Verlauf("IDesktopWallpaper Bild", gruen, 1, 3);
+                Neustart("IDesktopWallpaper Bild");
+                HintergrundEcht.Verlauf("IDesktopWallpaper Bild, nach dem Explorer-Neustart", gruen, 1, 4, 8);
+                HintergrundEcht.Zustand("danach", hgWurzel, hgNutzer?.ProfilePath);
+            }
+            catch (Exception ex) { Console.WriteLine($"         IDesktopWallpaper Bild: {ex.GetType().Name}: {ex.Message}"); }
+        }
+        finally
+        {
+            try
+            {
+                if (hgVorher.Bild is { } altBild && File.Exists(altBild))
+                    DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, altBild,
+                        new HintergrundEinstellung { Darstellung = hgVorher.Stil, Kacheln = hgVorher.Kacheln });
+                else if (Hintergrund.FarbeLesen(hgVorher.Farbe) is { } altFarbe)
+                    DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, altFarbe);
+            }
+            catch { /* Laeufer */ }
+            DesktopScreenshot.RestoreWindows(hgWeg);
+        }
     }
 }
 
@@ -2378,6 +2445,125 @@ internal static class HintergrundEcht
         }
         catch (Exception ex) { Console.WriteLine($"         (UpdatePerUserSystemParameters: {ex.Message})"); }
         System.Threading.Thread.Sleep(4000);
+    }
+
+    /// <summary>Welche Windows-Fassung - fuer das Protokoll.</summary>
+    public static void WindowsFassung()
+    {
+        string name = "?", fassung = "?", build = "?";
+        try
+        {
+            using var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+            name = k?.GetValue("ProductName") as string ?? "?";
+            fassung = k?.GetValue("DisplayVersion") as string ?? "?";
+            build = $"{k?.GetValue("CurrentBuild")}.{k?.GetValue("UBR")}";
+        }
+        catch { }
+        Console.WriteLine($"         Windows: {name} {fassung}, Build {build}, {System.Runtime.InteropServices.RuntimeInformation.OSArchitecture}");
+    }
+
+    /// <summary>Die Design-Werte aus der Sicherung eines Anwenders (Windows 11, dunkel, Akzentfarbe #0078D4).</summary>
+    public static List<DesignEintrag> AnwenderDesign() => new()
+    {
+            new() { Gruppe = @"Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = @"SystemUsesLightTheme", Typ = @"DWord", Wert = @"0" },
+            new() { Gruppe = @"Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = @"AppsUseLightTheme", Typ = @"DWord", Wert = @"0" },
+            new() { Gruppe = @"Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = @"EnableTransparency", Typ = @"DWord", Wert = @"1" },
+            new() { Gruppe = @"Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = @"ColorPrevalence", Typ = @"DWord", Wert = @"0" },
+            new() { Gruppe = @"Akzentfarbe", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent", Name = @"AccentPalette", Typ = @"Binary", Wert = @"mev/AEzC/wAAkfgAAHjUAABnwAAAPpIAABpoAPdjDAA=" },
+            new() { Gruppe = @"Akzentfarbe", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent", Name = @"AccentColorMenu", Typ = @"DWord", Wert = @"-2852864" },
+            new() { Gruppe = @"Akzentfarbe", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent", Name = @"StartColorMenu", Typ = @"DWord", Wert = @"-4167936" },
+            new() { Gruppe = @"Akzentfarbe", Schluessel = @"Software\Microsoft\Windows\DWM", Name = @"AccentColor", Typ = @"DWord", Wert = @"-2852864" },
+            new() { Gruppe = @"Akzentfarbe", Schluessel = @"Software\Microsoft\Windows\DWM", Name = @"ColorizationColor", Typ = @"DWord", Wert = @"-1006602028" },
+            new() { Gruppe = @"Akzentfarbe", Schluessel = @"Software\Microsoft\Windows\DWM", Name = @"ColorizationAfterglow", Typ = @"DWord", Wert = @"-1006602028" },
+            new() { Gruppe = @"Akzentfarbe", Schluessel = @"Software\Microsoft\Windows\DWM", Name = @"ColorPrevalence", Typ = @"DWord", Wert = @"0" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"", Typ = @"String", Wert = @"Windows-Voreinstellung" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"Scheme Source", Typ = @"DWord", Wert = @"2" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"CursorBaseSize", Typ = @"DWord", Wert = @"32" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"Arrow", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_arrow.cur" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"Help", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_helpsel.cur" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"AppStarting", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_working.ani" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"Wait", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_busy.ani" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"Crosshair", Typ = @"String", Wert = @"" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"IBeam", Typ = @"String", Wert = @"" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"NWPen", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_pen.cur" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"No", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_unavail.cur" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"SizeNS", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_ns.cur" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"SizeWE", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_ew.cur" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"SizeNWSE", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_nwse.cur" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"SizeNESW", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_nesw.cur" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"SizeAll", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_move.cur" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"UpArrow", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_up.cur" },
+            new() { Gruppe = @"Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = @"Hand", Typ = @"String", Wert = @"C:\WINDOWS\cursors\aero_link.cur" },
+            new() { Gruppe = @"Taskleiste", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", Name = @"ShowTaskViewButton", Typ = @"DWord", Wert = @"0" },
+            new() { Gruppe = @"Taskleiste", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", Name = @"TaskbarSmallIcons", Typ = @"DWord", Wert = @"0" },
+            new() { Gruppe = @"Taskleiste", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Search", Name = @"SearchboxTaskbarMode", Typ = @"DWord", Wert = @"0" },
+            new() { Gruppe = @"Start", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", Name = @"Start_IrisRecommendations", Typ = @"DWord", Wert = @"0" },
+    };
+
+    /// <summary>Die zwei haeufigsten Farben auf dem Bildschirm, z. B. "#6B69D6 83 %, #000000 9 %".</summary>
+    public static string Meist()
+    {
+        var a = DesktopScreenshot.CaptureVirtualScreen();
+        var b = a.Bgra;
+        int pixel = b.Length / 4, schritt = Math.Max(1, pixel / 20000), gesamt = 0;
+        var zaehler = new Dictionary<int, int>();
+        for (int i = 0; i < pixel; i += schritt)
+        {
+            int o = i * 4;
+            int k = ((b[o + 2] >> 4) << 8) | ((b[o + 1] >> 4) << 4) | (b[o] >> 4);
+            zaehler[k] = zaehler.GetValueOrDefault(k) + 1;
+            gesamt++;
+        }
+        return string.Join(", ", zaehler.OrderByDescending(x => x.Value).Take(2).Select(x =>
+            $"#{((x.Key >> 8) & 0xF) * 17:X2}{((x.Key >> 4) & 0xF) * 17:X2}{(x.Key & 0xF) * 17:X2} {(double)x.Value / Math.Max(1, gesamt):P0}"));
+    }
+
+    /// <summary>Anteil der Farbe nach 1, 3 ... Sekunden - mit den haeufigsten Farben. Gibt den letzten Anteil zurueck.</summary>
+    public static double Verlauf(string was, (byte R, byte G, byte B) f, params int[] sekunden)
+    {
+        var uhr = System.Diagnostics.Stopwatch.StartNew();
+        double a = 0;
+        foreach (var s in sekunden)
+        {
+            var warten = TimeSpan.FromSeconds(s) - uhr.Elapsed;
+            if (warten > TimeSpan.Zero) System.Threading.Thread.Sleep(warten);
+            a = Anteil(f);
+            Console.WriteLine($"         {was}, nach {s} s: {a:P0} erwartete Farbe - meist {Meist()}");
+        }
+        return a;
+    }
+
+    /// <summary>Was Windows zum Hintergrund meint: Registry, Sitzung, Zwischenspeicher, Blickpunkt, Design-Datei, IDesktopWallpaper.</summary>
+    public static void Zustand(string wann, Microsoft.Win32.RegistryKey wurzel, string? profil)
+    {
+        var s = DesktopHintergrund.Lesen(wurzel);
+        var c = FarbeEcht.GetSysColor(1);
+        Console.WriteLine($"         [{wann}] Registry: Bild={s.Bild ?? "-"}, Farbe={s.Farbe}, Typ={s.Typ?.ToString() ?? "-"}, Stil={s.Stil ?? "-"}; "
+                          + $"Sitzungsfarbe #{c & 0xFF:X2}{(c >> 8) & 0xFF:X2}{(c >> 16) & 0xFF:X2}");
+        try
+        {
+            var z = Hintergrund.Zwischenspeicher(profil);
+            var fi = z is null ? null : new FileInfo(z);
+            using var d = wurzel.OpenSubKey(DesktopHintergrund.DesktopSchluessel);
+            Console.WriteLine($"         [{wann}] TranscodedWallpaper: {(fi is { Exists: true } ? $"{fi.Length} Bytes, {fi.LastWriteTime:HH:mm:ss}" : "fehlt")}, "
+                              + $"TranscodedImageCache: {(d?.GetValue("TranscodedImageCache") is byte[] tc ? $"{tc.Length} Bytes" : "fehlt")}");
+        }
+        catch (Exception ex) { Console.WriteLine($"         [{wann}] Zwischenspeicher: {ex.Message}"); }
+        try
+        {
+            using var sp = wurzel.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings");
+            using var th = wurzel.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes");
+            var design = th?.GetValue("CurrentTheme") as string;
+            string auszug = "-";
+            if (design is not null && File.Exists(Environment.ExpandEnvironmentVariables(design)))
+                auszug = string.Join(" | ", File.ReadAllLines(Environment.ExpandEnvironmentVariables(design))
+                    .Where(z => z.StartsWith("Wallpaper=", StringComparison.OrdinalIgnoreCase)
+                             || z.StartsWith("Background=", StringComparison.OrdinalIgnoreCase)
+                             || z.StartsWith("MultimonBackgrounds", StringComparison.OrdinalIgnoreCase)));
+            Console.WriteLine($"         [{wann}] Blickpunkt EnabledState={sp?.GetValue("EnabledState")?.ToString() ?? "-"}; Design-Datei {design ?? "-"}: {auszug}");
+        }
+        catch (Exception ex) { Console.WriteLine($"         [{wann}] Blickpunkt/Design: {ex.Message}"); }
+        Console.WriteLine($"         [{wann}] IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Stand() ?? "nicht erreichbar"}");
     }
 
     /// <summary>Wartet bis zu 15 Sekunden, bis die Farbe ueberwiegt - der Desktop braucht nach dem Setzen einen Moment.</summary>

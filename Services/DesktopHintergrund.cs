@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
+using System.Threading;
 using Microsoft.Win32;
 
 namespace WindowsDaSiTool.Services;
@@ -281,6 +282,124 @@ public static class DesktopHintergrund
         }
         catch { /* ohne virtuelle Desktops */ }
         return n;
+    }
+
+    // ------------------------------------------------------------ IDesktopWallpaper
+
+    /// <summary>
+    /// Die Schnittstelle, ueber die auch die Einstellungen-App den Hintergrund
+    /// setzt (Explorer). Wirkt fuer die laufende Sitzung und den Benutzer,
+    /// unter dem das Tool laeuft.
+    /// </summary>
+    public static class Schnittstelle
+    {
+        /// <summary>Zustand laut Explorer, als Text - fuer Protokoll und Pruefung; null, wenn nicht erreichbar.</summary>
+        public static string? Stand()
+        {
+            try
+            {
+                return Sta(dw =>
+                {
+                    string bild;
+                    try { bild = dw.GetWallpaper(null) ?? ""; } catch (Exception ex) { bild = $"({ex.GetType().Name})"; }
+                    var c = dw.GetBackgroundColor();
+                    var farbe = Hintergrund.Hex(((byte)(c & 0xFF), (byte)((c >> 8) & 0xFF), (byte)((c >> 16) & 0xFF)));
+                    string status;
+                    try { status = dw.GetStatus().ToString(System.Globalization.CultureInfo.InvariantCulture); } catch { status = "?"; }
+                    return $"Bild={(bild.Length == 0 ? "-" : bild)}, Farbe={farbe}, Position={dw.GetPosition()}, Status={status}, Monitore={dw.GetMonitorDevicePathCount()}";
+                });
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Ein Bild fuer alle Monitore, samt Darstellung.</summary>
+        public static void BildSetzen(string pfad, HintergrundEinstellung? e)
+            => Sta(dw =>
+            {
+                if (Position(e) is { } pos) dw.SetPosition(pos);
+                if (Hintergrund.FarbeLesen(e?.Farbe) is { } rand) dw.SetBackgroundColor((uint)Hintergrund.ColorRef(rand));
+                dw.SetWallpaper(null, pfad);
+                return true;
+            });
+
+        /// <summary>Volltonfarbe: Farbe setzen, Bild leeren (wie die Einstellungen-App).</summary>
+        public static void FarbeSetzen((byte R, byte G, byte B) farbe, bool abschalten)
+            => Sta(dw =>
+            {
+                dw.SetBackgroundColor((uint)Hintergrund.ColorRef(farbe));
+                if (abschalten) dw.Enable(false);
+                else dw.SetWallpaper(null, "");
+                return true;
+            });
+
+        /// <summary>Hintergrundbild wieder einschalten (nach <see cref="FarbeSetzen"/> mit abschalten).</summary>
+        public static void Einschalten() => Sta(dw => { dw.Enable(true); return true; });
+
+        /// <summary>WallpaperStyle/TileWallpaper -> DESKTOP_WALLPAPER_POSITION.</summary>
+        public static int? Position(HintergrundEinstellung? e)
+        {
+            if (e?.Kacheln == "1") return 1;               // Kacheln
+            return e?.Darstellung switch
+            {
+                "0" => 0,   // Zentriert
+                "2" => 2,   // Strecken
+                "6" => 3,   // Anpassen
+                "10" => 4,  // Fuellen
+                "22" => 5,  // Strecken ueber Bildschirme
+                _ => null,
+            };
+        }
+
+        private static T Sta<T>(Func<IDesktopWallpaper, T> tun)
+        {
+            T ergebnis = default!;
+            Exception? fehler = null;
+            var faden = new Thread(() =>
+            {
+                object? obj = null;
+                try
+                {
+                    var typ = Type.GetTypeFromCLSID(new Guid("C2CF3110-460E-4fc1-B9D0-8A1C0C9CC4BD"), throwOnError: true)!;
+                    obj = Activator.CreateInstance(typ);
+                    ergebnis = tun((IDesktopWallpaper)obj!);
+                }
+                catch (Exception ex) { fehler = ex; }
+                finally
+                {
+                    if (obj is not null && Marshal.IsComObject(obj)) Marshal.ReleaseComObject(obj);
+                }
+            });
+            faden.SetApartmentState(ApartmentState.STA);
+            faden.IsBackground = true;
+            faden.Start();
+            if (!faden.Join(TimeSpan.FromSeconds(20))) throw new TimeoutException("IDesktopWallpaper antwortet nicht.");
+            if (fehler is not null) throw fehler;
+            return ergebnis;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [ComImport, Guid("B92B56A9-8B55-4E14-9A89-0199BBB6F93B"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IDesktopWallpaper
+    {
+        void SetWallpaper([MarshalAs(UnmanagedType.LPWStr)] string? monitorId, [MarshalAs(UnmanagedType.LPWStr)] string wallpaper);
+        [return: MarshalAs(UnmanagedType.LPWStr)] string GetWallpaper([MarshalAs(UnmanagedType.LPWStr)] string? monitorId);
+        [return: MarshalAs(UnmanagedType.LPWStr)] string GetMonitorDevicePathAt(uint index);
+        uint GetMonitorDevicePathCount();
+        void GetMonitorRECT([MarshalAs(UnmanagedType.LPWStr)] string monitorId, out RECT rect);
+        void SetBackgroundColor(uint color);
+        uint GetBackgroundColor();
+        void SetPosition(int position);
+        int GetPosition();
+        void SetSlideshow(IntPtr items);
+        IntPtr GetSlideshow();
+        void SetSlideshowOptions(int options, uint tick);
+        void GetSlideshowOptions(out int options, out uint tick);
+        void AdvanceSlideshow([MarshalAs(UnmanagedType.LPWStr)] string? monitorId, int direction);
+        int GetStatus();
+        void Enable([MarshalAs(UnmanagedType.Bool)] bool enable);
     }
 
     private const uint SPI_SETDESKWALLPAPER = 0x0014;
