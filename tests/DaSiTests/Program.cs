@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using WindowsDaSiTool.Services;
 
 namespace DaSiTests;
@@ -2238,7 +2239,11 @@ internal static class Program
         }
 
         HintergrundEcht.Zustand("Ausgangslage", hgWurzel, hgNutzer?.ProfilePath);
+        HintergrundEcht.GrosseFenster("Ausgangslage");
+        Console.WriteLine($"         [Ausgangslage] meist: {HintergrundEcht.Meist()}");
         var hgWeg = DesktopScreenshot.HideWindows();
+        System.Threading.Thread.Sleep(1000);
+        HintergrundEcht.GrosseFenster("Fenster beiseite");
         try
         {
             // 1. Ein Bild - wie das Tool es setzt.
@@ -2308,6 +2313,23 @@ internal static class Program
             var v5 = HintergrundEcht.Verlauf("nach dem Explorer-Neustart", lila, 1, 4, 8);
             HintergrundEcht.Zustand("danach", hgWurzel, hgNutzer?.ProfilePath);
             Check("echt: Volltonfarbe nach Design-Werten und Explorer-Neustart noch da (Ablauf des Anwenders)", v5 > 0.5, $"{v5:P0} lila");
+
+            // 5b. Wie 5, aber jeder virtuelle Desktop behaelt einen LEEREN
+            //     Wallpaper-Eintrag statt keinen.
+            Console.WriteLine("   -- wie 5, virtuelle Desktops mit leerem Wallpaper-Eintrag --");
+            DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
+            HintergrundEcht.Sichtbar(rot);
+            DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, lila, hgNutzer?.ProfilePath);
+            using (var vd = hgWurzel.OpenSubKey(DesktopHintergrund.VirtuelleDesktopsSchluessel, true))
+                foreach (var n in vd?.GetSubKeyNames() ?? Array.Empty<string>())
+                    using (var d = vd!.OpenSubKey(n, true)) d?.SetValue("Wallpaper", "");
+            HintergrundEcht.Verlauf("Volltonfarbe, leerer Eintrag", lila, 1, 3);
+            Neustart("leerer Eintrag");
+            HintergrundEcht.Verlauf("leerer Eintrag, nach dem Explorer-Neustart", lila, 1, 4, 8);
+            HintergrundEcht.Zustand("danach", hgWurzel, hgNutzer?.ProfilePath);
+            using (var vd = hgWurzel.OpenSubKey(DesktopHintergrund.VirtuelleDesktopsSchluessel, true))
+                foreach (var n in vd?.GetSubKeyNames() ?? Array.Empty<string>())
+                    using (var d = vd!.OpenSubKey(n, true)) d?.DeleteValue("Wallpaper", false);
 
             // 6./7. Dasselbe ueber IDesktopWallpaper - die Schnittstelle der Einstellungen-App.
             Console.WriteLine($"   -- IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Stand() ?? "nicht erreichbar"} --");
@@ -2415,11 +2437,21 @@ internal static class HintergrundEcht
         PngWriter.WriteBgra(s, n, n, px);
     }
 
-    /// <summary>Welcher Anteil des Bildschirms hat (ungefaehr) diese Farbe?</summary>
+    /// <summary>
+    /// Welcher Anteil hat (ungefaehr) diese Farbe - auf dem Bildschirm oder im
+    /// Desktop-Fenster selbst, je nachdem, wo mehr davon zu sehen ist. Das
+    /// Desktop-Fenster zaehlt mit, weil auf manchem Laeufer ein Fenster den
+    /// Desktop verdeckt, das sich nicht beiseitelegen laesst.
+    /// </summary>
     public static double Anteil((byte R, byte G, byte B) f)
     {
-        var a = DesktopScreenshot.CaptureVirtualScreen();
-        var b = a.Bgra;
+        double schirm = AnteilIn(DesktopScreenshot.CaptureVirtualScreen().Bgra, f);
+        var d = DesktopFenster();
+        return d is null ? schirm : Math.Max(schirm, AnteilIn(d, f));
+    }
+
+    private static double AnteilIn(byte[] b, (byte R, byte G, byte B) f)
+    {
         int pixel = b.Length / 4, schritt = Math.Max(1, pixel / 20000), treffer = 0, gesamt = 0;
         for (int i = 0; i < pixel; i += schritt)
         {
@@ -2446,6 +2478,82 @@ internal static class HintergrundEcht
         catch (Exception ex) { Console.WriteLine($"         (UpdatePerUserSystemParameters: {ex.Message})"); }
         System.Threading.Thread.Sleep(4000);
     }
+
+    /// <summary>
+    /// Das Desktop-Fenster (Progman, samt Hintergrund) per PrintWindow - auch
+    /// wenn andere Fenster darueber liegen. null, wenn das nicht geht oder es
+    /// leer bleibt.
+    /// </summary>
+    public static byte[]? DesktopFenster()
+    {
+        var h = FindWindowW("Progman", null);
+        if (h == IntPtr.Zero || !GetWindowRect(h, out var r)) return null;
+        int w = r.Right - r.Left, hoehe = r.Bottom - r.Top;
+        if (w <= 0 || hoehe <= 0) return null;
+        var schirm = GetDC(IntPtr.Zero);
+        var dc = CreateCompatibleDC(schirm);
+        var info = new BITMAPINFO { biSize = 40, biWidth = w, biHeight = -hoehe, biPlanes = 1, biBitCount = 32 };
+        var bmp = CreateDIBSection(dc, ref info, 0, out var bits, IntPtr.Zero, 0);
+        var alt = SelectObject(dc, bmp);
+        try
+        {
+            if (bmp == IntPtr.Zero || !PrintWindow(h, dc, 2 /* PW_RENDERFULLCONTENT */)) return null;
+            var px = new byte[(long)w * hoehe * 4];
+            Marshal.Copy(bits, px, 0, px.Length);
+            return DesktopScreenshot.IsBlank(px) ? null : px;
+        }
+        finally
+        {
+            SelectObject(dc, alt);
+            if (bmp != IntPtr.Zero) DeleteObject(bmp);
+            DeleteDC(dc);
+            ReleaseDC(IntPtr.Zero, schirm);
+        }
+    }
+
+    /// <summary>Sichtbare Fenster, die mindestens die Haelfte des Hauptbildschirms bedecken - fuer das Protokoll.</summary>
+    public static void GrosseFenster(string wann)
+    {
+        int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
+        var liste = new List<string>();
+        EnumWindows((h, _) =>
+        {
+            if (!IsWindowVisible(h) || !GetWindowRect(h, out var r)) return true;
+            long flaeche = (long)Math.Max(0, Math.Min(r.Right, sw) - Math.Max(r.Left, 0)) * Math.Max(0, Math.Min(r.Bottom, sh) - Math.Max(r.Top, 0));
+            if (flaeche * 2 < (long)sw * sh) return true;
+            var k = new System.Text.StringBuilder(256); GetClassNameW(h, k, 256);
+            var n = new System.Text.StringBuilder(256); GetWindowTextW(h, n, 256);
+            DwmGetWindowAttribute(h, 14 /* DWMWA_CLOAKED */, out int versteckt, 4);
+            liste.Add($"{k} \"{n}\"{(versteckt != 0 ? " (verborgen)" : "")}");
+            return true;
+        }, IntPtr.Zero);
+        Console.WriteLine($"         [{wann}] grosse Fenster ({sw} x {sh}): {(liste.Count == 0 ? "keine" : string.Join(" | ", liste))}");
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAPINFO
+    {
+        public uint biSize; public int biWidth; public int biHeight; public ushort biPlanes; public ushort biBitCount;
+        public uint biCompression, biSizeImage; public int biXPelsPerMeter, biYPelsPerMeter; public uint biClrUsed, biClrImportant, bmiColors;
+    }
+    private delegate bool EnumWindowsProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowW(string? cls, string? title);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] private static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
+    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr h);
+    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr h, IntPtr hdc);
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int i);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc cb, IntPtr l);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassNameW(IntPtr h, System.Text.StringBuilder s, int max);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr h, System.Text.StringBuilder s, int max);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr h, int a, out int v, int size);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr hdc, IntPtr o);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr o);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateDIBSection(IntPtr hdc, ref BITMAPINFO bmi, uint usage, out IntPtr bits, IntPtr section, uint offset);
 
     /// <summary>Welche Windows-Fassung - fuer das Protokoll.</summary>
     public static void WindowsFassung()
@@ -2500,11 +2608,16 @@ internal static class HintergrundEcht
             new() { Gruppe = @"Start", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", Name = @"Start_IrisRecommendations", Typ = @"DWord", Wert = @"0" },
     };
 
-    /// <summary>Die zwei haeufigsten Farben auf dem Bildschirm, z. B. "#6B69D6 83 %, #000000 9 %".</summary>
+    /// <summary>Die haeufigsten Farben auf dem Bildschirm und im Desktop-Fenster.</summary>
     public static string Meist()
     {
-        var a = DesktopScreenshot.CaptureVirtualScreen();
-        var b = a.Bgra;
+        var d = DesktopFenster();
+        return $"Bildschirm {MeistIn(DesktopScreenshot.CaptureVirtualScreen().Bgra)}; Desktop-Fenster {(d is null ? "-" : MeistIn(d))}";
+    }
+
+    /// <summary>Die zwei haeufigsten Farben, z. B. "#6B69D6 83 %, #000000 9 %".</summary>
+    private static string MeistIn(byte[] b)
+    {
         int pixel = b.Length / 4, schritt = Math.Max(1, pixel / 20000), gesamt = 0;
         var zaehler = new Dictionary<int, int>();
         for (int i = 0; i < pixel; i += schritt)
@@ -2564,6 +2677,17 @@ internal static class HintergrundEcht
         }
         catch (Exception ex) { Console.WriteLine($"         [{wann}] Blickpunkt/Design: {ex.Message}"); }
         Console.WriteLine($"         [{wann}] IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Stand() ?? "nicht erreichbar"}");
+        try
+        {
+            using var vd = wurzel.OpenSubKey(DesktopHintergrund.VirtuelleDesktopsSchluessel);
+            var namen = vd?.GetSubKeyNames() ?? Array.Empty<string>();
+            Console.WriteLine($"         [{wann}] virtuelle Desktops: {(namen.Length == 0 ? "keine" : string.Join(", ", namen.Select(n =>
+            {
+                using var d = vd!.OpenSubKey(n);
+                return d?.GetValue("Wallpaper") is string b ? $"Wallpaper=\"{b}\"" : "ohne Wallpaper";
+            })))}");
+        }
+        catch (Exception ex) { Console.WriteLine($"         [{wann}] virtuelle Desktops: {ex.Message}"); }
     }
 
     /// <summary>Wartet bis zu 15 Sekunden, bis die Farbe ueberwiegt - der Desktop braucht nach dem Setzen einen Moment.</summary>
