@@ -70,14 +70,31 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   bzw. der nächsten Anmeldung war er schwarz bzw. wieder der alte. Der
   Explorer-Neustart für die Taskleiste ist es nicht: Er liest den Hintergrund
   nicht neu ein, das ist unter Windows geprüft. Ursachen und Abhilfe:
-  - **Über den Explorer wie die Einstellungen-App.** Unter Windows 11 merkt sich
-    der Explorer den Hintergrund auch selbst. Beim Neustart des Explorers bzw. von
-    Windows schrieb er die alte Farbe zurück, obwohl Registry und Design-Datei
-    stimmten. Über die Einstellungen gewählt, blieb sie. Läuft das Tool als der
-    angemeldete Benutzer, setzt es Bild bzw. Volltonfarbe jetzt über dieselbe
-    Schnittstelle wie die Einstellungen-App (`IDesktopWallpaper`). Nur wenn das
-    nicht geht, nutzt es wie bisher `SystemParametersInfo`.
-  - **Hauptursache: die Design-Datei von Windows.** Windows führt das aktuelle
+  - **Hauptursache: der Designdienst von Windows.** Er hält das aktuelle Design im
+    Speicher und schreibt es beim Neustart des Explorers und beim Abmelden zurück,
+    in die Registry und in `Custom.theme`. In einer Windows-11-VM schrieb das Tool
+    genau dieselben Werte wie die Einstellungen-App, belegt per Vergleich der
+    Registry vorher und nachher. Trotzdem war die Farbe nach dem Explorer-Neustart
+    wieder `0 0 0`: Die Einstellungen-App ändert das Design im Dienst, das Tool
+    änderte nur die Dateien. Jetzt lässt das Tool **Windows selbst das Design
+    anwenden**, wie bei einem Doppelklick auf eine `.theme`-Datei:
+    - Aus der aktuellen Design-Datei baut es `DaSi-Wiederherstellung.theme` mit
+      Hintergrund, Hell/Dunkel, Akzentfarbe und Mauszeigern aus der Sicherung. Sie
+      ist danach unter *Personalisierung > Designs* auswählbar.
+    - Angewendet wird sie als der angemeldete Benutzer: Eine kurzlebige geplante
+      Aufgabe startet `explorer.exe` mit der Datei, wie in CLInstall. Das gilt auch,
+      wenn das Tool unter einem anderen Konto läuft (Administratorschutz „ADMIN_…“
+      oder fremde Anmeldedaten).
+    - Bei einer Volltonfarbe bleibt in der Datei ein Bild eingetragen, wie bei der
+      Einstellungen-App. Ein leeres oder ein Blickpunkt-Bild deutet Windows 11 als
+      Windows-Blickpunkt. Danach schaltet das Tool auf die Farbe um, über dieselbe
+      Schnittstelle wie die Einstellungen-App (`IDesktopWallpaper`).
+    - Erst danach trägt es die übrigen Einstellungen ein. Hätten Hell/Dunkel vorher
+      schon in der Registry gestanden, sähe Windows keinen Wechsel und sagte den
+      Fenstern nicht Bescheid.
+    - Klappt das Anwenden nicht, setzt das Tool alles wie bisher direkt und sagt im
+      Protokoll, dass der alte Hintergrund nach einem Neustart zurückkommen kann.
+  - **Die Design-Datei von Windows.** Windows führt das aktuelle
     Design zusätzlich in einer Datei, meist `…\AppData\Local\Microsoft\Windows\Themes\Custom.theme`.
     Beim Anmelden übernimmt es Werte daraus wieder in die Registry. In einer
     Windows-11-VM stand dort `Background=0 0 0`: Die wiederhergestellte Volltonfarbe

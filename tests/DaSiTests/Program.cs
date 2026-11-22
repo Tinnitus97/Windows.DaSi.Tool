@@ -1450,6 +1450,27 @@ internal static class Program
                 DesignDatei.Lesen(ohneFarben, DesignDatei.FarbenAbschnitt, "Background") == "1 2 3" && ohneFarben.Contains("\n[Control Panel\\Colors]\nBackground=1 2 3\n") && !ohneFarben.Contains('\r'), ohneFarben);
             var neuerSchluessel = DesignDatei.Setzen("[A]\r\nx=1\r\n\r\n[B]\r\ny=2\r\n", "A", "z", "3");
             Check("neuer Schluessel ans Ende seines Abschnitts, vor die Leerzeile", neuerSchluessel == "[A]\r\nx=1\r\nz=3\r\n\r\n[B]\r\ny=2\r\n", neuerSchluessel);
+            var eigenes = DesignDatei.ZumAnwenden("[Theme]\r\nDisplayName=@%SystemRoot%\\x.dll,-1\r\nThemeId={1234}\r\nSetLogonBackground=0\r\n\r\n[Control Panel\\Desktop]\r\nWallpaper=a.jpg\r\n", "Design aus der Sicherung (DaSi)");
+            Check("zum Anwenden: eigener Name, ohne ThemeId, Rest bleibt",
+                DesignDatei.Lesen(eigenes, "Theme", "DisplayName") == "Design aus der Sicherung (DaSi)" && DesignDatei.Lesen(eigenes, "Theme", "ThemeId") is null
+                && eigenes.Contains("SetLogonBackground=0\r\n") && DesignDatei.Lesen(eigenes, DesignDatei.DesktopAbschnitt, "Wallpaper") == "a.jpg", eigenes);
+            var lilaW = ((byte)107, (byte)105, (byte)214);
+            var ohneBild = DesignDatei.FuerWiederherstellung(DesignDatei.Setzen(thema, DesignDatei.DesktopAbschnitt, "Wallpaper", ""), "x", lilaW, null, null, Array.Empty<DesignEintrag>());
+            var blick = DesignDatei.FuerWiederherstellung(DesignDatei.Setzen(thema, DesignDatei.DesktopAbschnitt, "Wallpaper",
+                @"C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\DesktopSpotlight\Assets\Images\image_2.jpg"), "x", lilaW, null, null, Array.Empty<DesignEintrag>());
+            var mitBild = DesignDatei.FuerWiederherstellung(thema, "x", lilaW, null, null, Array.Empty<DesignEintrag>());
+            Check("Wiederherstellung, Volltonfarbe: Farbe drin, leeres Bild und Blickpunkt-Bild durch img0 ersetzt, vorhandenes Bild bleibt",
+                DesignDatei.Lesen(ohneBild, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214"
+                && DesignDatei.Lesen(ohneBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == DesignDatei.Ersatzbild
+                && DesignDatei.Lesen(blick, DesignDatei.DesktopAbschnitt, "Wallpaper") == DesignDatei.Ersatzbild
+                && DesignDatei.Lesen(mitBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"%SystemRoot%\web\wallpaper\Windows\img0.jpg"
+                && DesignDatei.Lesen(mitBild, "Theme", "DisplayName") == "x" && !mitBild.Contains("[Slideshow]"));
+            var wiederBild = DesignDatei.FuerWiederherstellung(thema, "x", null, @"C:\Users\A\Pictures\Urlaub.jpg", new HintergrundEinstellung { Darstellung = "6" },
+                new[] { new DesignEintrag { Gruppe = "Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = "SystemUsesLightTheme", Typ = "DWord", Wert = "0" } });
+            Check("Wiederherstellung, Bild: Pfad, Darstellung und Hell/Dunkel drin",
+                DesignDatei.Lesen(wiederBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\A\Pictures\Urlaub.jpg"
+                && DesignDatei.Lesen(wiederBild, DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "6"
+                && DesignDatei.Lesen(wiederBild, DesignDatei.StilAbschnitt, "SystemMode") == "Dark");
             Check("Gross-/Kleinschreibung bei Abschnitt und Schluessel egal",
                 DesignDatei.Lesen("[control panel\\COLORS]\r\nbackground = 9 9 9\r\n", DesignDatei.FarbenAbschnitt, "Background") == "9 9 9");
 
@@ -2447,6 +2468,61 @@ internal static class Program
             using (var vd = hgWurzel.OpenSubKey(DesktopHintergrund.VirtuelleDesktopsSchluessel, true))
                 foreach (var n in vd?.GetSubKeyNames() ?? Array.Empty<string>())
                     using (var d = vd!.OpenSubKey(n, true)) d?.DeleteValue("Wallpaper", false);
+
+            // 5c. Wie das Tool: Windows wendet ein Design an (geplante Aufgabe,
+            //     explorer.exe), danach die Volltonfarbe bzw. das Bild direkt.
+            //     Im Design bleibt bei einer Farbe ein Bild stehen - ein leeres
+            //     deutete Windows 11 als Blickpunkt.
+            var aktuellesDesign = DesktopHintergrund.DesignDateiPfad(hgWurzel, hgNutzer?.ProfilePath);
+            Console.WriteLine($"   -- Windows wendet das Design an (aktuell: {aktuellesDesign ?? "-"}) --");
+            if (aktuellesDesign is not null && File.Exists(aktuellesDesign) && hgNutzer?.ProfilePath is { } profilWd)
+            {
+                var dateiWd = Path.Combine(profilWd, @"AppData\Local\Microsoft\Windows\Themes", WindowsDesign.DateiName);
+                Directory.CreateDirectory(Path.GetDirectoryName(dateiWd)!);
+                bool Anwenden(string inhalt, Func<bool> da)
+                {
+                    DesignDatei.DateiSchreiben(dateiWd, inhalt, new System.Text.UnicodeEncoding(false, true));
+                    var start = DateTime.Now;
+                    var (ok, fehler) = WindowsDesign.Anwenden(dateiWd, hgNutzer.Name).GetAwaiter().GetResult();
+                    var uhr = System.Diagnostics.Stopwatch.StartNew();
+                    while (ok && !da() && uhr.Elapsed < TimeSpan.FromSeconds(20)) System.Threading.Thread.Sleep(500);
+                    System.Threading.Thread.Sleep(1500);
+                    WindowsDesign.EinstellungenSchliessen(start);
+                    Console.WriteLine($"         angewendet: {ok} {fehler}, uebernommen: {da()} nach {uhr.Elapsed.TotalSeconds:F1} s");
+                    return ok && da();
+                }
+
+                var gruenFarbe = ((byte)16, (byte)124, (byte)16);
+                var vorlageWd = DesignDatei.DateiLesen(aktuellesDesign).Inhalt;
+                var themaFarbe = DesignDatei.FuerWiederherstellung(vorlageWd, "DaSi-Pruefung", gruenFarbe, null, null, HintergrundEcht.AnwenderDesign());
+                Check("echt: Windows wendet das Design mit der Volltonfarbe an (Farbe in der Registry)",
+                    Anwenden(themaFarbe, () => Hintergrund.FarbeLesen(DesktopHintergrund.Lesen(hgWurzel).Farbe) == gruenFarbe));
+                var rWd = DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, gruenFarbe, hgNutzer.ProfilePath);
+                Console.WriteLine($"         danach Volltonfarbe direkt: eingetragen {rWd.Eingetragen}, Explorer {(rWd.ExplorerFehler ?? "ok")}");
+                HintergrundEcht.Zustand("Design + Farbe", hgWurzel, hgNutzer.ProfilePath);
+                var v1Wd = HintergrundEcht.Verlauf("Design + Farbe", gruenFarbe, 1, 3);
+                Check("echt: Design + Farbe - der Desktop zeigt die Farbe (kein Blickpunkt)", v1Wd > 0.5, $"{v1Wd:P0}");
+                Check("echt: Design + Farbe - Blickpunkt bleibt aus", !DesktopHintergrund.Einfluesse(hgWurzel, true, Deutsch).Any(e => e.Contains("Blickpunkt")));
+                Check("echt: Design + Farbe - das Design ist jetzt das aktuelle",
+                    string.Equals(DesktopHintergrund.DesignDateiPfad(hgWurzel, hgNutzer.ProfilePath), dateiWd, StringComparison.OrdinalIgnoreCase));
+                Neustart("Design + Farbe");
+                var v2Wd = HintergrundEcht.Verlauf("Design + Farbe, nach dem Explorer-Neustart", gruenFarbe, 1, 4);
+                Check("echt: Design + Farbe - nach dem Explorer-Neustart noch da", v2Wd > 0.5, $"{v2Wd:P0}");
+
+                var themaBild = DesignDatei.FuerWiederherstellung(DesignDatei.DateiLesen(dateiWd).Inhalt, "DaSi-Pruefung", null, rotBild, strecken, Array.Empty<DesignEintrag>());
+                Check("echt: Windows wendet das Design mit dem Bild an (Bild in der Registry)",
+                    Anwenden(themaBild, () => string.Equals(DesktopHintergrund.Lesen(hgWurzel).Bild, rotBild, StringComparison.OrdinalIgnoreCase)));
+                DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken, hgNutzer.ProfilePath);
+                var v3Wd = HintergrundEcht.Verlauf("Design + Bild", rot, 1, 3);
+                Check("echt: Design + Bild - der Desktop zeigt das Bild", v3Wd > 0.5, $"{v3Wd:P0}");
+                Neustart("Design + Bild");
+                var v4Wd = HintergrundEcht.Verlauf("Design + Bild, nach dem Explorer-Neustart", rot, 1, 4);
+                Check("echt: Design + Bild - nach dem Explorer-Neustart noch da", v4Wd > 0.5, $"{v4Wd:P0}");
+            }
+            else
+            {
+                Console.WriteLine("         (keine Design-Datei - uebersprungen)");
+            }
 
             // 6./7. Dasselbe ueber IDesktopWallpaper - die Schnittstelle der Einstellungen-App.
             Console.WriteLine($"   -- IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Stand() ?? "nicht erreichbar"} --");

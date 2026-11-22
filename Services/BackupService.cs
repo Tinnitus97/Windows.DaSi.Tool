@@ -1292,13 +1292,24 @@ public sealed class BackupService
         }
         var werte = design?.Werte ?? new List<DesignEintrag>();
 
-        // 2. Die Design-Einstellungen (Hell/Dunkel, Akzentfarbe, Zeiger ...).
+        // 2. Windows das Design selbst anwenden lassen - wie ein Doppelklick
+        //    auf eine .theme-Datei. Sonst schreibt der Designdienst beim
+        //    Neustart des Explorers bzw. beim Abmelden sein altes Design zurueck.
+        if (OperatingSystem.IsWindows() && (farbe is not null || bild is not null || werte.Count > 0))
+            await DesignVonWindowsAnwenden(ziel, farbe, bild, h, werte);
+        if (_cancel.IsCancelled) return;
+
+        // 3. Die Design-Einstellungen ausdruecklich eintragen - erst JETZT:
+        //    Stuenden Hell/Dunkel vorher schon da, saehe Windows beim Anwenden
+        //    keinen Wechsel und sagte Taskleiste und Fenstern nicht Bescheid
+        //    (CLInstall). Taskleiste und Start stehen nicht in der Design-Datei.
         if (werte.Count > 0) DesignEinstellungenSetzen(design!, ziel);
         else _log(Loc.Tr("[INFO] Die Sicherung enthält keine Design-Einstellungen (ältere Fassung des Tools) - nur der Hintergrund wird wiederhergestellt.",
                          "[INFO] The backup contains no design settings (older version of the tool) - only the wallpaper is restored."));
         if (_cancel.IsCancelled) return;
 
-        // 3. Der Hintergrund.
+        // 4. Der Hintergrund - bei einer Volltonfarbe erst hier: Das Design
+        //    traegt sie ein, gezeigt wird aber noch das Bild der Datei.
         bool gesetzt = false;
         if (farbe is { } f)
         {
@@ -1326,6 +1337,93 @@ public sealed class BackupService
                                            Loc.Tr("Kontrolle nach dem Setzen", "Check after setting"));
     }
 
+    /// <summary>Die Design-Datei, die Windows in diesem Lauf angewendet hat - fuer ein erneutes Anwenden.</summary>
+    private string? _angewandtesDesign;
+
+    /// <summary>
+    /// Baut aus der aktuellen Design-Datei des Benutzers eine mit den Werten
+    /// der Sicherung und laesst Windows sie als der angemeldete Benutzer
+    /// anwenden (<see cref="WindowsDesign"/>).
+    /// </summary>
+    private async Task DesignVonWindowsAnwenden(DesignZiel ziel, (byte R, byte G, byte B)? farbe, string? bild,
+                                                HintergrundEinstellung? h, List<DesignEintrag> werte)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        string? vorlage = null;
+        try
+        {
+            if (DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath) is { } aktuell && File.Exists(aktuell))
+                vorlage = DesignDatei.DateiLesen(aktuell).Inhalt;
+        }
+        catch { /* dann ohne */ }
+        if (vorlage is null)
+        {
+            _log(Loc.Tr("[INFO] Kein aktuelles Windows-Design lesbar - Hintergrund und Einstellungen werden direkt eingetragen.",
+                        "[INFO] No current Windows theme readable - background and settings are written directly."));
+            return;
+        }
+
+        var inhalt = DesignDatei.FuerWiederherstellung(vorlage, Loc.Tr("Design aus der Sicherung (DaSi)", "Theme from the backup (DaSi)"),
+                                                       farbe, bild, h, werte);
+        var datei = Path.Combine(SourcePath, @"AppData\Local\Microsoft\Windows\Themes", WindowsDesign.DateiName);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(datei)!);
+            DesignDatei.DateiSchreiben(datei, inhalt, new System.Text.UnicodeEncoding(false, true));
+        }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[WARNUNG] Die Design-Datei ließ sich nicht anlegen ({ex.Message}) - es wird direkt eingetragen.",
+                        $"[WARNING] The theme file could not be created ({ex.Message}) - writing directly instead."));
+            return;
+        }
+
+        _log(Loc.Tr("[INFO] Windows wendet das Design aus der Sicherung an - wie ein Doppelklick auf die Design-Datei ...",
+                    "[INFO] Windows applies the theme from the backup - like double-clicking the theme file ..."));
+        if (await DesignAnwendenUndWarten(ziel, datei, farbe, bild))
+        {
+            _angewandtesDesign = datei;
+            _log(Loc.Tr($"[ERFOLG] Windows hat das Design angewendet ({WindowsDesign.DateiName}, unter Personalisierung > Designs auswählbar).",
+                        $"[SUCCESS] Windows applied the theme ({WindowsDesign.DateiName}, selectable under Personalization > Themes)."));
+        }
+        else
+        {
+            _log(Loc.Tr("[WARNUNG] Windows hat das Design nicht (rechtzeitig) übernommen - Hintergrund und Einstellungen werden direkt eingetragen. Nach einem Neustart kann der alte Hintergrund zurückkommen.",
+                        "[WARNING] Windows did not apply the theme (in time) - background and settings are written directly. The old background may return after a restart."));
+        }
+    }
+
+    /// <summary>
+    /// Laesst Windows die Design-Datei anwenden und wartet (bis 20 s), bis
+    /// es sie uebernommen hat: die Farbe bzw. das Bild in der Registry, sonst
+    /// das Design als aktuelles. Das dabei geoeffnete Einstellungen-Fenster
+    /// wird wieder geschlossen.
+    /// </summary>
+    private async Task<bool> DesignAnwendenUndWarten(DesignZiel ziel, string datei, (byte R, byte G, byte B)? farbe, string? bild)
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        var start = DateTime.Now;
+        var (ok, fehler) = await WindowsDesign.Anwenden(datei, DesktopScreenshot.GetInteractiveUser()?.Name);
+        if (!ok)
+        {
+            _log(Loc.Tr($"[WARNUNG] Windows ließ das Design nicht anwenden: {fehler}", $"[WARNING] Windows did not apply the theme: {fehler}"));
+            return false;
+        }
+        bool Da()
+        {
+            var s = DesktopHintergrund.Lesen(ziel.Wurzel);
+            if (farbe is { } c) return Hintergrund.FarbeLesen(s.Farbe) == c;
+            if (bild is not null) return string.Equals(s.Bild, bild, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath), datei, StringComparison.OrdinalIgnoreCase);
+        }
+        var uhr = System.Diagnostics.Stopwatch.StartNew();
+        bool da;
+        while (!(da = Da()) && uhr.Elapsed < TimeSpan.FromSeconds(20)) await Task.Delay(500);
+        await Task.Delay(1500);
+        WindowsDesign.EinstellungenSchliessen(start);
+        return da;
+    }
+
     /// <summary>
     /// Wartet kurz und sieht nach, ob Registry und Desktop noch zeigen, was
     /// gesetzt wurde. Wenn nicht: ins Protokoll, was anders ist und was es
@@ -1347,6 +1445,10 @@ public sealed class BackupService
             _log(Loc.Tr($"[INFO] Möglicher Grund: {e}.", $"[INFO] Possible reason: {e}."));
         try
         {
+            // Erst wieder ueber das Windows-Design, dann direkt (bei einer
+            // Volltonfarbe zeigt das Design noch sein Bild).
+            if (_angewandtesDesign is { } d && File.Exists(d))
+                await DesignAnwendenUndWarten(ziel, d, soll.Bild is null ? Hintergrund.FarbeLesen(soll.Farbe) : null, soll.Bild);
             DesktopHintergrund.Erneut(ziel.Wurzel, ziel.EigenerBenutzer, soll, SourcePath);
         }
         catch (Exception ex)
