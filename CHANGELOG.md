@@ -96,6 +96,14 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
       Fenstern nicht Bescheid.
     - Klappt das Anwenden nicht, setzt das Tool alles wie bisher direkt und sagt im
       Protokoll, dass der alte Hintergrund nach einem Neustart zurückkommen kann.
+  - **Explorer-Neustart vor dem Design.** In einer Windows-11-VM (Canary) holt ein
+    hart beendeter Explorer beim Start den zuletzt von ihm gespeicherten
+    Hintergrund zurück. Das gilt auch für eine über die Einstellungen gewählte
+    Farbe. Das Tool beendet den Explorer für die Taskleiste. Beim Wiederherstellen
+    kommen *Symbole + Taskleiste* deshalb jetzt vor dem Design dran, danach wird der
+    Explorer nicht mehr neu gestartet. Setzt ein Explorer-Neustart den Hintergrund
+    trotzdem zurück, wendet das Tool das Design erneut über Windows an, auch ohne
+    Design-Wiederherstellung im selben Lauf.
   - **Die Design-Datei von Windows.** Windows führt das aktuelle
     Design zusätzlich in einer Datei, meist `…\AppData\Local\Microsoft\Windows\Themes\Custom.theme`.
     Beim Anmelden übernimmt es Werte daraus wieder in die Registry. In einer

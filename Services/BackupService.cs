@@ -1427,10 +1427,25 @@ public sealed class BackupService
             _log(Loc.Tr($"[INFO] Möglicher Grund: {e}.", $"[INFO] Possible reason: {e}."));
         try
         {
-            // Erst wieder ueber das Windows-Design, dann direkt (bei einer
-            // Volltonfarbe zeigt das Design noch sein Bild).
-            if (_angewandtesDesign is { } d)
-                await DesignAnwendenUndWarten(ziel, d, soll.Bild is null ? Hintergrund.FarbeLesen(soll.Farbe) : null, soll.Bild);
+            // Erst wieder ueber das Windows-Design - das aus diesem Lauf, sonst
+            // das aktuelle mit dem Soll-Hintergrund -, dann direkt (bei einer
+            // Volltonfarbe zeigt das Design noch sein Bild). Ohne das Design
+            // hielte der Explorer weiter seinen alten Stand und schriebe ihn
+            // beim naechsten Neustart zurueck.
+            var farbeSoll = soll.Bild is null ? Hintergrund.FarbeLesen(soll.Farbe) : null;
+            var inhalt = _angewandtesDesign;
+            if (inhalt is null && DesktopHintergrund.DesignDateiPfad(ziel.Wurzel, SourcePath) is { } aktuell && File.Exists(aktuell))
+                inhalt = DesignDatei.DateiLesen(aktuell).Inhalt;
+            if (inhalt is not null)
+            {
+                inhalt = DesignDatei.FuerWiederherstellung(inhalt, Loc.Tr("Design aus der Sicherung (DaSi)", "Theme from the backup (DaSi)"),
+                                                           farbeSoll, soll.Bild,
+                                                           new HintergrundEinstellung { Darstellung = soll.Stil, Kacheln = soll.Kacheln },
+                                                           Array.Empty<DesignEintrag>());
+                if (soll.Bild is null && farbeSoll is null) inhalt = null;
+            }
+            if (inhalt is not null)
+                await DesignAnwendenUndWarten(ziel, inhalt, farbeSoll, soll.Bild);
             DesktopHintergrund.Erneut(ziel.Wurzel, ziel.EigenerBenutzer, soll, SourcePath);
         }
         catch (Exception ex)

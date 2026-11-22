@@ -1349,10 +1349,17 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelWinget)      t.Add("Import-Winget");
             if (SelWlan)        t.Add("Import-Wlan");
             if (SelPrinter)     t.Add("Import-Printer");
+            // Symbole und Taskleiste VOR dem Design: Fuer die Taskleiste wird
+            // der Explorer neu gestartet. Unter Windows 11 holt ein hart
+            // beendeter Explorer beim Start seinen zuletzt gespeicherten
+            // Hintergrund zurueck - danach gesetzt, war die wiederhergestellte
+            // Farbe sofort und nach dem Neustart von Windows wieder weg (auch
+            // eine ueber die Einstellungen gewaehlte).
+            if (SelDesktopShot && DesktopSymbole) t.Add("Restore-DesktopIcons");
             if (SelWallpaper)   t.Add("Import-Design");
             // Zuletzt: Das Foto soll offen sein, wenn alles andere fertig ist
             // und es ans Anordnen der Symbole geht.
-            if (SelDesktopShot) t.Add(DesktopSymbole ? "Restore-DesktopIcons" : "Show-DesktopShot");
+            if (SelDesktopShot && !DesktopSymbole) t.Add("Show-DesktopShot");
         }
         else
         {
