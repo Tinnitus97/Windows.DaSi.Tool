@@ -525,6 +525,9 @@ internal static partial class Program
         var schwarz = DesktopHintergrund.Kontrolle(new HintergrundStand(@"C:\Bilder\Urlaub.png", "0 0 0", 0, "10", "0", Array.Empty<string>()), Deutsch);
         Console.WriteLine($"         Kontrolle bei schwarzem Desktop: {schwarz ?? "(Bildschirm nicht ueberwiegend schwarz)"}");
         Check("schwarzer Desktop statt Bild: erkannt (oder Bildschirm nicht schwarz)", schwarz is null || schwarz.Contains("schwarz statt des Bildes"), schwarz);
+        var schirm = DesktopScreenshot.CaptureVirtualScreen();
+        bool erwartet = DesktopScreenshot.ColorShare(schirm.Bgra, (0, 0, 0), 10) >= 0.5;
+        Check("Bildschirm ueberwiegend schwarz? - wie eine eigene Aufnahme", DesktopHintergrund.SchirmSchwarz() == erwartet, erwartet.ToString());
 
         // Ein Design anwenden ohne bekannten Benutzer (direkt ueber explorer.exe) - und mit einem, den es nicht gibt.
         var aktuell = DesktopHintergrund.DesignDateiPfad(Microsoft.Win32.Registry.CurrentUser, profil);

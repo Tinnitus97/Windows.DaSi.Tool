@@ -292,7 +292,8 @@ public static class DesktopHintergrund
             : null;
     }
 
-    private static bool SchirmSchwarz()
+    /// <summary>Ist der ganze Bildschirm ueberwiegend schwarz (nicht nur das Abbild des Desktop-Fensters)?</summary>
+    internal static bool SchirmSchwarz()
     {
         try { return DesktopScreenshot.ColorShare(DesktopScreenshot.CaptureVirtualScreen().Bgra, (0, 0, 0), 10) >= 0.5; }
         catch { return false; }
