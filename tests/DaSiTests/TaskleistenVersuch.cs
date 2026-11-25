@@ -39,6 +39,7 @@ internal static partial class Program
 
         var profil = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var pinOrdner = Taskleiste.PinOrdner(profil);
+        Directory.CreateDirectory(pinOrdner);
         var original = TaskbandLesen();
         var originalLnk = Path.Combine(root, "tl-original");
         Directory.CreateDirectory(originalLnk);
@@ -54,6 +55,17 @@ internal static partial class Program
             var sicherung = Path.Combine(root, "tl-sicherung");
             new BackupService(new ProcessRunner(c), c, log.Schreiben) { SourcePath = profil, BackupPath = sicherung }.BackupDesktopIcons().Wait();
             foreach (var z in log.Zeilen.Where(z => z.Contains("Taskleiste", StringComparison.OrdinalIgnoreCase))) Console.WriteLine("         Dienst: " + z.Trim());
+            // Fuer einen anderen Laeufer ablegen: Wiederherstellen auf einem anderen PC.
+            if (Environment.GetEnvironmentVariable("DASI_TASKLEISTE_ABLAGE") is { Length: > 0 } ablage && Directory.Exists(sicherung))
+            {
+                foreach (var datei in Directory.GetFiles(sicherung, "*", SearchOption.AllDirectories))
+                {
+                    var ziel = Path.Combine(ablage, Path.GetRelativePath(sicherung, datei));
+                    Directory.CreateDirectory(Path.GetDirectoryName(ziel)!);
+                    File.Copy(datei, ziel, true);
+                }
+                Console.WriteLine($"         Sicherung abgelegt: {ablage}");
+            }
 
             // 2. Leeren und den Explorer neu starten.
             Leeren(pinOrdner);
@@ -91,6 +103,26 @@ internal static partial class Program
             System.Threading.Thread.Sleep(10000);
             Console.WriteLine($"         Favorites 10 s spaeter: {(Gleich(geschrieben2, TaskbandLesen(), "Favorites") ? "unveraendert" : "VOM EXPLORER GEAENDERT")}");
             TaskleisteZeigen("mit fehlendem Ziel, 10 s spaeter", pinOrdner, mitInhalt: false);
+
+            // 5. Die Sicherung eines anderen PCs (anderer Laeufer, anderes Windows).
+            if (Environment.GetEnvironmentVariable("DASI_TASKLEISTE_FREMD") is { Length: > 0 } fremd && Directory.Exists(fremd))
+            {
+                Console.WriteLine($"   == Sicherung eines anderen PCs: {fremd} ==");
+                var tl = Taskleiste.Laden(fremd);
+                Console.WriteLine($"         gesichert auf {tl?.Rechner}: {string.Join(", ", tl?.Verknuepfungen ?? new List<string>())}, Taskband: {string.Join(", ", tl?.Taskband.Select(e => e.Name) ?? Array.Empty<string>())}");
+                Leeren(pinOrdner);
+                log.Leeren();
+                new BackupService(new ProcessRunner(c), c, log.Schreiben) { SourcePath = profil, BackupPath = fremd }.RestoreDesktopIcons().Wait();
+                foreach (var z in log.Zeilen.Where(z => z.Contains("Taskleiste", StringComparison.OrdinalIgnoreCase) || z.Contains("Explorer"))) Console.WriteLine("         Dienst: " + z.Trim());
+                var geschriebenFremd = TaskbandLesen();
+                TaskleisteZeigen("fremde Sicherung wiederhergestellt", pinOrdner, mitInhalt: true);
+                System.Threading.Thread.Sleep(10000);
+                Console.WriteLine($"         Favorites 10 s spaeter: {(Gleich(geschriebenFremd, TaskbandLesen(), "Favorites") ? "unveraendert" : "VOM EXPLORER GEAENDERT")}");
+                TaskleisteZeigen("fremde Sicherung, 10 s spaeter", pinOrdner, mitInhalt: true);
+                ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+                System.Threading.Thread.Sleep(5000);
+                TaskleisteZeigen("fremde Sicherung, nach noch einem Explorer-Neustart", pinOrdner, mitInhalt: false);
+            }
         }
         catch (Exception ex)
         {
@@ -162,20 +194,47 @@ internal static partial class Program
         try
         {
             var tray = AutomationElement.FromHandle(FindWindowW("Shell_TrayWnd", null));
-            foreach (AutomationElement el in tray.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)))
+            var alle = tray.FindAll(TreeScope.Descendants, Condition.TrueCondition);
+            Console.WriteLine($"         UIA: {alle.Count} Elemente in der Taskleiste");
+            foreach (AutomationElement el in alle)
             {
                 var info = el.Current;
-                Console.WriteLine($"         Knopf \"{info.Name}\" [{info.ClassName}] {info.AutomationId}");
+                if (info.ControlType != ControlType.Button && info.ControlType != ControlType.ListItem && info.ControlType != ControlType.MenuItem) continue;
+                Console.WriteLine($"         {info.ControlType.ProgrammaticName} \"{info.Name}\" [{info.ClassName}] {info.AutomationId}");
                 if (info.ClassName.Contains("TaskListButton", StringComparison.OrdinalIgnoreCase)
                     || info.AutomationId.StartsWith("Appid:", StringComparison.OrdinalIgnoreCase))
                     knoepfe.Add(info.Name);
             }
         }
         catch (Exception ex) { Console.WriteLine("         UIA: " + ex.Message); }
+        TaskleisteFoto(wann);
         knoepfe.Sort(StringComparer.OrdinalIgnoreCase);
         Console.WriteLine($"         App-Knoepfe: {(knoepfe.Count == 0 ? "keine" : string.Join(", ", knoepfe))}");
         return knoepfe;
     }
+
+    /// <summary>Fotografiert die Taskleiste und gibt das Bild als PNG (Base64) in einer Zeile aus.</summary>
+    [SupportedOSPlatform("windows")]
+    private static void TaskleisteFoto(string name)
+    {
+        try
+        {
+            var tray = FindWindowW("Shell_TrayWnd", null);
+            if (tray == IntPtr.Zero || !GetWindowRect(tray, out var r)) { Console.WriteLine("         (keine Taskleiste fuers Foto)"); return; }
+            var bild = DesktopScreenshot.CaptureVirtualScreen();
+            var teil = DesktopScreenshot.Crop(bild.Bgra, bild.Width, bild.Height, r.Left - bild.Left, r.Top - bild.Top,
+                                              r.Right - r.Left, r.Bottom - r.Top, out var w, out var h);
+            if (w == 0 || h == 0) { Console.WriteLine("         (Taskleiste ausserhalb des Bildschirms)"); return; }
+            Console.WriteLine($"DASI-FOTO {name.Replace(' ', '_')} {Convert.ToBase64String(PngWriter.EncodeBgra(w, h, teil))}");
+        }
+        catch (Exception ex) { Console.WriteLine("         Foto: " + ex.Message); }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
     private static IEnumerable<string> Texte(byte[] b, bool unicode)
     {

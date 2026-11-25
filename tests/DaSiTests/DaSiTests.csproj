@@ -41,6 +41,7 @@
     <Compile Include="DienstPruefungen.cs" />
     <Compile Include="WingetPruefungen.cs" />
     <Compile Include="SicherungsPruefungen.cs" />
+    <Compile Include="MozillaPruefungen.cs" />
     <Compile Include="../Gemeinsam/*.cs" />
     <Compile Include="../../Services/UpdateService.cs" />
     <Compile Include="../../Services/CloudProviders.cs" />
@@ -57,6 +58,7 @@
     <Compile Include="../../Services/WingetInstaller.cs" />
     <Compile Include="../../Services/WingetFehler.cs" />
     <Compile Include="../../Services/ProfilAbgleich.cs" />
+    <Compile Include="../../Services/MozillaProfile.cs" />
     <Compile Include="../../Services/Hintergrund.cs" />
     <Compile Include="../../Services/DesignEinstellungen.cs" />
     <Compile Include="../../Services/DesignRegistry.cs" />

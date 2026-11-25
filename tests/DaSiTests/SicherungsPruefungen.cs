@@ -309,6 +309,8 @@ internal static partial class Program
             Dienst(ziel).RestoreAppProfile(Testbrowser).Wait();
         Check("gesperrtes Profil: Abbruch, ohne etwas zu veraendern", log.Hat("ließ sich nicht beiseitelegen") && File.Exists(sperre), log.Text);
 
+        MozillaDienstPruefen(basis, Dienst, log, ordner);
+
         // Opera: alle Fassungen, je nach Lage installiert, nachinstalliert oder nur zurueckgeschrieben.
         Attrappen.SzenarioSchreiben(ordner, Szenario(("install.*.code", "0")));
         log.Leeren();

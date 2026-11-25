@@ -474,8 +474,55 @@ public sealed class BackupService
             return;
         }
 
-        await RestoreAppDir(app.Name, quelle, AppCatalog.Pfad(SourcePath, app.ProfilRel), app.Prozess);
+        var ziel = AppCatalog.Pfad(SourcePath, app.ProfilRel);
+        if (await RestoreAppDir(app.Name, quelle, ziel, app.Prozess) && MozillaProfile.Programm(app) is { } moz)
+            MozillaStandardprofil(app.Name, ziel, moz.Exe, moz.Ordner);
     }
+
+    /// <summary>
+    /// Firefox/Thunderbird: das zurueckgeschriebene Profil als Standard dieser
+    /// Installation eintragen. Sonst nimmt ein Firefox, der hier in einem
+    /// anderen Ordner liegt als auf dem alten PC (64 statt 32 Bit, fuer alle
+    /// statt nur fuer den Benutzer), ein neues, leeres Profil.
+    /// </summary>
+    private void MozillaStandardprofil(string name, string datenOrdner, string exe, string ordnerName)
+    {
+        var installationen = TestInstallationen
+            ?? (OperatingSystem.IsWindows() ? MozillaProfile.Installationen(exe, ordnerName, SourcePath) : new List<string>());
+        MozillaProfile.Ergebnis erg;
+        try { erg = MozillaProfile.Anpassen(datenOrdner, installationen); }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] {name}: Das Profil ließ sich nicht als Standard eintragen ({ex.Message}). {name} legt beim ersten Start womöglich ein neues, leeres Profil an - dann mit \"{exe} -P\" das zurückgeschriebene wählen.",
+                        $"[ERROR] {name}: the profile could not be set as default ({ex.Message}). {name} may create a new, empty profile on first start - then pick the restored one with \"{exe} -P\"."));
+            return;
+        }
+        if (erg.Profil is null)
+        {
+            _log(Loc.Tr($"[WARNUNG] {name}: In der Sicherung steht kein Profil in profiles.ini - {name} wählt selbst.",
+                        $"[WARNING] {name}: the backup lists no profile in profiles.ini - {name} chooses by itself."));
+            return;
+        }
+
+        var profilName = string.IsNullOrEmpty(erg.Name) ? erg.Profil : $"\"{erg.Name}\" ({erg.Profil})";
+        var alt = erg.AlteSchluessel.Select(k => MozillaProfile.BekannterOrt(k, ordnerName, SourcePath) ?? k).ToList();
+        if (erg.Neu.Count == 0)
+        {
+            _log(Loc.Tr($"[WARNUNG] {name} ist auf diesem PC nicht installiert. Das Profil {profilName} ist als Standard eingetragen - {name} übernimmt es beim ersten Start nach der Installation.",
+                        $"[WARNING] {name} is not installed on this PC. The profile {profilName} is set as default - {name} takes it over on the first start after installation."));
+            return;
+        }
+        var hier = string.Join(", ", erg.Neu.Select(n => n.Ordner));
+        if (erg.SchonPassend)
+            _log(Loc.Tr($"[INFO] {name}: Profil {profilName} ist Standard für {hier} - wie auf dem alten PC.",
+                        $"[INFO] {name}: profile {profilName} is the default for {hier} - as on the old PC."));
+        else
+            _log(Loc.Tr($"[INFO] {name}: Profil {profilName} ist jetzt Standard für {hier}. Auf dem alten PC lief {name} aus {(alt.Count > 0 ? string.Join(", ", alt) : "einem unbekannten Ordner")} - ohne diese Anpassung legte {name} beim ersten Start ein neues, leeres Profil an.",
+                        $"[INFO] {name}: profile {profilName} is now the default for {hier}. On the old PC {name} ran from {(alt.Count > 0 ? string.Join(", ", alt) : "an unknown folder")} - without this adjustment {name} would have created a new, empty profile on first start."));
+    }
+
+    /// <summary>Nur fuer die Pruefung: Installationsordner statt der echten Suche.</summary>
+    internal List<string>? TestInstallationen { get; set; }
 
     // ------------------------------------------------------------ Opera (alle Fassungen)
 
@@ -591,7 +638,8 @@ public sealed class BackupService
     /// wird es beendet und noch einmal kopiert - sonst ueberschriebe es beim
     /// Beenden das zurueckgeschriebene Profil.
     /// </param>
-    private async Task RestoreAppDir(string name, string quelle, string ziel, params string[] prozesse)
+    /// <returns>true, wenn das Profil vollstaendig im Ziel steht.</returns>
+    private async Task<bool> RestoreAppDir(string name, string quelle, string ziel, params string[] prozesse)
     {
         if (Directory.Exists(ziel))
         {
@@ -616,7 +664,7 @@ public sealed class BackupService
                             $"[ERROR] The existing {name} profile could not be moved aside ({ex.Message}). "
                             + $"Restore aborted - the existing profile was left untouched. "
                             + $"Please close {name} completely and try again."));
-                return;
+                return false;
             }
         }
         var parent = Path.GetDirectoryName(ziel);
@@ -626,7 +674,7 @@ public sealed class BackupService
         if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
 
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
-        if (_cancel.IsCancelled) return;
+        if (_cancel.IsCancelled) return false;
 
         // Hat sich das Programm waehrend des Kopierens gestartet (Installer,
         // Autostart, Benutzer), haelt es ein eigenes, frisches Profil offen.
@@ -637,14 +685,14 @@ public sealed class BackupService
             if (await BeendenUndWarten(TimeSpan.FromSeconds(20), prozesse))
             {
                 code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
-                if (_cancel.IsCancelled) return;
+                if (_cancel.IsCancelled) return false;
             }
         }
 
         if (code >= 8)
         {
             _log(Loc.Tr($"[FEHLER] {name}: ExitCode {code}", $"[ERROR] {name}: ExitCode {code}"));
-            return;
+            return false;
         }
 
         // Stehen die Dateien, an denen das Profil haengt, so da wie gesichert?
@@ -655,13 +703,14 @@ public sealed class BackupService
                         + $"Meist lief {name} dabei. Bitte {name} vollständig schließen (auch im Infobereich) und den Punkt erneut ausführen.",
                         $"[ERROR] {name}: the profile is not complete in the target - differing: {string.Join(", ", abweichend.Take(8))}{(abweichend.Count > 8 ? ", ..." : "")}. "
                         + $"Usually {name} was running meanwhile. Please close {name} completely (including the notification area) and run this item again."));
-            return;
+            return false;
         }
 
         var profile = ProfilAbgleich.Profile(ziel);
         _log(profile.Count > 0
             ? Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt ({string.Join(", ", profile)}).", $"[SUCCESS] {name} profile restored ({string.Join(", ", profile)}).")
             : Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt.", $"[SUCCESS] {name} profile restored."));
+        return true;
     }
 
     // ------------------------------------------------------------ WLAN

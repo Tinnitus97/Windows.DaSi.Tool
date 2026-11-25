@@ -2286,6 +2286,8 @@ internal static partial class Program
         WingetInstallerPruefen(root);
         WingetDienstPruefen(root);
         SicherungsdienstPruefen(root);
+        MozillaPruefen(root);
+        if (OperatingSystem.IsWindows()) FirefoxEchtPruefen(root);
         SicherungsdienstAmEchtenDesktop(root);
 
         // Zuletzt: den Explorer neu starten - wie beim Zurueckschreiben der
