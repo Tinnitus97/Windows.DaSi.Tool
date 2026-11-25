@@ -125,6 +125,62 @@ internal static partial class Program
                 }
             }
 
+            // 6. Ordnet die Taskleiste ueber die App-Kennung (AppUserModelID) in
+            //    Favorites zu? Edge-Eintrag auf eine unbekannte Kennung umbiegen
+            //    (gleiche Laenge), dann ein Programm mit dieser Kennung nachreichen.
+            var tlJson2 = Taskleiste.Laden(sicherung);
+            if (tlJson2 is not null && tlJson2.Taskband.Any(e => e.Name == "Favorites"))
+            {
+                var unbekannt = Path.Combine(root, "tl-unbekannt");
+                foreach (var datei in Directory.GetFiles(sicherung, "*", SearchOption.AllDirectories))
+                {
+                    var z = Path.Combine(unbekannt, Path.GetRelativePath(sicherung, datei));
+                    Directory.CreateDirectory(Path.GetDirectoryName(z)!);
+                    File.Copy(datei, z, true);
+                }
+                var umgebaut = Taskleiste.Laden(unbekannt)!;
+                foreach (var e in umgebaut.Taskband.Where(e => e.Typ == "Binary"))
+                {
+                    var b = Convert.FromBase64String(e.Wert);
+                    var alt2 = System.Text.Encoding.Unicode.GetBytes("MSEdge");
+                    var neu2 = System.Text.Encoding.Unicode.GetBytes("DaSiXY");
+                    int n2 = 0;
+                    for (int i = 0; i + alt2.Length <= b.Length; i++)
+                        if (b.AsSpan(i, alt2.Length).SequenceEqual(alt2)) { neu2.CopyTo(b, i); n2++; }
+                    e.Wert = Convert.ToBase64String(b);
+                    Console.WriteLine($"         {e.Name}: MSEdge -> DaSiXY ({n2}x)");
+                }
+                Taskleiste.Speichern(unbekannt, umgebaut);
+                // Die Edge-Verknuepfung selbst fehlt seit Schritt 4b - Edge haengt nur noch an der Kennung.
+                Leeren(pinOrdner);
+                log.Leeren();
+                new BackupService(new ProcessRunner(c), c, log.Schreiben) { SourcePath = profil, BackupPath = unbekannt }.RestoreDesktopIcons().Wait();
+                foreach (var z in log.Zeilen.Where(z => z.Contains("Taskleiste", StringComparison.OrdinalIgnoreCase))) Console.WriteLine("         Dienst: " + z.Trim());
+                var geschrieben6 = TaskbandLesen();
+                TaskleisteZeigen("App-Kennung unbekannt", pinOrdner, mitInhalt: false);
+                System.Threading.Thread.Sleep(10000);
+                var danach6 = TaskbandLesen();
+                var fav6 = danach6.FirstOrDefault(e => e.Name == "Favorites");
+                Console.WriteLine($"         Favorites 10 s spaeter: {(Gleich(geschrieben6, danach6, "Favorites") ? "unveraendert" : "VOM EXPLORER GEAENDERT")}, "
+                    + $"nennt DaSiXY: {(fav6 is not null && System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(fav6.Wert)).Contains("DaSiXY"))}");
+                TaskleisteZeigen("App-Kennung unbekannt, 10 s spaeter", pinOrdner, mitInhalt: true);
+
+                // Ein Programm mit dieser Kennung im Startmenue.
+                var start = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "DaSi Probe.lnk");
+                var edge = new[] { @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", @"C:\Program Files\Microsoft\Edge\Application\msedge.exe" }.FirstOrDefault(File.Exists);
+                if (edge is not null)
+                {
+                    Verknuepfung.Anlegen(start, edge, "DaSiXY");
+                    Console.WriteLine($"         Startmenue: {start} -> {edge}, Kennung {Verknuepfung.Lesen(start)?.AppId}");
+                    System.Threading.Thread.Sleep(5000);
+                    TaskleisteZeigen("Programm mit der Kennung nachgereicht (ohne Neustart)", pinOrdner, mitInhalt: false);
+                    ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+                    System.Threading.Thread.Sleep(5000);
+                    TaskleisteZeigen("Programm mit der Kennung nachgereicht (nach Explorer-Neustart)", pinOrdner, mitInhalt: false);
+                    File.Delete(start);
+                }
+            }
+
             // 5. Die Sicherung eines anderen PCs (anderer Laeufer, anderes Windows).
             if (Environment.GetEnvironmentVariable("DASI_TASKLEISTE_FREMD") is { Length: > 0 } fremd && Directory.Exists(fremd))
             {
