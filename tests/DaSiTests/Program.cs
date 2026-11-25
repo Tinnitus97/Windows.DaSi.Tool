@@ -2290,6 +2290,7 @@ internal static partial class Program
         if (OperatingSystem.IsWindows()) FirefoxEchtPruefen(root);
         NeuesZielPruefen();
         TaskbandNamenPruefen();
+        KennungenPruefen();
         if (OperatingSystem.IsWindows()) VerknuepfungenEchtPruefen(root);
         SicherungsdienstAmEchtenDesktop(root);
 

@@ -1920,7 +1920,7 @@ public sealed class BackupService
                         $"[ERROR] The taskbar shortcuts could not be restored: {ex.Message}"));
             return false;
         }
-        if (OperatingSystem.IsWindows()) TaskleistenZielePruefen(ziel, zurueck);
+        var ohneProgramm = OperatingSystem.IsWindows() ? TaskleistenZielePruefen(ziel, zurueck) : new List<string>();
 
         if (!OperatingSystem.IsWindows() || s.Taskband.Count == 0)
         {
@@ -1934,14 +1934,17 @@ public sealed class BackupService
         // Taskleiste selbst neu belegt, ein zweites Mal - danach ehrlich melden.
         // Frueher stand hier ungeprueft "[ERFOLG]"; bei einem Anwender war die
         // Taskleiste danach leer.
-        var erwartet = Taskleiste.AngehefteteNamen(Taskleiste.Favorites(s.Taskband), zurueck);
+        var taskband = OperatingSystem.IsWindows() ? KennungenAnpassen(s.Taskband) : s.Taskband;
+        // Symbole von Programmen, die es hier noch nicht gibt, zeigt Windows erst
+        // mit dem Programm - sie zaehlen bei der Kontrolle nicht mit.
+        var erwartet = Taskleiste.AngehefteteNamen(Taskleiste.Favorites(taskband), zurueck.Except(ohneProgramm));
         List<string> nichtUebernommen = new();
         for (int versuch = 1; versuch <= 2; versuch++)
         {
             var (wurzel, eigen) = BenutzerZweig(schreiben: true);
             try
             {
-                foreach (var e in s.Taskband) DesignRegistry.Schreiben(wurzel, e);
+                foreach (var e in taskband) DesignRegistry.Schreiben(wurzel, e);
             }
             catch (Exception ex)
             {
@@ -1983,11 +1986,55 @@ public sealed class BackupService
                         + "or pin the programs by hand."));
             return true;
         }
+
+        // Zeigt Windows die Eintraege auch? Das steht in keinem Registry-Wert -
+        // nachgesehen wird auf der Taskleiste selbst, ueber die App-Kennungen.
+        if (!TaskleisteSichtbar(Taskleiste.Eintraege(Taskleiste.Favorites(taskband), zurueck), ohneProgramm)) return true;
         _log(Loc.Tr($"[ERFOLG] Taskleiste wiederhergestellt: {(zurueck.Count > 0 ? $"{zurueck.Count} Verknüpfungen ({Taskleiste.Namen(zurueck)}) und " : "")}die angehefteten Apps in der gesicherten Reihenfolge.",
                     $"[SUCCESS] Taskbar restored: {(zurueck.Count > 0 ? $"{zurueck.Count} shortcuts ({Taskleiste.Namen(zurueck)}) and " : "")}the pinned apps in the saved order."));
         if (fehlend.Count > 0)
             _log(Loc.Tr($"[WARNUNG] {fehlend.Count} Verknüpfungen fehlen in der Sicherung: {Taskleiste.Namen(fehlend)}",
                         $"[WARNING] {fehlend.Count} shortcuts are missing from the backup: {Taskleiste.Namen(fehlend)}"));
+        return true;
+    }
+
+    /// <summary>Nur fuer die Pruefung: die App-Kennungen, die die Taskleiste zeigt (null: nicht lesbar).</summary>
+    internal Func<HashSet<string>?>? TaskleistenSicht { get; set; }
+
+    /// <summary>
+    /// Vergleicht die angehefteten Eintraege mit dem, was die Taskleiste zeigt.
+    /// Fehlt das Symbol eines Programms, das hier installiert ist, ist das ein
+    /// Fehler; fehlt das Programm selbst noch, ein Hinweis.
+    /// </summary>
+    /// <returns>false, wenn ein Fehler gemeldet wurde.</returns>
+    private bool TaskleisteSichtbar(List<Taskleiste.Eintrag> eintraege, List<string> ohneProgramm)
+    {
+        var sichtbar = TaskleistenSicht is { } sicht ? sicht() : OperatingSystem.IsWindows() ? TaskleistenAnsicht.Kennungen() : null;
+        var mitKennung = eintraege.Where(e => e.Kennung is not null).ToList();
+        if (mitKennung.Count == 0) return true;
+        if (sichtbar is null)
+        {
+            _log(Loc.Tr("[INFO] Ob die Taskleiste die Symbole zeigt, ließ sich nicht nachsehen - bitte einen Blick darauf werfen.",
+                        "[INFO] Whether the taskbar shows the icons could not be checked - please have a look."));
+            return true;
+        }
+        static string Name(Taskleiste.Eintrag e) => e.Verknuepfung is { } v ? Path.GetFileNameWithoutExtension(v) : e.Kennung!;
+        var unsichtbar = mitKennung.Where(e => !sichtbar.Contains(e.Kennung!)).ToList();
+        var fehltProgramm = unsichtbar.Where(e => e.Verknuepfung is null || ohneProgramm.Contains(e.Verknuepfung, StringComparer.OrdinalIgnoreCase)).ToList();
+        var trotzdem = unsichtbar.Except(fehltProgramm).ToList();
+        if (fehltProgramm.Count > 0)
+            _log(Loc.Tr($"[WARNUNG] Die Taskleiste zeigt diese Symbole nicht - das Programm fehlt hier (noch): {string.Join(", ", fehltProgramm.Select(Name))}. Nach der Installation den Punkt erneut ausführen.",
+                        $"[WARNING] The taskbar does not show these icons - the program is missing here (yet): {string.Join(", ", fehltProgramm.Select(Name))}. Run this item again after installing."));
+        if (trotzdem.Count > 0)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Taskleiste zeigt diese angehefteten Symbole nicht, obwohl das Programm da ist: {string.Join(", ", trotzdem.Select(e => $"{Name(e)} ({e.Kennung})"))}. "
+                        + "Abhilfe: im Startmenü per Rechtsklick > \"An Taskleiste anheften\".",
+                        $"[ERROR] The taskbar does not show these pinned icons although the program is present: {string.Join(", ", trotzdem.Select(e => $"{Name(e)} ({e.Kennung})"))}. "
+                        + "Remedy: in the Start menu, right-click > \"Pin to taskbar\"."));
+            return false;
+        }
+        _log(Loc.Tr($"[INFO] Die Taskleiste zeigt {mitKennung.Count - unsichtbar.Count} von {mitKennung.Count} gesicherten Symbolen.",
+                    $"[INFO] The taskbar shows {mitKennung.Count - unsichtbar.Count} of {mitKennung.Count} saved icons."));
         return true;
     }
 
@@ -2017,9 +2064,11 @@ public sealed class BackupService
     /// Protokoll, welche - meist Programme, die erst noch installiert werden.
     /// </summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    internal void TaskleistenZielePruefen(string ordner, IEnumerable<string> verknuepfungen)
+    /// <returns>Die Verknuepfungen (Dateinamen), deren Programm es hier nicht gibt.</returns>
+    internal List<string> TaskleistenZielePruefen(string ordner, IEnumerable<string> verknuepfungen)
     {
         var fehlend = new List<string>();
+        var fehlendeDateien = new List<string>();
         var programme = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         var programme86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         foreach (var n in verknuepfungen)
@@ -2034,13 +2083,71 @@ public sealed class BackupService
                 _log(Loc.Tr($"[INFO] Taskleiste: {name} zeigte auf {inhalt.Ziel} - hier liegt das Programm unter {neu}, die Verknüpfung ist umgestellt.",
                             $"[INFO] Taskbar: {name} pointed to {inhalt.Ziel} - here the program is at {neu}, the shortcut has been updated."));
             else
+            {
                 fehlend.Add($"{name} ({inhalt.Ziel})");
+                fehlendeDateien.Add(n);
+            }
         }
         if (fehlend.Count > 0)
             _log(Loc.Tr($"[WARNUNG] Taskleiste: Diese angehefteten Programme gibt es auf diesem PC (noch) nicht: {string.Join(", ", fehlend)}. "
                         + "Nach ihrer Installation \"Desktop-Layout wiederherstellen\" erneut ausführen.",
                         $"[WARNING] Taskbar: these pinned programs do not exist on this PC (yet): {string.Join(", ", fehlend)}. "
                         + "After installing them, run \"Restore desktop layout\" again."));
+        return fehlendeDateien;
+    }
+
+    /// <summary>
+    /// Passt die App-Kennungen in Taskband\Favorites an die Programme dieses PCs
+    /// an. Ueber die Kennung ordnet die Taskleiste ein angeheftetes Symbol einem
+    /// installierten Programm zu; findet sie keins, zeigt sie es nicht. Bei
+    /// einem Anwender (Windows 10 -> 11) trug Firefox die Kennung des
+    /// 32-Bit-Firefox ("E7CF176E110C211B"), winget hatte das 64-Bit-Firefox
+    /// installiert ("308046B0AF4A39CB"). Ersetzt werden nur gleich lange Kennungen.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    internal List<DesignEintrag> KennungenAnpassen(List<DesignEintrag> taskband)
+    {
+        var kennungen = Taskleiste.Kennungen(Taskleiste.Favorites(taskband)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (kennungen.Count == 0) return taskband;
+
+        // Firefox/Thunderbird: Kennung = Schluessel des Installationsordners.
+        var mozilla = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var app in new[] { AppCatalog.Firefox, AppCatalog.Thunderbird })
+        {
+            var (exe, ordnerName) = MozillaProfile.Programm(app)!.Value;
+            var hier = TestInstallationen ?? MozillaProfile.Installationen(exe, ordnerName, SourcePath);
+            if (hier.Count == 0) continue;
+            var schluesselHier = hier.Select(MozillaProfile.Schluessel).ToList();
+            foreach (var ort in MozillaProfile.UeblicheOrte(ordnerName, SourcePath))
+            {
+                var alt = MozillaProfile.Schluessel(ort);
+                if (!schluesselHier.Contains(alt, StringComparer.OrdinalIgnoreCase)) mozilla.TryAdd(alt, schluesselHier[0]);
+            }
+        }
+        // Programme ohne eigene Kennung: Pfad ab dem Programme-Ordner.
+        var ordner = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [Taskleiste.OrdnerProgramme86] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            [Taskleiste.OrdnerProgramme64] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            [Taskleiste.OrdnerProgramme] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+        };
+
+        var ergebnis = taskband.Select(e => new DesignEintrag { Gruppe = e.Gruppe, Schluessel = e.Schluessel, Name = e.Name, Typ = e.Typ, Wert = e.Wert }).ToList();
+        var ersetzt = new List<string>();
+        foreach (var k in kennungen)
+        {
+            if (Taskleiste.NeueKennung(k, mozilla, ordner, File.Exists) is not { } neu) continue;
+            foreach (var e in ergebnis.Where(e => e.Typ == "Binary" && e.Name.StartsWith("Favorites", StringComparison.Ordinal)))
+            {
+                try { e.Wert = Convert.ToBase64String(Taskleiste.KennungErsetzen(Convert.FromBase64String(e.Wert), k, neu)); }
+                catch { /* unlesbarer Wert - bleibt */ }
+            }
+            ersetzt.Add($"{k} -> {neu}");
+        }
+        if (ersetzt.Count > 0)
+            _log(Loc.Tr($"[INFO] Taskleiste: Kennungen an die Programme dieses PCs angepasst, damit Windows die angehefteten Symbole zuordnet: {string.Join(", ", ersetzt)}.",
+                        $"[INFO] Taskbar: app IDs adjusted to the programs on this PC so Windows matches the pinned icons: {string.Join(", ", ersetzt)}."));
+        return ergebnis;
     }
 
     /// <summary>Der Ort eines Programms laut "App Paths" (fuer alle Benutzer, 64 und 32 Bit).</summary>

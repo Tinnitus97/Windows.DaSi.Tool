@@ -181,6 +181,47 @@ internal static partial class Program
                 }
             }
 
+            // 7. Eintraege im Format eines alten Windows 10 (Wurzel ohne
+            //    Erweiterungsblock, 20 statt 58 Bytes) - nimmt Windows sie?
+            if (Taskleiste.Laden(sicherung) is { } tl7 && Taskleiste.Favorites(tl7.Taskband) is { } fav7)
+            {
+                var alt7 = new List<byte> { };
+                int pos = 0, umgebaut7 = 0;
+                while (pos + 5 <= fav7.Length && fav7[pos] == 0x00)
+                {
+                    var laenge = (int)BitConverter.ToUInt32(fav7, pos + 1);
+                    var daten = fav7.AsSpan(pos + 5, laenge).ToArray();
+                    if (daten.Length > 20 && daten[0] == 0x3A && daten[1] == 0 && daten[2] == 0x1F)
+                    {
+                        var kurz = new List<byte> { 0x14, 0x00 };
+                        kurz.AddRange(daten.AsSpan(2, 18).ToArray());
+                        kurz.AddRange(daten.AsSpan(0x3A).ToArray());
+                        daten = kurz.ToArray();
+                        umgebaut7++;
+                    }
+                    alt7.Add(0x00);
+                    alt7.AddRange(BitConverter.GetBytes((uint)daten.Length));
+                    alt7.AddRange(daten);
+                    pos += 5 + laenge;
+                }
+                alt7.AddRange(fav7.AsSpan(pos).ToArray());
+                var ordner7 = Path.Combine(root, "tl-altes-format");
+                foreach (var datei in Directory.GetFiles(sicherung, "*", SearchOption.AllDirectories))
+                {
+                    var z = Path.Combine(ordner7, Path.GetRelativePath(sicherung, datei));
+                    Directory.CreateDirectory(Path.GetDirectoryName(z)!);
+                    File.Copy(datei, z, true);
+                }
+                tl7.Taskband.First(e => e.Name == "Favorites").Wert = Convert.ToBase64String(alt7.ToArray());
+                Taskleiste.Speichern(ordner7, tl7);
+                Console.WriteLine($"   == altes Format: {umgebaut7} Eintraege umgebaut, {fav7.Length} -> {alt7.Count} Bytes ==");
+                Leeren(pinOrdner);
+                log.Leeren();
+                new BackupService(new ProcessRunner(c), c, log.Schreiben) { SourcePath = profil, BackupPath = ordner7 }.RestoreDesktopIcons().Wait();
+                foreach (var z in log.Zeilen.Where(z => z.Contains("Taskleiste", StringComparison.OrdinalIgnoreCase))) Console.WriteLine("         Dienst: " + z.Trim());
+                TaskleisteZeigen("altes Format", pinOrdner, mitInhalt: false);
+            }
+
             // 5. Die Sicherung eines anderen PCs (anderer Laeufer, anderes Windows).
             if (Environment.GetEnvironmentVariable("DASI_TASKLEISTE_FREMD") is { Length: > 0 } fremd && Directory.Exists(fremd))
             {
@@ -287,6 +328,8 @@ internal static partial class Program
         TaskleisteFoto(wann);
         knoepfe.Sort(StringComparer.OrdinalIgnoreCase);
         Console.WriteLine($"         App-Knoepfe: {(knoepfe.Count == 0 ? "keine" : string.Join(", ", knoepfe))}");
+        var com = TaskleistenAnsicht.Kennungen();
+        Console.WriteLine($"         Kennungen (TaskleistenAnsicht): {(com is null ? "nicht lesbar" : string.Join(", ", com.OrderBy(k => k, StringComparer.OrdinalIgnoreCase)))}");
         return knoepfe;
     }
 

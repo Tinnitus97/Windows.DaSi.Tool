@@ -27,17 +27,32 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Profil, neuen und alten Ordner. Gilt ebenso für Thunderbird. Geprüft mit dem echten
   Firefox des Windows-Läufers – samt Gegenprobe: ohne die Anpassung legt er wie beim
   Anwender ein neues Profil an.
-- **Taskleiste leer, Protokoll meldete Erfolg.** Nach dem Neustart des Explorers
-  sieht das Tool jetzt nach, ob Windows die angehefteten Symbole behalten hat. Belegt
-  Windows die Taskleiste selbst neu, schreibt das Tool sie ein zweites Mal; behält
-  Windows sie dann noch immer nicht, steht im Protokoll ein Fehler mit Abhilfe und
-  den betroffenen Symbolen statt „[ERFOLG]“.
-- **Angeheftete Programme an anderem Ort.** Zeigt eine angeheftete Verknüpfung vom
-  alten PC auf ein Programm, das hier woanders liegt – 64 statt 32 Bit wie Firefox,
-  oder ein anderer Ort laut Windows (`App Paths`, etwa Excel) –, stellt das Tool sie
-  um, samt Symbol, Arbeitsordner und App-Kennung. Programme, die es hier (noch) nicht
-  gibt, nennt das Protokoll mit dem Hinweis, den Punkt nach ihrer Installation erneut
-  auszuführen.
+- **Taskleiste leer, Protokoll meldete Erfolg** (Windows 10 22H2 → Windows 11).
+  Das Tool hatte nach dem Zurückschreiben nicht nachgesehen, was Windows daraus
+  macht. Jeder angeheftete Eintrag in `Taskband\Favorites` trägt eine App-Kennung
+  (AppUserModelID), über die die Taskleiste ihn einem Programm zuordnet. In der
+  Sicherung des Anwenders trug Firefox die Kennung des 32-Bit-Firefox
+  (`E7CF176E110C211B`), winget hatte das 64-Bit-Firefox installiert
+  (`308046B0AF4A39CB`); die übrigen Einträge gehörten zu Programmen, die noch nicht
+  installiert waren, und zum alten Snipping Tool, das es unter Windows 11 so nicht
+  mehr gibt. Windows Server 2025 zeigt solche Einträge trotzdem an (geprüft); ob
+  Windows 11 sie ausblendet, sagt künftig das Protokoll. Jetzt:
+  - **Kennungen anpassen:** Firefox und Thunderbird bekommen die Kennung ihrer
+    Installation auf diesem PC, Programme ohne eigene Kennung
+    (`{Program Files (x86)}\…\programm.exe`) die des Programme-Ordners, in dem sie
+    hier liegen. Ersetzt werden nur gleich lange Kennungen, die Einträge bleiben
+    sonst unangetastet.
+  - **Verknüpfungen umstellen:** Zeigt eine angeheftete Verknüpfung auf ein
+    Programm, das hier woanders liegt – 64 statt 32 Bit wie Firefox, oder ein
+    anderer Ort laut Windows (`App Paths`, etwa Excel) –, stellt das Tool sie um,
+    samt Symbol, Arbeitsordner und App-Kennung. Programme, die es hier (noch) nicht
+    gibt, nennt das Protokoll.
+  - **Nachsehen:** Nach dem Neustart des Explorers prüft das Tool, ob Windows die
+    Einträge behalten hat (sonst ein zweiter Versuch), und liest über UI Automation,
+    welche Programme die Taskleiste tatsächlich zeigt – sprachunabhängig über ihre
+    App-Kennung. Fehlt das Symbol eines Programms, das hier installiert ist, steht
+    ein Fehler mit Abhilfe im Protokoll statt „[ERFOLG]“; fehlt das Programm selbst
+    noch, ein Hinweis, den Punkt nach der Installation erneut auszuführen.
 
 ### Geändert
 

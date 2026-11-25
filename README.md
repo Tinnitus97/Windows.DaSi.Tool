@@ -213,13 +213,15 @@ es die **an die Taskleiste angehefteten Symbole** und heftet sie wieder an.
   dabei. Erst danach kommen die Desktop-Symbole an ihre Stelle. Symbole von Programmen,
   die auf dem neuen Rechner noch fehlen, werden erst mit dem Programm sichtbar. Der
   Punkt läuft deshalb nach dem Winget-Import.
-- Liegt ein angeheftetes Programm hier woanders als auf dem alten Rechner (64 statt
-  32 Bit wie Firefox, ein anderer Ort laut Windows), stellt das Tool die Verknüpfung
-  um. Programme, die es noch gar nicht gibt, nennt das Protokoll.
-- Nach dem Neustart des Explorers sieht das Tool nach, ob Windows die angehefteten
-  Symbole behalten hat. Belegt Windows die Taskleiste selbst neu, schreibt das Tool sie
-  ein zweites Mal; behält Windows sie auch dann nicht, steht das als Fehler im
-  Protokoll – nicht als Erfolg.
+- Die Taskleiste ordnet ein angeheftetes Symbol über seine App-Kennung einem
+  Programm zu. Liegt ein Programm hier woanders als auf dem alten Rechner (64 statt
+  32 Bit wie Firefox, ein anderer Ort laut Windows), passt das Tool Kennung und
+  Verknüpfung an. Programme, die es noch gar nicht gibt, nennt das Protokoll – nach
+  ihrer Installation den Punkt erneut ausführen.
+- Nach dem Neustart des Explorers sieht das Tool nach: ob Windows die Einträge
+  behalten hat (sonst ein zweiter Versuch) und welche Symbole die Taskleiste
+  tatsächlich zeigt. Fehlt eins, obwohl das Programm installiert ist, steht das als
+  Fehler im Protokoll – nicht als Erfolg.
 - Gespeichert wird `Desktop-Symbole\Symbolpositionen.json`, für die Taskleiste
   `Desktop-Symbole\Taskleiste\` (`Taskleiste.json` und die Verknüpfungen) im Backup-Ziel.
 
