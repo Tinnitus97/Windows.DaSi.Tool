@@ -436,6 +436,9 @@ internal static class Program
         var bericht = Directory.GetFiles(ziel, "Sicherung-Protokoll_*.txt").FirstOrDefault();
         Check("Protokolldatei im Ziel, jede Aktion mit Ergebnis", bericht is not null && File.ReadAllText(bericht).Contains("Windows Benutzerprofil")
             && File.ReadAllText(bericht).Contains("Desktop-Screenshot"), bericht);
+        var berichtText = bericht is null ? "" : File.ReadAllText(bericht);
+        Check("Protokolldatei: auch der ganze Ablauf, mit Bilanz", berichtText.Contains("Ablauf" + Environment.NewLine + "=====")
+            && berichtText.Contains("--- Führe Aktion Backup-User aus ---") && berichtText.Contains("[BILANZ]"), berichtText);
         Check("Oberflaeche nach dem Lauf wieder frei", vm.UiEnabled && !vm.IsActionRunning && !vm.ProgressVisible);
 
         // In eine vorhandene Sicherung eines anderen Rechners: Rueckfrage.

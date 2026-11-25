@@ -123,9 +123,9 @@ jobs:
         run: dotnet run --project tests/DaSiTests -c Release
 
   # Versuch: Was macht der Explorer mit zurueckgeschriebenen Taskleisten-
-  # Symbolen - auch aus der Sicherung eines anderen PCs? Der Server-Laeufer
-  # hat angeheftete Symbole und sichert sie, der Windows-11-Laeufer stellt
-  # diese Sicherung wieder her. Zur Auskunft, haelt den Zweig nicht auf.
+  # Symbolen? Auf dem Server-Laeufer ist etwas angeheftet und die Taskleiste
+  # zu sehen (auf dem Windows-11-Laeufer liegt der Sperrbildschirm davor).
+  # Zur Auskunft, haelt den Zweig nicht auf.
   taskleiste-server:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -138,34 +138,4 @@ jobs:
       - name: Taskleiste unter Windows Server
         env:
           DASI_NUR: taskleiste
-          DASI_TASKLEISTE_ABLAGE: ${{ runner.temp }}\taskleiste
-        run: dotnet run --project tests/DaSiTests -c Release
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: Taskleiste-Server
-          path: ${{ runner.temp }}/taskleiste
-          retention-days: 3
-
-  taskleiste-windows11:
-    needs: taskleiste-server
-    if: always()
-    runs-on: windows-11-arm
-    timeout-minutes: 20
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: ./.github/actions/dotnet-lts
-
-      - uses: actions/download-artifact@v8
-        continue-on-error: true
-        with:
-          name: Taskleiste-Server
-          path: ${{ runner.temp }}/taskleiste-fremd
-
-      - name: Taskleiste unter Windows 11
-        env:
-          DASI_NUR: taskleiste
-          DASI_TASKLEISTE_FREMD: ${{ runner.temp }}\taskleiste-fremd
         run: dotnet run --project tests/DaSiTests -c Release

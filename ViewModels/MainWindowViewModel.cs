@@ -29,6 +29,15 @@ public partial class MainWindowViewModel : ObservableObject
     private readonly System.Text.StringBuilder _logBuffer = new();
     private bool _logUntouched = true;   // true, solange nur der Begruessungstext im Log steht
 
+    /// <summary>
+    /// Das ganze Protokoll des laufenden Durchgangs - fuer die Protokolldatei im
+    /// Sicherungsordner. Die Anzeige kuerzt ab 40 000 Zeichen; hier bleibt alles
+    /// stehen (bis zur Obergrenze). Frueher stand in der Datei nur die Bilanz -
+    /// fuer die Fehlersuche nach einer Wiederherstellung zu wenig.
+    /// </summary>
+    private System.Text.StringBuilder? _laufLog;
+    internal const int LaufLogGrenze = 20_000_000;
+
     private static string InitialLogText()
         => Tr("Warte auf Eingabe...\r\nBitte wähle zuerst die benötigten Pfade.\r\n",
               "Waiting for input...\r\nPlease select the required paths first.\r\n");
@@ -702,6 +711,12 @@ public partial class MainWindowViewModel : ObservableObject
         {
             _logUntouched = false;   // ab jetzt bleibt der Verlauf stehen
             _logBuffer.Append(text).Append("\r\n");
+            if (_laufLog is not null && _laufLog.Length < LaufLogGrenze)
+            {
+                _laufLog.Append(text).Append("\r\n");
+                if (_laufLog.Length >= LaufLogGrenze)
+                    _laufLog.Append(Tr("... [PROTOKOLL HIER ABGESCHNITTEN] ...\r\n", "... [LOG CUT OFF HERE] ...\r\n"));
+            }
             if (_logBuffer.Length > 40000)
             {
                 var keep = _logBuffer.ToString(_logBuffer.Length - 30000, 30000);
@@ -1396,7 +1411,8 @@ public partial class MainWindowViewModel : ObservableObject
         int index = 0;
         ProgressVisible = true;
 
-        // Fuer das Backup-Protokoll: Start, Ergebnisse je Aktion.
+        // Fuer das Backup-Protokoll: Start, Ergebnisse je Aktion, alle Zeilen.
+        lock (_logLock) _laufLog = new System.Text.StringBuilder();
         var startTime = DateTime.Now;
         var results = new List<(string action, bool ok)>();
         var swTotal = System.Diagnostics.Stopwatch.StartNew();
@@ -1475,6 +1491,7 @@ public partial class MainWindowViewModel : ObservableObject
 
         // Zusammenfassung ins Log und Protokolldatei schreiben.
         WriteRunSummaryAndReport(startTime, swTotal.Elapsed, results);
+        lock (_logLock) _laufLog = null;
     }
 
     /// <summary>
@@ -1530,6 +1547,15 @@ public partial class MainWindowViewModel : ObservableObject
                 sb.AppendLine($"{mark} {FriendlyAction(action)}");
             }
             sb.AppendLine("========================================");
+            string? ablauf;
+            lock (_logLock) ablauf = _laufLog?.ToString();
+            if (!string.IsNullOrEmpty(ablauf))
+            {
+                sb.AppendLine();
+                sb.AppendLine(Tr("Ablauf", "Details"));
+                sb.AppendLine("========================================");
+                sb.Append(ablauf.TrimStart('\r', '\n'));
+            }
 
             File.WriteAllText(path, sb.ToString(), new System.Text.UTF8Encoding(true));
             Log(Tr($"[INFO] Protokoll gespeichert: {fileName}", $"[INFO] Report saved: {fileName}"));

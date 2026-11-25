@@ -216,11 +216,14 @@ internal static partial class Program
         Check("Dienst: Eintragen scheitert - Fehler mit Abhilfe", log.Hat("[FEHLER] Testfuchs: Das Profil ließ sich nicht als Standard eintragen") && log.Hat("-P"), log.Text);
         Directory.Delete(Path.Combine(gesichert, "profiles.ini.dasi"));
 
-        // Ohne feste Ordner: die echte Suche (hier gibt es keinen Testfuchs).
+        // Ohne feste Ordner: die echte Suche nach Firefox - auf dem Windows-
+        // Laeufer ist eins installiert, sonst meist nicht.
         d.TestInstallationen = null;
         log.Leeren();
         d.RestoreAppProfile(Testfuchs).Wait();
-        Check("Dienst: echte Suche findet keinen Testfuchs", log.Hat("[WARNUNG] Testfuchs ist auf diesem PC nicht installiert"), log.Text);
+        var echt = OperatingSystem.IsWindows() ? MozillaProfile.Installationen("firefox.exe", "Mozilla Firefox", ziel) : new List<string>();
+        Check($"Dienst: echte Suche ({(echt.Count == 0 ? "kein Firefox" : string.Join(", ", echt))})",
+            echt.Count == 0 ? log.Hat("[WARNUNG] Testfuchs ist auf diesem PC nicht installiert") : log.Hat($"ist jetzt Standard für {string.Join(", ", echt)}"), log.Text);
     }
 
     /// <summary>

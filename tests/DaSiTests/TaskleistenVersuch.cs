@@ -86,23 +86,44 @@ internal static partial class Program
             // 4. Eine Verknuepfung, deren Ziel es hier nicht gibt (wie Firefox
             //    aus "Program Files (x86)" auf einem PC mit 64-Bit-Firefox).
             var tlSicherung = Taskleiste.SicherungsOrdner(sicherung);
-            foreach (var lnk in Directory.GetFiles(tlSicherung, "*.lnk"))
+            var tlJson = Taskleiste.Laden(sicherung);
+            if (Directory.Exists(tlSicherung) && tlJson is not null)
             {
-                var ziel = LinkZiel(lnk);
-                if (string.IsNullOrEmpty(ziel) || !File.Exists(ziel)) continue;
-                var falsch = Path.Combine(@"C:\Program Files (x86)\DaSi-gibt-es-nicht", Path.GetFileName(ziel));
-                LinkZielSetzen(lnk, falsch);
-                Console.WriteLine($"         {Path.GetFileName(lnk)}: Ziel umgebogen auf {LinkZiel(lnk)}");
-                break;
+                string? umgebogen = null;
+                foreach (var lnk in Directory.GetFiles(tlSicherung, "*.lnk"))
+                {
+                    var ziel = LinkZiel(lnk, mitArgumenten: false);
+                    if (string.IsNullOrEmpty(ziel) || !File.Exists(ziel)) continue;
+                    LinkZielSetzen(lnk, Path.Combine(@"C:\Program Files (x86)\DaSi-gibt-es-nicht", Path.GetFileName(ziel)));
+                    umgebogen = Path.GetFileName(lnk);
+                    Console.WriteLine($"         {umgebogen}: Ziel umgebogen auf {LinkZiel(lnk)}");
+                    break;
+                }
+                Leeren(pinOrdner);
+                log.Leeren();
+                new BackupService(new ProcessRunner(c), c, log.Schreiben) { SourcePath = profil, BackupPath = sicherung }.RestoreDesktopIcons().Wait();
+                var geschrieben2 = TaskbandLesen();
+                TaskleisteZeigen("mit fehlendem Ziel", pinOrdner, mitInhalt: false);
+                System.Threading.Thread.Sleep(10000);
+                Console.WriteLine($"         Favorites 10 s spaeter: {(Gleich(geschrieben2, TaskbandLesen(), "Favorites") ? "unveraendert" : "VOM EXPLORER GEAENDERT")}");
+                TaskleisteZeigen("mit fehlendem Ziel, 10 s spaeter", pinOrdner, mitInhalt: false);
+
+                // 4b. Die Verknuepfung selbst fehlt (Taskband verweist ins Leere).
+                if (umgebogen is not null)
+                {
+                    File.Delete(Path.Combine(tlSicherung, umgebogen));
+                    Leeren(pinOrdner);
+                    log.Leeren();
+                    new BackupService(new ProcessRunner(c), c, log.Schreiben) { SourcePath = profil, BackupPath = sicherung }.RestoreDesktopIcons().Wait();
+                    foreach (var z in log.Zeilen.Where(z => z.Contains("Taskleiste", StringComparison.OrdinalIgnoreCase) || z.Contains("fehlen"))) Console.WriteLine("         Dienst: " + z.Trim());
+                    var geschrieben3 = TaskbandLesen();
+                    TaskleisteZeigen("Verknuepfung fehlt", pinOrdner, mitInhalt: false);
+                    System.Threading.Thread.Sleep(10000);
+                    var danach3 = TaskbandLesen();
+                    Console.WriteLine($"         Favorites 10 s spaeter: {(Gleich(geschrieben3, danach3, "Favorites") ? "unveraendert" : "VOM EXPLORER GEAENDERT")}");
+                    TaskleisteZeigen("Verknuepfung fehlt, 10 s spaeter", pinOrdner, mitInhalt: true);
+                }
             }
-            Leeren(pinOrdner);
-            log.Leeren();
-            new BackupService(new ProcessRunner(c), c, log.Schreiben) { SourcePath = profil, BackupPath = sicherung }.RestoreDesktopIcons().Wait();
-            var geschrieben2 = TaskbandLesen();
-            TaskleisteZeigen("mit fehlendem Ziel", pinOrdner, mitInhalt: false);
-            System.Threading.Thread.Sleep(10000);
-            Console.WriteLine($"         Favorites 10 s spaeter: {(Gleich(geschrieben2, TaskbandLesen(), "Favorites") ? "unveraendert" : "VOM EXPLORER GEAENDERT")}");
-            TaskleisteZeigen("mit fehlendem Ziel, 10 s spaeter", pinOrdner, mitInhalt: false);
 
             // 5. Die Sicherung eines anderen PCs (anderer Laeufer, anderes Windows).
             if (Environment.GetEnvironmentVariable("DASI_TASKLEISTE_FREMD") is { Length: > 0 } fremd && Directory.Exists(fremd))
@@ -252,7 +273,7 @@ internal static partial class Program
     }
 
     [SupportedOSPlatform("windows")]
-    private static string LinkZiel(string lnk)
+    private static string LinkZiel(string lnk, bool mitArgumenten = true)
     {
         try
         {
@@ -262,7 +283,7 @@ internal static partial class Program
             link.GetPath(sb, sb.Capacity, IntPtr.Zero, 0);
             var args = new StringBuilder(1024);
             link.GetArguments(args, args.Capacity);
-            return sb + (args.Length > 0 ? " " + args : "");
+            return sb + (mitArgumenten && args.Length > 0 ? " " + args : "");
         }
         catch (Exception ex) { return "(" + ex.Message + ")"; }
     }
