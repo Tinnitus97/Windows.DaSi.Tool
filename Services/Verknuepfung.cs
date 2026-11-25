@@ -130,12 +130,17 @@ public static class Verknuepfung
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
     private struct PROPERTYKEY { public Guid fmtid; public uint pid; }
 
-    [StructLayout(LayoutKind.Explicit)]
+    /// <summary>
+    /// PROPVARIANT: Typ, drei reservierte Worte, dann der Wert. Unter 64 Bit
+    /// 24 Bytes gross (der groesste Wert ist ein Zaehler samt Zeiger) - mit nur
+    /// 16 Bytes schrieb Windows ueber das Ende hinaus.
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = 24)]
     private struct PROPVARIANT
     {
         [FieldOffset(0)] public ushort vt;
         [FieldOffset(8)] public IntPtr p;
-        [FieldOffset(8)] public long zahl;   // haelt die Groesse (16 Bytes unter 64 Bit)
+        [FieldOffset(16)] public long rest;
     }
 
     [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
