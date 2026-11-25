@@ -1966,7 +1966,7 @@ public sealed class BackupService
                             "[INFO] Windows did not restart Explorer by itself - the tool started it."));
 
             await Task.Delay(TaskleistenKontrolle);
-            var jetzt = FavoritesNachlesen?.Invoke() ?? FavoritesLesen();
+            var jetzt = FavoritesNachlesen is { } nachlesen ? nachlesen() : FavoritesLesen();
             nichtUebernommen = erwartet.Except(Taskleiste.AngehefteteNamen(jetzt, erwartet), StringComparer.OrdinalIgnoreCase).ToList();
             if (nichtUebernommen.Count == 0 || _cancel.IsCancelled) break;
             if (versuch == 1)
