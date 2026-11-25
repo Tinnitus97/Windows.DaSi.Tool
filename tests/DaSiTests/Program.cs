@@ -2288,6 +2288,9 @@ internal static partial class Program
         SicherungsdienstPruefen(root);
         MozillaPruefen(root);
         if (OperatingSystem.IsWindows()) FirefoxEchtPruefen(root);
+        NeuesZielPruefen();
+        TaskbandNamenPruefen();
+        if (OperatingSystem.IsWindows()) VerknuepfungenEchtPruefen(root);
         SicherungsdienstAmEchtenDesktop(root);
 
         // Zuletzt: den Explorer neu starten - wie beim Zurueckschreiben der

@@ -42,6 +42,7 @@
     <Compile Include="WingetPruefungen.cs" />
     <Compile Include="SicherungsPruefungen.cs" />
     <Compile Include="MozillaPruefungen.cs" />
+    <Compile Include="VerknuepfungsPruefungen.cs" />
     <Compile Include="../Gemeinsam/*.cs" />
     <Compile Include="../../Services/UpdateService.cs" />
     <Compile Include="../../Services/CloudProviders.cs" />
@@ -63,6 +64,7 @@
     <Compile Include="../../Services/DesignEinstellungen.cs" />
     <Compile Include="../../Services/DesignRegistry.cs" />
     <Compile Include="../../Services/Taskleiste.cs" />
+    <Compile Include="../../Services/Verknuepfung.cs" />
     <Compile Include="../../Services/ExplorerNeustart.cs" />
     <Compile Include="../../Services/DesktopHintergrund.cs" />
     <Compile Include="../../Services/DesignDatei.cs" />

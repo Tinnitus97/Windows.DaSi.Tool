@@ -169,6 +169,12 @@ Gesichert wird zum Beispiel der Benutzer *Besitzer*, auf dem neuen Rechner heiß
 - Die zurückgeschriebenen Dateien erben die Zugriffsrechte des Zielprofils. Sie
   gehören damit dem neuen Benutzer, nicht dem alten.
 - Die Registry-Dateien des Zielbenutzers (`NTUSER.DAT` …) werden nie überschrieben.
+- **Firefox und Thunderbird** führen für jede Installation ein eigenes Standardprofil,
+  gebunden an ihren Ordner. Lief Firefox auf dem alten Rechner als 32-Bit-Fassung
+  (`C:\Program Files (x86)\Mozilla Firefox`), installiert winget auf dem neuen aber die
+  64-Bit-Fassung (`C:\Program Files\Mozilla Firefox`), legte Firefox ein neues, leeres
+  Profil an. Das Tool trägt das zurückgeschriebene Profil deshalb als Standard jeder
+  Installation auf diesem Rechner ein und nennt im Protokoll Profil und Ordner.
 
 ### Desktop-Layout: Wo lag was?
 
@@ -207,6 +213,13 @@ es die **an die Taskleiste angehefteten Symbole** und heftet sie wieder an.
   dabei. Erst danach kommen die Desktop-Symbole an ihre Stelle. Symbole von Programmen,
   die auf dem neuen Rechner noch fehlen, werden erst mit dem Programm sichtbar. Der
   Punkt läuft deshalb nach dem Winget-Import.
+- Liegt ein angeheftetes Programm hier woanders als auf dem alten Rechner (64 statt
+  32 Bit wie Firefox, ein anderer Ort laut Windows), stellt das Tool die Verknüpfung
+  um. Programme, die es noch gar nicht gibt, nennt das Protokoll.
+- Nach dem Neustart des Explorers sieht das Tool nach, ob Windows die angehefteten
+  Symbole behalten hat. Belegt Windows die Taskleiste selbst neu, schreibt das Tool sie
+  ein zweites Mal; behält Windows sie auch dann nicht, steht das als Fehler im
+  Protokoll – nicht als Erfolg.
 - Gespeichert wird `Desktop-Symbole\Symbolpositionen.json`, für die Taskleiste
   `Desktop-Symbole\Taskleiste\` (`Taskleiste.json` und die Verknüpfungen) im Backup-Ziel.
 
@@ -346,8 +359,9 @@ zusätzlich die vollständige Robocopy-Ausgabe Datei für Datei.
 
 Am Ende steht eine Bilanz — *4 von 4 erfolgreich, 0 Fehler* —, und dieselbe Übersicht
 landet als Datei im Backup-Ziel: `Sicherung-Protokoll_<Rechner>_<Datum>.txt` bzw.
-`Wiederherstellung-Protokoll_…`. Eine Aktion zählt nur dann als erfolgreich, wenn sie
-ohne einen einzigen Fehler durchlief.
+`Wiederherstellung-Protokoll_…`. Darunter steht der ganze Ablauf des Durchgangs, so
+lässt sich auch später noch nachlesen, was bei welcher Aktion geschah. Eine Aktion
+zählt nur dann als erfolgreich, wenn sie ohne einen einzigen Fehler durchlief.
 
 ### Für lange Sicherungen gerüstet
 

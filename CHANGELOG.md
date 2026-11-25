@@ -7,6 +7,47 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [Unveröffentlicht]
+
+### Behoben
+
+- **Firefox nach der Wiederherstellung mit leerem Profil.** Das Profil war
+  vollständig zurückgeschrieben, Firefox legte trotzdem ein neues, leeres
+  „default-release“ an; erst nach Löschen von Hand mit `firefox -P` waren die Daten
+  da. Ursache: Seit Firefox 67 hat jede Installation ihr eigenes Standardprofil, in
+  `profiles.ini` unter `[Install<Schlüssel>]` – der Schlüssel ist aus dem
+  Installationsordner berechnet. Auf dem alten PC lief das 32-Bit-Firefox aus
+  `C:\Program Files (x86)\Mozilla Firefox` (Schlüssel `E7CF176E110C211B`), winget
+  installierte auf dem neuen das 64-Bit-Firefox nach `C:\Program Files\Mozilla Firefox`
+  (`308046B0AF4A39CB`). Das zurückgeschriebene Profil gehörte gesperrt der alten
+  Installation. Jetzt trägt das Tool nach dem Zurückschreiben das Profil, das auf dem
+  alten PC lief, als Standard jeder Firefox-Installation dieses PCs ein
+  (`profiles.ini` und `installs.ini`), dazu als allgemeinen Standard: Findet sich
+  keine Installation, übernimmt Firefox es beim ersten Start. Das Protokoll nennt
+  Profil, neuen und alten Ordner. Gilt ebenso für Thunderbird. Geprüft mit dem echten
+  Firefox des Windows-Läufers – samt Gegenprobe: ohne die Anpassung legt er wie beim
+  Anwender ein neues Profil an.
+- **Taskleiste leer, Protokoll meldete Erfolg.** Nach dem Neustart des Explorers
+  sieht das Tool jetzt nach, ob Windows die angehefteten Symbole behalten hat. Belegt
+  Windows die Taskleiste selbst neu, schreibt das Tool sie ein zweites Mal; behält
+  Windows sie dann noch immer nicht, steht im Protokoll ein Fehler mit Abhilfe und
+  den betroffenen Symbolen statt „[ERFOLG]“.
+- **Angeheftete Programme an anderem Ort.** Zeigt eine angeheftete Verknüpfung vom
+  alten PC auf ein Programm, das hier woanders liegt – 64 statt 32 Bit wie Firefox,
+  oder ein anderer Ort laut Windows (`App Paths`, etwa Excel) –, stellt das Tool sie
+  um, samt Symbol, Arbeitsordner und App-Kennung. Programme, die es hier (noch) nicht
+  gibt, nennt das Protokoll mit dem Hinweis, den Punkt nach ihrer Installation erneut
+  auszuführen.
+
+### Geändert
+
+- **Die Protokolldatei enthält den ganzen Ablauf.** In
+  `Sicherung-Protokoll_…`/`Wiederherstellung-Protokoll_…` stand bisher nur die Bilanz
+  (welche Aktion OK oder FEHLER war). Jetzt folgt darunter das vollständige Protokoll
+  des Durchgangs – für die Fehlersuche nach einer Wiederherstellung.
+
+---
+
 ## [1.2.7] - 2026-11-22
 
 ### Neu

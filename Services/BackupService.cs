@@ -1920,6 +1920,7 @@ public sealed class BackupService
                         $"[ERROR] The taskbar shortcuts could not be restored: {ex.Message}"));
             return false;
         }
+        if (OperatingSystem.IsWindows()) TaskleistenZielePruefen(ziel, zurueck);
 
         if (!OperatingSystem.IsWindows() || s.Taskband.Count == 0)
         {
@@ -1928,38 +1929,136 @@ public sealed class BackupService
             return false;
         }
 
-        var (wurzel, eigen) = BenutzerZweig(schreiben: true);
-        try
+        // Schreiben, den Explorer neu starten (er liest die angehefteten Symbole
+        // nur beim Start) und nachsehen, ob Windows sie behalten hat. Hat es die
+        // Taskleiste selbst neu belegt, ein zweites Mal - danach ehrlich melden.
+        // Frueher stand hier ungeprueft "[ERFOLG]"; bei einem Anwender war die
+        // Taskleiste danach leer.
+        var erwartet = Taskleiste.AngehefteteNamen(Taskleiste.Favorites(s.Taskband), zurueck);
+        List<string> nichtUebernommen = new();
+        for (int versuch = 1; versuch <= 2; versuch++)
         {
-            foreach (var e in s.Taskband) DesignRegistry.Schreiben(wurzel, e);
-        }
-        catch (Exception ex)
-        {
-            _log(Loc.Tr($"[FEHLER] Die Reihenfolge der Taskleiste ließ sich nicht schreiben: {ex.Message}",
-                        $"[ERROR] The taskbar order could not be written: {ex.Message}"));
-            return false;
-        }
-        finally { if (eigen) wurzel.Dispose(); }
+            var (wurzel, eigen) = BenutzerZweig(schreiben: true);
+            try
+            {
+                foreach (var e in s.Taskband) DesignRegistry.Schreiben(wurzel, e);
+            }
+            catch (Exception ex)
+            {
+                _log(Loc.Tr($"[FEHLER] Die Reihenfolge der Taskleiste ließ sich nicht schreiben: {ex.Message}",
+                            $"[ERROR] The taskbar order could not be written: {ex.Message}"));
+                return false;
+            }
+            finally { if (eigen) wurzel.Dispose(); }
 
-        // Der Explorer liest die angehefteten Symbole nur beim Start.
-        _log(Loc.Tr("[INFO] Der Explorer startet kurz neu, damit die Taskleiste die gesicherten Symbole übernimmt - offene Explorer-Fenster schließen sich dabei.",
-                    "[INFO] Explorer restarts briefly so the taskbar picks up the saved icons - open Explorer windows close in the process."));
-        var (ok, vonSelbst) = await ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(20));
-        if (!ok)
+            if (versuch == 1)
+                _log(Loc.Tr("[INFO] Der Explorer startet kurz neu, damit die Taskleiste die gesicherten Symbole übernimmt - offene Explorer-Fenster schließen sich dabei.",
+                            "[INFO] Explorer restarts briefly so the taskbar picks up the saved icons - open Explorer windows close in the process."));
+            var (ok, vonSelbst) = await ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(20));
+            if (!ok)
+            {
+                _log(Loc.Tr("[WARNUNG] Der Explorer kam nicht zurück. Die Taskleiste zeigt die Symbole nach dem nächsten Anmelden. Notfalls im Task-Manager \"Neuen Task ausführen\" > explorer.exe.",
+                            "[WARNING] Explorer did not come back. The taskbar shows the icons after the next sign-in. If needed: Task Manager > \"Run new task\" > explorer.exe."));
+                return true;
+            }
+            if (!vonSelbst && versuch == 1)
+                _log(Loc.Tr("[INFO] Windows hat den Explorer nicht selbst neu gestartet - das Tool hat ihn gestartet.",
+                            "[INFO] Windows did not restart Explorer by itself - the tool started it."));
+
+            await Task.Delay(TaskleistenKontrolle);
+            var jetzt = FavoritesNachlesen?.Invoke() ?? FavoritesLesen();
+            nichtUebernommen = erwartet.Except(Taskleiste.AngehefteteNamen(jetzt, erwartet), StringComparer.OrdinalIgnoreCase).ToList();
+            if (nichtUebernommen.Count == 0 || _cancel.IsCancelled) break;
+            if (versuch == 1)
+                _log(Loc.Tr($"[WARNUNG] Windows hat die Taskleiste nach dem Neustart selbst neu belegt - nicht übernommen: {Taskleiste.Namen(nichtUebernommen)}. Das Tool schreibt sie noch einmal.",
+                            $"[WARNING] Windows re-populated the taskbar by itself after the restart - not taken over: {Taskleiste.Namen(nichtUebernommen)}. The tool writes them once more."));
+        }
+        if (nichtUebernommen.Count > 0)
         {
-            _log(Loc.Tr("[WARNUNG] Der Explorer kam nicht zurück. Die Taskleiste zeigt die Symbole nach dem nächsten Anmelden. Notfalls im Task-Manager \"Neuen Task ausführen\" > explorer.exe.",
-                        "[WARNING] Explorer did not come back. The taskbar shows the icons after the next sign-in. If needed: Task Manager > \"Run new task\" > explorer.exe."));
+            _log(Loc.Tr($"[FEHLER] Windows übernimmt die gesicherten Taskleisten-Symbole nicht: {Taskleiste.Namen(nichtUebernommen)}. "
+                        + "Die Verknüpfungen liegen im Ordner \"User Pinned\\TaskBar\" des Profils. Abhilfe: abmelden, wieder anmelden und \"Desktop-Layout wiederherstellen\" erneut ausführen - "
+                        + "oder die Programme von Hand anheften.",
+                        $"[ERROR] Windows does not take over the saved taskbar icons: {Taskleiste.Namen(nichtUebernommen)}. "
+                        + "The shortcuts are in the profile's \"User Pinned\\TaskBar\" folder. Remedy: sign out, sign in again and run \"Restore desktop layout\" again - "
+                        + "or pin the programs by hand."));
             return true;
         }
-        if (!vonSelbst)
-            _log(Loc.Tr("[INFO] Windows hat den Explorer nicht selbst neu gestartet - das Tool hat ihn gestartet.",
-                        "[INFO] Windows did not restart Explorer by itself - the tool started it."));
         _log(Loc.Tr($"[ERFOLG] Taskleiste wiederhergestellt: {(zurueck.Count > 0 ? $"{zurueck.Count} Verknüpfungen ({Taskleiste.Namen(zurueck)}) und " : "")}die angehefteten Apps in der gesicherten Reihenfolge.",
                     $"[SUCCESS] Taskbar restored: {(zurueck.Count > 0 ? $"{zurueck.Count} shortcuts ({Taskleiste.Namen(zurueck)}) and " : "")}the pinned apps in the saved order."));
         if (fehlend.Count > 0)
             _log(Loc.Tr($"[WARNUNG] {fehlend.Count} Verknüpfungen fehlen in der Sicherung: {Taskleiste.Namen(fehlend)}",
                         $"[WARNING] {fehlend.Count} shortcuts are missing from the backup: {Taskleiste.Namen(fehlend)}"));
         return true;
+    }
+
+    /// <summary>Wie lange nach dem Explorer-Neustart gewartet wird, bevor nachgesehen wird.</summary>
+    internal TimeSpan TaskleistenKontrolle { get; set; } = TimeSpan.FromSeconds(8);
+
+    /// <summary>Nur fuer die Pruefung: was Windows nach dem Neustart in Taskband\Favorites stehen hat.</summary>
+    internal Func<byte[]?>? FavoritesNachlesen { get; set; }
+
+    private byte[]? FavoritesLesen()
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        var (wurzel, eigen) = BenutzerZweig(schreiben: false);
+        try
+        {
+            var v = DesignRegistry.Lesen(wurzel, Taskleiste.TaskbandSchluessel, "Favorites");
+            return v is { Typ: "Binary" } b ? Convert.FromBase64String(b.Wert) : null;
+        }
+        catch { return null; }
+        finally { if (eigen) wurzel.Dispose(); }
+    }
+
+    /// <summary>
+    /// Zeigen die zurueckgeschriebenen Taskleisten-Verknuepfungen auf Programme,
+    /// die es hier gibt? Liegt eins nur woanders (32 statt 64 Bit, anderer Ort
+    /// laut "App Paths"), wird die Verknuepfung umgestellt. Fehlt es, sagt das
+    /// Protokoll, welche - meist Programme, die erst noch installiert werden.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    internal void TaskleistenZielePruefen(string ordner, IEnumerable<string> verknuepfungen)
+    {
+        var fehlend = new List<string>();
+        var programme = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programme86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        foreach (var n in verknuepfungen)
+        {
+            var lnk = Path.Combine(ordner, n);
+            var inhalt = Verknuepfung.Lesen(lnk);
+            // Shell-Objekte (Datei-Explorer) und Ziele, die es gibt: nichts zu tun.
+            if (inhalt is null || inhalt.Ziel.Length == 0 || File.Exists(inhalt.Ziel) || Directory.Exists(inhalt.Ziel)) continue;
+            var name = Path.GetFileNameWithoutExtension(n);
+            var neu = Taskleiste.NeuesZiel(inhalt.Ziel, File.Exists, AppPathNachschlagen, programme, programme86);
+            if (neu is not null && Verknuepfung.ZielSetzen(lnk, neu))
+                _log(Loc.Tr($"[INFO] Taskleiste: {name} zeigte auf {inhalt.Ziel} - hier liegt das Programm unter {neu}, die Verknüpfung ist umgestellt.",
+                            $"[INFO] Taskbar: {name} pointed to {inhalt.Ziel} - here the program is at {neu}, the shortcut has been updated."));
+            else
+                fehlend.Add($"{name} ({inhalt.Ziel})");
+        }
+        if (fehlend.Count > 0)
+            _log(Loc.Tr($"[WARNUNG] Taskleiste: Diese angehefteten Programme gibt es auf diesem PC (noch) nicht: {string.Join(", ", fehlend)}. "
+                        + "Nach ihrer Installation \"Desktop-Layout wiederherstellen\" erneut ausführen.",
+                        $"[WARNING] Taskbar: these pinned programs do not exist on this PC (yet): {string.Join(", ", fehlend)}. "
+                        + "After installing them, run \"Restore desktop layout\" again."));
+    }
+
+    /// <summary>Der Ort eines Programms laut "App Paths" (fuer alle Benutzer, 64 und 32 Bit).</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static string? AppPathNachschlagen(string datei)
+    {
+        foreach (var ansicht in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+        {
+            try
+            {
+                using var basis = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, ansicht);
+                using var k = basis.OpenSubKey($@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{datei}");
+                if (k?.GetValue("") is string p && p.Trim().Trim('"') is { Length: > 0 } pfad)
+                    return Environment.ExpandEnvironmentVariables(pfad);
+            }
+            catch { /* naechste */ }
+        }
+        return null;
     }
 
     /// <summary>
