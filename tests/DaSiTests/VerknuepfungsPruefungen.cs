@@ -37,7 +37,7 @@ internal static partial class Program
             Neu(@"C:\Program Files (x86)\Microsoft Office\Office15\EXCEL.EXE") == @"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE");
         Check("eigener Programme-Ordner dieses PCs", Neu(@"C:\Program Files (x86)\Eigen\eigen.exe", @"D:\Programme", @"D:\Programme (x86)") == @"D:\Programme\Eigen\eigen.exe");
         Check("Ziel ist da: nichts zu tun", Neu(@"C:\Program Files\Mozilla Firefox\firefox.exe") is null);
-        Check("Programm fehlt ganz", Neu(@"C:\Program Files (x86)\TK-Suite\client.exe") is null && Neu(@"C:\Tools\gibtsnicht.exe") is null);
+        Check("Programm fehlt ganz", Neu(@"C:\Program Files (x86)\Telefonie\client.exe") is null && Neu(@"C:\Tools\gibtsnicht.exe") is null);
         Check("leeres Ziel (Shell-Objekt)", Neu("") is null);
     }
 
@@ -115,7 +115,7 @@ internal static partial class Program
         Check("Programm aus x86, hier 64 Bit", Neu(Taskleiste.OrdnerProgramme86 + @"\Neu64\app.exe") == Taskleiste.OrdnerProgramme64 + @"\Neu64\app.exe");
         Check("Programm liegt hier wie dort - bleibt", Neu(Taskleiste.OrdnerProgramme86 + @"\Alt86\app.exe") is null);
         Check("Programm gibt es hier nicht - bleibt", Neu(Taskleiste.OrdnerProgramme86 + @"\Fehlt\app.exe") is null);
-        Check("eigene Kennung, unbekannter Ordner - bleibt", Neu("Tobit.Davidfx.Client.1") is null
+        Check("eigene Kennung, unbekannter Ordner - bleibt", Neu("Hersteller.Programm.Client.1") is null
             && Neu("{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\SnippingTool.exe") is null && Neu("{kurz}\\x.exe") is null);
     }
 
@@ -172,7 +172,7 @@ internal static partial class Program
             // App-Kennungen in Favorites: 32-Bit-Firefox -> das Firefox hier,
             // Programm aus "Program Files (x86)" -> liegt hier in "Program Files".
             var kennungFuchs = Taskleiste.OrdnerProgramme86 + @"\DaSiTest-Fuchs\fuchs.exe";
-            var fav = FavoritesMit("E7CF176E110C211B", kennungFuchs, "Microsoft.Windows.Explorer", "Tobit.Davidfx.Client.1");
+            var fav = FavoritesMit("E7CF176E110C211B", kennungFuchs, "Microsoft.Windows.Explorer", "Hersteller.Programm.Client.1");
             var band = new List<DesignEintrag>
             {
                 new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "Favorites", Typ = "Binary", Wert = Convert.ToBase64String(fav) },
@@ -184,7 +184,7 @@ internal static partial class Program
             var angepasst = d.KennungenAnpassen(band);
             var kennungen = Taskleiste.Kennungen(Taskleiste.Favorites(angepasst));
             Check("Kennungen: Firefox und Programm an diesen PC angepasst, die anderen bleiben",
-                kennungen.SequenceEqual(new[] { "308046B0AF4A39CB", Taskleiste.OrdnerProgramme64 + @"\DaSiTest-Fuchs\fuchs.exe", "Microsoft.Windows.Explorer", "Tobit.Davidfx.Client.1" }),
+                kennungen.SequenceEqual(new[] { "308046B0AF4A39CB", Taskleiste.OrdnerProgramme64 + @"\DaSiTest-Fuchs\fuchs.exe", "Microsoft.Windows.Explorer", "Hersteller.Programm.Client.1" }),
                 string.Join(", ", kennungen));
             Check("Kennungen: auch in FavoritesResolve, die Sicherung selbst unveraendert",
                 System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(angepasst[1].Wert)).Contains("308046B0AF4A39CB")
