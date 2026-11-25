@@ -121,3 +121,10 @@ jobs:
         env:
           DASI_NUR: hintergrund
         run: dotnet run --project tests/DaSiTests -c Release
+
+      # Was macht der Explorer mit zurueckgeschriebenen Taskleisten-Symbolen?
+      - name: Taskleiste unter Windows 11
+        if: success() || failure()
+        env:
+          DASI_NUR: taskleiste
+        run: dotnet run --project tests/DaSiTests -c Release

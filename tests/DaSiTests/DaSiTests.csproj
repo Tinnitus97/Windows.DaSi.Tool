@@ -25,6 +25,17 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
+  <!-- Unter Windows zusaetzlich UI Automation (aus WPF): Damit liest der
+       Taskleisten-Versuch die sichtbaren Knoepfe der Taskleiste. Nur dort -
+       unter Linux bleibt die Pruefung ohne Windows-Desktop-Laufzeit startbar. -->
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+    <UseWPF>true</UseWPF>
+    <DefineConstants>$(DefineConstants);MIT_UIA</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <Compile Include="TaskleistenVersuch.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="DienstPruefungen.cs" />

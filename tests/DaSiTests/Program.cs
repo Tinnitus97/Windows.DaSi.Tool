@@ -82,6 +82,16 @@ internal static partial class Program
 
         // DASI_NUR=hintergrund: nur die echte Hintergrund-Pruefung - fuer den
         // Windows-11-Laeufer, auf dem es um genau das geht.
+#if MIT_UIA
+        // DASI_NUR=taskleiste: nur der Versuch mit der echten Taskleiste.
+        if (Environment.GetEnvironmentVariable("DASI_NUR") == "taskleiste")
+        {
+            TaskleisteVersuch(root);
+            Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
+            try { Directory.Delete(root, true); } catch { }
+            return _failed == 0 ? 0 : 1;
+        }
+#endif
         if (Environment.GetEnvironmentVariable("DASI_NUR") == "hintergrund")
         {
             if (OperatingSystem.IsWindows()) HintergrundEchtPruefen(root);
