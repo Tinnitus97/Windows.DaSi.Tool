@@ -626,6 +626,19 @@ public sealed class WingetService
 
     // ---------------------------------------------------------------- Import
 
+    /// <summary>
+    /// Das Paket, das auf dem neuen PC installiert wird: Firefox ESR kommt dort
+    /// in der aktuellen Fassung ("Mozilla.Firefox.ESR.de" -> "Mozilla.Firefox.de").
+    /// Neue PCs bekommen die aktuelle Fassung - eine zusaetzliche ESR neben ihr
+    /// (oder an ihrer Stelle) hiesse zwei Firefox mit zwei Profilen. Das Profil
+    /// aus ESR uebernimmt die aktuelle Fassung beim Zurueckschreiben.
+    /// </summary>
+    public static string Zielpaket(string id)
+    {
+        var m = Regex.Match(id, @"^Mozilla\.Firefox\.ESR(?<rest>\.[A-Za-z]{2,3}(-[A-Za-z]{2,4})?)?$", RegexOptions.IgnoreCase);
+        return m.Success ? "Mozilla.Firefox" + m.Groups["rest"].Value : id;
+    }
+
     public async Task ImportAsync(IReadOnlyList<WingetPackage> selected)
     {
         if (selected is null || selected.Count == 0)
@@ -634,6 +647,19 @@ public sealed class WingetService
             return;
         }
         if (await ResolveLauncher() is null) return;
+
+        // ESR -> aktuelle Fassung; doppelte (ESR und aktuelle in der Liste) nur einmal.
+        var liste = new List<WingetPackage>();
+        foreach (var p in selected)
+        {
+            var ziel = Zielpaket(p.PackageIdentifier);
+            if (!ziel.Equals(p.PackageIdentifier, StringComparison.OrdinalIgnoreCase))
+                _log(Loc.Tr($"[INFO] {p.PackageIdentifier} -> {ziel}: Firefox kommt auf diesem PC in der aktuellen Fassung statt ESR. Das Firefox-Profil übernimmt sie.",
+                            $"[INFO] {p.PackageIdentifier} -> {ziel}: Firefox is installed in the current release instead of ESR on this PC. The Firefox profile carries over."));
+            if (!liste.Any(x => x.PackageIdentifier.Equals(ziel, StringComparison.OrdinalIgnoreCase)))
+                liste.Add(new WingetPackage { PackageIdentifier = ziel, Version = ziel == p.PackageIdentifier ? p.Version : null });
+        }
+        selected = liste;
 
         _log(Loc.Tr($"[INFO] Starte Winget-Import für {selected.Count} Programme...", $"[INFO] Starting winget import for {selected.Count} programs..."));
         int ok = 0, skip = 0, fail = 0, i = 0;

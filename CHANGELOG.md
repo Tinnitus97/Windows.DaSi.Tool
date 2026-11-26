@@ -35,6 +35,14 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   als Fehler mit der Abhilfe, das Programm zu aktualisieren. Innerhalb derselben
   Hauptversion (146.0.1 gegen 146.0) nimmt Firefox das Profil – in der CI mit dem
   echten Firefox geprüft.
+- **Firefox ESR auf dem alten PC: hier die aktuelle Fassung.** Der Winget-Import
+  installierte bisher, was auf dem alten PC lief – also Firefox ESR, womöglich neben
+  der aktuellen Fassung, die die Firefox-Wiederherstellung schon installiert hatte:
+  zwei Firefox mit zwei Profilen. Jetzt wird aus `Mozilla.Firefox.ESR(.de)` beim
+  Import `Mozilla.Firefox(.de)`, und zwar nur einmal; das Protokoll sagt es. Der
+  übliche Umzug – ESR und/oder 32 Bit auf dem alten, die aktuelle 64-Bit-Fassung auf
+  dem neuen PC – ist damit durchgängig geprüft: in der CI mit dem echten Firefox,
+  das ein Profil aus „Firefox ESR 115, 32 Bit“ übernimmt.
 - **Pfade des alten Benutzers in `prefs.js`.** Hieß der Benutzer auf dem alten PC
   anders, zeigten Download-, Cache- und Mailordner sowie Startseiten aus dem Profil
   (`file:///C:/Users/…`) ins Leere. Sie werden jetzt auf das gewählte Profil

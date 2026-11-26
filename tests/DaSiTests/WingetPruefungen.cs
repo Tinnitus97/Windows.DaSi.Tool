@@ -227,6 +227,21 @@ internal static partial class Program
         Neu().ImportAsync(new[] { new WingetPackage { PackageIdentifier = "A.B" } }).GetAwaiter().GetResult();
         Check("Import ohne Fehler: Bilanz mit [ERFOLG]", log.Hat("[ERFOLG] Winget-Import abgeschlossen: 1 installiert"), log.Text);
 
+        // Vom alten PC kommt Firefox ESR - hier wird die aktuelle Fassung installiert, einmal.
+        Check("Zielpaket: Firefox ESR -> aktuelle Fassung (mit und ohne Sprache)",
+            WingetService.Zielpaket("Mozilla.Firefox.ESR.de") == "Mozilla.Firefox.de" && WingetService.Zielpaket("Mozilla.Firefox.ESR") == "Mozilla.Firefox"
+            && WingetService.Zielpaket("mozilla.firefox.esr.en-US") == "Mozilla.Firefox.en-US");
+        Check("Zielpaket: alles andere bleibt", WingetService.Zielpaket("Mozilla.Firefox.de") == "Mozilla.Firefox.de"
+            && WingetService.Zielpaket("Mozilla.Thunderbird.de") == "Mozilla.Thunderbird.de" && WingetService.Zielpaket("Mozilla.Firefox.ESR.Beta") == "Mozilla.Firefox.ESR.Beta");
+        log.Leeren();
+        ordner = Attrappen.WingetSzenario(root, Szenario(("install.*.code", "0")));
+        Neu().ImportAsync(new[] { "Mozilla.Firefox.ESR.de", "Mozilla.Firefox.de", "Anderes.Paket" }
+            .Select(i => new WingetPackage { PackageIdentifier = i, Version = "115.18.0" }).ToList()).GetAwaiter().GetResult();
+        var installiert = Attrappen.Aufrufe(ordner).Where(a => a.StartsWith("install")).ToList();
+        Check("Import: Firefox ESR wird als aktuelle Fassung installiert, nur einmal",
+            installiert.Count == 2 && installiert.Any(a => a.Contains("Mozilla.Firefox.de")) && !installiert.Any(a => a.Contains("ESR"))
+            && log.Hat("[INFO] Mozilla.Firefox.ESR.de -> Mozilla.Firefox.de: Firefox kommt auf diesem PC in der aktuellen Fassung statt ESR"), string.Join(" | ", installiert) + " / " + log.Text);
+
         // Paketquelle kaputt (0x8A150009): reparieren, nachinstallieren, dann aufgeben.
         log.Leeren();
         var kaputtCode = unchecked((int)0x8A150009).ToString();

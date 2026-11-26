@@ -175,6 +175,9 @@ Gesichert wird zum Beispiel der Benutzer *Besitzer*, auf dem neuen Rechner heiß
   64-Bit-Fassung (`C:\Program Files\Mozilla Firefox`), legte Firefox ein neues, leeres
   Profil an. Das Tool trägt das zurückgeschriebene Profil deshalb als Standard jeder
   Installation auf diesem Rechner ein und nennt im Protokoll Profil und Ordner.
+  Lief auf dem alten Rechner Firefox ESR, kommt hier die aktuelle Fassung – auch
+  beim Winget-Import, damit nicht zwei Firefox nebeneinander liegen; sie übernimmt
+  das Profil aus ESR.
   Lief das Profil zuletzt mit einer neueren Hauptversion als der hier installierten
   (ESR statt der normalen Fassung …), meldet es, dass Firefox zu aktualisieren ist –
   sonst legte Firefox ebenfalls ein leeres Profil an.

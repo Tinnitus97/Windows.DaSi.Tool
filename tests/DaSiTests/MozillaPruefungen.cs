@@ -41,7 +41,7 @@ internal static partial class Program
     private const string ProfilesIniGesperrt =
         "[InstallE7CF176E110C211B]\r\nDefault=Profiles/neu0abcd.default\r\nLocked=1\r\n\r\n"
         + "[Profile1]\r\nName=alt\r\nIsRelative=1\r\nPath=Profiles/alt0abcd.default\r\n\r\n"
-        + "[Profile0]\r\nName=default\r\nIsRelative=1\r\nPath=Profiles/neu0abcd.default\r\nDefault=1\r\n\r\n"
+        + "[Profile0]\r\nName=default-esr\r\nIsRelative=1\r\nPath=Profiles/neu0abcd.default\r\nDefault=1\r\n\r\n"
         + "[General]\r\nStartWithLastProfile=1\r\nVersion=2\r\n";
 
     private static string MozillaDaten(string ordner, string profilesIni, params (string Profil, DateTime Benutzt)[] profile)
@@ -425,7 +425,7 @@ internal static partial class Program
             MozillaDaten(gesichert, ProfilesIniGesperrt, ("neu0abcd.default", DateTime.UtcNow), ("alt0abcd.default", DateTime.UtcNow.AddYears(-3)));
             foreach (var p in new[] { "neu0abcd.default", "alt0abcd.default" })
                 File.WriteAllText(Path.Combine(gesichert, "Profiles", p, "compatibility.ini"),
-                    "[Compatibility]\r\nLastVersion=115.0_20230101000000/20230101000000\r\nLastOSABI=WINNT_x86-msvc\r\n");
+                    "[Compatibility]\r\nLastVersion=115.18.0_20241104101315/20241104101315\r\nLastOSABI=WINNT_x86-msvc\r\n");
             var c = new CancellationTokenState();
             var log = new Protokoll();
             new BackupService(new ProcessRunner(c), c, log.Schreiben) { SourcePath = profil, BackupPath = sicherung }.RestoreAppProfile(AppCatalog.Firefox).Wait();
@@ -433,10 +433,10 @@ internal static partial class Program
                 log.Hat("Firefox ist bereits installiert") && log.Hat("[ERFOLG] Firefox Profil wiederhergestellt") && log.Hat("ist jetzt Standard für"), log.Text);
             foreach (var alt in Directory.GetDirectories(Path.GetDirectoryName(daten)!, "Firefox_alt_*")) Directory.Delete(alt, true);
 
-            FirefoxStarten(Path.Combine(firefox, "firefox.exe"), () => Version(daten, "neu0abcd.default") != "115.0_20230101000000/20230101000000");
+            FirefoxStarten(Path.Combine(firefox, "firefox.exe"), () => Version(daten, "neu0abcd.default") != "115.18.0_20241104101315/20241104101315");
             var neuAngelegt = NeueProfile(daten);
-            Check("echt: Firefox nimmt das zurueckgeschriebene Profil", Version(daten, "neu0abcd.default").Length > 0
-                && Version(daten, "neu0abcd.default") != "115.0_20230101000000/20230101000000",
+            Check($"echt: Profil aus Firefox ESR 115 (32 Bit) - Firefox {MozillaProfile.InstallierteFassung(firefox)?.Version} (64 Bit) nimmt es", Version(daten, "neu0abcd.default").Length > 0
+                && Version(daten, "neu0abcd.default") != "115.18.0_20241104101315/20241104101315",
                 $"compatibility.ini: {Version(daten, "neu0abcd.default")}");
             Check("echt: kein neues, leeres Profil", neuAngelegt.Count == 0, string.Join(", ", neuAngelegt));
 
@@ -450,9 +450,9 @@ internal static partial class Program
             Directory.Delete(daten, true);
             OrdnerKopieren(gesichert, daten);
             MozillaProfile.Anpassen(daten, Array.Empty<string>());
-            FirefoxStarten(Path.Combine(firefox, "firefox.exe"), () => Version(daten, "neu0abcd.default") != "115.0_20230101000000/20230101000000");
+            FirefoxStarten(Path.Combine(firefox, "firefox.exe"), () => Version(daten, "neu0abcd.default") != "115.18.0_20241104101315/20241104101315");
             Check("echt: ohne Installationseintrag uebernimmt Firefox das Standardprofil",
-                Version(daten, "neu0abcd.default") != "115.0_20230101000000/20230101000000" && NeueProfile(daten).Count == 0,
+                Version(daten, "neu0abcd.default") != "115.18.0_20241104101315/20241104101315" && NeueProfile(daten).Count == 0,
                 $"{Version(daten, "neu0abcd.default")}; neu: {string.Join(", ", NeueProfile(daten))}");
 
             // 3b. Das Profil lief zuletzt mit einer neueren Fassung. Gleiche
@@ -476,7 +476,7 @@ internal static partial class Program
                         genommen == nimmt, $"{Version(daten, "neu0abcd.default")}; neu: {string.Join(", ", NeueProfile(daten))}");
                 }
                 File.WriteAllText(Path.Combine(gesichert, "Profiles", "neu0abcd.default", "compatibility.ini"),
-                    "[Compatibility]\r\nLastVersion=115.0_20230101000000/20230101000000\r\nLastOSABI=WINNT_x86-msvc\r\n");
+                    "[Compatibility]\r\nLastVersion=115.18.0_20241104101315/20241104101315\r\nLastOSABI=WINNT_x86-msvc\r\n");
             }
 
             // 4. Schluessel jeder Laenge: Firefox aus anderen Ordnern starten
