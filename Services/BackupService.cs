@@ -514,42 +514,25 @@ public sealed class BackupService
 
     /// <summary>
     /// Lehnt Firefox/Thunderbird das Profil ab, weil es zuletzt mit einer
-    /// neueren Fassung lief? Dann legen sie ein neues, leeres Profil an
-    /// ("Sie haben eine aeltere Version gestartet"). Typisch: winget liefert
-    /// die neueste Fassung erst einen Tag nach dem Update auf dem alten PC,
-    /// oder hier liegt ESR statt der normalen Fassung. Bei gleicher
-    /// Hauptversion ist das harmlos - die Datenformate aendern sich nur mit ihr -,
-    /// dann wird die Pruefung zurueckgesetzt. Bei neuerer Hauptversion nicht:
-    /// Firefox legte sonst z. B. Lesezeichen neu an.
+    /// neueren Hauptversion lief? Dann legen sie ein neues, leeres Profil an
+    /// ("Sie haben eine aeltere Version gestartet"). Typisch: hier liegt ESR
+    /// statt der normalen Fassung, oder winget liefert die neue Hauptversion
+    /// erst Tage nach dem Update auf dem alten PC. Firefox vergleicht dabei nur
+    /// die Hauptversion (146.0.1 gegen 146.0 ist kein Problem - in der CI mit
+    /// dem echten Firefox geprueft). Zuruecksetzen hilft nicht: Die Daten liegen
+    /// dann womoeglich in einem neueren Format vor, Firefox legte etwa die
+    /// Lesezeichen neu an. Also: melden, mit Abhilfe.
     /// </summary>
     private void MozillaFassungPruefen(string name, string profilOrdner, IEnumerable<string> installationen)
     {
         if (MozillaProfile.ProfilFassung(profilOrdner) is not { } profil) return;
-        var hier = installationen.Select(i => (Ordner: i, Fassung: MozillaProfile.InstallierteFassung(i)))
-                                 .Where(i => i.Fassung is not null).Select(i => (i.Ordner, Fassung: i.Fassung!.Value)).ToList();
-        if (hier.Count == 0) return;
-        var abstaende = hier.Select(i => MozillaProfile.Vergleichen(profil, i.Fassung)).ToList();
-        if (abstaende.Contains(MozillaProfile.Abstand.Passt)) return;
-        var fassungen = string.Join(", ", hier.Select(i => i.Fassung.Version));
-        if (abstaende.Contains(MozillaProfile.Abstand.Neuer))
-        {
-            try
-            {
-                File.Delete(Path.Combine(profilOrdner, "compatibility.ini"));
-                _log(Loc.Tr($"[INFO] {name}: Das Profil lief zuletzt mit {profil.Version}, hier ist {fassungen} installiert - etwas älter. {name} hätte es deshalb abgelehnt und ein neues, leeres angelegt; die Versionsprüfung ist zurückgesetzt.",
-                            $"[INFO] {name}: the profile last ran with {profil.Version}, {fassungen} is installed here - slightly older. {name} would have refused it and created a new, empty one; the version check has been reset."));
-            }
-            catch (Exception ex)
-            {
-                _log(Loc.Tr($"[FEHLER] {name}: Das Profil lief zuletzt mit {profil.Version}, hier ist {fassungen} installiert - {name} lehnt es ab. Die Versionsprüfung ließ sich nicht zurücksetzen ({ex.Message}). Bitte {name} aktualisieren.",
-                            $"[ERROR] {name}: the profile last ran with {profil.Version}, {fassungen} is installed here - {name} refuses it. The version check could not be reset ({ex.Message}). Please update {name}."));
-            }
-            return;
-        }
+        var hier = installationen.Select(MozillaProfile.InstallierteFassung).OfType<(string Version, string BuildId)>().ToList();
+        if (hier.Count == 0 || hier.Any(i => MozillaProfile.Vergleichen(profil, i) != MozillaProfile.Abstand.VielNeuer)) return;
+        var fassungen = string.Join(", ", hier.Select(i => i.Version));
         _log(Loc.Tr($"[FEHLER] {name}: Das Profil lief zuletzt mit {profil.Version}, hier ist erst {fassungen} installiert. {name} lehnt ein Profil einer neueren Hauptversion ab und legt ein neues, leeres an. "
-                    + $"Bitte {name} aktualisieren (Hilfe > Über {name}, oder winget upgrade) und den Punkt erneut ausführen.",
+                    + $"Bitte {name} aktualisieren (Hilfe > Über {name}, oder winget upgrade) - danach nimmt es das Profil.",
                     $"[ERROR] {name}: the profile last ran with {profil.Version}, only {fassungen} is installed here. {name} refuses a profile of a newer major version and creates a new, empty one. "
-                    + $"Please update {name} (Help > About {name}, or winget upgrade) and run this item again."));
+                    + $"Please update {name} (Help > About {name}, or winget upgrade) - then it takes the profile."));
     }
 
     /// <summary>Thunderbird-Konten, deren Mails ausserhalb des Profils liegen: in der Sicherung und beim Zurueckschreiben.</summary>

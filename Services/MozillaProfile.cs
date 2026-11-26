@@ -326,9 +326,9 @@ public static class MozillaProfile
     {
         /// <summary>Gleich alt oder aelter - Firefox nimmt das Profil.</summary>
         Passt,
-        /// <summary>Gleiche Hauptversion, aber neuer (146.0.1 statt 146.0) - Firefox lehnte es trotzdem ab.</summary>
+        /// <summary>Gleiche Hauptversion, aber neuer (146.0.1 statt 146.0) - Firefox nimmt es (er vergleicht nur die Hauptversion).</summary>
         Neuer,
-        /// <summary>Neuere Hauptversion (147 statt 146) - Daten koennen in neuerem Format vorliegen.</summary>
+        /// <summary>Neuere Hauptversion (147 statt 146) - Firefox lehnt das Profil ab und legt ein neues an.</summary>
         VielNeuer,
     }
 

@@ -27,6 +27,25 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Profil, neuen und alten Ordner. Gilt ebenso für Thunderbird. Geprüft mit dem echten
   Firefox des Windows-Läufers – samt Gegenprobe: ohne die Anpassung legt er wie beim
   Anwender ein neues Profil an.
+- **Firefox/Thunderbird lehnen ein Profil einer neueren Hauptversion ab** und legen
+  ein neues, leeres an („Sie haben eine ältere Version gestartet“) – etwa wenn hier ESR
+  statt der normalen Fassung liegt oder winget die neue Hauptversion erst Tage nach dem
+  Update auf dem alten PC liefert. Das Tool vergleicht jetzt die Fassung aus
+  `compatibility.ini` mit der installierten (`application.ini`) und meldet diesen Fall
+  als Fehler mit der Abhilfe, das Programm zu aktualisieren. Innerhalb derselben
+  Hauptversion (146.0.1 gegen 146.0) nimmt Firefox das Profil – in der CI mit dem
+  echten Firefox geprüft.
+- **Pfade des alten Benutzers in `prefs.js`.** Hieß der Benutzer auf dem alten PC
+  anders, zeigten Download-, Cache- und Mailordner sowie Startseiten aus dem Profil
+  (`file:///C:/Users/…`) ins Leere. Sie werden jetzt auf das gewählte Profil
+  umgestellt – nur ganze Ordnernamen, Kommentare bleiben.
+- **Thunderbird: Mails außerhalb des Profils fehlten in der Sicherung.** Liegt der
+  Ordner eines Kontos woanders (Konten-Einstellungen › Server-Einstellungen ›
+  Lokaler Ordner, etwa `D:\Mail`), sichert das Tool ihn jetzt mit
+  (`Thunderbird-Extern`) und schreibt ihn an seinen Ort zurück; gibt es das
+  Laufwerk dort nicht, in den Profilordner, samt Anpassung in `prefs.js`. Liegt er im
+  Benutzerprofil, sagt das Protokoll, dass ihn der Punkt Benutzerprofil sichert.
+  MozBackup macht das ebenso; sein Quelltext war die Anregung für diese Punkte.
 - **Taskleiste leer, Protokoll meldete Erfolg** (Windows 10 22H2 → Windows 11).
   Das Tool hatte nach dem Zurückschreiben nicht nachgesehen, was Windows daraus
   macht. Jeder angeheftete Eintrag in `Taskband\Favorites` trägt eine App-Kennung

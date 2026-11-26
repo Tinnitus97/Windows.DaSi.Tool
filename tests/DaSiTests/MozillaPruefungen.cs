@@ -317,9 +317,8 @@ internal static partial class Program
         Check("Dienst: Pfade des alten Benutzers aufs gewaehlte Profil umgestellt",
             log.Hat("[INFO] Testfuchs: 2 Einstellungen in neu0abcd.default\\prefs.js zeigten auf den Benutzerordner des alten PCs (C:\\Users\\Besitzer)")
             && prefsZiel.Contains(ziel.Replace("\\", "\\\\") + "\\\\Downloads"), log.Text);
-        Check("Dienst: etwas neuere Fassung - Versionspruefung zurueckgesetzt",
-            log.Hat("[INFO] Testfuchs: Das Profil lief zuletzt mit 146.0.1, hier ist 146.0 installiert")
-            && !File.Exists(Path.Combine(daten, "Profiles", "neu0abcd.default", "compatibility.ini")), log.Text);
+        Check("Dienst: etwas neuere Fassung, gleiche Hauptversion - kein Eingriff",
+            !log.Hat("lief zuletzt mit") && File.Exists(Path.Combine(daten, "Profiles", "neu0abcd.default", "compatibility.ini")), log.Text);
         File.WriteAllText(Path.Combine(profilDaten, "compatibility.ini"), "[Compatibility]\r\nLastVersion=147.0_20261201000000/20261201000000\r\n");
         log.Leeren();
         d.RestoreAppProfile(Testfuchs).Wait();
@@ -456,36 +455,26 @@ internal static partial class Program
                 Version(daten, "neu0abcd.default") != "115.0_20230101000000/20230101000000" && NeueProfile(daten).Count == 0,
                 $"{Version(daten, "neu0abcd.default")}; neu: {string.Join(", ", NeueProfile(daten))}");
 
-            // 3b. Das Profil lief zuletzt mit einer etwas neueren Fassung (gleiche
-            //     Hauptversion): Ohne Zuruecksetzen lehnte Firefox es ab und legte
-            //     ein neues an - mit Zuruecksetzen nimmt er es.
-            if (MozillaProfile.InstallierteFassung(firefox) is { } fassung)
+            // 3b. Das Profil lief zuletzt mit einer neueren Fassung. Gleiche
+            //     Hauptversion: Firefox nimmt es. Neuere Hauptversion: Firefox
+            //     lehnt es ab - der Dienst meldet das als Fehler.
+            if (MozillaProfile.InstallierteFassung(firefox) is { } fassung && int.TryParse(fassung.Version.Split('.')[0], out var haupt))
             {
-                var neuer = $"{fassung.Version}.99_29991231000000/29991231000000";
-                foreach (var mitAnpassung in new[] { false, true })
+                foreach (var (lastVersion, nimmt) in new[] { ($"{fassung.Version}.99_29991231000000/29991231000000", true), ($"{haupt + 1}.0_29991231000000/29991231000000", false) })
                 {
-                    Directory.Delete(daten, true);
-                    OrdnerKopieren(gesichert, daten);
-                    MozillaProfile.Anpassen(daten, new[] { firefox });
-                    File.WriteAllText(Path.Combine(daten, "Profiles", "neu0abcd.default", "compatibility.ini"), $"[Compatibility]\r\nLastVersion={neuer}\r\n");
+                    File.WriteAllText(Path.Combine(gesichert, "Profiles", "neu0abcd.default", "compatibility.ini"), $"[Compatibility]\r\nLastVersion={lastVersion}\r\n");
+                    if (Directory.Exists(daten)) Directory.Delete(daten, true);
                     var log2 = new Protokoll();
-                    if (mitAnpassung)
-                    {
-                        // Wie im Dienst: nach dem Zurueckschreiben die Fassung pruefen.
-                        var d2 = new BackupService(new ProcessRunner(c), c, log2.Schreiben) { SourcePath = profil, BackupPath = sicherung };
-                        Directory.Delete(daten, true);
-                        File.WriteAllText(Path.Combine(gesichert, "Profiles", "neu0abcd.default", "compatibility.ini"), $"[Compatibility]\r\nLastVersion={neuer}\r\n");
-                        d2.RestoreAppProfile(AppCatalog.Firefox).Wait();
-                        foreach (var alt in Directory.GetDirectories(Path.GetDirectoryName(daten)!, "Firefox_alt_*")) Directory.Delete(alt, true);
-                        Check("echt: etwas neuere Fassung im Profil - Pruefung zurueckgesetzt", log2.Hat("die Versionsprüfung ist zurückgesetzt"), log2.Text);
-                    }
+                    new BackupService(new ProcessRunner(c), c, log2.Schreiben) { SourcePath = profil, BackupPath = sicherung }.RestoreAppProfile(AppCatalog.Firefox).Wait();
+                    foreach (var alt in Directory.GetDirectories(Path.GetDirectoryName(daten)!, "Firefox_alt_*")) Directory.Delete(alt, true);
+                    Check(nimmt ? "echt: gleiche Hauptversion, etwas neuer - kein Hinweis" : "echt: neuere Hauptversion - Fehler mit Abhilfe",
+                        nimmt ? !log2.Hat("lief zuletzt mit") : log2.Hat("lehnt ein Profil einer neueren Hauptversion ab"), log2.Text);
                     FirefoxStarten(Path.Combine(firefox, "firefox.exe"),
                         () => NeueProfile(daten).Count > 0 || Version(daten, "neu0abcd.default").StartsWith(fassung.Version + "_", StringComparison.Ordinal));
                     var genommen = Version(daten, "neu0abcd.default").StartsWith(fassung.Version + "_", StringComparison.Ordinal) && NeueProfile(daten).Count == 0;
-                    Check(mitAnpassung ? "echt: Firefox nimmt das Profil der etwas neueren Fassung" : "echt, Gegenprobe: ohne Zuruecksetzen lehnt Firefox das Profil ab",
-                        mitAnpassung ? genommen : !genommen, $"{Version(daten, "neu0abcd.default")}; neu: {string.Join(", ", NeueProfile(daten))}");
+                    Check(nimmt ? $"echt: Firefox {fassung.Version} nimmt ein Profil von {lastVersion.Split('_')[0]}" : $"echt: Firefox {fassung.Version} lehnt ein Profil von {lastVersion.Split('_')[0]} ab",
+                        genommen == nimmt, $"{Version(daten, "neu0abcd.default")}; neu: {string.Join(", ", NeueProfile(daten))}");
                 }
-                File.Delete(Path.Combine(gesichert, "Profiles", "neu0abcd.default", "compatibility.ini"));
                 File.WriteAllText(Path.Combine(gesichert, "Profiles", "neu0abcd.default", "compatibility.ini"),
                     "[Compatibility]\r\nLastVersion=115.0_20230101000000/20230101000000\r\nLastOSABI=WINNT_x86-msvc\r\n");
             }
