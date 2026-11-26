@@ -18,8 +18,8 @@ namespace DaSiTests;
 ///    zwei Konten - "Lokale Ordner" im Profil und ein Archiv ausserhalb
 ///    (C:\DaSi-Mail\Archiv) - mit je einer Mail. Dann sichert das Tool.
 ///  DASI_NUR=thunderbird-neu: Profilordner und Archiv sind weg (neuer PC).
-///    Gegenprobe: die Sicherung nur zurueckkopiert - Thunderbird legt ein
-///    neues, leeres Profil an. Dann mit dem Tool: Thunderbird (64 Bit) nimmt
+///    Gegenprobe (nur zur Auskunft): die Sicherung nur zurueckkopiert - welches
+///    Profil oeffnet Thunderbird? Dann mit dem Tool: Thunderbird (64 Bit) nimmt
 ///    das alte Profil, das Archiv ist wieder da.
 ///
 /// Die Sicherung liegt in DASI_SICHERUNG.
@@ -196,8 +196,12 @@ internal static partial class Program
         Zeigen("profiles.ini nach dem Start (Gegenprobe)", Path.Combine(TbDaten, "profiles.ini"));
         var gegenprobe = Tb64Benutzt();
         Console.WriteLine($"         Profile: {string.Join(", ", TbProfile())}; von Thunderbird 64 Bit geoeffnet: {string.Join(", ", gegenprobe)}");
-        Check("Gegenprobe: nur zurueckkopiert - Thunderbird 64 Bit oeffnet ein anderes (leeres) Profil",
-            gegenprobe.Count > 0 && !gegenprobe.Contains(altesProfil), $"geoeffnet: {string.Join(", ", gegenprobe)}, altes Profil: {altesProfil}");
+        // Nur zur Auskunft: Anders als Firefox uebernimmt Thunderbird (161, CI)
+        // das Profil einer anderen Installation auch ohne Anpassung - es traegt
+        // fuer sich einen eigenen Eintrag auf dasselbe Profil ein.
+        Console.WriteLine(gegenprobe.Contains(altesProfil)
+            ? "         Gegenprobe: Thunderbird 64 Bit uebernimmt das Profil der 32-Bit-Installation auch ohne Anpassung."
+            : $"         Gegenprobe: ohne Anpassung oeffnet Thunderbird 64 Bit ein anderes Profil ({string.Join(", ", gegenprobe)}) - das alte waere leer erschienen.");
 
         // 2. Mit dem Tool.
         NeuerPc();

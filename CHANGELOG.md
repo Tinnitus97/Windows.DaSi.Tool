@@ -53,6 +53,11 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   (`Thunderbird-Extern`) und schreibt ihn an seinen Ort zurück; gibt es das
   Laufwerk dort nicht, in den Profilordner, samt Anpassung in `prefs.js`. Liegt er im
   Benutzerprofil, sagt das Protokoll, dass ihn der Punkt Benutzerprofil sichert.
+  In der CI mit echtem Thunderbird geprüft: Thunderbird 32 Bit mit zwei Konten (eins
+  mit Mailordner unter `C:\DaSi-Mail`) sichern, 32 Bit deinstallieren, 64 Bit
+  installieren, wiederherstellen – Thunderbird 64 Bit öffnet das alte Profil, lädt
+  beide Konten, die Mails sind da. (Anders als Firefox übernimmt Thunderbird das
+  Profil einer anderen Installation übrigens auch von selbst.)
   MozBackup macht das ebenso; sein Quelltext war die Anregung für diese Punkte.
 - **Taskleiste leer, Protokoll meldete Erfolg** (Windows 10 22H2 → Windows 11).
   Das Tool hatte nach dem Zurückschreiben nicht nachgesehen, was Windows daraus

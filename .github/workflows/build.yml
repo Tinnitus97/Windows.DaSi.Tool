@@ -142,8 +142,8 @@ jobs:
 
   # Umzug mit echtem Thunderbird: auf dem "alten PC" die 32-Bit-Fassung,
   # dann deinstalliert und die 64-Bit-Fassung installiert ("neuer PC").
-  # Dazwischen sichert bzw. stellt das Tool wieder her
-  # (tests/DaSiTests/ThunderbirdEcht.cs).
+  # Dazwischen sichert bzw. stellt das Tool wieder her - samt Konto mit
+  # Mailordner ausserhalb des Profils (tests/DaSiTests/ThunderbirdEcht.cs).
   thunderbird-echt:
     runs-on: windows-latest
     timeout-minutes: 30
