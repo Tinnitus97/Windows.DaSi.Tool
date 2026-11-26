@@ -194,11 +194,24 @@ jobs:
 
       - name: Alter PC - Firefox ESR 32 Bit installieren
         shell: pwsh
+        # Auf dem Laeufer ist Firefox 64 Bit schon installiert. Ohne Zielangabe legt
+        # der ESR-Installer sich nicht nach "Program Files (x86)" - daher die INI.
         run: |
-          Invoke-WebRequest 'https://download.mozilla.org/?product=firefox-esr-latest-ssl&os=win&lang=de' -OutFile "$env:RUNNER_TEMP\fxesr32.exe"
-          Start-Process "$env:RUNNER_TEMP\fxesr32.exe" -ArgumentList '/S' -Wait
-          (Get-Item 'C:\Program Files (x86)\Mozilla Firefox\firefox.exe').VersionInfo | Format-List ProductVersion, FileName
-          (Get-Item 'C:\Program Files\Mozilla Firefox\firefox.exe').VersionInfo | Format-List ProductVersion, FileName
+          $ziel = 'C:\Program Files (x86)\Mozilla Firefox'
+          $exe = "$env:RUNNER_TEMP\fxesr32.exe"
+          $ini = "$env:RUNNER_TEMP\fxesr32.ini"
+          Invoke-WebRequest 'https://download.mozilla.org/?product=firefox-esr-latest-ssl&os=win&lang=de' -OutFile $exe
+          "Download: {0:N0} Bytes, Signatur {1}" -f (Get-Item $exe).Length, (Get-AuthenticodeSignature $exe).Status
+          Set-Content $ini "[Install]`r`nInstallDirectoryPath=$ziel`r`nMaintenanceService=false`r`nDesktopShortcut=false`r`nTaskbarShortcut=false`r`nStartMenuShortcuts=false"
+          $p = Start-Process $exe -ArgumentList "/INI=$ini" -Wait -PassThru
+          "Installer beendet, Exitcode $($p.ExitCode)"
+          for ($i = 0; $i -lt 60 -and -not (Test-Path "$ziel\firefox.exe"); $i++) { Start-Sleep 2 }
+          foreach ($o in $ziel, 'C:\Program Files\Mozilla Firefox') {
+            if (Test-Path "$o\firefox.exe") { (Get-Item "$o\firefox.exe").VersionInfo | Format-List ProductVersion, FileName } else { "${o}: kein firefox.exe" }
+          }
+          Get-ChildItem 'HKLM:\SOFTWARE\Mozilla', 'HKLM:\SOFTWARE\WOW6432Node\Mozilla' -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSChildName -eq 'Main' } | ForEach-Object { "$($_.Name): $($_.GetValue('Install Directory'))" }
+          if (-not (Test-Path "$ziel\firefox.exe")) { Write-Host '::error::Firefox ESR 32 Bit wurde nicht installiert.'; exit 1 }
 
       - name: Alter PC - Profil anlegen und sichern
         env:
@@ -211,7 +224,8 @@ jobs:
         run: |
           Start-Process 'C:\Program Files (x86)\Mozilla Firefox\uninstall\helper.exe' -ArgumentList '/S' -Wait
           for ($i = 0; $i -lt 60 -and (Test-Path 'C:\Program Files (x86)\Mozilla Firefox\firefox.exe'); $i++) { Start-Sleep 2 }
-          Test-Path 'C:\Program Files (x86)\Mozilla Firefox\firefox.exe'
+          "ESR 32 Bit noch da: $(Test-Path 'C:\Program Files (x86)\Mozilla Firefox\firefox.exe')"
+          (Get-Item 'C:\Program Files\Mozilla Firefox\firefox.exe').VersionInfo | Format-List ProductVersion, FileName
 
       - name: Neuer PC - wiederherstellen und Firefox starten
         env:
