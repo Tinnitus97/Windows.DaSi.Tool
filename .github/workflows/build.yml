@@ -139,3 +139,44 @@ jobs:
         env:
           DASI_NUR: taskleiste
         run: dotnet run --project tests/DaSiTests -c Release
+
+  # Umzug mit echtem Thunderbird: auf dem "alten PC" die 32-Bit-Fassung,
+  # dann deinstalliert und die 64-Bit-Fassung installiert ("neuer PC").
+  # Dazwischen sichert bzw. stellt das Tool wieder her
+  # (tests/DaSiTests/ThunderbirdEcht.cs).
+  thunderbird-echt:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/dotnet-lts
+
+      - name: Alter PC - Thunderbird 32 Bit installieren
+        shell: pwsh
+        run: |
+          Invoke-WebRequest 'https://download.mozilla.org/?product=thunderbird-latest-ssl&os=win&lang=de' -OutFile "$env:RUNNER_TEMP\tb32.exe"
+          Start-Process "$env:RUNNER_TEMP\tb32.exe" -ArgumentList '/S' -Wait
+          (Get-Item 'C:\Program Files (x86)\Mozilla Thunderbird\thunderbird.exe').VersionInfo | Format-List ProductVersion, FileName
+
+      - name: Alter PC - Profil anlegen und sichern
+        env:
+          DASI_NUR: thunderbird-alt
+          DASI_SICHERUNG: ${{ runner.temp }}\tb-sicherung
+        run: dotnet run --project tests/DaSiTests -c Release
+
+      - name: Neuer PC - 32 Bit entfernen, 64 Bit installieren
+        shell: pwsh
+        run: |
+          Start-Process 'C:\Program Files (x86)\Mozilla Thunderbird\uninstall\helper.exe' -ArgumentList '/S' -Wait
+          for ($i = 0; $i -lt 60 -and (Test-Path 'C:\Program Files (x86)\Mozilla Thunderbird\thunderbird.exe'); $i++) { Start-Sleep 2 }
+          Invoke-WebRequest 'https://download.mozilla.org/?product=thunderbird-latest-ssl&os=win64&lang=de' -OutFile "$env:RUNNER_TEMP\tb64.exe"
+          Start-Process "$env:RUNNER_TEMP\tb64.exe" -ArgumentList '/S' -Wait
+          (Get-Item 'C:\Program Files\Mozilla Thunderbird\thunderbird.exe').VersionInfo | Format-List ProductVersion, FileName
+          Test-Path 'C:\Program Files (x86)\Mozilla Thunderbird\thunderbird.exe'
+
+      - name: Neuer PC - wiederherstellen und Thunderbird starten
+        env:
+          DASI_NUR: thunderbird-neu
+          DASI_SICHERUNG: ${{ runner.temp }}\tb-sicherung
+        run: dotnet run --project tests/DaSiTests -c Release

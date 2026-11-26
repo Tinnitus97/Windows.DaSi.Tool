@@ -92,6 +92,14 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 #endif
+        // DASI_NUR=thunderbird-alt / thunderbird-neu: Umzug mit echtem Thunderbird (CI).
+        if (Environment.GetEnvironmentVariable("DASI_NUR") is "thunderbird-alt" or "thunderbird-neu" && OperatingSystem.IsWindows())
+        {
+            if (Environment.GetEnvironmentVariable("DASI_NUR") == "thunderbird-alt") ThunderbirdAlterPc(); else ThunderbirdNeuerPc();
+            Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
+            try { Directory.Delete(root, true); } catch { }
+            return _failed == 0 ? 0 : 1;
+        }
         if (Environment.GetEnvironmentVariable("DASI_NUR") == "hintergrund")
         {
             if (OperatingSystem.IsWindows()) HintergrundEchtPruefen(root);

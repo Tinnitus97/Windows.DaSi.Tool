@@ -43,6 +43,7 @@
     <Compile Include="SicherungsPruefungen.cs" />
     <Compile Include="MozillaPruefungen.cs" />
     <Compile Include="VerknuepfungsPruefungen.cs" />
+    <Compile Include="ThunderbirdEcht.cs" />
     <Compile Include="../Gemeinsam/*.cs" />
     <Compile Include="../../Services/UpdateService.cs" />
     <Compile Include="../../Services/CloudProviders.cs" />
