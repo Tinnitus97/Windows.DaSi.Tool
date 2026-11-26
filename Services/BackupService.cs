@@ -461,7 +461,9 @@ public sealed class BackupService
     /// <summary>Schreibt das Profil eines Programms aus dem Katalog zurueck - vorher wird es bei Bedarf installiert.</summary>
     public async Task RestoreAppProfile(AppEintrag app)
     {
-        var frisch = await InstallApp(app.Name, app.Prozess + ".exe", app.WingetId);
+        var mozilla = MozillaProfile.Programm(app);
+        var frisch = await InstallApp(app.Name, app.Prozess + ".exe", app.WingetId,
+            mozilla is { } m ? () => MozillaInstallationenHier(m.Exe, m.Ordner).Count > 0 : null);
 
         var quelle = Path.Combine(BackupPath, app.BackupOrdner);
         if (!Directory.Exists(quelle)) { _log(Loc.Tr($"[FEHLER] {app.Name} Backup nicht gefunden.", $"[ERROR] {app.Name} backup not found.")); return; }
@@ -661,8 +663,7 @@ public sealed class BackupService
     /// </summary>
     private void MozillaStandardprofil(string name, string datenOrdner, string exe, string ordnerName)
     {
-        var installationen = TestInstallationen
-            ?? (OperatingSystem.IsWindows() ? MozillaProfile.Installationen(exe, ordnerName, SourcePath) : new List<string>());
+        var installationen = MozillaInstallationenHier(exe, ordnerName);
         MozillaProfile.Ergebnis erg;
         try { erg = MozillaProfile.Anpassen(datenOrdner, installationen); }
         catch (Exception ex)
@@ -698,6 +699,10 @@ public sealed class BackupService
 
     /// <summary>Nur fuer die Pruefung: Installationsordner statt der echten Suche.</summary>
     internal List<string>? TestInstallationen { get; set; }
+
+    /// <summary>Die Installationsordner von Firefox/Thunderbird auf diesem PC (in den Pruefungen fest vorgegeben).</summary>
+    private List<string> MozillaInstallationenHier(string exe, string ordnerName)
+        => TestInstallationen ?? (OperatingSystem.IsWindows() ? MozillaProfile.Installationen(exe, ordnerName, SourcePath) : new List<string>());
 
     // ------------------------------------------------------------ Opera (alle Fassungen)
 
@@ -2290,7 +2295,7 @@ public sealed class BackupService
         foreach (var app in new[] { AppCatalog.Firefox, AppCatalog.Thunderbird })
         {
             var (exe, ordnerName) = MozillaProfile.Programm(app)!.Value;
-            var hier = TestInstallationen ?? MozillaProfile.Installationen(exe, ordnerName, SourcePath);
+            var hier = MozillaInstallationenHier(exe, ordnerName);
             if (hier.Count == 0) continue;
             var schluesselHier = hier.Select(MozillaProfile.Schluessel).ToList();
             foreach (var ort in MozillaProfile.UeblicheOrte(ordnerName, SourcePath))
@@ -2580,7 +2585,8 @@ public sealed class BackupService
     // ------------------------------------------------------------ App-Install/Update
 
     /// <returns>true, wenn das Programm gerade eben installiert wurde.</returns>
-    private async Task<bool> InstallApp(string appName, string exeName, string? wingetId)
+    /// <param name="auchDa">Weitere Pruefung, falls "App Paths" nichts kennt - etwa die Programmordner.</param>
+    private async Task<bool> InstallApp(string appName, string exeName, string? wingetId, Func<bool>? auchDa = null)
     {
         if (_cancel.IsCancelled) return false;
         _log(Loc.Tr($"[INFO] Prüfe, ob {appName} installiert ist...", $"[INFO] Checking whether {appName} is installed..."));
@@ -2591,6 +2597,11 @@ public sealed class BackupService
         using (var lm = Registry.LocalMachine.OpenSubKey(appPathKey))
         using (var cu = Registry.CurrentUser.OpenSubKey(appPathKey))
             da = lm != null || cu != null;
+        // "App Paths" teilen sich parallele Installationen: Liefen auf einem PC
+        // Firefox ESR (32 Bit) und die aktuelle Fassung (64 Bit), nimmt das
+        // Deinstallieren der einen den Eintrag mit - die andere ist noch da.
+        // Ohne diese Pruefung installierte winget sie unnoetig noch einmal.
+        if (!da && auchDa is not null) { try { da = auchDa(); } catch { /* dann eben winget */ } }
         if (da) { _log(Loc.Tr($"[INFO] {appName} ist bereits installiert.", $"[INFO] {appName} is already installed.")); return false; }
 
         // Edge gehoert zu Windows, fuer ihn gibt es kein Paket.

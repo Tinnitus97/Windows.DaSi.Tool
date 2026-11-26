@@ -41,8 +41,16 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   zwei Firefox mit zwei Profilen. Jetzt wird aus `Mozilla.Firefox.ESR(.de)` beim
   Import `Mozilla.Firefox(.de)`, und zwar nur einmal; das Protokoll sagt es. Der
   übliche Umzug – ESR und/oder 32 Bit auf dem alten, die aktuelle 64-Bit-Fassung auf
-  dem neuen PC – ist damit durchgängig geprüft: in der CI mit dem echten Firefox,
-  das ein Profil aus „Firefox ESR 115, 32 Bit“ übernimmt.
+  dem neuen PC – ist damit durchgängig geprüft, in der CI mit echten Installationen:
+  Firefox ESR (32 Bit) installieren, Profil anlegen lassen, sichern, ESR
+  deinstallieren, mit dem aktuellen Firefox (64 Bit) wiederherstellen – er öffnet das
+  Profil vom alten PC, legt kein leeres an. Gegenprobe: ohne die Anpassung legt er
+  wie beim Anwender „default-release“ an.
+- **Firefox unnötig per winget neu installiert.** Ob ein Programm installiert ist,
+  las das Tool nur aus „App Paths“. Diesen Eintrag teilen sich parallele
+  Installationen: Deinstalliert man Firefox ESR (32 Bit) neben der aktuellen Fassung,
+  verschwindet er – Firefox 64 Bit ist aber noch da. Für Firefox und Thunderbird sieht
+  das Tool jetzt zusätzlich in den Programmordnern nach.
 - **Pfade des alten Benutzers in `prefs.js`.** Hieß der Benutzer auf dem alten PC
   anders, zeigten Download-, Cache- und Mailordner sowie Startseiten aus dem Profil
   (`file:///C:/Users/…`) ins Leere. Sie werden jetzt auf das gewählte Profil

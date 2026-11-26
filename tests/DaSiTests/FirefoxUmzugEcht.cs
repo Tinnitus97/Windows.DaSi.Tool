@@ -145,6 +145,8 @@ internal static partial class Program
         Check("Tool: Profil zurueck, Standard fuer Firefox 64 Bit, alter Ort erkannt",
             log.Hat("[ERFOLG] Firefox Profil wiederhergestellt") && log.Hat($"ist jetzt Standard für {FxAktuell64}") && log.Hat($"lief Firefox aus {FxEsr32}"), log.Text);
         Check("Tool: keine Meldung zur Fassung (ESR ist aelter als die aktuelle)", !log.Hat("lief zuletzt mit"), log.Text);
+        // Das Deinstallieren von ESR nimmt den gemeinsamen "App Paths"-Eintrag mit.
+        Check("Tool: Firefox 64 Bit als installiert erkannt - kein winget", log.Hat("[INFO] Firefox ist bereits installiert.") && !log.Hat("via Winget"), log.Text);
         Zeigen("profiles.ini nach dem Zurueckschreiben", Path.Combine(FxDaten, "profiles.ini"));
 
         FirefoxUmzugStarten(FxAktuell64, () => Fx64Benutzt().Count > 0 || FxProfile().Count > anzahl);

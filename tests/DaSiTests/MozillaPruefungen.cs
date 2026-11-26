@@ -277,6 +277,9 @@ internal static partial class Program
         Check("Dienst: Protokoll nennt Profil, neuen und alten Ort",
             log.Hat($"[INFO] Testfuchs: Profil \"default\" (Profiles/neu0abcd.default) ist jetzt Standard für {Fx64}. Auf dem alten PC lief Testfuchs aus {Fx32}"), log.Text);
         Check("Sicherung selbst bleibt unveraendert", File.ReadAllText(Path.Combine(gesichert, "profiles.ini")) == ProfilesIniAlt);
+        // Kein "App Paths"-Eintrag (den nimmt etwa das Deinstallieren einer
+        // parallelen ESR-Fassung mit), das Programm liegt aber im Programmordner.
+        Check("Dienst: im Programmordner gefunden - kein winget", log.Hat("[INFO] Testfuchs ist bereits installiert.") && !log.Hat("via Winget"), log.Text);
 
         d.TestInstallationen = new List<string> { Fx32 };
         log.Leeren();
@@ -287,6 +290,7 @@ internal static partial class Program
         log.Leeren();
         d.RestoreAppProfile(Testfuchs).Wait();
         Check("Dienst: nicht installiert - Profil trotzdem Standard", log.Hat("[WARNUNG] Testfuchs ist auf diesem PC nicht installiert. Das Profil \"default\""), log.Text);
+        Check("Dienst: nicht installiert - erst winget versucht", log.Hat("Versuche, Testfuchs via Winget zu installieren"), log.Text);
 
         // Ohne profiles.ini in der Sicherung.
         File.Move(Path.Combine(gesichert, "profiles.ini"), Path.Combine(gesichert, "profiles.bak"));
