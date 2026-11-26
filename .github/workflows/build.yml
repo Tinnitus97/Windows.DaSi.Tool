@@ -180,3 +180,41 @@ jobs:
           DASI_NUR: thunderbird-neu
           DASI_SICHERUNG: ${{ runner.temp }}\tb-sicherung
         run: dotnet run --project tests/DaSiTests -c Release
+
+  # Umzug mit echtem Firefox: auf dem "alten PC" Firefox ESR 32 Bit, auf dem
+  # "neuen" die aktuelle 64-Bit-Fassung (auf dem Laeufer installiert). ESR wird
+  # dazwischen deinstalliert (tests/DaSiTests/FirefoxUmzugEcht.cs).
+  firefox-echt:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/dotnet-lts
+
+      - name: Alter PC - Firefox ESR 32 Bit installieren
+        shell: pwsh
+        run: |
+          Invoke-WebRequest 'https://download.mozilla.org/?product=firefox-esr-latest-ssl&os=win&lang=de' -OutFile "$env:RUNNER_TEMP\fxesr32.exe"
+          Start-Process "$env:RUNNER_TEMP\fxesr32.exe" -ArgumentList '/S' -Wait
+          (Get-Item 'C:\Program Files (x86)\Mozilla Firefox\firefox.exe').VersionInfo | Format-List ProductVersion, FileName
+          (Get-Item 'C:\Program Files\Mozilla Firefox\firefox.exe').VersionInfo | Format-List ProductVersion, FileName
+
+      - name: Alter PC - Profil anlegen und sichern
+        env:
+          DASI_NUR: firefox-alt
+          DASI_SICHERUNG: ${{ runner.temp }}\fx-sicherung
+        run: dotnet run --project tests/DaSiTests -c Release
+
+      - name: Neuer PC - Firefox ESR 32 Bit entfernen
+        shell: pwsh
+        run: |
+          Start-Process 'C:\Program Files (x86)\Mozilla Firefox\uninstall\helper.exe' -ArgumentList '/S' -Wait
+          for ($i = 0; $i -lt 60 -and (Test-Path 'C:\Program Files (x86)\Mozilla Firefox\firefox.exe'); $i++) { Start-Sleep 2 }
+          Test-Path 'C:\Program Files (x86)\Mozilla Firefox\firefox.exe'
+
+      - name: Neuer PC - wiederherstellen und Firefox starten
+        env:
+          DASI_NUR: firefox-neu
+          DASI_SICHERUNG: ${{ runner.temp }}\fx-sicherung
+        run: dotnet run --project tests/DaSiTests -c Release

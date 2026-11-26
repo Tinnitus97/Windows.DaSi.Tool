@@ -92,10 +92,16 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 #endif
-        // DASI_NUR=thunderbird-alt / thunderbird-neu: Umzug mit echtem Thunderbird (CI).
-        if (Environment.GetEnvironmentVariable("DASI_NUR") is "thunderbird-alt" or "thunderbird-neu" && OperatingSystem.IsWindows())
+        // DASI_NUR=thunderbird-alt/-neu, firefox-alt/-neu: Umzug mit echtem Thunderbird bzw. Firefox (CI).
+        if (Environment.GetEnvironmentVariable("DASI_NUR") is "thunderbird-alt" or "thunderbird-neu" or "firefox-alt" or "firefox-neu" && OperatingSystem.IsWindows())
         {
-            if (Environment.GetEnvironmentVariable("DASI_NUR") == "thunderbird-alt") ThunderbirdAlterPc(); else ThunderbirdNeuerPc();
+            switch (Environment.GetEnvironmentVariable("DASI_NUR"))
+            {
+                case "thunderbird-alt": ThunderbirdAlterPc(); break;
+                case "thunderbird-neu": ThunderbirdNeuerPc(); break;
+                case "firefox-alt": FirefoxAlterPc(); break;
+                default: FirefoxNeuerPc(); break;
+            }
             Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
             try { Directory.Delete(root, true); } catch { }
             return _failed == 0 ? 0 : 1;
