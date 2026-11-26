@@ -168,6 +168,93 @@ internal static partial class Program
             && File.ReadAllText(Path.Combine(leer, "profiles.ini")) == vorher);
     }
 
+    /// <summary>Wie Thunderbird - eigener Prozessname, damit kein echter Thunderbird beendet wird.</summary>
+    private static readonly AppEintrag Testvogel =
+        new(Punkt.Thunderbird, "Testvogel", @"AppData\Roaming\DaSiTest\Testvogel", "dasi-testvogel", "DaSi.Testvogel", false);
+
+    /// <summary>Ein Installationsordner mit application.ini, wie Firefox ihn anlegt.</summary>
+    private static string Installation(string ordner, string version, string buildId)
+    {
+        Directory.CreateDirectory(ordner);
+        File.WriteAllText(Path.Combine(ordner, "application.ini"), $"[App]\r\nVendor=Mozilla\r\nName=Firefox\r\nVersion={version}\r\nBuildID={buildId}\r\n");
+        return ordner;
+    }
+
+    /// <summary>
+    /// Was ein Profil ausser profiles.ini an den alten PC bindet - Anregungen
+    /// aus MozBackup: neuere Fassung (Firefox lehnt das Profil ab), Pfade des
+    /// alten Benutzers in prefs.js, Mails ausserhalb des Profils.
+    /// </summary>
+    private static void MozillaPflegePruefen(string root)
+    {
+        Console.WriteLine("\n== Firefox/Thunderbird: Fassung, Pfade, Mails ausserhalb ==");
+        Check("LastVersion zerlegen", MozillaProfile.LetzteVersion("146.0.1_20261120123456/20261120123456") == ("146.0.1", "20261120123456")
+            && MozillaProfile.LetzteVersion("146.0") == ("146.0", "") && MozillaProfile.LetzteVersion(null) is null && MozillaProfile.LetzteVersion(" ") is null);
+        MozillaProfile.Abstand V(string p, string i, string pb = "1", string ib = "1") => MozillaProfile.Vergleichen((p, pb), (i, ib));
+        Check("Fassung: Profil etwas neuer (146.0.1 / 146.0)", V("146.0.1", "146.0") == MozillaProfile.Abstand.Neuer);
+        Check("Fassung: Profil aelter oder gleich", V("146.0", "146.0.1") == MozillaProfile.Abstand.Passt && V("146.0", "146.0") == MozillaProfile.Abstand.Passt);
+        Check("Fassung: neuere Hauptversion", V("147.0", "146.0.1") == MozillaProfile.Abstand.VielNeuer && V("140.0", "128.5.0esr") == MozillaProfile.Abstand.VielNeuer);
+        Check("Fassung: gleiche Version, neuere BuildID", V("146.0", "146.0", "20261121000000", "20261120000000") == MozillaProfile.Abstand.Neuer
+            && V("146.0", "146.0", "20261119000000", "20261120000000") == MozillaProfile.Abstand.Passt);
+        Check("Fassung: Beta gegen fertige Fassung", V("147.0b3", "147.0") == MozillaProfile.Abstand.Passt && V("147.0", "147.0b3") == MozillaProfile.Abstand.Neuer);
+        Check("Fassung: ESR", V("128.5.0esr", "128.6.0esr") == MozillaProfile.Abstand.Passt && V("128.6.0esr", "128.5.0esr") == MozillaProfile.Abstand.Neuer);
+
+        var inst = Installation(Path.Combine(root, "mozpflege", "inst"), "146.0", "20261110094521");
+        Check("installierte Fassung aus application.ini", MozillaProfile.InstallierteFassung(inst) == ("146.0", "20261110094521")
+            && MozillaProfile.InstallierteFassung(Path.Combine(root, "mozpflege", "fehlt")) is null);
+        var profil = Path.Combine(root, "mozpflege", "profil");
+        Datei(Path.Combine(profil, "compatibility.ini"), "[Compatibility]\r\nLastVersion=146.0.1_20261120123456/20261120123456\r\nLastOSABI=WINNT_x86_64-msvc\r\n");
+        Check("Fassung des Profils aus compatibility.ini", MozillaProfile.ProfilFassung(profil) == ("146.0.1", "20261120123456")
+            && MozillaProfile.ProfilFassung(inst) is null);
+
+        // Pfade des alten Benutzers in prefs.js.
+        Datei(Path.Combine(profil, "prefs.js"),
+            "// Mozilla User Preferences\n"
+            + "user_pref(\"browser.download.dir\", \"C:\\\\Users\\\\Besitzer\\\\Downloads\");\n"
+            + "user_pref(\"browser.cache.disk.parent_directory\", \"C:\\\\Users\\\\Besitzer\\\\AppData\\\\Local\\\\Mozilla\\\\Firefox\\\\Profiles\\\\abc.default\");\n"
+            + "user_pref(\"browser.startup.homepage\", \"file:///C:/Users/Besitzer/Documents/Start.html\");\n"
+            + "user_pref(\"mail.server.server1.directory\", \"C:\\\\Users\\\\Besitzerin\\\\Mail\");\n"
+            + "user_pref(\"browser.startup.page\", 3);\n"
+            + "// C:\\\\Users\\\\Besitzer im Kommentar bleibt\n");
+        Check("alter Benutzerordner aus prefs.js", MozillaProfile.AlterBenutzerordner(profil) == @"C:\Users\Besitzer", MozillaProfile.AlterBenutzerordner(profil));
+        var umgestellt = MozillaProfile.PfadeUmstellen(profil, @"C:\Users\Besitzer", @"C:\Users\Anwender");
+        var prefs = File.ReadAllText(Path.Combine(profil, "prefs.js"));
+        Check("Pfade umgestellt: Ordner, Cache, file:///", umgestellt == 3
+            && prefs.Contains("\"C:\\\\Users\\\\Anwender\\\\Downloads\"") && prefs.Contains("C:\\\\Users\\\\Anwender\\\\AppData\\\\Local")
+            && prefs.Contains("file:///C:/Users/Anwender/Documents/Start.html"), prefs);
+        Check("Pfade: aehnlicher Name, Kommentar und Zahlen bleiben", prefs.Contains("C:\\\\Users\\\\Besitzerin\\\\Mail")
+            && prefs.Contains("// C:\\\\Users\\\\Besitzer im Kommentar") && prefs.Contains("browser.startup.page\", 3"), prefs);
+        Check("Pfade: gleicher Ordner oder keine prefs.js - nichts zu tun",
+            MozillaProfile.PfadeUmstellen(profil, @"C:\Users\Anwender", @"c:\users\ANWENDER\") == 0 && MozillaProfile.PfadeUmstellen(inst, @"C:\Users\A", @"C:\Users\B") == 0);
+        var nurErweiterungen = Path.Combine(root, "mozpflege", "erweiterungen");
+        Datei(Path.Combine(nurErweiterungen, "extensions.json"), "{\"addons\":[{\"path\":\"C:\\\\Users\\\\Max\\\\AppData\\\\Roaming\\\\Mozilla\\\\Firefox\\\\Profiles\\\\x\\\\extensions\\\\a.xpi\"}]}");
+        Check("alter Benutzerordner aus extensions.json; ohne Hinweis keiner",
+            MozillaProfile.AlterBenutzerordner(nurErweiterungen) == @"C:\Users\Max" && MozillaProfile.AlterBenutzerordner(inst) is null);
+
+        // Thunderbird: Mails ausserhalb des Profils.
+        var tb = Path.Combine(root, "mozpflege", "tb");
+        var imProfil = Path.Combine(tb, "ImapMail", "imap.example.com");
+        Datei(Path.Combine(tb, "prefs.js"),
+            $"user_pref(\"mail.server.server1.directory\", \"{imProfil.Replace("\\", "\\\\")}\");\n"
+            + "user_pref(\"mail.server.server1.directory-rel\", \"[ProfD]ImapMail/imap.example.com\");\n"
+            + "user_pref(\"mail.server.server2.directory\", \"D:\\\\Mail\\\\Local Folders\");\n"
+            + "user_pref(\"mail.server.server3.directory\", \"\");\n");
+        var aussen = MozillaProfile.PostfaecherAusserhalb(tb);
+        Check("Mails ausserhalb: nur das Konto auf D:", aussen.Count == 1 && aussen[0] == new MozillaProfile.Postfach("server2", @"D:\Mail\Local Folders")
+            || !OperatingSystem.IsWindows() && aussen.Any(a => a.Ordner == @"D:\Mail\Local Folders"), string.Join(", ", aussen));
+        Check("Mails ausserhalb: ohne prefs.js keine", MozillaProfile.PostfaecherAusserhalb(inst).Count == 0);
+        var verlegtNach = Path.Combine(tb, "Mail", "Extern-server2");
+        Check("Postfach verlegen: absolut und relativ eingetragen", MozillaProfile.PostfachVerlegen(tb, "server2", verlegtNach)
+            && File.ReadAllText(Path.Combine(tb, "prefs.js")).Contains("mail.server.server2.directory-rel\", \"[ProfD]Mail/Extern-server2\"")
+            && File.ReadAllText(Path.Combine(tb, "prefs.js")).Contains(verlegtNach.Replace("\\", "\\\\")), File.ReadAllText(Path.Combine(tb, "prefs.js")));
+        Check("Postfach verlegen: unbekanntes Konto, keine prefs.js", !MozillaProfile.PostfachVerlegen(tb, "server9", verlegtNach) && !MozillaProfile.PostfachVerlegen(inst, "server2", verlegtNach));
+
+        // Profilordner laut profiles.ini.
+        var daten = MozillaDaten(Path.Combine(root, "mozpflege", "daten"), ProfilesIniAlt, ("neu0abcd.default", DateTime.UtcNow));
+        Check("Profilordner laut profiles.ini (nur vorhandene)", MozillaProfile.Profilordner(daten).Count == 1
+            && MozillaProfile.Profilordner(daten)[0].EndsWith("neu0abcd.default") && MozillaProfile.Profilordner(inst).Count == 0);
+    }
+
     /// <summary>Firefox zurueckschreiben ueber den Dienst - mit der winget-Attrappe und festen Installationsordnern.</summary>
     private static void MozillaDienstPruefen(string basis, Func<string, BackupService> dienst, Protokoll log, string szenario)
     {
@@ -215,6 +302,84 @@ internal static partial class Program
         d.RestoreAppProfile(Testfuchs).Wait();
         Check("Dienst: Eintragen scheitert - Fehler mit Abhilfe", log.Hat("[FEHLER] Testfuchs: Das Profil ließ sich nicht als Standard eintragen") && log.Hat("-P"), log.Text);
         Directory.Delete(Path.Combine(gesichert, "profiles.ini.dasi"));
+
+        // Pfade des alten Benutzers und eine etwas neuere Fassung im Profil.
+        var profilDaten = Path.Combine(gesichert, "Profiles", "neu0abcd.default");
+        File.AppendAllText(Path.Combine(profilDaten, "prefs.js"),
+            "\nuser_pref(\"browser.download.dir\", \"C:\\\\Users\\\\Besitzer\\\\Downloads\");\n"
+            + "user_pref(\"browser.cache.disk.parent_directory\", \"C:\\\\Users\\\\Besitzer\\\\AppData\\\\Local\\\\Mozilla\");\n");
+        File.WriteAllText(Path.Combine(profilDaten, "compatibility.ini"), "[Compatibility]\r\nLastVersion=146.0.1_20261120123456/20261120123456\r\n");
+        var instHier = Installation(Path.Combine(basis, "Programme", "Testfuchs"), "146.0", "20261110094521");
+        d.TestInstallationen = new List<string> { instHier };
+        log.Leeren();
+        d.RestoreAppProfile(Testfuchs).Wait();
+        var prefsZiel = File.ReadAllText(Path.Combine(daten, "Profiles", "neu0abcd.default", "prefs.js"));
+        Check("Dienst: Pfade des alten Benutzers aufs gewaehlte Profil umgestellt",
+            log.Hat("[INFO] Testfuchs: 2 Einstellungen in neu0abcd.default\\prefs.js zeigten auf den Benutzerordner des alten PCs (C:\\Users\\Besitzer)")
+            && prefsZiel.Contains(ziel.Replace("\\", "\\\\") + "\\\\Downloads"), log.Text);
+        Check("Dienst: etwas neuere Fassung - Versionspruefung zurueckgesetzt",
+            log.Hat("[INFO] Testfuchs: Das Profil lief zuletzt mit 146.0.1, hier ist 146.0 installiert")
+            && !File.Exists(Path.Combine(daten, "Profiles", "neu0abcd.default", "compatibility.ini")), log.Text);
+        File.WriteAllText(Path.Combine(profilDaten, "compatibility.ini"), "[Compatibility]\r\nLastVersion=147.0_20261201000000/20261201000000\r\n");
+        log.Leeren();
+        d.RestoreAppProfile(Testfuchs).Wait();
+        Check("Dienst: neuere Hauptversion - Fehler mit Abhilfe, Pruefung bleibt",
+            log.Hat("[FEHLER] Testfuchs: Das Profil lief zuletzt mit 147.0, hier ist erst 146.0 installiert") && log.Hat("aktualisieren")
+            && File.Exists(Path.Combine(daten, "Profiles", "neu0abcd.default", "compatibility.ini")), log.Text);
+        File.WriteAllText(Path.Combine(profilDaten, "compatibility.ini"), "[Compatibility]\r\nLastVersion=145.0_20261001000000/20261001000000\r\n");
+        log.Leeren();
+        d.RestoreAppProfile(Testfuchs).Wait();
+        Check("Dienst: aeltere Fassung im Profil - kein Hinweis", !log.Hat("lief zuletzt mit"), log.Text);
+        File.Delete(Path.Combine(profilDaten, "compatibility.ini"));
+
+        // Thunderbird: Mails ausserhalb des Profils - mitsichern und zurueckschreiben.
+        var vogelBesitzer = Path.Combine(basis, "Vogel-Besitzer");
+        var vogelDaten = AppCatalog.Pfad(vogelBesitzer, Testvogel.ProfilRel);
+        var vogelProfil = Path.Combine(vogelDaten, "Profiles", "vogel.default");
+        var extern1 = Path.Combine(basis, "Mailablage", "Local Folders");
+        Datei(Path.Combine(extern1, "Inbox"), "From: a@example.com");
+        Datei(Path.Combine(extern1, "Inbox.msf"), "index");
+        var imBenutzer = Path.Combine(vogelBesitzer, "Documents", "Mail");
+        Datei(Path.Combine(vogelDaten, "profiles.ini"), "[Profile0]\r\nName=default\r\nIsRelative=1\r\nPath=Profiles/vogel.default\r\nDefault=1\r\n");
+        Datei(Path.Combine(vogelProfil, "prefs.js"),
+            $"user_pref(\"mail.server.server1.directory\", \"{Path.Combine(vogelProfil, "ImapMail", "x").Replace("\\", "\\\\")}\");\n"
+            + $"user_pref(\"mail.server.server2.directory\", \"{extern1.Replace("\\", "\\\\")}\");\n"
+            + $"user_pref(\"mail.server.server3.directory\", \"{imBenutzer.Replace("\\", "\\\\")}\");\n"
+            + "user_pref(\"mail.server.server4.directory\", \"Q:\\\\gibt-es-nicht\\\\Mail\");\n");
+        log.Leeren();
+        dienst(vogelBesitzer).BackupAppProfile(Testvogel).Wait();
+        var liste = Path.Combine(sicherung, BackupService.ThunderbirdExternOrdner, "Postfaecher.json");
+        if (OperatingSystem.IsWindows())
+        {
+            Check("Thunderbird: Mails ausserhalb des Profils mitgesichert",
+                log.Hat("[ERFOLG] Testvogel: Mails von server2 außerhalb des Profils gesichert") && File.Exists(liste)
+                && File.Exists(Path.Combine(sicherung, BackupService.ThunderbirdExternOrdner, "1_server2", "Inbox")), log.Text);
+            Check("Thunderbird: im Benutzerprofil - Hinweis; fehlender Ordner - Warnung",
+                log.Hat("Die Mails von server3 liegen außerhalb des Thunderbird-Profils, aber im Benutzerprofil")
+                && log.Hat("[WARNUNG] Testvogel: Der Mailordner von server4 fehlt"), log.Text);
+
+            Directory.Delete(extern1, true);
+            log.Leeren();
+            dienst(Path.Combine(basis, "Vogel-Anwender")).RestoreAppProfile(Testvogel).Wait();
+            Check("Thunderbird: Mails an ihren Ort zurueckgeschrieben",
+                log.Hat("[ERFOLG] Testvogel: Mails von server2 an ihren Ort außerhalb des Profils zurückgeschrieben") && File.Exists(Path.Combine(extern1, "Inbox")), log.Text);
+
+            // Das Laufwerk gibt es hier nicht: in den Profilordner, prefs.js angepasst.
+            File.WriteAllText(liste, File.ReadAllText(liste).Replace(extern1.Replace("\\", "\\\\"), "Q:\\\\gibt-es-nicht\\\\Local Folders"));
+            log.Leeren();
+            var anwender2 = Path.Combine(basis, "Vogel-Anwender2");
+            dienst(anwender2).RestoreAppProfile(Testvogel).Wait();
+            var neuProfil = Path.Combine(AppCatalog.Pfad(anwender2, Testvogel.ProfilRel), "Profiles", "vogel.default");
+            Check("Thunderbird: Laufwerk fehlt - Mails im Profil, prefs.js angepasst",
+                log.Hat("das Laufwerk von Q:\\gibt-es-nicht\\Local Folders gibt es hier nicht") && File.Exists(Path.Combine(neuProfil, "Mail", "Extern-server2", "Inbox"))
+                && File.ReadAllText(Path.Combine(neuProfil, "prefs.js")).Contains("mail.server.server2.directory-rel\", \"[ProfD]Mail/Extern-server2\""), log.Text);
+
+            File.WriteAllText(liste, "{ kaputt");
+            log.Leeren();
+            dienst(anwender2).RestoreAppProfile(Testvogel).Wait();
+            Check("Thunderbird: Liste unlesbar - Fehler", log.Hat("[FEHLER] Testvogel: Die Liste der Mailordner außerhalb des Profils ist unlesbar"), log.Text);
+            File.Delete(liste);
+        }
 
         // Ohne feste Ordner: die echte Suche nach Firefox - auf dem Windows-
         // Laeufer ist eins installiert, sonst meist nicht.
@@ -290,6 +455,40 @@ internal static partial class Program
             Check("echt: ohne Installationseintrag uebernimmt Firefox das Standardprofil",
                 Version(daten, "neu0abcd.default") != "115.0_20230101000000/20230101000000" && NeueProfile(daten).Count == 0,
                 $"{Version(daten, "neu0abcd.default")}; neu: {string.Join(", ", NeueProfile(daten))}");
+
+            // 3b. Das Profil lief zuletzt mit einer etwas neueren Fassung (gleiche
+            //     Hauptversion): Ohne Zuruecksetzen lehnte Firefox es ab und legte
+            //     ein neues an - mit Zuruecksetzen nimmt er es.
+            if (MozillaProfile.InstallierteFassung(firefox) is { } fassung)
+            {
+                var neuer = $"{fassung.Version}.99_29991231000000/29991231000000";
+                foreach (var mitAnpassung in new[] { false, true })
+                {
+                    Directory.Delete(daten, true);
+                    OrdnerKopieren(gesichert, daten);
+                    MozillaProfile.Anpassen(daten, new[] { firefox });
+                    File.WriteAllText(Path.Combine(daten, "Profiles", "neu0abcd.default", "compatibility.ini"), $"[Compatibility]\r\nLastVersion={neuer}\r\n");
+                    var log2 = new Protokoll();
+                    if (mitAnpassung)
+                    {
+                        // Wie im Dienst: nach dem Zurueckschreiben die Fassung pruefen.
+                        var d2 = new BackupService(new ProcessRunner(c), c, log2.Schreiben) { SourcePath = profil, BackupPath = sicherung };
+                        Directory.Delete(daten, true);
+                        File.WriteAllText(Path.Combine(gesichert, "Profiles", "neu0abcd.default", "compatibility.ini"), $"[Compatibility]\r\nLastVersion={neuer}\r\n");
+                        d2.RestoreAppProfile(AppCatalog.Firefox).Wait();
+                        foreach (var alt in Directory.GetDirectories(Path.GetDirectoryName(daten)!, "Firefox_alt_*")) Directory.Delete(alt, true);
+                        Check("echt: etwas neuere Fassung im Profil - Pruefung zurueckgesetzt", log2.Hat("die Versionsprüfung ist zurückgesetzt"), log2.Text);
+                    }
+                    FirefoxStarten(Path.Combine(firefox, "firefox.exe"),
+                        () => NeueProfile(daten).Count > 0 || Version(daten, "neu0abcd.default").StartsWith(fassung.Version + "_", StringComparison.Ordinal));
+                    var genommen = Version(daten, "neu0abcd.default").StartsWith(fassung.Version + "_", StringComparison.Ordinal) && NeueProfile(daten).Count == 0;
+                    Check(mitAnpassung ? "echt: Firefox nimmt das Profil der etwas neueren Fassung" : "echt, Gegenprobe: ohne Zuruecksetzen lehnt Firefox das Profil ab",
+                        mitAnpassung ? genommen : !genommen, $"{Version(daten, "neu0abcd.default")}; neu: {string.Join(", ", NeueProfile(daten))}");
+                }
+                File.Delete(Path.Combine(gesichert, "Profiles", "neu0abcd.default", "compatibility.ini"));
+                File.WriteAllText(Path.Combine(gesichert, "Profiles", "neu0abcd.default", "compatibility.ini"),
+                    "[Compatibility]\r\nLastVersion=115.0_20230101000000/20230101000000\r\nLastOSABI=WINNT_x86-msvc\r\n");
+            }
 
             // 4. Schluessel jeder Laenge: Firefox aus anderen Ordnern starten
             //    (Dateien hart verknuepft - kein Kopieren) und nachsehen, unter

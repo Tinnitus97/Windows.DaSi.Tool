@@ -455,6 +455,7 @@ public sealed class BackupService
                         $"[WARNING] {app.Name} is still running - backing up anyway, but individual files may be incomplete."));
 
         await MirrorAppProfile(app.Name, quelle, Path.Combine(BackupPath, app.BackupOrdner), app.Chromium ? ChromiumCacheExcludes : null);
+        if (app.Punkt == Punkt.Thunderbird && !_cancel.IsCancelled) await ThunderbirdExternSichern(app.Name, quelle);
     }
 
     /// <summary>Schreibt das Profil eines Programms aus dem Katalog zurueck - vorher wird es bei Bedarf installiert.</summary>
@@ -476,7 +477,197 @@ public sealed class BackupService
 
         var ziel = AppCatalog.Pfad(SourcePath, app.ProfilRel);
         if (await RestoreAppDir(app.Name, quelle, ziel, app.Prozess) && MozillaProfile.Programm(app) is { } moz)
+        {
+            MozillaPfadeUmstellen(app.Name, ziel);
+            if (app.Punkt == Punkt.Thunderbird) await ThunderbirdExternZurueck(app.Name, ziel);
             MozillaStandardprofil(app.Name, ziel, moz.Exe, moz.Ordner);
+        }
+    }
+
+    // ------------------------------------------------------------ Firefox/Thunderbird: was ein Profil an den PC bindet
+
+    /// <summary>
+    /// Pfade des alten Benutzers in prefs.js (Mailordner, Download-Ordner,
+    /// Seiten aus dem Profil) auf das gewaehlte Profil umstellen - wie
+    /// MozBackup, das beim Zurueckschreiben die Mailordner in prefs.js anpasst.
+    /// </summary>
+    private void MozillaPfadeUmstellen(string name, string datenOrdner)
+    {
+        foreach (var profil in MozillaProfile.Profilordner(datenOrdner))
+        {
+            try
+            {
+                var alt = MozillaProfile.AlterBenutzerordner(profil);
+                if (alt is null || ProfileExcludes.SameFolder(alt, SourcePath)) continue;
+                var n = MozillaProfile.PfadeUmstellen(profil, alt, SourcePath);
+                if (n > 0)
+                    _log(Loc.Tr($"[INFO] {name}: {n} Einstellungen in {Path.GetFileName(profil)}\\prefs.js zeigten auf den Benutzerordner des alten PCs ({alt}) - umgestellt auf {SourcePath}.",
+                                $"[INFO] {name}: {n} settings in {Path.GetFileName(profil)}\\prefs.js pointed to the old PC's user folder ({alt}) - changed to {SourcePath}."));
+            }
+            catch (Exception ex)
+            {
+                _log(Loc.Tr($"[WARNUNG] {name}: Pfade in {Path.GetFileName(profil)}\\prefs.js ließen sich nicht umstellen ({ex.Message}).",
+                            $"[WARNING] {name}: paths in {Path.GetFileName(profil)}\\prefs.js could not be changed ({ex.Message})."));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Lehnt Firefox/Thunderbird das Profil ab, weil es zuletzt mit einer
+    /// neueren Fassung lief? Dann legen sie ein neues, leeres Profil an
+    /// ("Sie haben eine aeltere Version gestartet"). Typisch: winget liefert
+    /// die neueste Fassung erst einen Tag nach dem Update auf dem alten PC,
+    /// oder hier liegt ESR statt der normalen Fassung. Bei gleicher
+    /// Hauptversion ist das harmlos - die Datenformate aendern sich nur mit ihr -,
+    /// dann wird die Pruefung zurueckgesetzt. Bei neuerer Hauptversion nicht:
+    /// Firefox legte sonst z. B. Lesezeichen neu an.
+    /// </summary>
+    private void MozillaFassungPruefen(string name, string profilOrdner, IEnumerable<string> installationen)
+    {
+        if (MozillaProfile.ProfilFassung(profilOrdner) is not { } profil) return;
+        var hier = installationen.Select(i => (Ordner: i, Fassung: MozillaProfile.InstallierteFassung(i)))
+                                 .Where(i => i.Fassung is not null).Select(i => (i.Ordner, Fassung: i.Fassung!.Value)).ToList();
+        if (hier.Count == 0) return;
+        var abstaende = hier.Select(i => MozillaProfile.Vergleichen(profil, i.Fassung)).ToList();
+        if (abstaende.Contains(MozillaProfile.Abstand.Passt)) return;
+        var fassungen = string.Join(", ", hier.Select(i => i.Fassung.Version));
+        if (abstaende.Contains(MozillaProfile.Abstand.Neuer))
+        {
+            try
+            {
+                File.Delete(Path.Combine(profilOrdner, "compatibility.ini"));
+                _log(Loc.Tr($"[INFO] {name}: Das Profil lief zuletzt mit {profil.Version}, hier ist {fassungen} installiert - etwas älter. {name} hätte es deshalb abgelehnt und ein neues, leeres angelegt; die Versionsprüfung ist zurückgesetzt.",
+                            $"[INFO] {name}: the profile last ran with {profil.Version}, {fassungen} is installed here - slightly older. {name} would have refused it and created a new, empty one; the version check has been reset."));
+            }
+            catch (Exception ex)
+            {
+                _log(Loc.Tr($"[FEHLER] {name}: Das Profil lief zuletzt mit {profil.Version}, hier ist {fassungen} installiert - {name} lehnt es ab. Die Versionsprüfung ließ sich nicht zurücksetzen ({ex.Message}). Bitte {name} aktualisieren.",
+                            $"[ERROR] {name}: the profile last ran with {profil.Version}, {fassungen} is installed here - {name} refuses it. The version check could not be reset ({ex.Message}). Please update {name}."));
+            }
+            return;
+        }
+        _log(Loc.Tr($"[FEHLER] {name}: Das Profil lief zuletzt mit {profil.Version}, hier ist erst {fassungen} installiert. {name} lehnt ein Profil einer neueren Hauptversion ab und legt ein neues, leeres an. "
+                    + $"Bitte {name} aktualisieren (Hilfe > Über {name}, oder winget upgrade) und den Punkt erneut ausführen.",
+                    $"[ERROR] {name}: the profile last ran with {profil.Version}, only {fassungen} is installed here. {name} refuses a profile of a newer major version and creates a new, empty one. "
+                    + $"Please update {name} (Help > About {name}, or winget upgrade) and run this item again."));
+    }
+
+    /// <summary>Thunderbird-Konten, deren Mails ausserhalb des Profils liegen: in der Sicherung und beim Zurueckschreiben.</summary>
+    public const string ThunderbirdExternOrdner = "Thunderbird-Extern";
+
+    private sealed class ExterneSicherung
+    {
+        public string Benutzerordner { get; set; } = "";
+        public List<ExternesPostfach> Postfaecher { get; set; } = new();
+    }
+
+    private sealed class ExternesPostfach
+    {
+        /// <summary>Profilordner relativ zum Datenordner ("Profiles\\abcd.default").</summary>
+        public string Profil { get; set; } = "";
+        public string Server { get; set; } = "";
+        public string Ordner { get; set; } = "";
+        /// <summary>Unterordner in Thunderbird-Extern.</summary>
+        public string Sicherung { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Sichert die Mails von Konten, deren Ordner Thunderbird ausserhalb des
+    /// Profils fuehrt (Konten-Einstellungen > Server-Einstellungen > Lokaler
+    /// Ordner, etwa D:\\Mail). Bisher fehlten sie in der Sicherung - MozBackup
+    /// sichert sie mit. Liegen sie im Benutzerprofil, sichert sie schon der
+    /// Punkt Benutzerprofil.
+    /// </summary>
+    private async Task ThunderbirdExternSichern(string name, string datenOrdner)
+    {
+        var liste = new ExterneSicherung { Benutzerordner = SourcePath };
+        var ablage = Path.Combine(BackupPath, ThunderbirdExternOrdner);
+        foreach (var profil in MozillaProfile.Profilordner(datenOrdner))
+        {
+            foreach (var p in MozillaProfile.PostfaecherAusserhalb(profil))
+            {
+                if (_cancel.IsCancelled) return;
+                if (ProfileExcludes.IsInside(p.Ordner, SourcePath))
+                {
+                    _log(Loc.Tr($"[INFO] {name}: Die Mails von {p.Server} liegen außerhalb des Thunderbird-Profils, aber im Benutzerprofil ({p.Ordner}) - sie kommen mit dem Punkt \"Windows Benutzerprofil\" in die Sicherung.",
+                                $"[INFO] {name}: the mail of {p.Server} is outside the Thunderbird profile but inside the user profile ({p.Ordner}) - it is backed up with \"Windows user profile\"."));
+                    continue;
+                }
+                if (!Directory.Exists(p.Ordner))
+                {
+                    _log(Loc.Tr($"[WARNUNG] {name}: Der Mailordner von {p.Server} fehlt: {p.Ordner}",
+                                $"[WARNING] {name}: the mail folder of {p.Server} is missing: {p.Ordner}"));
+                    continue;
+                }
+                var unter = $"{liste.Postfaecher.Count + 1}_{p.Server}";
+                var args = new List<string> { Quote(p.Ordner), Quote(Path.Combine(ablage, unter)), "/MIR", "/R:1", "/W:1", "/MT:32" };
+                if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+                var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+                if (code >= 8)
+                {
+                    _log(Loc.Tr($"[FEHLER] {name}: Die Mails von {p.Server} ({p.Ordner}) ließen sich nicht sichern: ExitCode {code}",
+                                $"[ERROR] {name}: the mail of {p.Server} ({p.Ordner}) could not be backed up: ExitCode {code}"));
+                    continue;
+                }
+                liste.Postfaecher.Add(new ExternesPostfach { Profil = Path.GetRelativePath(datenOrdner, profil), Server = p.Server, Ordner = p.Ordner, Sicherung = unter });
+                _log(Loc.Tr($"[ERFOLG] {name}: Mails von {p.Server} außerhalb des Profils gesichert ({p.Ordner}).",
+                            $"[SUCCESS] {name}: mail of {p.Server} outside the profile backed up ({p.Ordner})."));
+            }
+        }
+        if (liste.Postfaecher.Count > 0)
+        {
+            Directory.CreateDirectory(ablage);
+            File.WriteAllText(Path.Combine(ablage, "Postfaecher.json"), System.Text.Json.JsonSerializer.Serialize(liste, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        }
+    }
+
+    /// <summary>
+    /// Schreibt die Mails von Konten ausserhalb des Profils zurueck: an ihren
+    /// alten Ort (im Benutzerordner des alten PCs: in den des gewaehlten
+    /// Profils), oder - gibt es das Laufwerk hier nicht - in den Profilordner;
+    /// prefs.js wird dann angepasst.
+    /// </summary>
+    private async Task ThunderbirdExternZurueck(string name, string datenOrdner)
+    {
+        var datei = Path.Combine(BackupPath, ThunderbirdExternOrdner, "Postfaecher.json");
+        if (!File.Exists(datei)) return;
+        ExterneSicherung? liste;
+        try { liste = System.Text.Json.JsonSerializer.Deserialize<ExterneSicherung>(File.ReadAllText(datei)); }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] {name}: Die Liste der Mailordner außerhalb des Profils ist unlesbar ({ex.Message}).",
+                        $"[ERROR] {name}: the list of mail folders outside the profile is unreadable ({ex.Message})."));
+            return;
+        }
+        foreach (var p in liste?.Postfaecher ?? new List<ExternesPostfach>())
+        {
+            if (_cancel.IsCancelled) return;
+            var profil = Path.Combine(datenOrdner, p.Profil);
+            var ziel = p.Ordner;
+            var root = Path.GetPathRoot(ziel);
+            bool verlegt = string.IsNullOrEmpty(root) || !Directory.Exists(root);
+            if (verlegt) ziel = Path.Combine(profil, "Mail", "Extern-" + p.Server);
+            var args = new List<string> { Quote(Path.Combine(BackupPath, ThunderbirdExternOrdner, p.Sicherung)), Quote(ziel), "/E", "/R:1", "/W:1", "/MT:32" };
+            if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+            var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+            if (code >= 8)
+            {
+                _log(Loc.Tr($"[FEHLER] {name}: Die Mails von {p.Server} ließen sich nicht nach {ziel} zurückschreiben: ExitCode {code}",
+                            $"[ERROR] {name}: the mail of {p.Server} could not be restored to {ziel}: ExitCode {code}"));
+                continue;
+            }
+            if (verlegt && !MozillaProfile.PostfachVerlegen(profil, p.Server, ziel))
+            {
+                _log(Loc.Tr($"[FEHLER] {name}: Die Mails von {p.Server} liegen jetzt unter {ziel}, prefs.js ließ sich aber nicht anpassen.",
+                            $"[ERROR] {name}: the mail of {p.Server} is now at {ziel}, but prefs.js could not be updated."));
+                continue;
+            }
+            _log(verlegt
+                ? Loc.Tr($"[ERFOLG] {name}: Mails von {p.Server} zurückgeschrieben - das Laufwerk von {p.Ordner} gibt es hier nicht, sie liegen jetzt im Profil ({ziel}).",
+                         $"[SUCCESS] {name}: mail of {p.Server} restored - the drive of {p.Ordner} does not exist here, it is now inside the profile ({ziel}).")
+                : Loc.Tr($"[ERFOLG] {name}: Mails von {p.Server} an ihren Ort außerhalb des Profils zurückgeschrieben ({ziel}).",
+                         $"[SUCCESS] {name}: mail of {p.Server} restored to its place outside the profile ({ziel})."));
+        }
     }
 
     /// <summary>
@@ -519,6 +710,7 @@ public sealed class BackupService
         else
             _log(Loc.Tr($"[INFO] {name}: Profil {profilName} ist jetzt Standard für {hier}. Auf dem alten PC lief {name} aus {(alt.Count > 0 ? string.Join(", ", alt) : "einem unbekannten Ordner")} - ohne diese Anpassung legte {name} beim ersten Start ein neues, leeres Profil an.",
                         $"[INFO] {name}: profile {profilName} is now the default for {hier}. On the old PC {name} ran from {(alt.Count > 0 ? string.Join(", ", alt) : "an unknown folder")} - without this adjustment {name} would have created a new, empty profile on first start."));
+        if (erg.Verzeichnis is not null) MozillaFassungPruefen(name, erg.Verzeichnis, erg.Neu.Select(n => n.Ordner));
     }
 
     /// <summary>Nur fuer die Pruefung: Installationsordner statt der echten Suche.</summary>

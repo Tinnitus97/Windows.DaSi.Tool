@@ -2287,6 +2287,7 @@ internal static partial class Program
         WingetDienstPruefen(root);
         SicherungsdienstPruefen(root);
         MozillaPruefen(root);
+        MozillaPflegePruefen(root);
         if (OperatingSystem.IsWindows()) FirefoxEchtPruefen(root);
         NeuesZielPruefen();
         TaskbandNamenPruefen();

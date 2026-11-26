@@ -36,7 +36,9 @@ public static class MozillaProfile
     /// <param name="Name">Name des Profils (z. B. "default").</param>
     /// <param name="AlteSchluessel">Die Installationen aus der Sicherung (Schluessel).</param>
     /// <param name="Neu">Die Installationen auf diesem PC: Ordner und Schluessel.</param>
-    public sealed record Ergebnis(string? Profil, string? Name, IReadOnlyList<string> AlteSchluessel, IReadOnlyList<(string Ordner, string Schluessel)> Neu)
+    /// <param name="Verzeichnis">Der Ordner des Profils auf der Platte.</param>
+    public sealed record Ergebnis(string? Profil, string? Name, IReadOnlyList<string> AlteSchluessel, IReadOnlyList<(string Ordner, string Schluessel)> Neu,
+                                  string? Verzeichnis = null)
     {
         /// <summary>Lief das Profil auf dem alten PC unter einer der Installationen dieses PCs?</summary>
         public bool SchonPassend => Neu.Count > 0 && Neu.All(n => AlteSchluessel.Contains(n.Schluessel, StringComparer.OrdinalIgnoreCase));
@@ -304,7 +306,209 @@ public static class MozillaProfile
             File.Delete(installsIni);
         }
 
-        return new Ergebnis(pfad, Wert(gewaehlt.Werte, "Name"), alteSchluessel, neu);
+        return new Ergebnis(pfad, Wert(gewaehlt.Werte, "Name"), alteSchluessel, neu, ProfilOrdner(datenOrdner, gewaehlt.Werte));
+    }
+
+    /// <summary>Die Profilordner, die profiles.ini nennt und die es gibt.</summary>
+    public static List<string> Profilordner(string datenOrdner)
+    {
+        var datei = Path.Combine(datenOrdner, "profiles.ini");
+        if (!File.Exists(datei)) return new List<string>();
+        return Ini.Lesen(File.ReadAllText(datei)).Abschnitte.Where(a => IstProfil(a.Name))
+                  .Select(a => ProfilOrdner(datenOrdner, a.Werte)).Where(Directory.Exists)
+                  .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    // ------------------------------------------------------------ Versionen (Schutz vor aelteren Fassungen)
+
+    /// <summary>Wie weit das Profil der installierten Fassung voraus ist.</summary>
+    public enum Abstand
+    {
+        /// <summary>Gleich alt oder aelter - Firefox nimmt das Profil.</summary>
+        Passt,
+        /// <summary>Gleiche Hauptversion, aber neuer (146.0.1 statt 146.0) - Firefox lehnte es trotzdem ab.</summary>
+        Neuer,
+        /// <summary>Neuere Hauptversion (147 statt 146) - Daten koennen in neuerem Format vorliegen.</summary>
+        VielNeuer,
+    }
+
+    /// <summary>
+    /// "146.0.1_20261120123456/20261120123456" (compatibility.ini, LastVersion)
+    /// bzw. Version und BuildID aus application.ini -> (Version, BuildID).
+    /// </summary>
+    public static (string Version, string BuildId)? LetzteVersion(string? lastVersion)
+    {
+        if (string.IsNullOrWhiteSpace(lastVersion)) return null;
+        var teil = lastVersion.Split('/')[0];
+        var strich = teil.IndexOf('_');
+        return strich > 0 ? (teil[..strich], teil[(strich + 1)..]) : (teil, "");
+    }
+
+    /// <summary>Die Zahlen am Anfang jedes Teils: "147.0b3" -> 147, 0; "128.5.0esr" -> 128, 5, 0.</summary>
+    private static List<long> Zahlen(string version)
+        => version.Split('.').Select(t => new string(t.TakeWhile(char.IsDigit).ToArray()))
+                  .Select(t => long.TryParse(t, out var z) ? z : 0).ToList();
+
+    /// <summary>
+    /// Vergleicht die Fassung, mit der das Profil zuletzt lief, mit der
+    /// installierten - wie Firefox beim Start: erst die Version, bei gleicher
+    /// die BuildID.
+    /// </summary>
+    public static Abstand Vergleichen((string Version, string BuildId) profil, (string Version, string BuildId) installiert)
+    {
+        var p = Zahlen(profil.Version);
+        var i = Zahlen(installiert.Version);
+        for (int n = 0; n < Math.Max(p.Count, i.Count); n++)
+        {
+            var a = n < p.Count ? p[n] : 0;
+            var b = n < i.Count ? i[n] : 0;
+            if (a == b) continue;
+            if (a < b) return Abstand.Passt;
+            return n == 0 ? Abstand.VielNeuer : Abstand.Neuer;
+        }
+        // Vorabfassung (147.0b3) gegen die fertige (147.0): die fertige ist neuer.
+        var pVorab = profil.Version.Any(char.IsLetter) && !profil.Version.EndsWith("esr", StringComparison.OrdinalIgnoreCase);
+        var iVorab = installiert.Version.Any(char.IsLetter) && !installiert.Version.EndsWith("esr", StringComparison.OrdinalIgnoreCase);
+        if (pVorab != iVorab) return pVorab ? Abstand.Passt : Abstand.Neuer;
+        return string.CompareOrdinal(profil.BuildId, installiert.BuildId) > 0 ? Abstand.Neuer : Abstand.Passt;
+    }
+
+    /// <summary>Fassung, mit der das Profil zuletzt lief (compatibility.ini) - null, wenn unbekannt.</summary>
+    public static (string Version, string BuildId)? ProfilFassung(string profilOrdner)
+    {
+        var datei = Path.Combine(profilOrdner, "compatibility.ini");
+        try { return File.Exists(datei) ? LetzteVersion(Ini.Lesen(File.ReadAllText(datei)).Wert("Compatibility", "LastVersion")) : null; }
+        catch { return null; }
+    }
+
+    /// <summary>Die installierte Fassung (application.ini im Installationsordner) - null, wenn unbekannt.</summary>
+    public static (string Version, string BuildId)? InstallierteFassung(string installationsOrdner)
+    {
+        var datei = Path.Combine(installationsOrdner, "application.ini");
+        try
+        {
+            if (!File.Exists(datei)) return null;
+            var ini = Ini.Lesen(File.ReadAllText(datei));
+            var version = ini.Wert("App", "Version");
+            return string.IsNullOrWhiteSpace(version) ? null : (version, ini.Wert("App", "BuildID") ?? "");
+        }
+        catch { return null; }
+    }
+
+    // ------------------------------------------------------------ Pfade des alten Benutzers
+
+    // In prefs.js und extensions.json steht "\\" fuer jeden Backslash - im
+    // Muster also vier: "C:\\Users\\Besitzer\\AppData\\Roaming\\...".
+    private static readonly Regex AlterBenutzer = new(@"(?<![A-Za-z])([A-Za-z]:(?:\\\\[^\\""\r\n]+?)+?)\\\\AppData\\\\(?:Roaming|Local)\\\\", RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Der Benutzerordner des alten PCs ("C:\Users\Besitzer"), abgelesen an
+    /// Pfaden in prefs.js oder extensions.json, die nach AppData zeigen - null,
+    /// wenn keiner darin steht.
+    /// </summary>
+    public static string? AlterBenutzerordner(string profilOrdner)
+    {
+        var funde = new List<string>();
+        foreach (var name in new[] { "prefs.js", "extensions.json" })
+        {
+            var datei = Path.Combine(profilOrdner, name);
+            try
+            {
+                if (!File.Exists(datei)) continue;
+                foreach (Match m in AlterBenutzer.Matches(File.ReadAllText(datei)))
+                    funde.Add(m.Groups[1].Value.Replace(@"\\", @"\"));
+            }
+            catch { /* naechste */ }
+        }
+        return funde.GroupBy(f => f, StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Stellt in prefs.js die Pfade des alten Benutzers auf den neuen um -
+    /// Mailordner von Thunderbird, Download-Ordner, Seiten aus dem Profil
+    /// (file:///C:/Users/...). Sonst zeigen sie auf einen Ordner, den es hier
+    /// nicht gibt.
+    /// </summary>
+    /// <returns>Wie viele Eintraege umgestellt wurden.</returns>
+    public static int PfadeUmstellen(string profilOrdner, string alt, string neu)
+    {
+        var datei = Path.Combine(profilOrdner, "prefs.js");
+        // Windows-Pfade (auch vom alten PC) - unabhaengig von Schreibweise und Schlusszeichen.
+        if (!File.Exists(datei) || string.Equals(alt.TrimEnd('\\', '/'), neu.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase)) return 0;
+        string Escaped(string pfad) => pfad.TrimEnd('\\').Replace(@"\", @"\\");
+        string Url(string pfad) => "file:///" + pfad.TrimEnd('\\').Replace('\\', '/');
+        var ersetzen = new[]
+        {
+            (Alt: Escaped(alt), Neu: Escaped(neu)),
+            (Alt: Url(alt), Neu: Url(neu)),
+        };
+        int anzahl = 0;
+        var zeilen = File.ReadAllLines(datei);
+        for (int z = 0; z < zeilen.Length; z++)
+        {
+            if (!zeilen[z].StartsWith("user_pref(", StringComparison.Ordinal)) continue;
+            foreach (var (a, n) in ersetzen)
+            {
+                // Nur ganze Ordnernamen: "C:\Users\Max" nicht in "C:\Users\Maxi".
+                var muster = Regex.Escape(a) + @"(?=\\\\|/|"")";
+                var neuZeile = Regex.Replace(zeilen[z], muster, n.Replace("$", "$$"), RegexOptions.IgnoreCase);
+                if (neuZeile != zeilen[z]) { zeilen[z] = neuZeile; anzahl++; break; }
+            }
+        }
+        if (anzahl > 0) Schreiben(datei, string.Join("\n", zeilen) + "\n");
+        return anzahl;
+    }
+
+    // ------------------------------------------------------------ Thunderbird: Mail ausserhalb des Profils
+
+    /// <summary>Ein Konto, dessen Mails ausserhalb des Profilordners liegen.</summary>
+    public sealed record Postfach(string Server, string Ordner);
+
+    private static readonly Regex MailOrdner = new(@"^user_pref\(""mail\.server\.(server\d+)\.directory"",\s*""(.*)""\);", RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Die Konten, deren Ordner (mail.server.serverN.directory) nicht im
+    /// Profilordner liegt - in Thunderbird unter Konten-Einstellungen >
+    /// Server-Einstellungen > "Lokaler Ordner" verlegt.
+    /// </summary>
+    public static List<Postfach> PostfaecherAusserhalb(string profilOrdner)
+    {
+        var erg = new List<Postfach>();
+        var datei = Path.Combine(profilOrdner, "prefs.js");
+        if (!File.Exists(datei)) return erg;
+        var profil = Path.TrimEndingDirectorySeparator(Path.GetFullPath(profilOrdner));
+        foreach (var zeile in File.ReadAllLines(datei))
+        {
+            var m = MailOrdner.Match(zeile);
+            if (!m.Success) continue;
+            var ordner = Regex.Unescape(m.Groups[2].Value);
+            if (ordner.Length < 3 || ordner[1] != ':') continue;
+            var normal = ordner.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+            if (normal.StartsWith(profil + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
+            erg.Add(new Postfach(m.Groups[1].Value, ordner));
+        }
+        return erg;
+    }
+
+    /// <summary>
+    /// Traegt fuer ein Konto einen neuen Ordner ein (absolut und, falls im
+    /// Profil, relativ "[ProfD]...") - nachdem sein Ordner verlegt wurde.
+    /// </summary>
+    public static bool PostfachVerlegen(string profilOrdner, string server, string neuerOrdner)
+    {
+        var datei = Path.Combine(profilOrdner, "prefs.js");
+        if (!File.Exists(datei)) return false;
+        var profil = Path.TrimEndingDirectorySeparator(Path.GetFullPath(profilOrdner));
+        string? relativ = neuerOrdner.StartsWith(profil + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            ? "[ProfD]" + neuerOrdner[(profil.Length + 1)..].Replace('\\', '/') : null;
+        var zeilen = File.ReadAllLines(datei).Where(z => !z.StartsWith($"user_pref(\"mail.server.{server}.directory-rel\"", StringComparison.OrdinalIgnoreCase)).ToList();
+        var abs = $"user_pref(\"mail.server.{server}.directory\", \"{neuerOrdner.Replace(@"\", @"\\")}\");";
+        var i = zeilen.FindIndex(z => z.StartsWith($"user_pref(\"mail.server.{server}.directory\"", StringComparison.OrdinalIgnoreCase));
+        if (i < 0) return false;
+        zeilen[i] = abs;
+        if (relativ is not null) zeilen.Insert(i + 1, $"user_pref(\"mail.server.{server}.directory-rel\", \"{relativ}\");");
+        Schreiben(datei, string.Join("\n", zeilen) + "\n");
+        return true;
     }
 
     private static void Schreiben(string datei, string inhalt)
