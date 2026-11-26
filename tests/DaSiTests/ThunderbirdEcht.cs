@@ -60,6 +60,15 @@ internal static partial class Program
         => MozillaProfile.Ini.Lesen(File.Exists(Path.Combine(TbDaten, "Profiles", profil, "compatibility.ini"))
             ? File.ReadAllText(Path.Combine(TbDaten, "Profiles", profil, "compatibility.ini")) : "").Wert("Compatibility", "LastOSABI") ?? "";
 
+    /// <summary>
+    /// Welches Profil Thunderbird 64 Bit geoeffnet hat: das, in dessen
+    /// compatibility.ini jetzt die 64-Bit-Kennung steht (vorher stand dort die
+    /// 32-Bit-Kennung oder gar nichts). Die Version allein verraet es nicht -
+    /// 32 und 64 Bit tragen dieselbe.
+    /// </summary>
+    private static List<string> Tb64Benutzt()
+        => TbProfile().Where(p => TbAbi(p).Contains("x86_64", StringComparison.OrdinalIgnoreCase)).ToList();
+
     /// <summary>Startet Thunderbird ohne Fenster, wartet, bis die Bedingung gilt (hoechstens 60 s), und beendet ihn.</summary>
     [SupportedOSPlatform("windows")]
     private static void ThunderbirdStarten(string ordner, Func<bool> fertig)
@@ -183,11 +192,12 @@ internal static partial class Program
         // 1. Gegenprobe: die Sicherung nur zurueckkopiert.
         NeuerPc();
         OrdnerKopieren(gesichert, TbDaten);
-        ThunderbirdStarten(Tb64, () => TbProfile().Count > anzahl);
-        var gegenprobe = TbProfile();
-        Console.WriteLine($"         Profile nach dem Start: {string.Join(", ", gegenprobe)}");
-        Check("Gegenprobe: nur zurueckkopiert - Thunderbird 64 Bit legt ein neues Profil an",
-            gegenprobe.Count > anzahl, $"Profile: {string.Join(", ", gegenprobe)}, altes Profil: {TbFassung(altesProfil)}");
+        ThunderbirdStarten(Tb64, () => Tb64Benutzt().Count > 0);
+        Zeigen("profiles.ini nach dem Start (Gegenprobe)", Path.Combine(TbDaten, "profiles.ini"));
+        var gegenprobe = Tb64Benutzt();
+        Console.WriteLine($"         Profile: {string.Join(", ", TbProfile())}; von Thunderbird 64 Bit geoeffnet: {string.Join(", ", gegenprobe)}");
+        Check("Gegenprobe: nur zurueckkopiert - Thunderbird 64 Bit oeffnet ein anderes (leeres) Profil",
+            gegenprobe.Count > 0 && !gegenprobe.Contains(altesProfil), $"geoeffnet: {string.Join(", ", gegenprobe)}, altes Profil: {altesProfil}");
 
         // 2. Mit dem Tool.
         NeuerPc();
@@ -206,12 +216,13 @@ internal static partial class Program
             && File.Exists(Path.Combine(TbArchiv, "Inbox")) && File.ReadAllText(Path.Combine(TbArchiv, "Inbox")).Contains(TbMarke), log.Text);
         Zeigen("profiles.ini nach dem Zurueckschreiben", Path.Combine(TbDaten, "profiles.ini"));
 
-        var vorher = TbFassung(altesProfil);
-        ThunderbirdStarten(Tb64, () => TbFassung(altesProfil) != vorher || TbProfile().Count > anzahl);
+        var vorher = TbAbi(altesProfil);
+        Check("vor dem Start: das Profil lief zuletzt mit 32 Bit", vorher.Contains("x86-msvc", StringComparison.OrdinalIgnoreCase), vorher);
+        ThunderbirdStarten(Tb64, () => Tb64Benutzt().Count > 0);
         Zeigen("compatibility.ini nach dem Start", Path.Combine(TbDaten, "Profiles", altesProfil, "compatibility.ini"));
-        Check("Thunderbird 64 Bit nimmt das Profil vom alten PC (32 Bit)",
-            TbFassung(altesProfil) != vorher && TbAbi(altesProfil).Contains("x86_64", StringComparison.OrdinalIgnoreCase),
-            $"vorher {vorher}, jetzt {TbFassung(altesProfil)} / {TbAbi(altesProfil)}");
+        var geoeffnet = Tb64Benutzt();
+        Check("Thunderbird 64 Bit oeffnet das Profil vom alten PC (32 Bit) - und nur dieses",
+            geoeffnet.Count == 1 && geoeffnet[0] == altesProfil, $"geoeffnet: {string.Join(", ", geoeffnet)}, erwartet {altesProfil}; ABI vorher {vorher}, jetzt {TbAbi(altesProfil)}");
         Check("kein neues, leeres Profil", TbProfile().Count == anzahl, string.Join(", ", TbProfile()));
         var prefs = File.ReadAllText(Path.Combine(TbDaten, "Profiles", altesProfil, "prefs.js"));
         Check("Konten und Mails noch da: Lokale Ordner, Archiv",
