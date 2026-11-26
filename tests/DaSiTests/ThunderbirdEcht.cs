@@ -76,7 +76,7 @@ internal static partial class Program
         var uhr = Stopwatch.StartNew();
         using (var p = Process.Start(new ProcessStartInfo(Path.Combine(ordner, "thunderbird.exe"), "-headless -no-remote") { UseShellExecute = false }))
         {
-            while (uhr.Elapsed < TimeSpan.FromSeconds(60) && !fertig()) System.Threading.Thread.Sleep(500);
+            while (uhr.Elapsed < TimeSpan.FromSeconds(60) && !Gefragt(fertig)) System.Threading.Thread.Sleep(500);
             // Noch einen Moment: Konten laden, profiles.ini und compatibility.ini fertig schreiben.
             System.Threading.Thread.Sleep(8000);
             try { p?.Kill(true); } catch { }

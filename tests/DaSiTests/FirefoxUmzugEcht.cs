@@ -52,7 +52,7 @@ internal static partial class Program
         var uhr = Stopwatch.StartNew();
         using (var p = Process.Start(new ProcessStartInfo(Path.Combine(ordner, "firefox.exe"), "-headless -no-remote about:blank") { UseShellExecute = false }))
         {
-            while (uhr.Elapsed < TimeSpan.FromSeconds(60) && !fertig()) System.Threading.Thread.Sleep(500);
+            while (uhr.Elapsed < TimeSpan.FromSeconds(60) && !Gefragt(fertig)) System.Threading.Thread.Sleep(500);
             System.Threading.Thread.Sleep(5000);
             try { p?.Kill(true); } catch { }
         }

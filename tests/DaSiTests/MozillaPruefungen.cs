@@ -527,6 +527,16 @@ internal static partial class Program
         }
     }
 
+    /// <summary>
+    /// Fragt "fertig?" waehrend das Programm laeuft. Schreibt es gerade eine
+    /// Datei (profiles.ini) und haelt sie gesperrt, heisst das: noch nicht.
+    /// </summary>
+    private static bool Gefragt(Func<bool> fertig)
+    {
+        try { return fertig(); }
+        catch (IOException) { return false; }
+    }
+
     /// <summary>Loescht einen Ordner, falls da - mit Wiederholung, solange ein eben beendetes Programm noch Dateien haelt.</summary>
     private static void OrdnerLoeschen(string ordner)
     {
@@ -587,7 +597,7 @@ internal static partial class Program
         var uhr = Stopwatch.StartNew();
         using (var p = Process.Start(new ProcessStartInfo(exe, "-headless -no-remote about:blank") { UseShellExecute = false }))
         {
-            while (uhr.Elapsed < TimeSpan.FromSeconds(45) && !fertig()) System.Threading.Thread.Sleep(500);
+            while (uhr.Elapsed < TimeSpan.FromSeconds(45) && !Gefragt(fertig)) System.Threading.Thread.Sleep(500);
             // Noch einen Moment: profiles.ini und compatibility.ini fertig schreiben lassen.
             System.Threading.Thread.Sleep(3000);
             try { p?.Kill(true); } catch { }
