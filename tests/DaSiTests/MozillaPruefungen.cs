@@ -435,7 +435,7 @@ internal static partial class Program
             new BackupService(new ProcessRunner(c), c, log.Schreiben) { SourcePath = profil, BackupPath = sicherung }.RestoreAppProfile(AppCatalog.Firefox).Wait();
             Check("echt: Firefox bereits installiert, Profil zurueck, als Standard eingetragen",
                 log.Hat("Firefox ist bereits installiert") && log.Hat("[ERFOLG] Firefox Profil wiederhergestellt") && log.Hat("ist jetzt Standard für"), log.Text);
-            foreach (var alt in Directory.GetDirectories(Path.GetDirectoryName(daten)!, "Firefox_alt_*")) Directory.Delete(alt, true);
+            foreach (var alt in Directory.GetDirectories(Path.GetDirectoryName(daten)!, "Firefox_alt_*")) OrdnerLoeschen(alt);
 
             FirefoxStarten(Path.Combine(firefox, "firefox.exe"), () => Version(daten, "neu0abcd.default") != "115.18.0_20241104101315/20241104101315");
             var neuAngelegt = NeueProfile(daten);
@@ -445,13 +445,13 @@ internal static partial class Program
             Check("echt: kein neues, leeres Profil", neuAngelegt.Count == 0, string.Join(", ", neuAngelegt));
 
             // 2. Gegenprobe: dieselbe Sicherung ohne Anpassung - so wie bisher.
-            Directory.Delete(daten, true);
+            OrdnerLoeschen(daten);
             OrdnerKopieren(gesichert, daten);
             FirefoxStarten(Path.Combine(firefox, "firefox.exe"), () => NeueProfile(daten).Count > 0);
             Check("echt, Gegenprobe: ohne Anpassung legt Firefox ein neues Profil an", NeueProfile(daten).Count > 0, "keins angelegt");
 
             // 3. Keine Installation gefunden: nur Default=1 - uebernimmt Firefox das Profil?
-            Directory.Delete(daten, true);
+            OrdnerLoeschen(daten);
             OrdnerKopieren(gesichert, daten);
             MozillaProfile.Anpassen(daten, Array.Empty<string>());
             FirefoxStarten(Path.Combine(firefox, "firefox.exe"), () => Version(daten, "neu0abcd.default") != "115.18.0_20241104101315/20241104101315");
@@ -467,10 +467,10 @@ internal static partial class Program
                 foreach (var (lastVersion, nimmt) in new[] { ($"{fassung.Version}.99_29991231000000/29991231000000", true), ($"{haupt + 1}.0_29991231000000/29991231000000", false) })
                 {
                     File.WriteAllText(Path.Combine(gesichert, "Profiles", "neu0abcd.default", "compatibility.ini"), $"[Compatibility]\r\nLastVersion={lastVersion}\r\n");
-                    if (Directory.Exists(daten)) Directory.Delete(daten, true);
+                    OrdnerLoeschen(daten);
                     var log2 = new Protokoll();
                     new BackupService(new ProcessRunner(c), c, log2.Schreiben) { SourcePath = profil, BackupPath = sicherung }.RestoreAppProfile(AppCatalog.Firefox).Wait();
-                    foreach (var alt in Directory.GetDirectories(Path.GetDirectoryName(daten)!, "Firefox_alt_*")) Directory.Delete(alt, true);
+                    foreach (var alt in Directory.GetDirectories(Path.GetDirectoryName(daten)!, "Firefox_alt_*")) OrdnerLoeschen(alt);
                     Check(nimmt ? "echt: gleiche Hauptversion, etwas neuer - kein Hinweis" : "echt: neuere Hauptversion - Fehler mit Abhilfe",
                         nimmt ? !log2.Hat("lief zuletzt mit") : log2.Hat("lehnt ein Profil einer neueren Hauptversion ab"), log2.Text);
                     FirefoxStarten(Path.Combine(firefox, "firefox.exe"),
@@ -491,7 +491,7 @@ internal static partial class Program
             {
                 if (!HartVerknuepfen(firefox, ordner)) { Console.WriteLine($"         {ordner}: nicht anzulegen, uebersprungen"); continue; }
                 kopien.Add(ordner);
-                if (Directory.Exists(daten)) Directory.Delete(daten, true);
+                OrdnerLoeschen(daten);
                 var echt = MozillaProfile.EchterPfad(ordner);
                 var schluessel = MozillaProfile.Schluessel(echt);
                 FirefoxStarten(Path.Combine(ordner, "firefox.exe"), () => InstallSchluessel(daten).Count > 0);
@@ -502,12 +502,39 @@ internal static partial class Program
         }
         finally
         {
-            foreach (var p in Process.GetProcessesByName("firefox")) { try { p.Kill(true); } catch { } p.Dispose(); }
-            System.Threading.Thread.Sleep(1000);
-            try { if (Directory.Exists(daten)) Directory.Delete(daten, true); } catch (Exception ex) { Console.WriteLine("         Aufraeumen: " + ex.Message); }
+            AlleBeenden("firefox");
+            try { OrdnerLoeschen(daten); } catch (Exception ex) { Console.WriteLine("         Aufraeumen: " + ex.Message); }
             if (Directory.Exists(beiseite)) Directory.Move(beiseite, daten);
             foreach (var k in kopien) try { Directory.Delete(k, true); } catch { }
             try { Directory.Delete(@"C:\DaSi-Pruefung", true); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Beendet alle Prozesse dieses Namens und wartet, bis keiner mehr laeuft.
+    /// Kill kehrt sofort zurueck - ohne Warten hielt Firefox parent.lock noch,
+    /// waehrend die Pruefung den Profilordner schon loeschen wollte.
+    /// </summary>
+    private static void AlleBeenden(string name)
+    {
+        var uhr = Stopwatch.StartNew();
+        while (uhr.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            var liste = Process.GetProcessesByName(name);
+            if (liste.Length == 0) return;
+            foreach (var p in liste) { try { p.Kill(true); p.WaitForExit(5000); } catch { } p.Dispose(); }
+            System.Threading.Thread.Sleep(300);
+        }
+    }
+
+    /// <summary>Loescht einen Ordner, falls da - mit Wiederholung, solange ein eben beendetes Programm noch Dateien haelt.</summary>
+    private static void OrdnerLoeschen(string ordner)
+    {
+        for (int versuch = 1; ; versuch++)
+        {
+            try { if (Directory.Exists(ordner)) Directory.Delete(ordner, true); return; }
+            catch (Exception ex) when ((ex is IOException || ex is UnauthorizedAccessException) && versuch < 40)
+            { System.Threading.Thread.Sleep(500); }
         }
     }
 
@@ -565,8 +592,7 @@ internal static partial class Program
             System.Threading.Thread.Sleep(3000);
             try { p?.Kill(true); } catch { }
         }
-        foreach (var rest in Process.GetProcessesByName("firefox")) { try { rest.Kill(true); } catch { } rest.Dispose(); }
-        System.Threading.Thread.Sleep(1500);
+        AlleBeenden("firefox");
         Console.WriteLine($"         {exe}: {uhr.Elapsed.TotalSeconds:F0} s");
     }
 

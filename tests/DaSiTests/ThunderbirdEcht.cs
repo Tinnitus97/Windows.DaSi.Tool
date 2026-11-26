@@ -81,8 +81,7 @@ internal static partial class Program
             System.Threading.Thread.Sleep(8000);
             try { p?.Kill(true); } catch { }
         }
-        foreach (var rest in Process.GetProcessesByName("thunderbird")) { try { rest.Kill(true); } catch { } rest.Dispose(); }
-        System.Threading.Thread.Sleep(2000);
+        AlleBeenden("thunderbird");
         Console.WriteLine($"         {ordner}\\thunderbird.exe ({MozillaProfile.InstallierteFassung(ordner)?.Version}): {uhr.Elapsed.TotalSeconds:F0} s");
     }
 
@@ -110,7 +109,7 @@ internal static partial class Program
         var sicherung = Environment.GetEnvironmentVariable("DASI_SICHERUNG") ?? throw new InvalidOperationException("DASI_SICHERUNG fehlt");
         Check("alter PC: Thunderbird 32 Bit installiert", File.Exists(Path.Combine(Tb32, "thunderbird.exe")), Tb32);
         if (!File.Exists(Path.Combine(Tb32, "thunderbird.exe"))) return;
-        if (Directory.Exists(TbDaten)) Directory.Delete(TbDaten, true);
+        OrdnerLoeschen(TbDaten);
 
         // Erster Start: Thunderbird legt sein Profil an.
         ThunderbirdStarten(Tb32, () => TbProfilDer(TbDaten, Tb32) is { } p && TbFassung(p).Length > 0);
@@ -182,11 +181,11 @@ internal static partial class Program
 
         void NeuerPc()
         {
-            foreach (var p in Process.GetProcessesByName("thunderbird")) { try { p.Kill(true); } catch { } p.Dispose(); }
-            if (Directory.Exists(TbDaten)) Directory.Delete(TbDaten, true);
-            if (Directory.Exists(Path.GetDirectoryName(TbArchiv)!)) Directory.Delete(Path.GetDirectoryName(TbArchiv)!, true);
+            AlleBeenden("thunderbird");
+            OrdnerLoeschen(TbDaten);
+            OrdnerLoeschen(Path.GetDirectoryName(TbArchiv)!);
             foreach (var alt in Directory.Exists(Path.GetDirectoryName(TbDaten)!) ? Directory.GetDirectories(Path.GetDirectoryName(TbDaten)!, "Thunderbird_alt_*") : Array.Empty<string>())
-                Directory.Delete(alt, true);
+                OrdnerLoeschen(alt);
         }
 
         // 1. Gegenprobe: die Sicherung nur zurueckkopiert.

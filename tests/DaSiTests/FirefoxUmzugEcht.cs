@@ -56,8 +56,7 @@ internal static partial class Program
             System.Threading.Thread.Sleep(5000);
             try { p?.Kill(true); } catch { }
         }
-        foreach (var rest in Process.GetProcessesByName("firefox")) { try { rest.Kill(true); } catch { } rest.Dispose(); }
-        System.Threading.Thread.Sleep(2000);
+        AlleBeenden("firefox");
         Console.WriteLine($"         {ordner}\\firefox.exe ({MozillaProfile.InstallierteFassung(ordner)?.Version}): {uhr.Elapsed.TotalSeconds:F0} s");
     }
 
@@ -71,7 +70,7 @@ internal static partial class Program
         var esr = MozillaProfile.InstallierteFassung(FxEsr32);
         Check("alter PC: Firefox ESR 32 Bit installiert", File.Exists(Path.Combine(FxEsr32, "firefox.exe")), $"{FxEsr32}: {esr?.Version}");
         if (!File.Exists(Path.Combine(FxEsr32, "firefox.exe"))) return;
-        if (Directory.Exists(FxDaten)) Directory.Delete(FxDaten, true);
+        OrdnerLoeschen(FxDaten);
 
         // Erster Start: Firefox ESR legt sein Profil an ("default-esr").
         FirefoxUmzugStarten(FxEsr32, () => TbProfilDer(FxDaten, FxEsr32) is { } p && FxKompat(p, "LastVersion").Length > 0);
@@ -114,10 +113,10 @@ internal static partial class Program
 
         void NeuerPc()
         {
-            foreach (var p in Process.GetProcessesByName("firefox")) { try { p.Kill(true); } catch { } p.Dispose(); }
-            if (Directory.Exists(FxDaten)) Directory.Delete(FxDaten, true);
+            AlleBeenden("firefox");
+            OrdnerLoeschen(FxDaten);
             foreach (var alt in Directory.Exists(Path.GetDirectoryName(FxDaten)!) ? Directory.GetDirectories(Path.GetDirectoryName(FxDaten)!, "Firefox_alt_*") : Array.Empty<string>())
-                Directory.Delete(alt, true);
+                OrdnerLoeschen(alt);
         }
 
         // 1. Gegenprobe (zur Auskunft): die Sicherung nur zurueckkopiert.
