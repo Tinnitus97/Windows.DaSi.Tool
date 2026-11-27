@@ -18,7 +18,7 @@
 Entwickelt für IT-Administratoren und Power-User. Das Tool vereint die Robustheit
 von **Robocopy** mit einer modernen, zweisprachigen Oberfläche und sichert in einem
 Durchgang Benutzerprofile, Browserdaten, installierte Programme, WLAN-Zugänge,
-Drucker und das Design (Hintergrund, Hell/Dunkel, Akzentfarbe …) — und stellt sie auf dem neuen Rechner wieder her.
+Drucker, eigene Ordner unter `C:\` und das Design (Hintergrund, Hell/Dunkel, Akzentfarbe …) — und stellt sie auf dem neuen Rechner wieder her.
 Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 
 <div align="center">
@@ -37,8 +37,9 @@ Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 | **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog. Programme ohne Winget-Paket landen in einer eigenen Liste |
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
 | **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen über PrintBRM in einer Datei |
-| **Design** | Der **Hintergrund**: das Bild samt Darstellung (*Füllen*, *Anpassen* …), an derselben Stelle im gewählten Profil, auch wenn der Benutzer dort anders heißt – oder eine **Volltonfarbe**. Dazu die **Design-Einstellungen** von Windows: *Hell/Dunkel* für Windows und Apps, *Akzentfarbe* (auch „automatisch“ und auf Start, Taskleiste und Titelleisten), *Transparenz*, *Mauszeiger* (Schema und Größe), *Taskleiste* (Ausrichtung, Suche, Taskansicht, Gruppieren) und *Start*. Gelesen und gesetzt wird beim angemeldeten Benutzer, auch wenn das Tool per Admin-Abfrage unter einem anderen Konto läuft, damit der Hintergrund nach einem Neustart bleibt; Hell/Dunkel gilt sofort, die Akzentfarbe auf Titelleisten teils erst nach dem nächsten Anmelden. Alles liegt im Ordner `Design` der Sicherung (`Design.json`, bei einem Bild die Datei daneben) |
-| **Desktop-Layout** | Wahlweise die Positionen der Desktop-Symbole (wie DesktopOK, beim Wiederherstellen automatisch zurückgesetzt) samt der an die Taskleiste angehefteten Symbole – oder ein Foto des Desktops, ein Bild pro Monitor |
+| **Ordner unter C:\\** | Eigene Ordner direkt auf dem Systemlaufwerk (etwa `C:\Daten`, `C:\Scans`), ausgewählt beim Start aus einer Liste – die Ordner von Windows (Windows, Programme, Benutzer …) sind darin ausgeblendet |
+| **Design & Desktop** – Design | Der **Hintergrund**: das Bild samt Darstellung (*Füllen*, *Anpassen* …), an derselben Stelle im gewählten Profil, auch wenn der Benutzer dort anders heißt – oder eine **Volltonfarbe**. Dazu die **Design-Einstellungen** von Windows: *Hell/Dunkel* für Windows und Apps, *Akzentfarbe* (auch „automatisch“ und auf Start, Taskleiste und Titelleisten), *Transparenz*, *Mauszeiger* (Schema und Größe), *Taskleiste* (Ausrichtung, Suche, Taskansicht, Gruppieren) und *Start*. Gelesen und gesetzt wird beim angemeldeten Benutzer, auch wenn das Tool per Admin-Abfrage unter einem anderen Konto läuft, damit der Hintergrund nach einem Neustart bleibt; Hell/Dunkel gilt sofort, die Akzentfarbe auf Titelleisten teils erst nach dem nächsten Anmelden. Alles liegt im Ordner `Design` der Sicherung (`Design.json`, bei einem Bild die Datei daneben) |
+| **Design & Desktop** – Symbole, Screenshot | Die Positionen der Desktop-Symbole (wie DesktopOK, beim Wiederherstellen automatisch zurückgesetzt) samt der an die Taskleiste angehefteten Symbole und auf Wunsch ein Foto des Desktops, ein Bild pro Monitor |
 
 > **WLAN-Schlüssel liegen im Klartext in der Sicherung.** Damit sie auf einem anderen
 > Rechner funktionieren, exportiert das Tool sie mit `key=clear` — verschlüsselt wären
@@ -53,8 +54,8 @@ Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 
 Sichern und Wiederherstellen teilen sich eine Ansicht. Der Umschalter oben wechselt
 die Richtung, die Beschriftungen passen sich automatisch an — aus *Programme
-exportieren* wird *Programme installieren*, aus *Desktop-Layout sichern* wird
-*Desktop-Layout wiederherstellen*. Die Auswahl bleibt beim Umschalten erhalten, soweit
+exportieren* wird *Programme installieren*, aus *Design & Desktop sichern* wird
+*Design & Desktop wiederherstellen*. Die Auswahl bleibt beim Umschalten erhalten, soweit
 die neue Richtung sie zulässt (siehe nächster Abschnitt).
 
 <div align="center">
@@ -185,11 +186,34 @@ Gesichert wird zum Beispiel der Benutzer *Besitzer*, auf dem neuen Rechner heiß
   neue Profil um. Mails von Thunderbird-Konten außerhalb des Profils (etwa `D:\Mail`)
   sichert es mit und schreibt sie an ihren Ort zurück.
 
-### Desktop-Layout: Wo lag was?
+### Ordner unter `C:\` – eigene Daten auf dem Systemlaufwerk
+
+Oft liegen Daten nicht im Benutzerprofil, sondern direkt unter `C:\` – `C:\Daten`,
+`C:\Scans`, der Export einer Branchensoftware. Der Punkt **Ordner unter C:\ sichern**
+öffnet beim Start eine Auswahlliste wie die Winget-Auswahl:
+
+- Neben jedem Ordner steht seine Größe, unten die Summe der Wahl. Vorgewählt ist beim
+  Sichern nichts – was mit soll, entscheidet man selbst.
+- **Windows-Standardordner ausblenden** steht von Anfang an: Was jede Windows-Installation
+  dort anlegt (`Windows`, `Program Files`, `ProgramData`, `Users`, `PerfLogs`,
+  `Recovery`, `$Recycle.Bin`, `System Volume Information` …), taucht erst auf, wenn der
+  Haken weg ist. Blendet man sie wieder aus, fallen sie auch aus der Wahl.
+- Verknüpfungen (Junctions wie `Documents and Settings`) erscheinen nie, ebenso der
+  Ordner, in dem die Sicherung selbst liegt.
+- Gesichert wird nach `C-Ordner\<Name>`. Beim **Wiederherstellen** zeigt die Liste, was
+  in der Sicherung liegt (alles vorgewählt), und schreibt es nach `C:\<Name>` zurück.
+  Gibt es den Ordner dort schon, wird er ergänzt: Eigenes bleibt, und ist eine Datei
+  dort neuer als in der Sicherung, bleibt sie ebenfalls.
+
+### Design & Desktop: Wo lag was?
 
 Nach einer Neuinstallation ist der Desktop leer, und kaum jemand weiß noch, wo seine
-Verknüpfungen lagen. Der Punkt **Desktop-Layout** bietet dafür zwei Wege, gewählt
-über die beiden Knöpfe in der Kachel:
+Verknüpfungen lagen. Die Kachel **Design & Desktop** fasst alles zusammen, was zum
+Aussehen des Arbeitsplatzes gehört. Rechts in der Kachel wählt man die Teile:
+**Design** (siehe oben), **Symbole + Taskleiste** und **Screenshot**. Beim Sichern
+sind Design und Symbole vorgewählt, den Screenshot nimmt man bei Bedarf dazu – auch
+zusammen mit den Symbolen. Beim Wiederherstellen ist vorgewählt, was in der Sicherung
+liegt; den Screenshot nur, wenn es keine Symbolpositionen gibt (dann ordnet man nach ihm).
 
 **Symbole + Taskleiste** (wie *DesktopOK*): Das Tool merkt sich, welches Symbol wo liegt,
 und setzt beim Wiederherstellen jedes wieder an seine Stelle — automatisch. Dazu sichert
@@ -252,7 +276,9 @@ denen unter *Einstellungen → Anzeige → Identifizieren* überein. Beim
 Nachsehen und Anordnen von Hand.
 
 Beim Wiederherstellen ist nur wählbar, was in der Sicherung liegt: Enthält sie nur
-Symbole und Taskleiste, ist *Screenshot* ausgegraut und umgekehrt.
+Symbole und Taskleiste, ist *Screenshot* ausgegraut und umgekehrt. Sicherungen
+früherer Versionen (getrennte Kacheln *Design* und *Desktop-Layout*) lassen sich
+unverändert wiederherstellen – die Ordner in der Sicherung sind dieselben.
 
 > Beides betrifft den Desktop, der gerade zu sehen ist. Ist ein anderer Benutzer
 > angemeldet als der, dessen Profil gewählt ist — etwa der Techniker —, tut das Tool

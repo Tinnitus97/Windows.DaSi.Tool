@@ -380,8 +380,10 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _selWinget;
     [ObservableProperty] private bool _selWlan;
     [ObservableProperty] private bool _selPrinter;
-    [ObservableProperty] private bool _selWallpaper;
-    [ObservableProperty] private bool _selDesktopShot;
+    /// <summary>Design &amp; Desktop - frueher zwei Kacheln (Design, Desktop-Layout), jetzt eine mit drei Teilen.</summary>
+    [ObservableProperty] private bool _selDesignDesktop;
+    /// <summary>Ordner unter C:\ - welche, fragt beim Start eine Liste ab.</summary>
+    [ObservableProperty] private bool _selLaufwerk;
 
     // ---- Zusatzoptionen zum Benutzerprofil ----
     //
@@ -416,7 +418,14 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnSelThunderbirdChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelWlanChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelPrinterChanged(bool value) => ScheduleAutoStorageCheck();
-    partial void OnSelWallpaperChanged(bool value) => ScheduleAutoStorageCheck();
+    partial void OnSelDesignDesktopChanged(bool value)
+    {
+        // Die Teile sind nur mit der Kachel bedienbar.
+        OnPropertyChanged(nameof(EnTeilDesign));
+        OnPropertyChanged(nameof(EnTeilSymbole));
+        OnPropertyChanged(nameof(EnTeilScreenshot));
+        ScheduleAutoStorageCheck();
+    }
 
     // ---- Verfuegbarkeit der Punkte ----
     //
@@ -442,8 +451,8 @@ public partial class MainWindowViewModel : ObservableObject
     public bool EnWinget      => UiEnabled && Frei(Punkt.Winget);
     public bool EnWlan        => UiEnabled && Frei(Punkt.Wlan);
     public bool EnPrinter     => UiEnabled && Frei(Punkt.Drucker);
-    public bool EnWallpaper   => UiEnabled && Frei(Punkt.Hintergrund);
-    public bool EnDesktopShot => UiEnabled && Frei(Punkt.DesktopShot);
+    public bool EnDesignDesktop => UiEnabled && (Frei(Punkt.Hintergrund) || Frei(Punkt.DesktopShot));
+    public bool EnLaufwerk    => UiEnabled && Frei(Punkt.Laufwerk);
 
     public string? TipUser        => Grund(Punkt.Profil);
     public string? TipAppData     => Grund(Punkt.AppData);
@@ -456,11 +465,18 @@ public partial class MainWindowViewModel : ObservableObject
     public string? TipWinget      => Grund(Punkt.Winget);
     public string? TipWlan        => Grund(Punkt.Wlan);
     public string? TipPrinter     => Grund(Punkt.Drucker);
+    // Auch im freien Zustand: was beim Start passiert.
+    public string? TipLaufwerk    => Grund(Punkt.Laufwerk)
+        ?? (IsRestoreMode
+            ? Tr($"Beim Start erscheint die Liste der gesicherten Ordner. Sie werden nach {LaufwerksOrdner.Wurzel} zurückgeschrieben; was dort schon liegt, wird ergänzt.",
+                 $"On start, the list of the backed-up folders appears. They are written back to {LaufwerksOrdner.Wurzel}; anything already there is added to.")
+            : Tr($"Beim Start erscheint die Liste der Ordner unter {LaufwerksOrdner.Wurzel} (etwa Daten, Scans) zum Auswählen. Die Windows-Ordner (Windows, Programme, Benutzer …) sind dort ausgeblendet.",
+                 $"On start, the list of the folders under {LaufwerksOrdner.Wurzel} (such as data or scans) appears for selection. The Windows folders (Windows, Program Files, Users …) are hidden there."));
     // Auch im freien Zustand: was alles dazugehoert.
-    public string? TipWallpaper   => Grund(Punkt.Hintergrund)
-        ?? Tr("Hintergrund (Bild oder Volltonfarbe), Hell/Dunkel für Windows und Apps, Akzentfarbe, Transparenz, Mauszeiger, Taskleiste und Start",
-              "Wallpaper (image or solid color), light/dark mode for Windows and apps, accent color, transparency, mouse pointer, taskbar and Start");
-    public string? TipDesktopShot => Grund(Punkt.DesktopShot);
+    public string? TipDesignDesktop => !Frei(Punkt.Hintergrund) && !Frei(Punkt.DesktopShot)
+        ? Tr("Die gewählte Sicherung enthält weder Design noch Desktop-Layout.", "The selected backup contains neither design nor desktop layout.")
+        : Tr("Wie der Arbeitsplatz aussieht: Design (Hintergrund, Farben, Mauszeiger, Taskleiste, Start), die Lage der Desktop-Symbole, die angehefteten Taskleisten-Symbole und auf Wunsch ein Foto des Desktops.",
+             "How the workspace looks: design (wallpaper, colors, pointer, taskbar, Start), where the desktop icons are, the icons pinned to the taskbar and, if wanted, a picture of the desktop.");
     // Bei Opera auch im freien Zustand: welche Fassungen gefunden wurden.
     public string? TipOpera => Grund(Punkt.Opera)
         ?? (_operaFunde is null ? null : Tr($"Gefunden: {_operaFunde}", $"Found: {_operaFunde}"));
@@ -479,15 +495,16 @@ public partial class MainWindowViewModel : ObservableObject
         var funde = operaOrt is null ? new System.Collections.Generic.List<string>() : AppCatalog.Opera.Varianten(operaOrt);
         _operaFunde = funde.Count == 0 ? null : string.Join(", ", funde.Select(AppCatalog.Opera.Anzeigename));
 
-        // Desktop-Layout: welche Variante liegt in der Sicherung? Beim Sichern
-        // gibt es beide. Liegt nur die andere vor, wird auf sie umgeschaltet.
+        // Design & Desktop: welche Teile liegen in der Sicherung? Beim Sichern
+        // gibt es alle. Aendert sich das (Modus, andere Sicherung), stehen die
+        // Teile wieder auf der Vorgabe - siehe TeileVorgeben.
         _hatScreenshot = _hatSymbole = true;
         if (IsRestoreMode && !string.IsNullOrWhiteSpace(BackupPath) && Directory.Exists(BackupPath))
         {
             _hatScreenshot = AppCatalog.HatDesktopScreenshot(BackupPath);
             _hatSymbole = AppCatalog.HatDesktopSymbole(BackupPath);
-            if (_hatScreenshot != _hatSymbole) DesktopSymbole = _hatSymbole;
         }
+        TeileVorgeben();
 
         // Was gesperrt ist, kann nicht gewaehlt bleiben.
         if (!Frei(Punkt.Profil)) SelUser = false;
@@ -502,8 +519,8 @@ public partial class MainWindowViewModel : ObservableObject
         if (!Frei(Punkt.Winget)) SelWinget = false;
         if (!Frei(Punkt.Wlan)) SelWlan = false;
         if (!Frei(Punkt.Drucker)) SelPrinter = false;
-        if (!Frei(Punkt.Hintergrund)) SelWallpaper = false;
-        if (!Frei(Punkt.DesktopShot)) SelDesktopShot = false;
+        if (!Frei(Punkt.Hintergrund) && !Frei(Punkt.DesktopShot)) SelDesignDesktop = false;
+        if (!Frei(Punkt.Laufwerk)) SelLaufwerk = false;
 
         PunkteNeuMelden();
     }
@@ -514,11 +531,12 @@ public partial class MainWindowViewModel : ObservableObject
                  {
                      nameof(EnUser), nameof(EnAppData), nameof(EnCloud), nameof(EnFirefox), nameof(EnEdge),
                      nameof(EnChrome), nameof(EnBrave), nameof(EnOpera), nameof(EnThunderbird), nameof(EnWinget),
-                     nameof(EnWlan), nameof(EnPrinter), nameof(EnWallpaper), nameof(EnDesktopShot),
+                     nameof(EnWlan), nameof(EnPrinter), nameof(EnDesignDesktop), nameof(EnLaufwerk),
                      nameof(TipUser), nameof(TipAppData), nameof(TipCloud), nameof(TipFirefox), nameof(TipEdge),
                      nameof(TipChrome), nameof(TipBrave), nameof(TipOpera), nameof(TipThunderbird), nameof(TipWinget),
-                     nameof(TipWlan), nameof(TipPrinter), nameof(TipWallpaper), nameof(TipDesktopShot),
-                     nameof(EnDesktopScreenshot), nameof(EnDesktopSymbole), nameof(TipDesktopScreenshot), nameof(TipDesktopSymbole),
+                     nameof(TipWlan), nameof(TipPrinter), nameof(TipDesignDesktop), nameof(TipLaufwerk),
+                     nameof(EnTeilDesign), nameof(EnTeilSymbole), nameof(EnTeilScreenshot),
+                     nameof(TipTeilDesign), nameof(TipTeilSymbole), nameof(TipTeilScreenshot),
                  })
             OnPropertyChanged(n);
     }
@@ -541,8 +559,8 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TgWinget));
         OnPropertyChanged(nameof(TgWlan));
         OnPropertyChanged(nameof(TgPrinter));
-        OnPropertyChanged(nameof(TgWallpaper));
-        OnPropertyChanged(nameof(TgDesktopShot));
+        OnPropertyChanged(nameof(TgDesignDesktop));
+        OnPropertyChanged(nameof(TgLaufwerk));
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
         ZielAnzeigen();
         VerfuegbarkeitPruefen();
@@ -559,56 +577,73 @@ public partial class MainWindowViewModel : ObservableObject
     public string TgPrinter => IsRestoreMode
         ? Tr("Drucker & Treiber wiederherstellen", "Restore printers & drivers")
         : Tr("Drucker & Treiber sichern", "Back up printers & drivers");
-    public string TgWallpaper => IsRestoreMode
-        ? Tr("Design wiederherstellen", "Restore design")
-        : Tr("Design sichern", "Back up design");
-    // Sichern: Foto des Desktops. Wiederherstellen: dieses Foto oeffnen, damit
-    // sich die Symbole von Hand wieder anordnen lassen.
-    public string TgDesktopShot => IsRestoreMode
-        ? Tr("Desktop-Layout wiederherstellen", "Restore desktop layout")
-        : Tr("Desktop-Layout sichern", "Back up desktop layout");
+    public string TgLaufwerk => IsRestoreMode
+        ? Tr($"Ordner unter {LaufwerksOrdner.Wurzel} wiederherstellen", $"Restore folders under {LaufwerksOrdner.Wurzel}")
+        : Tr($"Ordner unter {LaufwerksOrdner.Wurzel} sichern", $"Back up folders under {LaufwerksOrdner.Wurzel}");
+    public string TgDesignDesktop => IsRestoreMode
+        ? Tr("Design & Desktop wiederherstellen", "Restore design & desktop")
+        : Tr("Design & Desktop sichern", "Back up design & desktop");
 
-    // ---- Desktop-Layout: Screenshot ODER Symbolpositionen (wie DesktopOK) ----
-    // Zwei Radioknoepfe an einer Eigenschaft: DesktopSymbole = Symbolpositionen,
-    // sonst Screenshot.
-    [ObservableProperty] private bool _desktopSymbole;
-    public bool DesktopScreenshotGewaehlt
-    {
-        get => !DesktopSymbole;
-        set { if (value) DesktopSymbole = false; }
-    }
-    public bool DesktopSymboleGewaehlt
-    {
-        get => DesktopSymbole;
-        set { if (value) DesktopSymbole = true; }
-    }
-    partial void OnDesktopSymboleChanged(bool value)
-    {
-        OnPropertyChanged(nameof(DesktopScreenshotGewaehlt));
-        OnPropertyChanged(nameof(DesktopSymboleGewaehlt));
-    }
+    // ---- Design & Desktop: die drei Teile ----
+    //
+    // Frueher zwei Kacheln: "Design" und "Desktop-Layout" (Screenshot ODER
+    // Symbolpositionen). Jetzt eine Kachel; was dazugehoert, waehlen die
+    // Haken darunter - auch Symbole UND Foto zusammen.
+    [ObservableProperty] private bool _teilDesign = true;
+    [ObservableProperty] private bool _teilSymbole = true;
+    [ObservableProperty] private bool _teilScreenshot;
 
-    public string TgDesktopScreenshot => Tr("Screenshot", "Screenshot");
-    public string TgDesktopSymbole => Tr("Symbole + Taskleiste", "Icons + taskbar");
+    partial void OnTeilDesignChanged(bool value) => ScheduleAutoStorageCheck();
 
-    // Beim Wiederherstellen: nur die Variante, die in der Sicherung liegt.
+    public string TgTeilDesign => Tr("Design", "Design");
+    public string TgTeilSymbole => Tr("Symbole + Taskleiste", "Icons + taskbar");
+    public string TgTeilScreenshot => Tr("Screenshot", "Screenshot");
+
+    // Beim Wiederherstellen: nur, was in der Sicherung liegt.
     private bool _hatScreenshot = true, _hatSymbole = true;
-    public bool EnDesktopScreenshot => EnDesktopShot && _hatScreenshot;
-    public bool EnDesktopSymbole => EnDesktopShot && _hatSymbole;
-    public string TipDesktopScreenshot => !_hatScreenshot
-        ? Tr("Die gewählte Sicherung enthält keinen Desktop-Screenshot.", "The selected backup contains no desktop screenshot.")
-        : IsRestoreMode
-            ? Tr("Öffnet das Foto des Desktops - die Symbole danach von Hand anordnen.", "Opens the picture of the desktop - then arrange the icons by hand.")
-            : Tr("Fotografiert den Desktop, ein Bild pro Bildschirm.", "Takes a picture of the desktop, one per screen.");
-    public string TipDesktopSymbole => !_hatSymbole
+    private (bool, bool, bool, bool)? _teileStand;
+    public bool EnTeilDesign => EnDesignDesktop && SelDesignDesktop && Frei(Punkt.Hintergrund);
+    public bool EnTeilSymbole => EnDesignDesktop && SelDesignDesktop && _hatSymbole;
+    public bool EnTeilScreenshot => EnDesignDesktop && SelDesignDesktop && _hatScreenshot;
+
+    /// <summary>
+    /// Setzt die Teile auf die Vorgabe, sobald sich Modus oder Inhalt der
+    /// Sicherung aendern - sonst bleibt die Wahl des Benutzers stehen.
+    /// Sichern: Design und Symbole, das Foto nur auf Wunsch. Wiederherstellen:
+    /// alles, was die Sicherung enthaelt; das Foto nur, wenn es keine
+    /// Symbolpositionen gibt (dann ordnet man nach ihm von Hand).
+    /// </summary>
+    private void TeileVorgeben()
+    {
+        var design = Frei(Punkt.Hintergrund);
+        var stand = (IsRestoreMode, design, _hatSymbole, _hatScreenshot);
+        if (_teileStand == stand) return;
+        _teileStand = stand;
+        TeilDesign = design;
+        TeilSymbole = _hatSymbole;
+        TeilScreenshot = IsRestoreMode && _hatScreenshot && !_hatSymbole;
+    }
+
+    public string? TipTeilDesign => Grund(Punkt.Hintergrund)
+        ?? Tr("Hintergrund (Bild oder Volltonfarbe), Hell/Dunkel für Windows und Apps, Akzentfarbe, Transparenz, Mauszeiger, Taskleiste und Start",
+              "Wallpaper (image or solid color), light/dark mode for Windows and apps, accent color, transparency, mouse pointer, taskbar and Start");
+    public string TipTeilSymbole => !_hatSymbole
         ? Tr("Die gewählte Sicherung enthält weder Symbolpositionen noch Taskleisten-Symbole.", "The selected backup contains neither icon positions nor taskbar icons.")
         : IsRestoreMode
             ? Tr("Heftet die gesicherten Symbole wieder an die Taskleiste (der Explorer startet dafür kurz neu) und setzt jedes Desktop-Symbol an seine Stelle (wie DesktopOK).",
                  "Pins the saved icons to the taskbar again (Explorer restarts briefly) and puts every desktop icon back in its place (like DesktopOK).")
             : Tr("Merkt sich, welches Desktop-Symbol wo liegt (wie DesktopOK), und sichert die an die Taskleiste angehefteten Symbole.",
                  "Remembers where each desktop icon is (like DesktopOK) and backs up the icons pinned to the taskbar.");
+    public string TipTeilScreenshot => !_hatScreenshot
+        ? Tr("Die gewählte Sicherung enthält keinen Desktop-Screenshot.", "The selected backup contains no desktop screenshot.")
+        : IsRestoreMode
+            ? Tr("Öffnet das Foto des Desktops - die Symbole danach von Hand anordnen.", "Opens the picture of the desktop - then arrange the icons by hand.")
+            : Tr("Fotografiert den Desktop, ein Bild pro Bildschirm.", "Takes a picture of the desktop, one per screen.");
 
     // ---- Haken fuer die Pruefungen (tests/DaSiGuiTests) ----
+
+    /// <summary>Ersetzt die Auswahl der Ordner unter C:\ - null: das Auswahlfenster.</summary>
+    internal Func<IReadOnlyList<LaufwerksOrdner.Eintrag>, bool, Task<List<LaufwerksOrdner.Eintrag>?>>? LaufwerkAuswahl { get; set; }
 
     /// <summary>Ersetzt den Ordner-Dialog des Systems - null: der echte.</summary>
     internal Func<string, Task<string?>>? OrdnerDialog { get; set; }
@@ -760,7 +795,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (SelThunderbird) list.Add("Thunderbird-Profil");
         if (SelWlan)        list.Add("WLAN-Profile");
         if (SelPrinter)     list.Add("Drucker");
-        if (SelWallpaper)   { list.Add("Hintergrundbild"); list.Add(DesignEinstellungen.Ordner); }
+        if (SelDesignDesktop && TeilDesign) { list.Add("Hintergrundbild"); list.Add(DesignEinstellungen.Ordner); }
         // Winget-Liste ist nur eine kleine Textdatei; vernachlaessigbar.
         return list;
     }
@@ -1267,6 +1302,20 @@ public partial class MainWindowViewModel : ObservableObject
             }
         }
 
+        // Ordner unter C:\: Auswahl ebenfalls JETZT auf dem UI-Thread.
+        _laufwerkAuswahl = null;
+        if (tasks.Contains("Backup-Laufwerk") || tasks.Contains("Restore-Laufwerk"))
+        {
+            var eintraege = IsRestoreMode ? LaufwerksOrdner.InDerSicherung(BackupPath)
+                                          : LaufwerksOrdner.Auflisten(LaufwerksOrdner.Wurzel, BackupPath);
+            var win = GetMainWindow();
+            if (LaufwerkAuswahl is not null) _laufwerkAuswahl = await LaufwerkAuswahl(eintraege, IsRestoreMode);
+            else if (win != null) _laufwerkAuswahl = await OrdnerAuswahlDialog.Show(win, eintraege, IsRestoreMode);
+            if (_laufwerkAuswahl == null) return; // Abgebrochen
+            Log(Tr($"[INFO] Ordner unter {LaufwerksOrdner.Wurzel}: {string.Join(", ", _laufwerkAuswahl.Select(e => e.Name))}",
+                   $"[INFO] Folders under {LaufwerksOrdner.Wurzel}: {string.Join(", ", _laufwerkAuswahl.Select(e => e.Name))}"));
+        }
+
         _cancel.Reset();
         _cancel.FastMode = !DetailedLogging;
         _backup.SourcePath = SourcePath;
@@ -1366,24 +1415,28 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelWinget)      t.Add("Import-Winget");
             if (SelWlan)        t.Add("Import-Wlan");
             if (SelPrinter)     t.Add("Import-Printer");
+            if (SelLaufwerk)    t.Add("Restore-Laufwerk");
             // Symbole und Taskleiste VOR dem Design: Fuer die Taskleiste wird
             // der Explorer neu gestartet. Unter Windows 11 holt ein hart
             // beendeter Explorer beim Start seinen zuletzt gespeicherten
             // Hintergrund zurueck - danach gesetzt, war die wiederhergestellte
             // Farbe sofort und nach dem Neustart von Windows wieder weg (auch
             // eine ueber die Einstellungen gewaehlte).
-            if (SelDesktopShot && DesktopSymbole) t.Add("Restore-DesktopIcons");
-            if (SelWallpaper)   t.Add("Import-Design");
+            if (SelDesignDesktop && TeilSymbole) t.Add("Restore-DesktopIcons");
+            if (SelDesignDesktop && TeilDesign)  t.Add("Import-Design");
             // Zuletzt: Das Foto soll offen sein, wenn alles andere fertig ist
             // und es ans Anordnen der Symbole geht.
-            if (SelDesktopShot && !DesktopSymbole) t.Add("Show-DesktopShot");
+            if (SelDesignDesktop && TeilScreenshot) t.Add("Show-DesktopShot");
         }
         else
         {
             // Zuerst: Das Foto zeigt den Desktop, wie er VOR der Sicherung war,
             // und das kurze Ausblenden der Fenster faellt direkt nach dem Klick
             // auf "Starten" nicht als Stoerung auf.
-            if (SelDesktopShot) t.Add(DesktopSymbole ? "Backup-DesktopIcons" : "Capture-DesktopShot");
+            // Das Foto vor den Symbolen: Es soll den Desktop zeigen, bevor
+            // irgendetwas daran rührt.
+            if (SelDesignDesktop && TeilScreenshot) t.Add("Capture-DesktopShot");
+            if (SelDesignDesktop && TeilSymbole)    t.Add("Backup-DesktopIcons");
             if (SelUser)        t.Add("Backup-User");
             else
             {
@@ -1400,10 +1453,14 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelWinget)      t.Add("Export-Winget");
             if (SelWlan)        t.Add("Export-Wlan");
             if (SelPrinter)     t.Add("Export-Printer");
-            if (SelWallpaper)   t.Add("Export-Design");
+            if (SelLaufwerk)    t.Add("Backup-Laufwerk");
+            if (SelDesignDesktop && TeilDesign) t.Add("Export-Design");
         }
         return t;
     }
+
+    /// <summary>Die beim Start gewaehlten Ordner unter C:\.</summary>
+    private List<LaufwerksOrdner.Eintrag>? _laufwerkAuswahl;
 
     private async Task RunQueue(List<string> tasks, List<WingetPackage>? wingetSelection)
     {
@@ -1445,6 +1502,7 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Export-Wlan":        await _backup.ExportWlan(); break;
                     case "Export-Printer":     await _backup.ExportPrinters(); break;
                     case "Export-Design":      await _backup.ExportDesign(); break;
+                    case "Backup-Laufwerk":    await _backup.BackupLaufwerksOrdner((_laufwerkAuswahl ?? new()).Select(e => e.Pfad).ToList()); break;
                     case "Capture-DesktopShot":
                         await _backup.CaptureDesktop();
                         await BringMainWindowToFront();
@@ -1464,6 +1522,7 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Import-Wlan":         await _backup.ImportWlan(); break;
                     case "Import-Printer":      await _backup.ImportPrinters(); break;
                     case "Import-Design":       await _backup.ImportDesign(); break;
+                    case "Restore-Laufwerk":    await _backup.RestoreLaufwerksOrdner((_laufwerkAuswahl ?? new()).Select(e => e.Name).ToList()); break;
                     case "Show-DesktopShot":    await _backup.ShowDesktopScreenshot(); break;
                     case "Restore-DesktopIcons": await _backup.RestoreDesktopIcons(); break;
                 }
@@ -1587,6 +1646,7 @@ public partial class MainWindowViewModel : ObservableObject
             "Export-Design" or "Import-Design"            => Tr("Design (Hintergrund, Farben, Mauszeiger, Taskleiste)", "Design (wallpaper, colors, pointer, taskbar)"),
             "Capture-DesktopShot" or "Show-DesktopShot"   => Tr("Desktop-Screenshot", "Desktop screenshot"),
             "Backup-DesktopIcons" or "Restore-DesktopIcons" => Tr("Desktop-Symbole und Taskleiste", "Desktop icons and taskbar"),
+            "Backup-Laufwerk" or "Restore-Laufwerk"       => Tr($"Ordner unter {LaufwerksOrdner.Wurzel}", $"Folders under {LaufwerksOrdner.Wurzel}"),
             _ => choice
         };
     }

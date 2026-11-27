@@ -9,6 +9,18 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Neu
+
+- **Ordner unter C:\\ sichern.** Eigene Ordner direkt auf dem Systemlaufwerk
+  (`C:\Daten`, `C:\Scans`, der Export einer Branchensoftware …) gehören jetzt mit in
+  die Sicherung. Beim Start erscheint eine Auswahlliste wie bei Winget, mit der Größe
+  jedes Ordners und der Summe der Wahl. Der Haken **Windows-Standardordner
+  ausblenden** steht von Anfang an: `Windows`, `Program Files`, `ProgramData`,
+  `Users`, `PerfLogs`, `Recovery`, `$Recycle.Bin` & Co. erscheinen erst ohne ihn.
+  Verknüpfungen und der Ordner der Sicherung selbst erscheinen nie. Gesichert wird
+  nach `C-Ordner\<Name>`; beim Wiederherstellen wird ein vorhandener Ordner ergänzt,
+  neuere Dateien dort bleiben. Die Oberfläche ist dadurch nicht größer geworden.
+
 ### Behoben
 
 - **Firefox nach der Wiederherstellung mit leerem Profil.** Das Profil war
@@ -96,6 +108,13 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Geändert
 
+- **Design und Desktop-Layout sind eine Kachel: „Design & Desktop“.** Statt zwei
+  Kacheln eine über die volle Breite, rechts darin die Teile **Design**,
+  **Symbole + Taskleiste** und **Screenshot**. Beim Sichern sind Design und Symbole
+  vorgewählt; Symbole und Screenshot gehen jetzt auch zusammen (bisher entweder –
+  oder). Beim Wiederherstellen ist vorgewählt, was die Sicherung enthält. Die Ordner
+  in der Sicherung sind dieselben – Sicherungen älterer Versionen lassen sich
+  wiederherstellen wie bisher.
 - **Die Protokolldatei enthält den ganzen Ablauf.** In
   `Sicherung-Protokoll_…`/`Wiederherstellung-Protokoll_…` stand bisher nur die Bilanz
   (welche Aktion OK oder FEHLER war). Jetzt folgt darunter das vollständige Protokoll

@@ -893,6 +893,86 @@ public sealed class BackupService
         return true;
     }
 
+    // ------------------------------------------------------------ Ordner unter C:\
+
+    /// <summary>
+    /// Sichert die gewaehlten Ordner unter C:\ nach "C-Ordner\&lt;Name&gt;" -
+    /// gespiegelt wie die Programmprofile. Verknuepfungen (/XJ) folgt robocopy
+    /// nicht; liegt das Sicherungsziel in einem der Ordner, bleibt es draussen.
+    /// </summary>
+    public async Task BackupLaufwerksOrdner(IReadOnlyList<string> ordner)
+    {
+        if (ordner.Count == 0)
+        {
+            _log(Loc.Tr("[INFO] Keine Ordner gewählt - nichts zu sichern.", "[INFO] No folders selected - nothing to back up."));
+            return;
+        }
+        var ziel = Path.Combine(BackupPath, LaufwerksOrdner.BackupOrdner);
+        Directory.CreateDirectory(ziel);
+        int fehler = 0;
+        foreach (var quelle in ordner)
+        {
+            if (_cancel.IsCancelled) return;
+            var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(quelle));
+            if (!Directory.Exists(quelle))
+            {
+                _log(Loc.Tr($"[WARNUNG] {quelle} gibt es nicht (mehr) - übersprungen.", $"[WARNING] {quelle} does not exist (any more) - skipped."));
+                continue;
+            }
+            var args = new List<string> { Quote(quelle), Quote(Path.Combine(ziel, name)), "/MIR", "/XJ", "/R:1", "/W:1", "/MT:32" };
+            if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+            if (LaufwerksOrdner.Enthaelt(quelle, BackupPath)) { args.Add("/XD"); args.Add(Quote(BackupPath)); }
+
+            _log(Loc.Tr($"[INFO] Sichere {quelle} ...", $"[INFO] Backing up {quelle} ..."));
+            var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+            if (_cancel.IsCancelled) return;
+            if (code < 8) _log(Loc.Tr($"[ERFOLG] {quelle} gesichert.", $"[SUCCESS] {quelle} backed up."));
+            else { fehler++; _log(Loc.Tr($"[FEHLER] {quelle}: ExitCode {code}", $"[ERROR] {quelle}: ExitCode {code}")); }
+        }
+        if (fehler == 0 && ordner.Count > 1)
+            _log(Loc.Tr($"[ERFOLG] {ordner.Count} Ordner von {LaufwerksOrdner.Wurzel} gesichert.", $"[SUCCESS] {ordner.Count} folders from {LaufwerksOrdner.Wurzel} backed up."));
+    }
+
+    /// <summary>
+    /// Schreibt die gewaehlten Ordner zurueck nach C:\&lt;Name&gt;. Nur ergaenzen
+    /// (/E, nicht /MIR): Was dort schon liegt, bleibt - und ist eine Datei dort
+    /// neuer als in der Sicherung, bleibt sie ebenfalls (/XO).
+    /// </summary>
+    public async Task RestoreLaufwerksOrdner(IReadOnlyList<string> namen)
+    {
+        var quelle = Path.Combine(BackupPath, LaufwerksOrdner.BackupOrdner);
+        if (!Directory.Exists(quelle))
+        {
+            _log(Loc.Tr($"[FEHLER] Keine Ordner von {LaufwerksOrdner.Wurzel} in der Sicherung gefunden.", $"[ERROR] No folders from {LaufwerksOrdner.Wurzel} found in the backup."));
+            return;
+        }
+        if (namen.Count == 0)
+        {
+            _log(Loc.Tr("[INFO] Keine Ordner gewählt - nichts wiederherzustellen.", "[INFO] No folders selected - nothing to restore."));
+            return;
+        }
+        foreach (var name in namen)
+        {
+            if (_cancel.IsCancelled) return;
+            var von = Path.Combine(quelle, name);
+            var nach = Path.Combine(LaufwerksOrdner.Wurzel, name);
+            if (!Directory.Exists(von))
+            {
+                _log(Loc.Tr($"[WARNUNG] {name} liegt nicht in der Sicherung - übersprungen.", $"[WARNING] {name} is not in the backup - skipped."));
+                continue;
+            }
+            _log(Directory.Exists(nach)
+                ? Loc.Tr($"[INFO] {nach} gibt es schon - wird ergänzt; neuere Dateien dort bleiben.", $"[INFO] {nach} already exists - it is added to; newer files there are kept.")
+                : Loc.Tr($"[INFO] Stelle {nach} wieder her ...", $"[INFO] Restoring {nach} ..."));
+            var args = new List<string> { Quote(von), Quote(nach), "/E", "/XO", "/R:1", "/W:1", "/MT:32" };
+            if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+            var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+            if (_cancel.IsCancelled) return;
+            _log(code < 8 ? Loc.Tr($"[ERFOLG] {nach} wiederhergestellt.", $"[SUCCESS] {nach} restored.")
+                          : Loc.Tr($"[FEHLER] {nach}: ExitCode {code}", $"[ERROR] {nach}: ExitCode {code}"));
+        }
+    }
+
     // ------------------------------------------------------------ WLAN
 
     public async Task ExportWlan()

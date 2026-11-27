@@ -11,7 +11,9 @@ public enum Punkt
 {
     Profil, AppData, Cloud,
     Firefox, Edge, Chrome, Brave, Opera, Thunderbird,
-    Winget, Wlan, Drucker, Hintergrund, DesktopShot
+    Winget, Wlan, Drucker, Hintergrund, DesktopShot,
+    /// <summary>Ordner unter C:\ (eigene Ordner auf dem Systemlaufwerk).</summary>
+    Laufwerk
 }
 
 /// <summary>Ein Programm, dessen Profil gesichert wird.</summary>
@@ -146,6 +148,10 @@ public static class AppCatalog
     {
         // WLAN haengt am Rechner, nicht am Benutzer: ohne Adapter keine Profile.
         if (p == Punkt.Wlan) return HatWlanAdapter() ? null : KeinWlanSichern;
+        // Ordner unter C:\ haengen am Rechner, nicht am Benutzer.
+        if (p == Punkt.Laufwerk)
+            return Directory.Exists(LaufwerksOrdner.Wurzel) ? null
+                : ($"Das Laufwerk {LaufwerksOrdner.Wurzel} gibt es hier nicht.", $"The drive {LaufwerksOrdner.Wurzel} does not exist here.");
 
         if (string.IsNullOrWhiteSpace(profil) || !Directory.Exists(profil)) return null;
 
@@ -230,6 +236,7 @@ public static class AppCatalog
             Punkt.Drucker => ("keine Drucker", "no printers"),
             Punkt.Hintergrund => ("kein Design (weder Hintergrund noch Design-Einstellungen)", "no design (neither wallpaper nor design settings)"),
             Punkt.DesktopShot => ("kein Desktop-Layout (weder Screenshot noch Symbolpositionen)", "no desktop layout (neither screenshot nor icon positions)"),
+            Punkt.Laufwerk => ($"keine Ordner von {LaufwerksOrdner.Wurzel}", $"no folders from {LaufwerksOrdner.Wurzel}"),
             Punkt.Opera => ("kein Opera-Profil", "no Opera profile"),
             _ => ($"kein {p}-Profil", $"no {p} profile"),
         };
@@ -263,6 +270,7 @@ public static class AppCatalog
             Punkt.Drucker => File.Exists(Path.Combine(sicherung, "Drucker", "Drucker.printerExport")),
             Punkt.Hintergrund => HatHintergrund(sicherung) || DesignEinstellungen.Vorhanden(sicherung),
             Punkt.DesktopShot => HatDesktopScreenshot(sicherung) || HatDesktopSymbole(sicherung),
+            Punkt.Laufwerk => LaufwerksOrdner.Vorhanden(sicherung),
             _ => Programme.FirstOrDefault(a => a.Punkt == p) is { } app && Directory.Exists(Path.Combine(sicherung, app.BackupOrdner)),
         };
     }
