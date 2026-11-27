@@ -197,9 +197,9 @@
 
                                 <!-- Design & Desktop: eine Kachel, die drei Teile rechts in derselben
                                      Zeile (rechtsbuendig, damit sie beim Umschalten Sichern /
-                                     Wiederherstellen nicht springen). Die Teile sind nur mit der Kachel
-                                     bedienbar und beim Wiederherstellen nur, wenn die Sicherung sie
-                                     enthaelt. -->
+                                     Wiederherstellen nicht springen). Ein Teil angehakt hakt die Kachel
+                                     mit an (siehe TeilGeaendert). Beim Wiederherstellen ist ein Teil nur
+                                     bedienbar, wenn die Sicherung ihn enthaelt. -->
                                 <Border Grid.Row="5" Grid.ColumnSpan="2" Classes="cardHost">
                                     <Grid ColumnDefinitions="Auto,*">
                                         <CheckBox Grid.Column="0" Classes="card" Content="{Binding TgDesignDesktop}" IsChecked="{Binding SelDesignDesktop}" IsEnabled="{Binding EnDesignDesktop}" ToolTip.Tip="{Binding TipDesignDesktop}" ToolTip.ShowOnDisabled="True"/>

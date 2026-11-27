@@ -369,12 +369,18 @@ internal static class Program
         var chrome = Element<CheckBox>(w, "Chrome-Profil");
         Check("nicht in der Sicherung: Kachel gesperrt, Grund im Tooltip", !chrome.IsEffectivelyEnabled && (vm.TipChrome ?? "").Length > 0, vm.TipChrome);
         Check("in der Sicherung: Kachel frei", Element<CheckBox>(w, "Firefox-Profil").IsEffectivelyEnabled);
-        Check("nur ein Foto gesichert: Kachel frei, nur der Screenshot vorgewaehlt",
-            vm.EnDesignDesktop && vm.TeilScreenshot && !vm.TeilSymbole && !vm.TeilDesign, $"{vm.TeilDesign} {vm.TeilSymbole} {vm.TeilScreenshot}");
-        Check("Teile ohne angehakte Kachel nicht bedienbar", !vm.EnTeilScreenshot && !Element<CheckBox>(w, "Screenshot").IsEffectivelyEnabled);
+        Check("Kachel aus: kein Teil angehakt", vm.EnDesignDesktop && !vm.SelDesignDesktop && !vm.TeilScreenshot && !vm.TeilSymbole && !vm.TeilDesign,
+            $"{vm.TeilDesign} {vm.TeilSymbole} {vm.TeilScreenshot}");
+        Check("nur ein Foto gesichert: Screenshot bedienbar, Symbole und Design gesperrt",
+            vm.EnTeilScreenshot && Element<CheckBox>(w, "Screenshot").IsEffectivelyEnabled && !vm.EnTeilSymbole && !vm.EnTeilDesign
+            && vm.TipTeilSymbole.Contains("weder Symbolpositionen"), vm.TipTeilSymbole);
         Klicken(Element<CheckBox>(w, "Design & Desktop wiederherstellen"));
-        Check("mit Kachel: Screenshot bedienbar, Symbole und Design gesperrt",
-            vm.SelDesignDesktop && vm.EnTeilScreenshot && !vm.EnTeilSymbole && !vm.EnTeilDesign && vm.TipTeilSymbole.Contains("weder Symbolpositionen"), vm.TipTeilSymbole);
+        Check("Kachel angehakt: Vorgabe - nur der Screenshot (mehr ist nicht gesichert)",
+            vm.SelDesignDesktop && vm.TeilScreenshot && !vm.TeilSymbole && !vm.TeilDesign, $"{vm.TeilDesign} {vm.TeilSymbole} {vm.TeilScreenshot}");
+        Klicken(Element<CheckBox>(w, "Screenshot"));
+        Check("letzten Teil abgehakt: Kachel ab", !vm.TeilScreenshot && !vm.SelDesignDesktop);
+        Klicken(Element<CheckBox>(w, "Screenshot"));
+        Check("Teil angehakt: Kachel automatisch mit", vm.TeilScreenshot && vm.SelDesignDesktop);
         Check("Tooltip Screenshot beim Wiederherstellen", vm.TipTeilScreenshot.Contains("Öffnet das Foto"));
         Check("Design nicht in der Sicherung: Grund statt Inhaltsangabe", !vm.EnTeilDesign && !(vm.TipTeilDesign ?? "").Contains("Mauszeiger"), vm.TipTeilDesign);
         Check("Ordner unter C:\\ nicht in der Sicherung: gesperrt, mit Grund", !vm.EnLaufwerk && (vm.TipLaufwerk ?? "").Contains("keine Ordner von"), vm.TipLaufwerk);
@@ -394,7 +400,15 @@ internal static class Program
         Klicken(Element<CheckBox>(w, "Design"));
         Check("Teile einzeln abwaehlbar", !vm.TeilSymbole && !vm.TeilDesign && vm.TeilScreenshot);
         Klicken(Element<CheckBox>(w, "Design & Desktop sichern"));
-        Check("Kachel ab: Teile gesperrt, Wahl bleibt", !vm.SelDesignDesktop && !vm.EnTeilScreenshot && vm.TeilScreenshot);
+        Check("Kachel ab: alle Teile ab, aber bedienbar", !vm.SelDesignDesktop && !vm.TeilScreenshot && !vm.TeilDesign && !vm.TeilSymbole && vm.EnTeilSymbole);
+        Klicken(Element<CheckBox>(w, "Symbole + Taskleiste"));
+        Check("nur Symbole angehakt: Kachel automatisch mit, sonst nichts", vm.SelDesignDesktop && vm.TeilSymbole && !vm.TeilDesign && !vm.TeilScreenshot);
+        Klicken(Element<CheckBox>(w, "Design"));
+        Check("Design dazu: Kachel bleibt an", vm.SelDesignDesktop && vm.TeilDesign && vm.TeilSymbole);
+        Klicken(Element<CheckBox>(w, "Design & Desktop sichern"));
+        Klicken(Element<CheckBox>(w, "Design & Desktop sichern"));
+        Check("Kachel ab und wieder an: Vorgabe Design und Symbole", vm.SelDesignDesktop && vm.TeilDesign && vm.TeilSymbole && !vm.TeilScreenshot);
+        vm.SelDesignDesktop = false;
         Check("Ordner unter C:\\: Tooltip sagt, was beim Start kommt", (vm.TipLaufwerk ?? "").Contains("Liste") || !vm.EnLaufwerk, vm.TipLaufwerk);
         vm.IsBackupMode = true;
         Check("IsBackupMode setzen aendert nichts am Sichern", !vm.IsRestoreMode);

@@ -420,10 +420,14 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnSelPrinterChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelDesignDesktopChanged(bool value)
     {
-        // Die Teile sind nur mit der Kachel bedienbar.
-        OnPropertyChanged(nameof(EnTeilDesign));
-        OnPropertyChanged(nameof(EnTeilSymbole));
-        OnPropertyChanged(nameof(EnTeilScreenshot));
+        // Kachel an, aber kein Teil gewaehlt: die Vorgabe. Kachel ab: alle
+        // Teile ab - angehakt bleibt nur, was auch laeuft. Kommt die Aenderung
+        // von einem Teil (TeilGeaendert), bleiben die Teile, wie sie sind.
+        if (!_teileSetzen)
+        {
+            if (value && !TeilDesign && !TeilSymbole && !TeilScreenshot) TeileSetzen(_vorgabe);
+            else if (!value) TeileSetzen((false, false, false));
+        }
         ScheduleAutoStorageCheck();
     }
 
@@ -588,12 +592,43 @@ public partial class MainWindowViewModel : ObservableObject
     //
     // Frueher zwei Kacheln: "Design" und "Desktop-Layout" (Screenshot ODER
     // Symbolpositionen). Jetzt eine Kachel; was dazugehoert, waehlen die
-    // Haken darunter - auch Symbole UND Foto zusammen.
-    [ObservableProperty] private bool _teilDesign = true;
-    [ObservableProperty] private bool _teilSymbole = true;
+    // Haken daneben - auch Symbole UND Foto zusammen. Kachel und Teile
+    // haengen zusammen: Ein Teil angehakt hakt die Kachel an, der letzte
+    // abgehakt hakt sie ab.
+    [ObservableProperty] private bool _teilDesign;
+    [ObservableProperty] private bool _teilSymbole;
     [ObservableProperty] private bool _teilScreenshot;
 
-    partial void OnTeilDesignChanged(bool value) => ScheduleAutoStorageCheck();
+    partial void OnTeilDesignChanged(bool value) { TeilGeaendert(value); ScheduleAutoStorageCheck(); }
+    partial void OnTeilSymboleChanged(bool value) => TeilGeaendert(value);
+    partial void OnTeilScreenshotChanged(bool value) => TeilGeaendert(value);
+
+    /// <summary>Ein Teil angehakt: die Kachel mit. Der letzte abgehakt: die Kachel ab.</summary>
+    private void TeilGeaendert(bool an)
+    {
+        if (_teileSetzen) return;
+        _teileSetzen = true;
+        try
+        {
+            if (an) SelDesignDesktop = true;
+            else if (!TeilDesign && !TeilSymbole && !TeilScreenshot) SelDesignDesktop = false;
+        }
+        finally { _teileSetzen = false; }
+    }
+
+    /// <summary>Setzt die Teile gerade selbst - dann nicht zurueck auf die Kachel wirken.</summary>
+    private bool _teileSetzen;
+
+    /// <summary>Die Teile, die das Anhaken der Kachel waehlt - siehe TeileVorgeben.</summary>
+    private (bool Design, bool Symbole, bool Screenshot) _vorgabe = (true, true, false);
+
+    private void TeileSetzen((bool Design, bool Symbole, bool Screenshot) t)
+    {
+        var vorher = _teileSetzen;
+        _teileSetzen = true;
+        try { TeilDesign = t.Design; TeilSymbole = t.Symbole; TeilScreenshot = t.Screenshot; }
+        finally { _teileSetzen = vorher; }
+    }
 
     public string TgTeilDesign => Tr("Design", "Design");
     public string TgTeilSymbole => Tr("Symbole + Taskleiste", "Icons + taskbar");
@@ -602,16 +637,18 @@ public partial class MainWindowViewModel : ObservableObject
     // Beim Wiederherstellen: nur, was in der Sicherung liegt.
     private bool _hatScreenshot = true, _hatSymbole = true;
     private (bool, bool, bool, bool)? _teileStand;
-    public bool EnTeilDesign => EnDesignDesktop && SelDesignDesktop && Frei(Punkt.Hintergrund);
-    public bool EnTeilSymbole => EnDesignDesktop && SelDesignDesktop && _hatSymbole;
-    public bool EnTeilScreenshot => EnDesignDesktop && SelDesignDesktop && _hatScreenshot;
+    // Bedienbar, soweit es den Teil gibt - auch ohne angehakte Kachel.
+    public bool EnTeilDesign => EnDesignDesktop && Frei(Punkt.Hintergrund);
+    public bool EnTeilSymbole => EnDesignDesktop && _hatSymbole;
+    public bool EnTeilScreenshot => EnDesignDesktop && _hatScreenshot;
 
     /// <summary>
-    /// Setzt die Teile auf die Vorgabe, sobald sich Modus oder Inhalt der
+    /// Die Vorgabe der Teile, neu bestimmt, sobald sich Modus oder Inhalt der
     /// Sicherung aendern - sonst bleibt die Wahl des Benutzers stehen.
     /// Sichern: Design und Symbole, das Foto nur auf Wunsch. Wiederherstellen:
     /// alles, was die Sicherung enthaelt; das Foto nur, wenn es keine
-    /// Symbolpositionen gibt (dann ordnet man nach ihm von Hand).
+    /// Symbolpositionen gibt (dann ordnet man nach ihm von Hand). Ist die
+    /// Kachel an, gilt die neue Vorgabe sofort, sonst beim Anhaken.
     /// </summary>
     private void TeileVorgeben()
     {
@@ -619,9 +656,8 @@ public partial class MainWindowViewModel : ObservableObject
         var stand = (IsRestoreMode, design, _hatSymbole, _hatScreenshot);
         if (_teileStand == stand) return;
         _teileStand = stand;
-        TeilDesign = design;
-        TeilSymbole = _hatSymbole;
-        TeilScreenshot = IsRestoreMode && _hatScreenshot && !_hatSymbole;
+        _vorgabe = (design, _hatSymbole, IsRestoreMode && _hatScreenshot && !_hatSymbole);
+        if (SelDesignDesktop) TeileSetzen(_vorgabe);
     }
 
     public string? TipTeilDesign => Grund(Punkt.Hintergrund)

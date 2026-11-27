@@ -112,7 +112,9 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Kacheln eine über die volle Breite, rechts darin die Teile **Design**,
   **Symbole + Taskleiste** und **Screenshot**. Beim Sichern sind Design und Symbole
   vorgewählt; Symbole und Screenshot gehen jetzt auch zusammen (bisher entweder –
-  oder). Beim Wiederherstellen ist vorgewählt, was die Sicherung enthält. Die Ordner
+  oder). Kachel und Teile hängen zusammen: Wer einen Teil anhakt, hakt die Kachel mit
+  an; wer den letzten abhakt, hakt sie ab; die Kachel selbst angehakt wählt die
+  Vorgabe. Beim Wiederherstellen ist vorgewählt, was die Sicherung enthält. Die Ordner
   in der Sicherung sind dieselben – Sicherungen älterer Versionen lassen sich
   wiederherstellen wie bisher.
 - **Die Protokolldatei enthält den ganzen Ablauf.** In

@@ -212,7 +212,8 @@ Verknüpfungen lagen. Die Kachel **Design & Desktop** fasst alles zusammen, was 
 Aussehen des Arbeitsplatzes gehört. Rechts in der Kachel wählt man die Teile:
 **Design** (siehe oben), **Symbole + Taskleiste** und **Screenshot**. Beim Sichern
 sind Design und Symbole vorgewählt, den Screenshot nimmt man bei Bedarf dazu – auch
-zusammen mit den Symbolen. Beim Wiederherstellen ist vorgewählt, was in der Sicherung
+zusammen mit den Symbolen. Wer nur einen Teil anhakt, etwa *Screenshot*, bekommt die
+Kachel automatisch mit dazu. Beim Wiederherstellen ist vorgewählt, was in der Sicherung
 liegt; den Screenshot nur, wenn es keine Symbolpositionen gibt (dann ordnet man nach ihm).
 
 **Symbole + Taskleiste** (wie *DesktopOK*): Das Tool merkt sich, welches Symbol wo liegt,
