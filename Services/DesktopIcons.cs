@@ -156,8 +156,25 @@ public static class DesktopIcons
     /// <summary>Wie der Desktop geoeffnet wird - unter Windows der Explorer-Desktop.</summary>
     public static Func<IDesktopView> OeffneDesktop { get; set; } = () =>
         OperatingSystem.IsWindows()
-            ? new ExplorerDesktop()
+            ? ExplorerDesktop.Oeffnen()
             : throw new PlatformNotSupportedException("Desktop-Symbole gibt es nur unter Windows.");
+
+    /// <summary>
+    /// Versucht es erneut, solange <paramref name="nochmal"/> den Fehler als
+    /// voruebergehend einstuft - hoechstens <paramref name="hoechstens"/> lang.
+    /// </summary>
+    internal static T MitWarten<T>(Func<T> versuch, TimeSpan hoechstens, Func<Exception, bool> nochmal, TimeSpan? pause = null)
+    {
+        var uhr = Stopwatch.StartNew();
+        while (true)
+        {
+            try { return versuch(); }
+            catch (Exception ex) when (nochmal(ex) && uhr.Elapsed < hoechstens)
+            {
+                Thread.Sleep(pause ?? TimeSpan.FromMilliseconds(500));
+            }
+        }
+    }
 
     public static string Datei(string sicherung) => Path.Combine(sicherung, FolderName, FileName);
 
@@ -386,6 +403,15 @@ public static class DesktopIcons
 [SupportedOSPlatform("windows")]
 public sealed class ExplorerDesktop : IDesktopView
 {
+    /// <summary>
+    /// Oeffnet den Desktop des Explorers. Startet der Explorer gerade (neu) -
+    /// nach der Anmeldung oder direkt nach dem Neustart fuer die Taskleiste -,
+    /// ist die Taskleiste oft schon da, der Desktop aber erst Sekunden spaeter.
+    /// So lange wird gewartet, statt mit "Kein Explorer-Desktop" aufzugeben.
+    /// </summary>
+    public static ExplorerDesktop Oeffnen(TimeSpan? hoechstens = null)
+        => DesktopIcons.MitWarten(() => new ExplorerDesktop(), hoechstens ?? TimeSpan.FromSeconds(20), ex => ex is KeinDesktopException);
+
     private readonly IFolderView2 _ansicht;
     private readonly IShellFolder _ordner;
     private readonly IntPtr _fenster;
@@ -404,12 +430,15 @@ public sealed class ExplorerDesktop : IDesktopView
             object? wurzel = null;   // VT_EMPTY
             int hr = ((IShellWindows)shellWindows).FindWindowSW(ref ort, ref wurzel, SWC_DESKTOP, out _, SWFO_NEEDDISPATCH, out var dispatch);
             if (hr != 0 || dispatch is null)
-                throw new InvalidOperationException($"Kein Explorer-Desktop gefunden (0x{hr:X8}) - läuft der Explorer?");
+                throw new KeinDesktopException($"Kein Explorer-Desktop gefunden (0x{hr:X8}) - läuft der Explorer?");
 
             var sid = SID_STopLevelBrowser;
             var iidBrowser = typeof(IShellBrowser).GUID;
-            Pruefe(((IComServiceProvider)dispatch).QueryService(ref sid, ref iidBrowser, out var browser), "QueryService");
-            Pruefe(((IShellBrowser)browser).QueryActiveShellView(out var ansicht), "QueryActiveShellView");
+            // Angemeldet, aber noch ohne Ansicht: ebenso "noch nicht da".
+            int hrDienst = ((IComServiceProvider)dispatch).QueryService(ref sid, ref iidBrowser, out var browser);
+            if (hrDienst < 0) throw new KeinDesktopException($"Der Explorer-Desktop ist noch nicht bereit (QueryService 0x{hrDienst:X8}).");
+            int hrAnsicht = ((IShellBrowser)browser).QueryActiveShellView(out var ansicht);
+            if (hrAnsicht < 0 || ansicht is null) throw new KeinDesktopException($"Der Explorer-Desktop ist noch nicht bereit (QueryActiveShellView 0x{hrAnsicht:X8}).");
 
             _ansicht = (IFolderView2)ansicht;
             Pruefe(((IShellView)ansicht).GetWindow(out _fenster), "GetWindow");
@@ -609,3 +638,6 @@ public sealed class ExplorerDesktop : IDesktopView
         [PreserveSig] int GetCurrentFolderFlags(out uint pdwFlags);
     }
 }
+
+/// <summary>Der Explorer-Desktop ist (noch) nicht da - laeuft der Explorer, kommt er gleich.</summary>
+public sealed class KeinDesktopException(string message) : InvalidOperationException(message);

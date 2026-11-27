@@ -7,6 +7,18 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [Unveröffentlicht]
+
+### Behoben
+
+- **Desktop-Symbole direkt nach einem Neustart des Explorers.** War die Taskleiste
+  schon wieder da, der Desktop aber noch nicht (nach der Anmeldung oder direkt nach
+  dem Neustart für die Taskleiste), brach das Lesen der Symbole sofort mit „Kein
+  Explorer-Desktop gefunden“ ab. Jetzt wartet das Tool bis zu 20 Sekunden auf den
+  Desktop.
+
+---
+
 ## [1.2.8] - 2026-11-27
 
 ### Neu

@@ -819,7 +819,23 @@ internal static partial class Program
             bool gemeldet = false;
             try { DesktopIcons.Lesen("PC", "x"); } catch (InvalidOperationException) { gemeldet = true; }
             Check("ohne Desktop: der Fehler kommt beim Aufrufer an (nicht verschluckt)", gemeldet);
-            DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? new ExplorerDesktop() : throw new PlatformNotSupportedException();
+
+            // Explorer startet gerade (neu): erst kein Desktop, dann doch.
+            int versuche = 0;
+            var wert = DesktopIcons.MitWarten(() => ++versuche < 3 ? throw new KeinDesktopException("noch nicht") : 42,
+                TimeSpan.FromSeconds(5), ex => ex is KeinDesktopException, TimeSpan.FromMilliseconds(10));
+            Check("Desktop kommt nach einem Moment: gewartet statt aufgegeben", wert == 42 && versuche == 3, versuche.ToString());
+            versuche = 0;
+            bool sofort = false;
+            try { DesktopIcons.MitWarten<int>(() => { versuche++; throw new InvalidOperationException("anderer Fehler"); }, TimeSpan.FromSeconds(5), ex => ex is KeinDesktopException); }
+            catch (InvalidOperationException) { sofort = versuche == 1; }
+            Check("anderer Fehler: sofort gemeldet, kein Warten", sofort, versuche.ToString());
+            var warteUhr = System.Diagnostics.Stopwatch.StartNew();
+            bool aufgegeben = false;
+            try { DesktopIcons.MitWarten<int>(() => throw new KeinDesktopException("nie"), TimeSpan.FromMilliseconds(300), ex => ex is KeinDesktopException, TimeSpan.FromMilliseconds(20)); }
+            catch (KeinDesktopException) { aufgegeben = true; }
+            Check("kommt der Desktop nie: nach der Frist aufgegeben", aufgegeben && warteUhr.Elapsed.TotalSeconds < 3, $"{warteUhr.Elapsed.TotalSeconds:F1} s");
+            DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? ExplorerDesktop.Oeffnen() : throw new PlatformNotSupportedException();
         }
 
         Console.WriteLine("\n== winget nachinstallieren: Bausteine ==");
@@ -1312,7 +1328,7 @@ internal static partial class Program
             DesktopIcons.OeffneDesktop = () => ohne;
             var ergOhne = DesktopIcons.Wiederherstellen(alt, TimeSpan.Zero, k => false);
             Check("klappt das Einschalten nicht, steht nichts als eingeschaltet da", ergOhne.Eingeschaltet is null && ergOhne.Fehlend.Count == 4);
-            DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? new ExplorerDesktop() : throw new PlatformNotSupportedException();
+            DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? ExplorerDesktop.Oeffnen() : throw new PlatformNotSupportedException();
         }
 
         Console.WriteLine("\n== Browserprofil nach dem Zurueckschreiben pruefen ==");
