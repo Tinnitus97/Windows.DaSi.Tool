@@ -29,13 +29,16 @@ public static class LaufwerksOrdner
     /// <summary>
     /// Was eine Windows-Installation unter C:\ anlegt (dazu alles, was mit "$"
     /// beginnt, und versteckte Systemordner). "Windows.old" bleibt nach einem
-    /// Upgrade liegen, "inetpub" kommt mit den Internetinformationsdiensten.
+    /// Upgrade liegen, "inetpub" kommt mit den Internetinformationsdiensten,
+    /// "XboxGames" legt die Xbox-App fuer ihre Spiele an (verwaltet von den
+    /// Gaming Services - eine Kopie davon hilft nicht), "Windows10Upgrade" der
+    /// Update-Assistent.
     /// </summary>
     public static readonly IReadOnlySet<string> WindowsOrdner = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "Windows", "Windows.old", "Program Files", "Program Files (x86)", "ProgramData", "Users",
         "Documents and Settings", "PerfLogs", "Recovery", "System Volume Information", "Boot",
-        "Config.Msi", "MSOCache", "OneDriveTemp", "inetpub", "ESD",
+        "Config.Msi", "MSOCache", "OneDriveTemp", "inetpub", "ESD", "XboxGames", "Windows10Upgrade",
     };
 
     /// <summary>Ein Ordner der Liste.</summary>

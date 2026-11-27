@@ -235,7 +235,7 @@ public static class AppCatalog
             Punkt.Wlan => ("keine WLAN-Profile", "no WiFi profiles"),
             Punkt.Drucker => ("keine Drucker", "no printers"),
             Punkt.Hintergrund => ("kein Design (weder Hintergrund noch Design-Einstellungen)", "no design (neither wallpaper nor design settings)"),
-            Punkt.DesktopShot => ("kein Desktop-Layout (weder Screenshot noch Symbolpositionen)", "no desktop layout (neither screenshot nor icon positions)"),
+            Punkt.DesktopShot => ("weder Desktop-Symbole noch Screenshot", "neither desktop icons nor a screenshot"),
             Punkt.Laufwerk => ($"keine Ordner von {LaufwerksOrdner.Wurzel}", $"no folders from {LaufwerksOrdner.Wurzel}"),
             Punkt.Opera => ("kein Opera-Profil", "no Opera profile"),
             _ => ($"kein {p}-Profil", $"no {p} profile"),

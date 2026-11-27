@@ -19,7 +19,8 @@ internal static partial class Program
         Console.WriteLine("\n== Ordner unter C:\\: Liste, Windows-Ordner, Verfuegbarkeit ==");
         Check("Windows-Ordner erkannt", LaufwerksOrdner.IstWindowsOrdner("Windows") && LaufwerksOrdner.IstWindowsOrdner("program files")
             && LaufwerksOrdner.IstWindowsOrdner("Program Files (x86)") && LaufwerksOrdner.IstWindowsOrdner("Users") && LaufwerksOrdner.IstWindowsOrdner("ProgramData")
-            && LaufwerksOrdner.IstWindowsOrdner("$Recycle.Bin") && LaufwerksOrdner.IstWindowsOrdner("$WinREAgent") && LaufwerksOrdner.IstWindowsOrdner("System Volume Information"));
+            && LaufwerksOrdner.IstWindowsOrdner("$Recycle.Bin") && LaufwerksOrdner.IstWindowsOrdner("$WinREAgent") && LaufwerksOrdner.IstWindowsOrdner("System Volume Information")
+            && LaufwerksOrdner.IstWindowsOrdner("XboxGames") && LaufwerksOrdner.IstWindowsOrdner("Windows10Upgrade"));
         Check("versteckter Systemordner gilt als Windows-Ordner", LaufwerksOrdner.IstWindowsOrdner("Irgendwas", FileAttributes.Hidden | FileAttributes.System)
             && !LaufwerksOrdner.IstWindowsOrdner("Irgendwas", FileAttributes.Hidden));
         Check("eigene Ordner sind keine Windows-Ordner", !LaufwerksOrdner.IstWindowsOrdner("Daten") && !LaufwerksOrdner.IstWindowsOrdner("Scans")

@@ -19,7 +19,7 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   starten*. Ein Knopf in der Kachel zeigt die Zahl (*2 Ordner …*) und öffnet die Liste
   zum Ändern; die Speicherprüfung rechnet die Ordner mit. Der Haken **Windows-Standardordner
   ausblenden** steht von Anfang an: `Windows`, `Program Files`, `ProgramData`,
-  `Users`, `PerfLogs`, `Recovery`, `$Recycle.Bin` & Co. erscheinen erst ohne ihn.
+  `Users`, `PerfLogs`, `Recovery`, `$Recycle.Bin`, `XboxGames` & Co. erscheinen erst ohne ihn.
   Verknüpfungen und der Ordner der Sicherung selbst erscheinen nie. Gesichert wird
   nach `C-Ordner\<Name>`; beim Wiederherstellen wird ein vorhandener Ordner ergänzt,
   neuere Dateien dort bleiben. Die Oberfläche ist dadurch nicht größer geworden.

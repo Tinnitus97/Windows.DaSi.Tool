@@ -2239,10 +2239,10 @@ public sealed class BackupService
         if (nichtUebernommen.Count > 0)
         {
             _log(Loc.Tr($"[FEHLER] Windows übernimmt die gesicherten Taskleisten-Symbole nicht: {Taskleiste.Namen(nichtUebernommen)}. "
-                        + "Die Verknüpfungen liegen im Ordner \"User Pinned\\TaskBar\" des Profils. Abhilfe: abmelden, wieder anmelden und \"Desktop-Layout wiederherstellen\" erneut ausführen - "
+                        + "Die Verknüpfungen liegen im Ordner \"User Pinned\\TaskBar\" des Profils. Abhilfe: abmelden, wieder anmelden und \"Design & Desktop wiederherstellen\" (Symbole + Taskleiste) erneut ausführen - "
                         + "oder die Programme von Hand anheften.",
                         $"[ERROR] Windows does not take over the saved taskbar icons: {Taskleiste.Namen(nichtUebernommen)}. "
-                        + "The shortcuts are in the profile's \"User Pinned\\TaskBar\" folder. Remedy: sign out, sign in again and run \"Restore desktop layout\" again - "
+                        + "The shortcuts are in the profile's \"User Pinned\\TaskBar\" folder. Remedy: sign out, sign in again and run \"Restore design & desktop\" (icons + taskbar) again - "
                         + "or pin the programs by hand."));
             return true;
         }
@@ -2350,9 +2350,9 @@ public sealed class BackupService
         }
         if (fehlend.Count > 0)
             _log(Loc.Tr($"[WARNUNG] Taskleiste: Diese angehefteten Programme gibt es auf diesem PC (noch) nicht: {string.Join(", ", fehlend)}. "
-                        + "Nach ihrer Installation \"Desktop-Layout wiederherstellen\" erneut ausführen.",
+                        + "Nach ihrer Installation \"Design & Desktop wiederherstellen\" (Symbole + Taskleiste) erneut ausführen.",
                         $"[WARNING] Taskbar: these pinned programs do not exist on this PC (yet): {string.Join(", ", fehlend)}. "
-                        + "After installing them, run \"Restore desktop layout\" again."));
+                        + "After installing them, run \"Restore design & desktop\" (icons + taskbar) again."));
         return fehlendeDateien;
     }
 
@@ -2600,10 +2600,10 @@ public sealed class BackupService
             if (fremd.Count > 0)
                 _log(Loc.Tr($"[WARNUNG] {fremd.Count} von {erg.Gesamt} Symbolen fehlen hier und stammen nicht aus dem Benutzerprofil: {Namen(fremd)}. "
                             + "Solche Verknüpfungen liegen meist auf dem öffentlichen Desktop (für alle Benutzer) und erscheinen, sobald ihr Programm installiert ist. "
-                            + "Danach \"Desktop-Layout wiederherstellen\" noch einmal ausführen, dann kommen auch sie an ihre Stelle.",
+                            + "Danach \"Design & Desktop wiederherstellen\" (Symbole + Taskleiste) noch einmal ausführen, dann kommen auch sie an ihre Stelle.",
                             $"[WARNING] {fremd.Count} of {erg.Gesamt} icons are missing here and do not come from the user profile: {Namen(fremd)}. "
                             + "Such shortcuts usually live on the public desktop (for all users) and appear once their program is installed. "
-                            + "Then run \"Restore desktop layout\" again to put them in place as well."));
+                            + "Then run \"Restore design & desktop\" (icons + taskbar) again to put them in place as well."));
         }
         _log(erg.Gesetzt > 0
             ? Loc.Tr($"[ERFOLG] {erg.Gesetzt} von {erg.Gesamt} Desktop-Symbolen an ihre gesicherte Stelle gesetzt.",

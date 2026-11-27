@@ -557,7 +557,7 @@ public partial class MainWindowViewModel : ObservableObject
                  $"When ticked, the list of the folders under {LaufwerksOrdner.Wurzel} (such as data or scans) appears for selection. They are backed up with \"Start selected actions\". The Windows folders (Windows, Program Files, Users …) are hidden in the list."));
     // Auch im freien Zustand: was alles dazugehoert.
     public string? TipDesignDesktop => !Frei(Punkt.Hintergrund) && !Frei(Punkt.DesktopShot)
-        ? Tr("Die gewählte Sicherung enthält weder Design noch Desktop-Layout.", "The selected backup contains neither design nor desktop layout.")
+        ? Tr("Die gewählte Sicherung enthält weder Design noch Desktop-Symbole oder Screenshot.", "The selected backup contains neither design nor desktop icons or a screenshot.")
         : Tr("Wie der Arbeitsplatz aussieht: Design (Hintergrund, Farben, Mauszeiger, Taskleiste, Start), die Lage der Desktop-Symbole, die angehefteten Taskleisten-Symbole und auf Wunsch ein Foto des Desktops.",
              "How the workspace looks: design (wallpaper, colors, pointer, taskbar, Start), where the desktop icons are, the icons pinned to the taskbar and, if wanted, a picture of the desktop.");
     // Bei Opera auch im freien Zustand: welche Fassungen gefunden wurden.

@@ -202,7 +202,8 @@ verworfen.
   nichts – was mit soll, entscheidet man selbst.
 - **Windows-Standardordner ausblenden** steht von Anfang an: Was jede Windows-Installation
   dort anlegt (`Windows`, `Program Files`, `ProgramData`, `Users`, `PerfLogs`,
-  `Recovery`, `$Recycle.Bin`, `System Volume Information` …), taucht erst auf, wenn der
+  `Recovery`, `$Recycle.Bin`, `System Volume Information`, dazu `XboxGames` der
+  Xbox-App …), taucht erst auf, wenn der
   Haken weg ist. Blendet man sie wieder aus, fallen sie auch aus der Wahl.
 - Verknüpfungen (Junctions wie `Documents and Settings`) erscheinen nie, ebenso der
   Ordner, in dem die Sicherung selbst liegt.
