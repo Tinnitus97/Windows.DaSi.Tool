@@ -455,12 +455,15 @@ public sealed class BackupService
                         $"[WARNING] {app.Name} is still running - backing up anyway, but individual files may be incomplete."));
 
         await MirrorAppProfile(app.Name, quelle, Path.Combine(BackupPath, app.BackupOrdner), app.Chromium ? ChromiumCacheExcludes : null);
+        if (app.Punkt == Punkt.Thunderbird && !_cancel.IsCancelled) await ThunderbirdExternSichern(app.Name, quelle);
     }
 
     /// <summary>Schreibt das Profil eines Programms aus dem Katalog zurueck - vorher wird es bei Bedarf installiert.</summary>
     public async Task RestoreAppProfile(AppEintrag app)
     {
-        var frisch = await InstallApp(app.Name, app.Prozess + ".exe", app.WingetId);
+        var mozilla = MozillaProfile.Programm(app);
+        var frisch = await InstallApp(app.Name, app.Prozess + ".exe", app.WingetId,
+            mozilla is { } m ? () => MozillaInstallationenHier(m.Exe, m.Ordner).Count > 0 : null);
 
         var quelle = Path.Combine(BackupPath, app.BackupOrdner);
         if (!Directory.Exists(quelle)) { _log(Loc.Tr($"[FEHLER] {app.Name} Backup nicht gefunden.", $"[ERROR] {app.Name} backup not found.")); return; }
@@ -474,8 +477,232 @@ public sealed class BackupService
             return;
         }
 
-        await RestoreAppDir(app.Name, quelle, AppCatalog.Pfad(SourcePath, app.ProfilRel), app.Prozess);
+        var ziel = AppCatalog.Pfad(SourcePath, app.ProfilRel);
+        if (await RestoreAppDir(app.Name, quelle, ziel, app.Prozess) && MozillaProfile.Programm(app) is { } moz)
+        {
+            MozillaPfadeUmstellen(app.Name, ziel);
+            if (app.Punkt == Punkt.Thunderbird) await ThunderbirdExternZurueck(app.Name, ziel);
+            MozillaStandardprofil(app.Name, ziel, moz.Exe, moz.Ordner);
+        }
     }
+
+    // ------------------------------------------------------------ Firefox/Thunderbird: was ein Profil an den PC bindet
+
+    /// <summary>
+    /// Pfade des alten Benutzers in prefs.js (Mailordner, Download-Ordner,
+    /// Seiten aus dem Profil) auf das gewaehlte Profil umstellen - wie
+    /// MozBackup, das beim Zurueckschreiben die Mailordner in prefs.js anpasst.
+    /// </summary>
+    private void MozillaPfadeUmstellen(string name, string datenOrdner)
+    {
+        foreach (var profil in MozillaProfile.Profilordner(datenOrdner))
+        {
+            try
+            {
+                var alt = MozillaProfile.AlterBenutzerordner(profil);
+                if (alt is null || ProfileExcludes.SameFolder(alt, SourcePath)) continue;
+                var n = MozillaProfile.PfadeUmstellen(profil, alt, SourcePath);
+                if (n > 0)
+                    _log(Loc.Tr($"[INFO] {name}: {n} Einstellungen in {Path.GetFileName(profil)}\\prefs.js zeigten auf den Benutzerordner des alten PCs ({alt}) - umgestellt auf {SourcePath}.",
+                                $"[INFO] {name}: {n} settings in {Path.GetFileName(profil)}\\prefs.js pointed to the old PC's user folder ({alt}) - changed to {SourcePath}."));
+            }
+            catch (Exception ex)
+            {
+                _log(Loc.Tr($"[WARNUNG] {name}: Pfade in {Path.GetFileName(profil)}\\prefs.js ließen sich nicht umstellen ({ex.Message}).",
+                            $"[WARNING] {name}: paths in {Path.GetFileName(profil)}\\prefs.js could not be changed ({ex.Message})."));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Lehnt Firefox/Thunderbird das Profil ab, weil es zuletzt mit einer
+    /// neueren Hauptversion lief? Dann legen sie ein neues, leeres Profil an
+    /// ("Sie haben eine aeltere Version gestartet"). Typisch: hier liegt ESR
+    /// statt der normalen Fassung, oder winget liefert die neue Hauptversion
+    /// erst Tage nach dem Update auf dem alten PC. Firefox vergleicht dabei nur
+    /// die Hauptversion (146.0.1 gegen 146.0 ist kein Problem - in der CI mit
+    /// dem echten Firefox geprueft). Zuruecksetzen hilft nicht: Die Daten liegen
+    /// dann womoeglich in einem neueren Format vor, Firefox legte etwa die
+    /// Lesezeichen neu an. Also: melden, mit Abhilfe.
+    /// </summary>
+    private void MozillaFassungPruefen(string name, string profilOrdner, IEnumerable<string> installationen)
+    {
+        if (MozillaProfile.ProfilFassung(profilOrdner) is not { } profil) return;
+        var hier = installationen.Select(MozillaProfile.InstallierteFassung).OfType<(string Version, string BuildId)>().ToList();
+        if (hier.Count == 0 || hier.Any(i => MozillaProfile.Vergleichen(profil, i) != MozillaProfile.Abstand.VielNeuer)) return;
+        var fassungen = string.Join(", ", hier.Select(i => i.Version));
+        _log(Loc.Tr($"[FEHLER] {name}: Das Profil lief zuletzt mit {profil.Version}, hier ist erst {fassungen} installiert. {name} lehnt ein Profil einer neueren Hauptversion ab und legt ein neues, leeres an. "
+                    + $"Bitte {name} aktualisieren (Hilfe > Über {name}, oder winget upgrade) - danach nimmt es das Profil.",
+                    $"[ERROR] {name}: the profile last ran with {profil.Version}, only {fassungen} is installed here. {name} refuses a profile of a newer major version and creates a new, empty one. "
+                    + $"Please update {name} (Help > About {name}, or winget upgrade) - then it takes the profile."));
+    }
+
+    /// <summary>Thunderbird-Konten, deren Mails ausserhalb des Profils liegen: in der Sicherung und beim Zurueckschreiben.</summary>
+    public const string ThunderbirdExternOrdner = "Thunderbird-Extern";
+
+    private sealed class ExterneSicherung
+    {
+        public string Benutzerordner { get; set; } = "";
+        public List<ExternesPostfach> Postfaecher { get; set; } = new();
+    }
+
+    private sealed class ExternesPostfach
+    {
+        /// <summary>Profilordner relativ zum Datenordner ("Profiles\\abcd.default").</summary>
+        public string Profil { get; set; } = "";
+        public string Server { get; set; } = "";
+        public string Ordner { get; set; } = "";
+        /// <summary>Unterordner in Thunderbird-Extern.</summary>
+        public string Sicherung { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Sichert die Mails von Konten, deren Ordner Thunderbird ausserhalb des
+    /// Profils fuehrt (Konten-Einstellungen > Server-Einstellungen > Lokaler
+    /// Ordner, etwa D:\\Mail). Bisher fehlten sie in der Sicherung - MozBackup
+    /// sichert sie mit. Liegen sie im Benutzerprofil, sichert sie schon der
+    /// Punkt Benutzerprofil.
+    /// </summary>
+    private async Task ThunderbirdExternSichern(string name, string datenOrdner)
+    {
+        var liste = new ExterneSicherung { Benutzerordner = SourcePath };
+        var ablage = Path.Combine(BackupPath, ThunderbirdExternOrdner);
+        foreach (var profil in MozillaProfile.Profilordner(datenOrdner))
+        {
+            foreach (var p in MozillaProfile.PostfaecherAusserhalb(profil))
+            {
+                if (_cancel.IsCancelled) return;
+                if (ProfileExcludes.IsInside(p.Ordner, SourcePath))
+                {
+                    _log(Loc.Tr($"[INFO] {name}: Die Mails von {p.Server} liegen außerhalb des Thunderbird-Profils, aber im Benutzerprofil ({p.Ordner}) - sie kommen mit dem Punkt \"Windows Benutzerprofil\" in die Sicherung.",
+                                $"[INFO] {name}: the mail of {p.Server} is outside the Thunderbird profile but inside the user profile ({p.Ordner}) - it is backed up with \"Windows user profile\"."));
+                    continue;
+                }
+                if (!Directory.Exists(p.Ordner))
+                {
+                    _log(Loc.Tr($"[WARNUNG] {name}: Der Mailordner von {p.Server} fehlt: {p.Ordner}",
+                                $"[WARNING] {name}: the mail folder of {p.Server} is missing: {p.Ordner}"));
+                    continue;
+                }
+                var unter = $"{liste.Postfaecher.Count + 1}_{p.Server}";
+                var args = new List<string> { Quote(p.Ordner), Quote(Path.Combine(ablage, unter)), "/MIR", "/R:1", "/W:1", "/MT:32" };
+                if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+                var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+                if (code >= 8)
+                {
+                    _log(Loc.Tr($"[FEHLER] {name}: Die Mails von {p.Server} ({p.Ordner}) ließen sich nicht sichern: ExitCode {code}",
+                                $"[ERROR] {name}: the mail of {p.Server} ({p.Ordner}) could not be backed up: ExitCode {code}"));
+                    continue;
+                }
+                liste.Postfaecher.Add(new ExternesPostfach { Profil = Path.GetRelativePath(datenOrdner, profil), Server = p.Server, Ordner = p.Ordner, Sicherung = unter });
+                _log(Loc.Tr($"[ERFOLG] {name}: Mails von {p.Server} außerhalb des Profils gesichert ({p.Ordner}).",
+                            $"[SUCCESS] {name}: mail of {p.Server} outside the profile backed up ({p.Ordner})."));
+            }
+        }
+        if (liste.Postfaecher.Count > 0)
+        {
+            Directory.CreateDirectory(ablage);
+            File.WriteAllText(Path.Combine(ablage, "Postfaecher.json"), System.Text.Json.JsonSerializer.Serialize(liste, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        }
+    }
+
+    /// <summary>
+    /// Schreibt die Mails von Konten ausserhalb des Profils zurueck: an ihren
+    /// alten Ort (im Benutzerordner des alten PCs: in den des gewaehlten
+    /// Profils), oder - gibt es das Laufwerk hier nicht - in den Profilordner;
+    /// prefs.js wird dann angepasst.
+    /// </summary>
+    private async Task ThunderbirdExternZurueck(string name, string datenOrdner)
+    {
+        var datei = Path.Combine(BackupPath, ThunderbirdExternOrdner, "Postfaecher.json");
+        if (!File.Exists(datei)) return;
+        ExterneSicherung? liste;
+        try { liste = System.Text.Json.JsonSerializer.Deserialize<ExterneSicherung>(File.ReadAllText(datei)); }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] {name}: Die Liste der Mailordner außerhalb des Profils ist unlesbar ({ex.Message}).",
+                        $"[ERROR] {name}: the list of mail folders outside the profile is unreadable ({ex.Message})."));
+            return;
+        }
+        foreach (var p in liste?.Postfaecher ?? new List<ExternesPostfach>())
+        {
+            if (_cancel.IsCancelled) return;
+            var profil = Path.Combine(datenOrdner, p.Profil);
+            var ziel = p.Ordner;
+            var root = Path.GetPathRoot(ziel);
+            bool verlegt = string.IsNullOrEmpty(root) || !Directory.Exists(root);
+            if (verlegt) ziel = Path.Combine(profil, "Mail", "Extern-" + p.Server);
+            var args = new List<string> { Quote(Path.Combine(BackupPath, ThunderbirdExternOrdner, p.Sicherung)), Quote(ziel), "/E", "/R:1", "/W:1", "/MT:32" };
+            if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+            var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+            if (code >= 8)
+            {
+                _log(Loc.Tr($"[FEHLER] {name}: Die Mails von {p.Server} ließen sich nicht nach {ziel} zurückschreiben: ExitCode {code}",
+                            $"[ERROR] {name}: the mail of {p.Server} could not be restored to {ziel}: ExitCode {code}"));
+                continue;
+            }
+            if (verlegt && !MozillaProfile.PostfachVerlegen(profil, p.Server, ziel))
+            {
+                _log(Loc.Tr($"[FEHLER] {name}: Die Mails von {p.Server} liegen jetzt unter {ziel}, prefs.js ließ sich aber nicht anpassen.",
+                            $"[ERROR] {name}: the mail of {p.Server} is now at {ziel}, but prefs.js could not be updated."));
+                continue;
+            }
+            _log(verlegt
+                ? Loc.Tr($"[ERFOLG] {name}: Mails von {p.Server} zurückgeschrieben - das Laufwerk von {p.Ordner} gibt es hier nicht, sie liegen jetzt im Profil ({ziel}).",
+                         $"[SUCCESS] {name}: mail of {p.Server} restored - the drive of {p.Ordner} does not exist here, it is now inside the profile ({ziel}).")
+                : Loc.Tr($"[ERFOLG] {name}: Mails von {p.Server} an ihren Ort außerhalb des Profils zurückgeschrieben ({ziel}).",
+                         $"[SUCCESS] {name}: mail of {p.Server} restored to its place outside the profile ({ziel})."));
+        }
+    }
+
+    /// <summary>
+    /// Firefox/Thunderbird: das zurueckgeschriebene Profil als Standard dieser
+    /// Installation eintragen. Sonst nimmt ein Firefox, der hier in einem
+    /// anderen Ordner liegt als auf dem alten PC (64 statt 32 Bit, fuer alle
+    /// statt nur fuer den Benutzer), ein neues, leeres Profil.
+    /// </summary>
+    private void MozillaStandardprofil(string name, string datenOrdner, string exe, string ordnerName)
+    {
+        var installationen = MozillaInstallationenHier(exe, ordnerName);
+        MozillaProfile.Ergebnis erg;
+        try { erg = MozillaProfile.Anpassen(datenOrdner, installationen); }
+        catch (Exception ex)
+        {
+            _log(Loc.Tr($"[FEHLER] {name}: Das Profil ließ sich nicht als Standard eintragen ({ex.Message}). {name} legt beim ersten Start womöglich ein neues, leeres Profil an - dann mit \"{exe} -P\" das zurückgeschriebene wählen.",
+                        $"[ERROR] {name}: the profile could not be set as default ({ex.Message}). {name} may create a new, empty profile on first start - then pick the restored one with \"{exe} -P\"."));
+            return;
+        }
+        if (erg.Profil is null)
+        {
+            _log(Loc.Tr($"[WARNUNG] {name}: In der Sicherung steht kein Profil in profiles.ini - {name} wählt selbst.",
+                        $"[WARNING] {name}: the backup lists no profile in profiles.ini - {name} chooses by itself."));
+            return;
+        }
+
+        var profilName = string.IsNullOrEmpty(erg.Name) ? erg.Profil : $"\"{erg.Name}\" ({erg.Profil})";
+        var alt = erg.AlteSchluessel.Select(k => MozillaProfile.BekannterOrt(k, ordnerName, SourcePath) ?? k).ToList();
+        if (erg.Neu.Count == 0)
+        {
+            _log(Loc.Tr($"[WARNUNG] {name} ist auf diesem PC nicht installiert. Das Profil {profilName} ist als Standard eingetragen - {name} übernimmt es beim ersten Start nach der Installation.",
+                        $"[WARNING] {name} is not installed on this PC. The profile {profilName} is set as default - {name} takes it over on the first start after installation."));
+            return;
+        }
+        var hier = string.Join(", ", erg.Neu.Select(n => n.Ordner));
+        if (erg.SchonPassend)
+            _log(Loc.Tr($"[INFO] {name}: Profil {profilName} ist Standard für {hier} - wie auf dem alten PC.",
+                        $"[INFO] {name}: profile {profilName} is the default for {hier} - as on the old PC."));
+        else
+            _log(Loc.Tr($"[INFO] {name}: Profil {profilName} ist jetzt Standard für {hier}. Auf dem alten PC lief {name} aus {(alt.Count > 0 ? string.Join(", ", alt) : "einem unbekannten Ordner")} - ohne diese Anpassung legte {name} beim ersten Start ein neues, leeres Profil an.",
+                        $"[INFO] {name}: profile {profilName} is now the default for {hier}. On the old PC {name} ran from {(alt.Count > 0 ? string.Join(", ", alt) : "an unknown folder")} - without this adjustment {name} would have created a new, empty profile on first start."));
+        if (erg.Verzeichnis is not null) MozillaFassungPruefen(name, erg.Verzeichnis, erg.Neu.Select(n => n.Ordner));
+    }
+
+    /// <summary>Nur fuer die Pruefung: Installationsordner statt der echten Suche.</summary>
+    internal List<string>? TestInstallationen { get; set; }
+
+    /// <summary>Die Installationsordner von Firefox/Thunderbird auf diesem PC (in den Pruefungen fest vorgegeben).</summary>
+    private List<string> MozillaInstallationenHier(string exe, string ordnerName)
+        => TestInstallationen ?? (OperatingSystem.IsWindows() ? MozillaProfile.Installationen(exe, ordnerName, SourcePath) : new List<string>());
 
     // ------------------------------------------------------------ Opera (alle Fassungen)
 
@@ -591,7 +818,8 @@ public sealed class BackupService
     /// wird es beendet und noch einmal kopiert - sonst ueberschriebe es beim
     /// Beenden das zurueckgeschriebene Profil.
     /// </param>
-    private async Task RestoreAppDir(string name, string quelle, string ziel, params string[] prozesse)
+    /// <returns>true, wenn das Profil vollstaendig im Ziel steht.</returns>
+    private async Task<bool> RestoreAppDir(string name, string quelle, string ziel, params string[] prozesse)
     {
         if (Directory.Exists(ziel))
         {
@@ -616,7 +844,7 @@ public sealed class BackupService
                             $"[ERROR] The existing {name} profile could not be moved aside ({ex.Message}). "
                             + $"Restore aborted - the existing profile was left untouched. "
                             + $"Please close {name} completely and try again."));
-                return;
+                return false;
             }
         }
         var parent = Path.GetDirectoryName(ziel);
@@ -626,7 +854,7 @@ public sealed class BackupService
         if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
 
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
-        if (_cancel.IsCancelled) return;
+        if (_cancel.IsCancelled) return false;
 
         // Hat sich das Programm waehrend des Kopierens gestartet (Installer,
         // Autostart, Benutzer), haelt es ein eigenes, frisches Profil offen.
@@ -637,14 +865,14 @@ public sealed class BackupService
             if (await BeendenUndWarten(TimeSpan.FromSeconds(20), prozesse))
             {
                 code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
-                if (_cancel.IsCancelled) return;
+                if (_cancel.IsCancelled) return false;
             }
         }
 
         if (code >= 8)
         {
             _log(Loc.Tr($"[FEHLER] {name}: ExitCode {code}", $"[ERROR] {name}: ExitCode {code}"));
-            return;
+            return false;
         }
 
         // Stehen die Dateien, an denen das Profil haengt, so da wie gesichert?
@@ -655,13 +883,94 @@ public sealed class BackupService
                         + $"Meist lief {name} dabei. Bitte {name} vollständig schließen (auch im Infobereich) und den Punkt erneut ausführen.",
                         $"[ERROR] {name}: the profile is not complete in the target - differing: {string.Join(", ", abweichend.Take(8))}{(abweichend.Count > 8 ? ", ..." : "")}. "
                         + $"Usually {name} was running meanwhile. Please close {name} completely (including the notification area) and run this item again."));
-            return;
+            return false;
         }
 
         var profile = ProfilAbgleich.Profile(ziel);
         _log(profile.Count > 0
             ? Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt ({string.Join(", ", profile)}).", $"[SUCCESS] {name} profile restored ({string.Join(", ", profile)}).")
             : Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt.", $"[SUCCESS] {name} profile restored."));
+        return true;
+    }
+
+    // ------------------------------------------------------------ Ordner unter C:\
+
+    /// <summary>
+    /// Sichert die gewaehlten Ordner unter C:\ nach "C-Ordner\&lt;Name&gt;" -
+    /// gespiegelt wie die Programmprofile. Verknuepfungen (/XJ) folgt robocopy
+    /// nicht; liegt das Sicherungsziel in einem der Ordner, bleibt es draussen.
+    /// </summary>
+    public async Task BackupLaufwerksOrdner(IReadOnlyList<string> ordner)
+    {
+        if (ordner.Count == 0)
+        {
+            _log(Loc.Tr("[INFO] Keine Ordner gewählt - nichts zu sichern.", "[INFO] No folders selected - nothing to back up."));
+            return;
+        }
+        var ziel = Path.Combine(BackupPath, LaufwerksOrdner.BackupOrdner);
+        Directory.CreateDirectory(ziel);
+        int fehler = 0;
+        foreach (var quelle in ordner)
+        {
+            if (_cancel.IsCancelled) return;
+            var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(quelle));
+            if (!Directory.Exists(quelle))
+            {
+                _log(Loc.Tr($"[WARNUNG] {quelle} gibt es nicht (mehr) - übersprungen.", $"[WARNING] {quelle} does not exist (any more) - skipped."));
+                continue;
+            }
+            var args = new List<string> { Quote(quelle), Quote(Path.Combine(ziel, name)), "/MIR", "/XJ", "/R:1", "/W:1", "/MT:32" };
+            if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+            if (LaufwerksOrdner.Enthaelt(quelle, BackupPath)) { args.Add("/XD"); args.Add(Quote(BackupPath)); }
+
+            _log(Loc.Tr($"[INFO] Sichere {quelle} ...", $"[INFO] Backing up {quelle} ..."));
+            var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+            if (_cancel.IsCancelled) return;
+            if (code < 8) _log(Loc.Tr($"[ERFOLG] {quelle} gesichert.", $"[SUCCESS] {quelle} backed up."));
+            else { fehler++; _log(Loc.Tr($"[FEHLER] {quelle}: ExitCode {code}", $"[ERROR] {quelle}: ExitCode {code}")); }
+        }
+        if (fehler == 0 && ordner.Count > 1)
+            _log(Loc.Tr($"[ERFOLG] {ordner.Count} Ordner von {LaufwerksOrdner.Wurzel} gesichert.", $"[SUCCESS] {ordner.Count} folders from {LaufwerksOrdner.Wurzel} backed up."));
+    }
+
+    /// <summary>
+    /// Schreibt die gewaehlten Ordner zurueck nach C:\&lt;Name&gt;. Nur ergaenzen
+    /// (/E, nicht /MIR): Was dort schon liegt, bleibt - und ist eine Datei dort
+    /// neuer als in der Sicherung, bleibt sie ebenfalls (/XO).
+    /// </summary>
+    public async Task RestoreLaufwerksOrdner(IReadOnlyList<string> namen)
+    {
+        var quelle = Path.Combine(BackupPath, LaufwerksOrdner.BackupOrdner);
+        if (!Directory.Exists(quelle))
+        {
+            _log(Loc.Tr($"[FEHLER] Keine Ordner von {LaufwerksOrdner.Wurzel} in der Sicherung gefunden.", $"[ERROR] No folders from {LaufwerksOrdner.Wurzel} found in the backup."));
+            return;
+        }
+        if (namen.Count == 0)
+        {
+            _log(Loc.Tr("[INFO] Keine Ordner gewählt - nichts wiederherzustellen.", "[INFO] No folders selected - nothing to restore."));
+            return;
+        }
+        foreach (var name in namen)
+        {
+            if (_cancel.IsCancelled) return;
+            var von = Path.Combine(quelle, name);
+            var nach = Path.Combine(LaufwerksOrdner.Wurzel, name);
+            if (!Directory.Exists(von))
+            {
+                _log(Loc.Tr($"[WARNUNG] {name} liegt nicht in der Sicherung - übersprungen.", $"[WARNING] {name} is not in the backup - skipped."));
+                continue;
+            }
+            _log(Directory.Exists(nach)
+                ? Loc.Tr($"[INFO] {nach} gibt es schon - wird ergänzt; neuere Dateien dort bleiben.", $"[INFO] {nach} already exists - it is added to; newer files there are kept.")
+                : Loc.Tr($"[INFO] Stelle {nach} wieder her ...", $"[INFO] Restoring {nach} ..."));
+            var args = new List<string> { Quote(von), Quote(nach), "/E", "/XO", "/R:1", "/W:1", "/MT:32" };
+            if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
+            var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
+            if (_cancel.IsCancelled) return;
+            _log(code < 8 ? Loc.Tr($"[ERFOLG] {nach} wiederhergestellt.", $"[SUCCESS] {nach} restored.")
+                          : Loc.Tr($"[FEHLER] {nach}: ExitCode {code}", $"[ERROR] {nach}: ExitCode {code}"));
+        }
     }
 
     // ------------------------------------------------------------ WLAN
@@ -1871,6 +2180,7 @@ public sealed class BackupService
                         $"[ERROR] The taskbar shortcuts could not be restored: {ex.Message}"));
             return false;
         }
+        var ohneProgramm = OperatingSystem.IsWindows() ? TaskleistenZielePruefen(ziel, zurueck) : new List<string>();
 
         if (!OperatingSystem.IsWindows() || s.Taskband.Count == 0)
         {
@@ -1879,38 +2189,243 @@ public sealed class BackupService
             return false;
         }
 
-        var (wurzel, eigen) = BenutzerZweig(schreiben: true);
-        try
+        // Schreiben, den Explorer neu starten (er liest die angehefteten Symbole
+        // nur beim Start) und nachsehen, ob Windows sie behalten hat. Hat es die
+        // Taskleiste selbst neu belegt, ein zweites Mal - danach ehrlich melden.
+        // Frueher stand hier ungeprueft "[ERFOLG]"; bei einem Anwender war die
+        // Taskleiste danach leer.
+        var taskband = OperatingSystem.IsWindows() ? KennungenAnpassen(s.Taskband) : s.Taskband;
+        // Symbole von Programmen, die es hier noch nicht gibt, zeigt Windows erst
+        // mit dem Programm - sie zaehlen bei der Kontrolle nicht mit.
+        var erwartet = Taskleiste.AngehefteteNamen(Taskleiste.Favorites(taskband), zurueck.Except(ohneProgramm));
+        List<string> nichtUebernommen = new();
+        for (int versuch = 1; versuch <= 2; versuch++)
         {
-            foreach (var e in s.Taskband) DesignRegistry.Schreiben(wurzel, e);
-        }
-        catch (Exception ex)
-        {
-            _log(Loc.Tr($"[FEHLER] Die Reihenfolge der Taskleiste ließ sich nicht schreiben: {ex.Message}",
-                        $"[ERROR] The taskbar order could not be written: {ex.Message}"));
-            return false;
-        }
-        finally { if (eigen) wurzel.Dispose(); }
+            var (wurzel, eigen) = BenutzerZweig(schreiben: true);
+            try
+            {
+                foreach (var e in taskband) DesignRegistry.Schreiben(wurzel, e);
+            }
+            catch (Exception ex)
+            {
+                _log(Loc.Tr($"[FEHLER] Die Reihenfolge der Taskleiste ließ sich nicht schreiben: {ex.Message}",
+                            $"[ERROR] The taskbar order could not be written: {ex.Message}"));
+                return false;
+            }
+            finally { if (eigen) wurzel.Dispose(); }
 
-        // Der Explorer liest die angehefteten Symbole nur beim Start.
-        _log(Loc.Tr("[INFO] Der Explorer startet kurz neu, damit die Taskleiste die gesicherten Symbole übernimmt - offene Explorer-Fenster schließen sich dabei.",
-                    "[INFO] Explorer restarts briefly so the taskbar picks up the saved icons - open Explorer windows close in the process."));
-        var (ok, vonSelbst) = await ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(20));
-        if (!ok)
+            if (versuch == 1)
+                _log(Loc.Tr("[INFO] Der Explorer startet kurz neu, damit die Taskleiste die gesicherten Symbole übernimmt - offene Explorer-Fenster schließen sich dabei.",
+                            "[INFO] Explorer restarts briefly so the taskbar picks up the saved icons - open Explorer windows close in the process."));
+            var (ok, vonSelbst) = await ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(20));
+            if (!ok)
+            {
+                _log(Loc.Tr("[WARNUNG] Der Explorer kam nicht zurück. Die Taskleiste zeigt die Symbole nach dem nächsten Anmelden. Notfalls im Task-Manager \"Neuen Task ausführen\" > explorer.exe.",
+                            "[WARNING] Explorer did not come back. The taskbar shows the icons after the next sign-in. If needed: Task Manager > \"Run new task\" > explorer.exe."));
+                return true;
+            }
+            if (!vonSelbst && versuch == 1)
+                _log(Loc.Tr("[INFO] Windows hat den Explorer nicht selbst neu gestartet - das Tool hat ihn gestartet.",
+                            "[INFO] Windows did not restart Explorer by itself - the tool started it."));
+
+            await Task.Delay(TaskleistenKontrolle);
+            var jetzt = FavoritesNachlesen is { } nachlesen ? nachlesen() : FavoritesLesen();
+            nichtUebernommen = erwartet.Except(Taskleiste.AngehefteteNamen(jetzt, erwartet), StringComparer.OrdinalIgnoreCase).ToList();
+            if (nichtUebernommen.Count == 0 || _cancel.IsCancelled) break;
+            if (versuch == 1)
+                _log(Loc.Tr($"[WARNUNG] Windows hat die Taskleiste nach dem Neustart selbst neu belegt - nicht übernommen: {Taskleiste.Namen(nichtUebernommen)}. Das Tool schreibt sie noch einmal.",
+                            $"[WARNING] Windows re-populated the taskbar by itself after the restart - not taken over: {Taskleiste.Namen(nichtUebernommen)}. The tool writes them once more."));
+        }
+        if (nichtUebernommen.Count > 0)
         {
-            _log(Loc.Tr("[WARNUNG] Der Explorer kam nicht zurück. Die Taskleiste zeigt die Symbole nach dem nächsten Anmelden. Notfalls im Task-Manager \"Neuen Task ausführen\" > explorer.exe.",
-                        "[WARNING] Explorer did not come back. The taskbar shows the icons after the next sign-in. If needed: Task Manager > \"Run new task\" > explorer.exe."));
+            _log(Loc.Tr($"[FEHLER] Windows übernimmt die gesicherten Taskleisten-Symbole nicht: {Taskleiste.Namen(nichtUebernommen)}. "
+                        + "Die Verknüpfungen liegen im Ordner \"User Pinned\\TaskBar\" des Profils. Abhilfe: abmelden, wieder anmelden und \"Design & Desktop wiederherstellen\" (Symbole + Taskleiste) erneut ausführen - "
+                        + "oder die Programme von Hand anheften.",
+                        $"[ERROR] Windows does not take over the saved taskbar icons: {Taskleiste.Namen(nichtUebernommen)}. "
+                        + "The shortcuts are in the profile's \"User Pinned\\TaskBar\" folder. Remedy: sign out, sign in again and run \"Restore design & desktop\" (icons + taskbar) again - "
+                        + "or pin the programs by hand."));
             return true;
         }
-        if (!vonSelbst)
-            _log(Loc.Tr("[INFO] Windows hat den Explorer nicht selbst neu gestartet - das Tool hat ihn gestartet.",
-                        "[INFO] Windows did not restart Explorer by itself - the tool started it."));
+
+        // Zeigt Windows die Eintraege auch? Das steht in keinem Registry-Wert -
+        // nachgesehen wird auf der Taskleiste selbst, ueber die App-Kennungen.
+        if (!TaskleisteSichtbar(Taskleiste.Eintraege(Taskleiste.Favorites(taskband), zurueck), ohneProgramm)) return true;
         _log(Loc.Tr($"[ERFOLG] Taskleiste wiederhergestellt: {(zurueck.Count > 0 ? $"{zurueck.Count} Verknüpfungen ({Taskleiste.Namen(zurueck)}) und " : "")}die angehefteten Apps in der gesicherten Reihenfolge.",
                     $"[SUCCESS] Taskbar restored: {(zurueck.Count > 0 ? $"{zurueck.Count} shortcuts ({Taskleiste.Namen(zurueck)}) and " : "")}the pinned apps in the saved order."));
         if (fehlend.Count > 0)
             _log(Loc.Tr($"[WARNUNG] {fehlend.Count} Verknüpfungen fehlen in der Sicherung: {Taskleiste.Namen(fehlend)}",
                         $"[WARNING] {fehlend.Count} shortcuts are missing from the backup: {Taskleiste.Namen(fehlend)}"));
         return true;
+    }
+
+    /// <summary>Nur fuer die Pruefung: die App-Kennungen, die die Taskleiste zeigt (null: nicht lesbar).</summary>
+    internal Func<HashSet<string>?>? TaskleistenSicht { get; set; }
+
+    /// <summary>
+    /// Vergleicht die angehefteten Eintraege mit dem, was die Taskleiste zeigt.
+    /// Fehlt das Symbol eines Programms, das hier installiert ist, ist das ein
+    /// Fehler; fehlt das Programm selbst noch, ein Hinweis.
+    /// </summary>
+    /// <returns>false, wenn ein Fehler gemeldet wurde.</returns>
+    private bool TaskleisteSichtbar(List<Taskleiste.Eintrag> eintraege, List<string> ohneProgramm)
+    {
+        var sichtbar = TaskleistenSicht is { } sicht ? sicht() : OperatingSystem.IsWindows() ? TaskleistenAnsicht.Kennungen() : null;
+        var mitKennung = eintraege.Where(e => e.Kennung is not null).ToList();
+        if (mitKennung.Count == 0) return true;
+        if (sichtbar is null)
+        {
+            _log(Loc.Tr("[INFO] Ob die Taskleiste die Symbole zeigt, ließ sich nicht nachsehen - bitte einen Blick darauf werfen.",
+                        "[INFO] Whether the taskbar shows the icons could not be checked - please have a look."));
+            return true;
+        }
+        static string Name(Taskleiste.Eintrag e) => e.Verknuepfung is { } v ? Path.GetFileNameWithoutExtension(v) : e.Kennung!;
+        var unsichtbar = mitKennung.Where(e => !sichtbar.Contains(e.Kennung!)).ToList();
+        var fehltProgramm = unsichtbar.Where(e => e.Verknuepfung is null || ohneProgramm.Contains(e.Verknuepfung, StringComparer.OrdinalIgnoreCase)).ToList();
+        var trotzdem = unsichtbar.Except(fehltProgramm).ToList();
+        if (fehltProgramm.Count > 0)
+            _log(Loc.Tr($"[WARNUNG] Die Taskleiste zeigt diese Symbole nicht - das Programm fehlt hier (noch): {string.Join(", ", fehltProgramm.Select(Name))}. Nach der Installation den Punkt erneut ausführen.",
+                        $"[WARNING] The taskbar does not show these icons - the program is missing here (yet): {string.Join(", ", fehltProgramm.Select(Name))}. Run this item again after installing."));
+        if (trotzdem.Count > 0)
+        {
+            _log(Loc.Tr($"[FEHLER] Die Taskleiste zeigt diese angehefteten Symbole nicht, obwohl das Programm da ist: {string.Join(", ", trotzdem.Select(e => $"{Name(e)} ({e.Kennung})"))}. "
+                        + "Abhilfe: im Startmenü per Rechtsklick > \"An Taskleiste anheften\".",
+                        $"[ERROR] The taskbar does not show these pinned icons although the program is present: {string.Join(", ", trotzdem.Select(e => $"{Name(e)} ({e.Kennung})"))}. "
+                        + "Remedy: in the Start menu, right-click > \"Pin to taskbar\"."));
+            return false;
+        }
+        _log(Loc.Tr($"[INFO] Die Taskleiste zeigt {mitKennung.Count - unsichtbar.Count} von {mitKennung.Count} gesicherten Symbolen.",
+                    $"[INFO] The taskbar shows {mitKennung.Count - unsichtbar.Count} of {mitKennung.Count} saved icons."));
+        return true;
+    }
+
+    /// <summary>Wie lange nach dem Explorer-Neustart gewartet wird, bevor nachgesehen wird.</summary>
+    internal TimeSpan TaskleistenKontrolle { get; set; } = TimeSpan.FromSeconds(8);
+
+    /// <summary>Nur fuer die Pruefung: was Windows nach dem Neustart in Taskband\Favorites stehen hat.</summary>
+    internal Func<byte[]?>? FavoritesNachlesen { get; set; }
+
+    private byte[]? FavoritesLesen()
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        var (wurzel, eigen) = BenutzerZweig(schreiben: false);
+        try
+        {
+            var v = DesignRegistry.Lesen(wurzel, Taskleiste.TaskbandSchluessel, "Favorites");
+            return v is { Typ: "Binary" } b ? Convert.FromBase64String(b.Wert) : null;
+        }
+        catch { return null; }
+        finally { if (eigen) wurzel.Dispose(); }
+    }
+
+    /// <summary>
+    /// Zeigen die zurueckgeschriebenen Taskleisten-Verknuepfungen auf Programme,
+    /// die es hier gibt? Liegt eins nur woanders (32 statt 64 Bit, anderer Ort
+    /// laut "App Paths"), wird die Verknuepfung umgestellt. Fehlt es, sagt das
+    /// Protokoll, welche - meist Programme, die erst noch installiert werden.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    /// <returns>Die Verknuepfungen (Dateinamen), deren Programm es hier nicht gibt.</returns>
+    internal List<string> TaskleistenZielePruefen(string ordner, IEnumerable<string> verknuepfungen)
+    {
+        var fehlend = new List<string>();
+        var fehlendeDateien = new List<string>();
+        var programme = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programme86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        foreach (var n in verknuepfungen)
+        {
+            var lnk = Path.Combine(ordner, n);
+            var inhalt = Verknuepfung.Lesen(lnk);
+            // Shell-Objekte (Datei-Explorer) und Ziele, die es gibt: nichts zu tun.
+            if (inhalt is null || inhalt.Ziel.Length == 0 || File.Exists(inhalt.Ziel) || Directory.Exists(inhalt.Ziel)) continue;
+            var name = Path.GetFileNameWithoutExtension(n);
+            var neu = Taskleiste.NeuesZiel(inhalt.Ziel, File.Exists, AppPathNachschlagen, programme, programme86);
+            if (neu is not null && Verknuepfung.ZielSetzen(lnk, neu))
+                _log(Loc.Tr($"[INFO] Taskleiste: {name} zeigte auf {inhalt.Ziel} - hier liegt das Programm unter {neu}, die Verknüpfung ist umgestellt.",
+                            $"[INFO] Taskbar: {name} pointed to {inhalt.Ziel} - here the program is at {neu}, the shortcut has been updated."));
+            else
+            {
+                fehlend.Add($"{name} ({inhalt.Ziel})");
+                fehlendeDateien.Add(n);
+            }
+        }
+        if (fehlend.Count > 0)
+            _log(Loc.Tr($"[WARNUNG] Taskleiste: Diese angehefteten Programme gibt es auf diesem PC (noch) nicht: {string.Join(", ", fehlend)}. "
+                        + "Nach ihrer Installation \"Design & Desktop wiederherstellen\" (Symbole + Taskleiste) erneut ausführen.",
+                        $"[WARNING] Taskbar: these pinned programs do not exist on this PC (yet): {string.Join(", ", fehlend)}. "
+                        + "After installing them, run \"Restore design & desktop\" (icons + taskbar) again."));
+        return fehlendeDateien;
+    }
+
+    /// <summary>
+    /// Passt die App-Kennungen in Taskband\Favorites an die Programme dieses PCs
+    /// an. Ueber die Kennung ordnet die Taskleiste ein angeheftetes Symbol einem
+    /// installierten Programm zu; findet sie keins, zeigt sie es nicht. Bei
+    /// einem Anwender (Windows 10 -> 11) trug Firefox die Kennung des
+    /// 32-Bit-Firefox ("E7CF176E110C211B"), winget hatte das 64-Bit-Firefox
+    /// installiert ("308046B0AF4A39CB"). Ersetzt werden nur gleich lange Kennungen.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    internal List<DesignEintrag> KennungenAnpassen(List<DesignEintrag> taskband)
+    {
+        var kennungen = Taskleiste.Kennungen(Taskleiste.Favorites(taskband)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (kennungen.Count == 0) return taskband;
+
+        // Firefox/Thunderbird: Kennung = Schluessel des Installationsordners.
+        var mozilla = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var app in new[] { AppCatalog.Firefox, AppCatalog.Thunderbird })
+        {
+            var (exe, ordnerName) = MozillaProfile.Programm(app)!.Value;
+            var hier = MozillaInstallationenHier(exe, ordnerName);
+            if (hier.Count == 0) continue;
+            var schluesselHier = hier.Select(MozillaProfile.Schluessel).ToList();
+            foreach (var ort in MozillaProfile.UeblicheOrte(ordnerName, SourcePath))
+            {
+                var alt = MozillaProfile.Schluessel(ort);
+                if (!schluesselHier.Contains(alt, StringComparer.OrdinalIgnoreCase)) mozilla.TryAdd(alt, schluesselHier[0]);
+            }
+        }
+        // Programme ohne eigene Kennung: Pfad ab dem Programme-Ordner.
+        var ordner = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [Taskleiste.OrdnerProgramme86] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            [Taskleiste.OrdnerProgramme64] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            [Taskleiste.OrdnerProgramme] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+        };
+
+        var ergebnis = taskband.Select(e => new DesignEintrag { Gruppe = e.Gruppe, Schluessel = e.Schluessel, Name = e.Name, Typ = e.Typ, Wert = e.Wert }).ToList();
+        var ersetzt = new List<string>();
+        foreach (var k in kennungen)
+        {
+            if (Taskleiste.NeueKennung(k, mozilla, ordner, File.Exists) is not { } neu) continue;
+            foreach (var e in ergebnis.Where(e => e.Typ == "Binary" && e.Name.StartsWith("Favorites", StringComparison.Ordinal)))
+            {
+                try { e.Wert = Convert.ToBase64String(Taskleiste.KennungErsetzen(Convert.FromBase64String(e.Wert), k, neu)); }
+                catch { /* unlesbarer Wert - bleibt */ }
+            }
+            ersetzt.Add($"{k} -> {neu}");
+        }
+        if (ersetzt.Count > 0)
+            _log(Loc.Tr($"[INFO] Taskleiste: Kennungen an die Programme dieses PCs angepasst, damit Windows die angehefteten Symbole zuordnet: {string.Join(", ", ersetzt)}.",
+                        $"[INFO] Taskbar: app IDs adjusted to the programs on this PC so Windows matches the pinned icons: {string.Join(", ", ersetzt)}."));
+        return ergebnis;
+    }
+
+    /// <summary>Der Ort eines Programms laut "App Paths" (fuer alle Benutzer, 64 und 32 Bit).</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static string? AppPathNachschlagen(string datei)
+    {
+        foreach (var ansicht in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+        {
+            try
+            {
+                using var basis = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, ansicht);
+                using var k = basis.OpenSubKey($@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{datei}");
+                if (k?.GetValue("") is string p && p.Trim().Trim('"') is { Length: > 0 } pfad)
+                    return Environment.ExpandEnvironmentVariables(pfad);
+            }
+            catch { /* naechste */ }
+        }
+        return null;
     }
 
     /// <summary>
@@ -2085,10 +2600,10 @@ public sealed class BackupService
             if (fremd.Count > 0)
                 _log(Loc.Tr($"[WARNUNG] {fremd.Count} von {erg.Gesamt} Symbolen fehlen hier und stammen nicht aus dem Benutzerprofil: {Namen(fremd)}. "
                             + "Solche Verknüpfungen liegen meist auf dem öffentlichen Desktop (für alle Benutzer) und erscheinen, sobald ihr Programm installiert ist. "
-                            + "Danach \"Desktop-Layout wiederherstellen\" noch einmal ausführen, dann kommen auch sie an ihre Stelle.",
+                            + "Danach \"Design & Desktop wiederherstellen\" (Symbole + Taskleiste) noch einmal ausführen, dann kommen auch sie an ihre Stelle.",
                             $"[WARNING] {fremd.Count} of {erg.Gesamt} icons are missing here and do not come from the user profile: {Namen(fremd)}. "
                             + "Such shortcuts usually live on the public desktop (for all users) and appear once their program is installed. "
-                            + "Then run \"Restore desktop layout\" again to put them in place as well."));
+                            + "Then run \"Restore design & desktop\" (icons + taskbar) again to put them in place as well."));
         }
         _log(erg.Gesetzt > 0
             ? Loc.Tr($"[ERFOLG] {erg.Gesetzt} von {erg.Gesamt} Desktop-Symbolen an ihre gesicherte Stelle gesetzt.",
@@ -2150,7 +2665,8 @@ public sealed class BackupService
     // ------------------------------------------------------------ App-Install/Update
 
     /// <returns>true, wenn das Programm gerade eben installiert wurde.</returns>
-    private async Task<bool> InstallApp(string appName, string exeName, string? wingetId)
+    /// <param name="auchDa">Weitere Pruefung, falls "App Paths" nichts kennt - etwa die Programmordner.</param>
+    private async Task<bool> InstallApp(string appName, string exeName, string? wingetId, Func<bool>? auchDa = null)
     {
         if (_cancel.IsCancelled) return false;
         _log(Loc.Tr($"[INFO] Prüfe, ob {appName} installiert ist...", $"[INFO] Checking whether {appName} is installed..."));
@@ -2161,6 +2677,11 @@ public sealed class BackupService
         using (var lm = Registry.LocalMachine.OpenSubKey(appPathKey))
         using (var cu = Registry.CurrentUser.OpenSubKey(appPathKey))
             da = lm != null || cu != null;
+        // "App Paths" teilen sich parallele Installationen: Liefen auf einem PC
+        // Firefox ESR (32 Bit) und die aktuelle Fassung (64 Bit), nimmt das
+        // Deinstallieren der einen den Eintrag mit - die andere ist noch da.
+        // Ohne diese Pruefung installierte winget sie unnoetig noch einmal.
+        if (!da && auchDa is not null) { try { da = auchDa(); } catch { /* dann eben winget */ } }
         if (da) { _log(Loc.Tr($"[INFO] {appName} ist bereits installiert.", $"[INFO] {appName} is already installed.")); return false; }
 
         // Edge gehoert zu Windows, fuer ihn gibt es kein Paket.

@@ -309,6 +309,8 @@ internal static partial class Program
             Dienst(ziel).RestoreAppProfile(Testbrowser).Wait();
         Check("gesperrtes Profil: Abbruch, ohne etwas zu veraendern", log.Hat("ließ sich nicht beiseitelegen") && File.Exists(sperre), log.Text);
 
+        MozillaDienstPruefen(basis, Dienst, log, ordner);
+
         // Opera: alle Fassungen, je nach Lage installiert, nachinstalliert oder nur zurueckgeschrieben.
         Attrappen.SzenarioSchreiben(ordner, Szenario(("install.*.code", "0")));
         log.Leeren();
@@ -587,6 +589,45 @@ internal static partial class Program
         Check("echter Desktop: Raster wie in der Sicherung umgestellt", log.Hat("am Raster ausrichten"), log.Text);
         Check("echter Desktop: automatisch anordnen wieder an", log.Hat("so ist es jetzt auch hier"), log.Text);
         Check("echter Desktop: Systemsymbol 'Netzwerk' eingeschaltet", log.Hat("Systemsymbole eingeschaltet") && log.Hat("Netzwerk"), log.Text);
+        if (log.Hat("Taskleiste wiederhergestellt"))
+        {
+            Check("echte Taskleiste: nach dem Neustart nachgesehen, alles behalten", !log.Hat("nicht übernommen") && !log.Hat("übernimmt die gesicherten"), log.Text);
+            Check("echte Taskleiste: auf der Taskleiste nachgesehen, alle Symbole da",
+                (log.Hat("Die Taskleiste zeigt") || log.Hat("ließ sich nicht nachsehen")) && !log.Hat("zeigt diese angehefteten Symbole nicht"), log.Text);
+        }
+
+        // Was die Taskleiste zeigt: ein Symbol fehlt, obwohl das Programm da ist -
+        // oder die Taskleiste laesst sich nicht lesen.
+        if (Taskleiste.Laden(d.BackupPath) is { Taskband.Count: > 0 } tl
+            && Taskleiste.Eintraege(Taskleiste.Favorites(tl.Taskband), tl.Verknuepfungen) is { Count: > 1 } eintraege
+            && eintraege[0].Kennung is { } nurDiese)
+        {
+            d.TaskleistenKontrolle = TimeSpan.FromSeconds(1);
+            d.TaskleistenSicht = () => new HashSet<string> { nurDiese };
+            log.Leeren();
+            d.RestoreDesktopIcons().Wait();
+            Check("Taskleiste zeigt ein Symbol nicht: Fehler mit Namen und Kennung statt Erfolg",
+                log.Hat("[FEHLER] Die Taskleiste zeigt diese angehefteten Symbole nicht") && !log.Hat("[ERFOLG] Taskleiste wiederhergestellt"), log.Text);
+            d.TaskleistenSicht = () => null;
+            log.Leeren();
+            d.RestoreDesktopIcons().Wait();
+            Check("Taskleiste nicht lesbar: Hinweis, trotzdem Erfolg", log.Hat("ließ sich nicht nachsehen") && log.Hat("[ERFOLG] Taskleiste wiederhergestellt"), log.Text);
+            d.TaskleistenSicht = null;
+        }
+
+        // Windows belegt die Taskleiste nach dem Neustart selbst neu (wie bei
+        // einem Anwender): einmal erneut schreiben, dann ein Fehler statt "Erfolg".
+        if (Taskleiste.Laden(d.BackupPath) is { Taskband.Count: > 0 })
+        {
+            log.Leeren();
+            d.TaskleistenKontrolle = TimeSpan.FromSeconds(1);
+            d.FavoritesNachlesen = () => null;
+            d.RestoreDesktopIcons().Wait();
+            d.FavoritesNachlesen = null;
+            Check("Taskleiste nicht behalten: erneut geschrieben, dann Fehler statt Erfolg",
+                log.Hat("[WARNUNG] Windows hat die Taskleiste nach dem Neustart selbst neu belegt") && log.Anzahl("Explorer startet kurz neu") == 1
+                && log.Hat("[FEHLER] Windows übernimmt die gesicherten Taskleisten-Symbole nicht") && !log.Hat("[ERFOLG] Taskleiste wiederhergestellt"), log.Text);
+        }
 
         // Und wieder wie vorher.
         var zurueck = new BackupService(new ProcessRunner(c), c, log.Schreiben)

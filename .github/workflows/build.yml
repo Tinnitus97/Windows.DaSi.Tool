@@ -121,3 +121,114 @@ jobs:
         env:
           DASI_NUR: hintergrund
         run: dotnet run --project tests/DaSiTests -c Release
+
+  # Versuch: Was macht der Explorer mit zurueckgeschriebenen Taskleisten-
+  # Symbolen? Auf dem Server-Laeufer ist etwas angeheftet und die Taskleiste
+  # zu sehen (auf dem Windows-11-Laeufer liegt der Sperrbildschirm davor).
+  # Zur Auskunft, haelt den Zweig nicht auf.
+  taskleiste-server:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/dotnet-lts
+
+      - name: Taskleiste unter Windows Server
+        env:
+          DASI_NUR: taskleiste
+        run: dotnet run --project tests/DaSiTests -c Release
+
+  # Umzug mit echtem Thunderbird: auf dem "alten PC" die 32-Bit-Fassung,
+  # dann deinstalliert und die 64-Bit-Fassung installiert ("neuer PC").
+  # Dazwischen sichert bzw. stellt das Tool wieder her - samt Konto mit
+  # Mailordner ausserhalb des Profils (tests/DaSiTests/ThunderbirdEcht.cs).
+  thunderbird-echt:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/dotnet-lts
+
+      - name: Alter PC - Thunderbird 32 Bit installieren
+        shell: pwsh
+        run: |
+          Invoke-WebRequest 'https://download.mozilla.org/?product=thunderbird-latest-ssl&os=win&lang=de' -OutFile "$env:RUNNER_TEMP\tb32.exe"
+          Start-Process "$env:RUNNER_TEMP\tb32.exe" -ArgumentList '/S' -Wait
+          (Get-Item 'C:\Program Files (x86)\Mozilla Thunderbird\thunderbird.exe').VersionInfo | Format-List ProductVersion, FileName
+
+      - name: Alter PC - Profil anlegen und sichern
+        env:
+          DASI_NUR: thunderbird-alt
+          DASI_SICHERUNG: ${{ runner.temp }}\tb-sicherung
+        run: dotnet run --project tests/DaSiTests -c Release
+
+      - name: Neuer PC - 32 Bit entfernen, 64 Bit installieren
+        shell: pwsh
+        run: |
+          Start-Process 'C:\Program Files (x86)\Mozilla Thunderbird\uninstall\helper.exe' -ArgumentList '/S' -Wait
+          for ($i = 0; $i -lt 60 -and (Test-Path 'C:\Program Files (x86)\Mozilla Thunderbird\thunderbird.exe'); $i++) { Start-Sleep 2 }
+          Invoke-WebRequest 'https://download.mozilla.org/?product=thunderbird-latest-ssl&os=win64&lang=de' -OutFile "$env:RUNNER_TEMP\tb64.exe"
+          Start-Process "$env:RUNNER_TEMP\tb64.exe" -ArgumentList '/S' -Wait
+          (Get-Item 'C:\Program Files\Mozilla Thunderbird\thunderbird.exe').VersionInfo | Format-List ProductVersion, FileName
+          Test-Path 'C:\Program Files (x86)\Mozilla Thunderbird\thunderbird.exe'
+
+      - name: Neuer PC - wiederherstellen und Thunderbird starten
+        env:
+          DASI_NUR: thunderbird-neu
+          DASI_SICHERUNG: ${{ runner.temp }}\tb-sicherung
+        run: dotnet run --project tests/DaSiTests -c Release
+
+  # Umzug mit echtem Firefox: auf dem "alten PC" Firefox ESR 32 Bit, auf dem
+  # "neuen" die aktuelle 64-Bit-Fassung (auf dem Laeufer installiert). ESR wird
+  # dazwischen deinstalliert (tests/DaSiTests/FirefoxUmzugEcht.cs).
+  firefox-echt:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/dotnet-lts
+
+      - name: Alter PC - Firefox ESR 32 Bit installieren
+        shell: pwsh
+        # Auf dem Laeufer ist Firefox 64 Bit schon installiert. Ohne Zielangabe legt
+        # der ESR-Installer sich nicht nach "Program Files (x86)" - daher die INI.
+        run: |
+          $ziel = 'C:\Program Files (x86)\Mozilla Firefox'
+          $exe = "$env:RUNNER_TEMP\fxesr32.exe"
+          $ini = "$env:RUNNER_TEMP\fxesr32.ini"
+          Invoke-WebRequest 'https://download.mozilla.org/?product=firefox-esr-latest-ssl&os=win&lang=de' -OutFile $exe
+          "Download: {0:N0} Bytes, Signatur {1}" -f (Get-Item $exe).Length, (Get-AuthenticodeSignature $exe).Status
+          Set-Content $ini "[Install]`r`nInstallDirectoryPath=$ziel`r`nMaintenanceService=false`r`nDesktopShortcut=false`r`nTaskbarShortcut=false`r`nStartMenuShortcuts=false"
+          $p = Start-Process $exe -ArgumentList "/INI=$ini" -Wait -PassThru
+          "Installer beendet, Exitcode $($p.ExitCode)"
+          for ($i = 0; $i -lt 60 -and -not (Test-Path "$ziel\firefox.exe"); $i++) { Start-Sleep 2 }
+          foreach ($o in $ziel, 'C:\Program Files\Mozilla Firefox') {
+            if (Test-Path "$o\firefox.exe") { (Get-Item "$o\firefox.exe").VersionInfo | Format-List ProductVersion, FileName } else { "${o}: kein firefox.exe" }
+          }
+          Get-ChildItem 'HKLM:\SOFTWARE\Mozilla', 'HKLM:\SOFTWARE\WOW6432Node\Mozilla' -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSChildName -eq 'Main' } | ForEach-Object { "$($_.Name): $($_.GetValue('Install Directory'))" }
+          if (-not (Test-Path "$ziel\firefox.exe")) { Write-Host '::error::Firefox ESR 32 Bit wurde nicht installiert.'; exit 1 }
+
+      - name: Alter PC - Profil anlegen und sichern
+        env:
+          DASI_NUR: firefox-alt
+          DASI_SICHERUNG: ${{ runner.temp }}\fx-sicherung
+        run: dotnet run --project tests/DaSiTests -c Release
+
+      - name: Neuer PC - Firefox ESR 32 Bit entfernen
+        shell: pwsh
+        run: |
+          Start-Process 'C:\Program Files (x86)\Mozilla Firefox\uninstall\helper.exe' -ArgumentList '/S' -Wait
+          for ($i = 0; $i -lt 60 -and (Test-Path 'C:\Program Files (x86)\Mozilla Firefox\firefox.exe'); $i++) { Start-Sleep 2 }
+          "ESR 32 Bit noch da: $(Test-Path 'C:\Program Files (x86)\Mozilla Firefox\firefox.exe')"
+          (Get-Item 'C:\Program Files\Mozilla Firefox\firefox.exe').VersionInfo | Format-List ProductVersion, FileName
+
+      - name: Neuer PC - wiederherstellen und Firefox starten
+        env:
+          DASI_NUR: firefox-neu
+          DASI_SICHERUNG: ${{ runner.temp }}\fx-sicherung
+        run: dotnet run --project tests/DaSiTests -c Release

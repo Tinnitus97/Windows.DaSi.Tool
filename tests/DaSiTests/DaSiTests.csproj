@@ -25,11 +25,27 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
+  <!-- Unter Windows zusaetzlich UI Automation (aus WPF): Damit liest der
+       Taskleisten-Versuch die sichtbaren Knoepfe der Taskleiste. Nur dort -
+       unter Linux bleibt die Pruefung ohne Windows-Desktop-Laufzeit startbar. -->
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+    <UseWPF>true</UseWPF>
+    <DefineConstants>$(DefineConstants);MIT_UIA</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <Compile Include="TaskleistenVersuch.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="DienstPruefungen.cs" />
     <Compile Include="WingetPruefungen.cs" />
     <Compile Include="SicherungsPruefungen.cs" />
+    <Compile Include="MozillaPruefungen.cs" />
+    <Compile Include="VerknuepfungsPruefungen.cs" />
+    <Compile Include="ThunderbirdEcht.cs" />
+    <Compile Include="FirefoxUmzugEcht.cs" />
+    <Compile Include="LaufwerkPruefungen.cs" />
     <Compile Include="../Gemeinsam/*.cs" />
     <Compile Include="../../Services/UpdateService.cs" />
     <Compile Include="../../Services/CloudProviders.cs" />
@@ -42,14 +58,18 @@
     <Compile Include="../../Services/ProfilePaths.cs" />
     <Compile Include="../../Services/ProfileLinks.cs" />
     <Compile Include="../../Services/AppCatalog.cs" />
+    <Compile Include="../../Services/LaufwerksOrdner.cs" />
     <Compile Include="../../Services/DesktopIcons.cs" />
     <Compile Include="../../Services/WingetInstaller.cs" />
     <Compile Include="../../Services/WingetFehler.cs" />
     <Compile Include="../../Services/ProfilAbgleich.cs" />
+    <Compile Include="../../Services/MozillaProfile.cs" />
     <Compile Include="../../Services/Hintergrund.cs" />
     <Compile Include="../../Services/DesignEinstellungen.cs" />
     <Compile Include="../../Services/DesignRegistry.cs" />
     <Compile Include="../../Services/Taskleiste.cs" />
+    <Compile Include="../../Services/Verknuepfung.cs" />
+    <Compile Include="../../Services/TaskleistenAnsicht.cs" />
     <Compile Include="../../Services/ExplorerNeustart.cs" />
     <Compile Include="../../Services/DesktopHintergrund.cs" />
     <Compile Include="../../Services/DesignDatei.cs" />

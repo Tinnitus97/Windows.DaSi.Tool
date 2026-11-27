@@ -7,6 +7,126 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [1.2.8] - 2026-11-27
+
+### Neu
+
+- **Ordner unter C:\\ sichern.** Eigene Ordner direkt auf dem Systemlaufwerk
+  (`C:\Daten`, `C:\Scans`, der Export einer Branchensoftware …) gehören jetzt mit in
+  die Sicherung. Beim Anhaken der Kachel erscheint eine Auswahlliste wie bei Winget,
+  mit der Größe jedes Ordners und der Summe der Wahl. **Übernehmen** merkt die Ordner
+  nur vor; gesichert bzw. zurückgeschrieben wird erst mit *Ausgewählte Aktionen
+  starten*. Ein Knopf in der Kachel zeigt die Zahl (*2 Ordner …*) und öffnet die Liste
+  zum Ändern; die Speicherprüfung rechnet die Ordner mit. Der Haken **Windows-Standardordner
+  ausblenden** steht von Anfang an: `Windows`, `Program Files`, `ProgramData`,
+  `Users`, `PerfLogs`, `Recovery`, `$Recycle.Bin`, `XboxGames` & Co. erscheinen erst ohne ihn.
+  Verknüpfungen und der Ordner der Sicherung selbst erscheinen nie. Gesichert wird
+  nach `C-Ordner\<Name>`; beim Wiederherstellen wird ein vorhandener Ordner ergänzt,
+  neuere Dateien dort bleiben. Die Oberfläche ist dadurch nicht größer geworden.
+
+### Behoben
+
+- **Firefox nach der Wiederherstellung mit leerem Profil.** Das Profil war
+  vollständig zurückgeschrieben, Firefox legte trotzdem ein neues, leeres
+  „default-release“ an; erst nach Löschen von Hand mit `firefox -P` waren die Daten
+  da. Ursache: Seit Firefox 67 hat jede Installation ihr eigenes Standardprofil, in
+  `profiles.ini` unter `[Install<Schlüssel>]` – der Schlüssel ist aus dem
+  Installationsordner berechnet. Auf dem alten PC lief das 32-Bit-Firefox aus
+  `C:\Program Files (x86)\Mozilla Firefox` (Schlüssel `E7CF176E110C211B`), winget
+  installierte auf dem neuen das 64-Bit-Firefox nach `C:\Program Files\Mozilla Firefox`
+  (`308046B0AF4A39CB`). Das zurückgeschriebene Profil gehörte gesperrt der alten
+  Installation. Jetzt trägt das Tool nach dem Zurückschreiben das Profil, das auf dem
+  alten PC lief, als Standard jeder Firefox-Installation dieses PCs ein
+  (`profiles.ini` und `installs.ini`), dazu als allgemeinen Standard: Findet sich
+  keine Installation, übernimmt Firefox es beim ersten Start. Das Protokoll nennt
+  Profil, neuen und alten Ordner. Gilt ebenso für Thunderbird. Geprüft mit dem echten
+  Firefox des Windows-Läufers – samt Gegenprobe: ohne die Anpassung legt er wie beim
+  Anwender ein neues Profil an.
+- **Firefox/Thunderbird lehnen ein Profil einer neueren Hauptversion ab** und legen
+  ein neues, leeres an („Sie haben eine ältere Version gestartet“) – etwa wenn hier ESR
+  statt der normalen Fassung liegt oder winget die neue Hauptversion erst Tage nach dem
+  Update auf dem alten PC liefert. Das Tool vergleicht jetzt die Fassung aus
+  `compatibility.ini` mit der installierten (`application.ini`) und meldet diesen Fall
+  als Fehler mit der Abhilfe, das Programm zu aktualisieren. Innerhalb derselben
+  Hauptversion (146.0.1 gegen 146.0) nimmt Firefox das Profil – in der CI mit dem
+  echten Firefox geprüft.
+- **Firefox ESR auf dem alten PC: hier die aktuelle Fassung.** Der Winget-Import
+  installierte bisher, was auf dem alten PC lief – also Firefox ESR, womöglich neben
+  der aktuellen Fassung, die die Firefox-Wiederherstellung schon installiert hatte:
+  zwei Firefox mit zwei Profilen. Jetzt wird aus `Mozilla.Firefox.ESR(.de)` beim
+  Import `Mozilla.Firefox(.de)`, und zwar nur einmal; das Protokoll sagt es. Der
+  übliche Umzug – ESR und/oder 32 Bit auf dem alten, die aktuelle 64-Bit-Fassung auf
+  dem neuen PC – ist damit durchgängig geprüft, in der CI mit echten Installationen:
+  Firefox ESR (32 Bit) installieren, Profil anlegen lassen, sichern, ESR
+  deinstallieren, mit dem aktuellen Firefox (64 Bit) wiederherstellen – er öffnet das
+  Profil vom alten PC, legt kein leeres an. Gegenprobe: ohne die Anpassung legt er
+  wie beim Anwender „default-release“ an.
+- **Firefox unnötig per winget neu installiert.** Ob ein Programm installiert ist,
+  las das Tool nur aus „App Paths“. Diesen Eintrag teilen sich parallele
+  Installationen: Deinstalliert man Firefox ESR (32 Bit) neben der aktuellen Fassung,
+  verschwindet er – Firefox 64 Bit ist aber noch da. Für Firefox und Thunderbird sieht
+  das Tool jetzt zusätzlich in den Programmordnern nach.
+- **Pfade des alten Benutzers in `prefs.js`.** Hieß der Benutzer auf dem alten PC
+  anders, zeigten Download-, Cache- und Mailordner sowie Startseiten aus dem Profil
+  (`file:///C:/Users/…`) ins Leere. Sie werden jetzt auf das gewählte Profil
+  umgestellt – nur ganze Ordnernamen, Kommentare bleiben.
+- **Thunderbird: Mails außerhalb des Profils fehlten in der Sicherung.** Liegt der
+  Ordner eines Kontos woanders (Konten-Einstellungen › Server-Einstellungen ›
+  Lokaler Ordner, etwa `D:\Mail`), sichert das Tool ihn jetzt mit
+  (`Thunderbird-Extern`) und schreibt ihn an seinen Ort zurück; gibt es das
+  Laufwerk dort nicht, in den Profilordner, samt Anpassung in `prefs.js`. Liegt er im
+  Benutzerprofil, sagt das Protokoll, dass ihn der Punkt Benutzerprofil sichert.
+  In der CI mit echtem Thunderbird geprüft: Thunderbird 32 Bit mit zwei Konten (eins
+  mit Mailordner unter `C:\DaSi-Mail`) sichern, 32 Bit deinstallieren, 64 Bit
+  installieren, wiederherstellen – Thunderbird 64 Bit öffnet das alte Profil, lädt
+  beide Konten, die Mails sind da. (Anders als Firefox übernimmt Thunderbird das
+  Profil einer anderen Installation übrigens auch von selbst.)
+  MozBackup macht das ebenso; sein Quelltext war die Anregung für diese Punkte.
+- **Taskleiste leer, Protokoll meldete Erfolg** (Windows 10 22H2 → Windows 11).
+  Das Tool hatte nach dem Zurückschreiben nicht nachgesehen, was Windows daraus
+  macht. Jeder angeheftete Eintrag in `Taskband\Favorites` trägt eine App-Kennung
+  (AppUserModelID), über die die Taskleiste ihn einem Programm zuordnet. In der
+  Sicherung des Anwenders trug Firefox die Kennung des 32-Bit-Firefox
+  (`E7CF176E110C211B`), winget hatte das 64-Bit-Firefox installiert
+  (`308046B0AF4A39CB`); die übrigen Einträge gehörten zu Programmen, die noch nicht
+  installiert waren, und zum alten Snipping Tool, das es unter Windows 11 so nicht
+  mehr gibt. Windows Server 2025 zeigt solche Einträge trotzdem an (geprüft); ob
+  Windows 11 sie ausblendet, sagt künftig das Protokoll. Jetzt:
+  - **Kennungen anpassen:** Firefox und Thunderbird bekommen die Kennung ihrer
+    Installation auf diesem PC, Programme ohne eigene Kennung
+    (`{Program Files (x86)}\…\programm.exe`) die des Programme-Ordners, in dem sie
+    hier liegen. Ersetzt werden nur gleich lange Kennungen, die Einträge bleiben
+    sonst unangetastet.
+  - **Verknüpfungen umstellen:** Zeigt eine angeheftete Verknüpfung auf ein
+    Programm, das hier woanders liegt – 64 statt 32 Bit wie Firefox, oder ein
+    anderer Ort laut Windows (`App Paths`, etwa Excel) –, stellt das Tool sie um,
+    samt Symbol, Arbeitsordner und App-Kennung. Programme, die es hier (noch) nicht
+    gibt, nennt das Protokoll.
+  - **Nachsehen:** Nach dem Neustart des Explorers prüft das Tool, ob Windows die
+    Einträge behalten hat (sonst ein zweiter Versuch), und liest über UI Automation,
+    welche Programme die Taskleiste tatsächlich zeigt – sprachunabhängig über ihre
+    App-Kennung. Fehlt das Symbol eines Programms, das hier installiert ist, steht
+    ein Fehler mit Abhilfe im Protokoll statt „[ERFOLG]“; fehlt das Programm selbst
+    noch, ein Hinweis, den Punkt nach der Installation erneut auszuführen.
+
+### Geändert
+
+- **Design und Desktop-Layout sind eine Kachel: „Design & Desktop“.** Statt zwei
+  Kacheln eine über die volle Breite, rechts darin die Teile **Design**,
+  **Symbole + Taskleiste** und **Screenshot**. Beim Sichern sind Design und Symbole
+  vorgewählt; Symbole und Screenshot gehen jetzt auch zusammen (bisher entweder –
+  oder). Kachel und Teile hängen zusammen: Wer einen Teil anhakt, hakt die Kachel mit
+  an; wer den letzten abhakt, hakt sie ab; die Kachel selbst angehakt wählt die
+  Vorgabe. Beim Wiederherstellen ist vorgewählt, was die Sicherung enthält. Die Ordner
+  in der Sicherung sind dieselben – Sicherungen älterer Versionen lassen sich
+  wiederherstellen wie bisher.
+- **Die Protokolldatei enthält den ganzen Ablauf.** In
+  `Sicherung-Protokoll_…`/`Wiederherstellung-Protokoll_…` stand bisher nur die Bilanz
+  (welche Aktion OK oder FEHLER war). Jetzt folgt darunter das vollständige Protokoll
+  des Durchgangs – für die Fehlersuche nach einer Wiederherstellung.
+
+---
+
 ## [1.2.7] - 2026-11-22
 
 ### Neu
@@ -732,6 +852,7 @@ PowerShell/WPF-Skripts als native C#-Anwendung mit Avalonia.
 
 ---
 
+[1.2.8]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.8
 [1.2.7]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.7
 [1.2.6]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.6
 [1.2.5]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.5

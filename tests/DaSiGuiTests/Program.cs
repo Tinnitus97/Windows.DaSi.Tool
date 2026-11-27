@@ -223,6 +223,7 @@ internal static class Program
         await Moduswechsel(w, vm, root);
         await Warteschlange(w, vm, root);
         await WingetInDerOberflaeche(w, vm, root);
+        await LaufwerkInDerOberflaeche(w, vm, root);
         await Dialoge(w);
         WeitereFunktionen(root);
         await Schliessen(w, vm);
@@ -259,7 +260,7 @@ internal static class Program
         vm.IsEnglish = false;
         var gleich = props.Where(p => de[p.Name] == en[p.Name] && !string.IsNullOrEmpty(de[p.Name])
                                       && p.Name is not ("WindowTitle" or "SourcePath" or "BackupPath" or "LogText" or "ThemeIcon" or "UpdateBannerText"
-                                                        or "TgDesktopScreenshot" or "ProgressText" or "StorageInfo"))
+                                                        or "TgTeilScreenshot" or "TgTeilDesign" or "ProgressText" or "StorageInfo"))
                           .Select(p => p.Name).ToList();
         Check("jede Beschriftung ist uebersetzt", gleich.Count == 0, string.Join(", ", gleich));
 
@@ -361,27 +362,54 @@ internal static class Program
 
         Klicken(Element<RadioButton>(w, "Wiederherstellen"));
         Check("Modus Wiederherstellen", vm.IsRestoreMode && !vm.IsBackupMode);
-        Check("Beschriftungen folgen dem Modus", vm.TgWinget == "Programme installieren (Winget)" && vm.TgWallpaper == "Design wiederherstellen"
+        Check("Beschriftungen folgen dem Modus", vm.TgWinget == "Programme installieren (Winget)" && vm.TgDesignDesktop == "Design & Desktop wiederherstellen"
+            && vm.TgLaufwerk.EndsWith("wiederherstellen")
             && vm.TgUserAppData == "AppData wiederherstellen" && Alle<CheckBox>(w).Any(c => Text(c.Content) == "WLAN Profile importieren"));
         Check("eigener Ordner wirkt beim Wiederherstellen nicht", !vm.OwnFolderToggleEnabled && !Knopf(w, "Eigener Ordner: AN").IsEffectivelyEnabled);
         var chrome = Element<CheckBox>(w, "Chrome-Profil");
         Check("nicht in der Sicherung: Kachel gesperrt, Grund im Tooltip", !chrome.IsEffectivelyEnabled && (vm.TipChrome ?? "").Length > 0, vm.TipChrome);
         Check("in der Sicherung: Kachel frei", Element<CheckBox>(w, "Firefox-Profil").IsEffectivelyEnabled);
-        Check("nur ein Foto gesichert: Variante Screenshot gewaehlt, Symbole gesperrt",
-            !vm.DesktopSymbole && vm.EnDesktopScreenshot && !vm.EnDesktopSymbole && vm.TipDesktopSymbole.Contains("weder Symbolpositionen"), vm.TipDesktopSymbole);
-        Check("Tooltip Screenshot beim Wiederherstellen", vm.TipDesktopScreenshot.Contains("Öffnet das Foto"));
-        Check("Design nicht in der Sicherung: Grund statt Inhaltsangabe", !vm.EnWallpaper && !(vm.TipWallpaper ?? "").Contains("Mauszeiger"), vm.TipWallpaper);
+        Check("Kachel aus: kein Teil angehakt", vm.EnDesignDesktop && !vm.SelDesignDesktop && !vm.TeilScreenshot && !vm.TeilSymbole && !vm.TeilDesign,
+            $"{vm.TeilDesign} {vm.TeilSymbole} {vm.TeilScreenshot}");
+        Check("nur ein Foto gesichert: Screenshot bedienbar, Symbole und Design gesperrt",
+            vm.EnTeilScreenshot && Element<CheckBox>(w, "Screenshot").IsEffectivelyEnabled && !vm.EnTeilSymbole && !vm.EnTeilDesign
+            && vm.TipTeilSymbole.Contains("weder Symbolpositionen"), vm.TipTeilSymbole);
+        Klicken(Element<CheckBox>(w, "Design & Desktop wiederherstellen"));
+        Check("Kachel angehakt: Vorgabe - nur der Screenshot (mehr ist nicht gesichert)",
+            vm.SelDesignDesktop && vm.TeilScreenshot && !vm.TeilSymbole && !vm.TeilDesign, $"{vm.TeilDesign} {vm.TeilSymbole} {vm.TeilScreenshot}");
+        Klicken(Element<CheckBox>(w, "Screenshot"));
+        Check("letzten Teil abgehakt: Kachel ab", !vm.TeilScreenshot && !vm.SelDesignDesktop);
+        Klicken(Element<CheckBox>(w, "Screenshot"));
+        Check("Teil angehakt: Kachel automatisch mit", vm.TeilScreenshot && vm.SelDesignDesktop);
+        Check("Tooltip Screenshot beim Wiederherstellen", vm.TipTeilScreenshot.Contains("Öffnet das Foto"));
+        Check("Design nicht in der Sicherung: Grund statt Inhaltsangabe", !vm.EnTeilDesign && !(vm.TipTeilDesign ?? "").Contains("Mauszeiger"), vm.TipTeilDesign);
+        Check("Ordner unter C:\\ nicht in der Sicherung: gesperrt, mit Grund", !vm.EnLaufwerk && (vm.TipLaufwerk ?? "").Contains("keine Ordner von"), vm.TipLaufwerk);
         Klicken(Element<CheckBox>(w, "Firefox-Profil"));
         Check("freie Kachel laesst sich anhaken", vm.SelFirefox);
         vm.SelFirefox = false;
 
         Klicken(Element<RadioButton>(w, "Sichern"));
-        Check("zurueck zum Sichern", !vm.IsRestoreMode && vm.TgWinget == "Programme exportieren (Winget)" && vm.TipDesktopScreenshot.Contains("Fotografiert"));
-        Check("Design-Kachel nennt auch frei, was dazugehoert", vm.EnWallpaper && (vm.TipWallpaper ?? "").Contains("Mauszeiger"), vm.TipWallpaper);
-        Klicken(Element<RadioButton>(w, "Symbole + Taskleiste"));
-        Check("Desktop-Layout: Symbole gewaehlt", vm.DesktopSymbole && vm.DesktopSymboleGewaehlt && !vm.DesktopScreenshotGewaehlt && vm.TipDesktopSymbole.Contains("Merkt sich"));
-        Klicken(Element<RadioButton>(w, "Screenshot"));
-        Check("Desktop-Layout: Screenshot gewaehlt", !vm.DesktopSymbole);
+        Check("zurueck zum Sichern", !vm.IsRestoreMode && vm.TgWinget == "Programme exportieren (Winget)" && vm.TipTeilScreenshot.Contains("Fotografiert")
+            && vm.TgDesignDesktop == "Design & Desktop sichern" && vm.TgLaufwerk.EndsWith("sichern"));
+        Check("Sichern: Design und Symbole vorgewaehlt, Screenshot nicht", vm.TeilDesign && vm.TeilSymbole && !vm.TeilScreenshot);
+        Check("Design nennt auch frei, was dazugehoert", vm.EnTeilDesign && (vm.TipTeilDesign ?? "").Contains("Mauszeiger") && vm.TipTeilSymbole.Contains("Merkt sich")
+            && (vm.TipDesignDesktop ?? "").Contains("Taskleisten-Symbole"), vm.TipTeilDesign);
+        Klicken(Element<CheckBox>(w, "Screenshot"));
+        Check("Symbole und Screenshot zusammen moeglich", vm.TeilSymbole && vm.TeilScreenshot);
+        Klicken(Element<CheckBox>(w, "Symbole + Taskleiste"));
+        Klicken(Element<CheckBox>(w, "Design"));
+        Check("Teile einzeln abwaehlbar", !vm.TeilSymbole && !vm.TeilDesign && vm.TeilScreenshot);
+        Klicken(Element<CheckBox>(w, "Design & Desktop sichern"));
+        Check("Kachel ab: alle Teile ab, aber bedienbar", !vm.SelDesignDesktop && !vm.TeilScreenshot && !vm.TeilDesign && !vm.TeilSymbole && vm.EnTeilSymbole);
+        Klicken(Element<CheckBox>(w, "Symbole + Taskleiste"));
+        Check("nur Symbole angehakt: Kachel automatisch mit, sonst nichts", vm.SelDesignDesktop && vm.TeilSymbole && !vm.TeilDesign && !vm.TeilScreenshot);
+        Klicken(Element<CheckBox>(w, "Design"));
+        Check("Design dazu: Kachel bleibt an", vm.SelDesignDesktop && vm.TeilDesign && vm.TeilSymbole);
+        Klicken(Element<CheckBox>(w, "Design & Desktop sichern"));
+        Klicken(Element<CheckBox>(w, "Design & Desktop sichern"));
+        Check("Kachel ab und wieder an: Vorgabe Design und Symbole", vm.SelDesignDesktop && vm.TeilDesign && vm.TeilSymbole && !vm.TeilScreenshot);
+        vm.SelDesignDesktop = false;
+        Check("Ordner unter C:\\: Tooltip sagt, was beim Start kommt", (vm.TipLaufwerk ?? "").Contains("Liste") || !vm.EnLaufwerk, vm.TipLaufwerk);
         vm.IsBackupMode = true;
         Check("IsBackupMode setzen aendert nichts am Sichern", !vm.IsRestoreMode);
 
@@ -425,8 +453,12 @@ internal static class Program
         // Jetzt wirklich: Profil mit Cloud, Desktop-Foto, Design - Ordner wird angelegt.
         vm.SelUserCloud = true;
         vm.SelUserAppData = true;
-        vm.SelDesktopShot = true;
-        vm.SelWallpaper = true;
+        // Design & Desktop: Design und Foto - die Symbole nicht (deren
+        // Zurueckschreiben startete den Explorer neu).
+        vm.SelDesignDesktop = true;
+        vm.TeilDesign = true;
+        vm.TeilSymbole = false;
+        vm.TeilScreenshot = true;
         Klicken(start);
         await Antworten(w, "Ja", "Erkannte Cloud-Anbieter");
         Check("Lauf beendet", await Fertig(vm), vm.LogText);
@@ -436,6 +468,9 @@ internal static class Program
         var bericht = Directory.GetFiles(ziel, "Sicherung-Protokoll_*.txt").FirstOrDefault();
         Check("Protokolldatei im Ziel, jede Aktion mit Ergebnis", bericht is not null && File.ReadAllText(bericht).Contains("Windows Benutzerprofil")
             && File.ReadAllText(bericht).Contains("Desktop-Screenshot"), bericht);
+        var berichtText = bericht is null ? "" : File.ReadAllText(bericht);
+        Check("Protokolldatei: auch der ganze Ablauf, mit Bilanz", berichtText.Contains("Ablauf" + Environment.NewLine + "=====")
+            && berichtText.Contains("--- Führe Aktion Backup-User aus ---") && berichtText.Contains("[BILANZ]"), berichtText);
         Check("Oberflaeche nach dem Lauf wieder frei", vm.UiEnabled && !vm.IsActionRunning && !vm.ProgressVisible);
 
         // In eine vorhandene Sicherung eines anderen Rechners: Rueckfrage.
@@ -480,8 +515,9 @@ internal static class Program
         await Antworten(w, "Nein", "AppData wird zurückgeschrieben", "AppData zurueck: Warnung");
         Check("AppData abgelehnt: nichts gestartet", await Fertig(vm) && vm.LogText.Contains("AppData-Wiederherstellung wurde nicht bestätigt"));
         vm.SelUser = true;
-        vm.SelDesktopShot = true;
-        vm.SelWallpaper = true;
+        vm.SelDesignDesktop = true;
+        Check("Wiederherstellen: Foto vorgewaehlt, wenn eins da ist; Symbole nicht (keine in der Sicherung)",
+            vm.TeilScreenshot == AppCatalog.HatDesktopScreenshot(ziel) && !vm.TeilSymbole, $"{vm.TeilSymbole} {vm.TeilScreenshot}");
         Klicken(start);
         await Antworten(w, "Ja", "Cloud-Anbieter");
         await Antworten(w, "Ja", "AppData");
@@ -492,7 +528,7 @@ internal static class Program
 
         // Ohne Profil: AppData und Cloud einzeln - in beide Richtungen.
         vm.SelUser = false;
-        vm.SelDesktopShot = vm.SelWallpaper = false;
+        vm.SelDesignDesktop = false;
         vm.SelUserAppData = true;
         vm.SelUserCloud = false;
         Klicken(start);
@@ -588,6 +624,129 @@ internal static class Program
         Environment.SetEnvironmentVariable("DASI_WINGET_ATTRAPPE", null);
     }
 
+    /// <summary>
+    /// Ordner unter C:\ - an einem Schein-Laufwerk im Temp-Ordner, mit dem
+    /// echten Auswahlfenster: ausblenden, waehlen, sichern, abbrechen, zurueck.
+    /// </summary>
+    private static async Task LaufwerkInDerOberflaeche(MainWindow w, MainWindowViewModel vm, string root)
+    {
+        Console.WriteLine("\n== Ordner unter C:\\ (Auswahlfenster) ==");
+        var c = Path.Combine(root, "LaufwerkC");
+        foreach (var n in new[] { "Windows", "Users", "Program Files", "$Recycle.Bin" }) Directory.CreateDirectory(Path.Combine(c, n));
+        Datei(Path.Combine(c, "Daten", "Kunden", "liste.txt"), new string('d', 2048));
+        Datei(Path.Combine(c, "Scans", "scan.pdf"), "s");
+        var ziel = Path.Combine(c, "DaSi", "Lauf");
+        var vorher = LaufwerksOrdner.Wurzel;
+        var start = Knopf(w, "Ausgewählte Aktionen starten");
+        try
+        {
+            LaufwerksOrdner.Wurzel = c + Path.DirectorySeparatorChar;
+            // Hin und zurueck: liest die Beschriftungen mit dem neuen Laufwerk neu.
+            Klicken(Element<RadioButton>(w, "Wiederherstellen"));
+            Klicken(Element<RadioButton>(w, "Sichern"));
+            foreach (var p in typeof(MainWindowViewModel).GetProperties().Where(p => p.Name.StartsWith("Sel") && p.PropertyType == typeof(bool)))
+                p.SetValue(vm, false);
+            vm.SourcePath = Path.Combine(root, "Besitzer");
+            vm.BackupPath = ziel;
+            Check("Kachel frei, Beschriftung nennt das Laufwerk", vm.EnLaufwerk && vm.TgLaufwerk == $"Ordner unter {LaufwerksOrdner.Wurzel} sichern", vm.TgLaufwerk);
+            var kachel = Alle<CheckBox>(w).First(cb => Text(cb.Content) == vm.TgLaufwerk);
+            Check("Tooltip: Liste beim Anhaken, gesichert wird beim Start", (vm.TipLaufwerk ?? "").Contains("Beim Anhaken") && vm.TipLaufwerk!.Contains("Ausgewählte Aktionen starten"), vm.TipLaufwerk);
+
+            // Anhaken oeffnet die Liste. Abbrechen: Haken wieder weg.
+            Klicken(kachel);
+            var d = await Dialog(w);
+            CheckBox Zeile(string name) => Alle<CheckBox>(d).First(cb => cb.Tag is LaufwerksOrdner.Eintrag e && e.Name == name);
+            var sichtbar = Alle<CheckBox>(d).Where(cb => cb.IsVisible && cb.Tag is LaufwerksOrdner.Eintrag).Select(cb => ((LaufwerksOrdner.Eintrag)cb.Tag!).Name).ToList();
+            Check("Anhaken oeffnet die Liste: eigene Ordner sichtbar, Windows-Ordner und Sicherungsziel nicht", string.Join(",", sichtbar) == "Daten,Scans"
+                && !Alle<CheckBox>(d).Any(cb => cb.Tag is LaufwerksOrdner.Eintrag e && e.Name == "DaSi"), string.Join(",", sichtbar));
+            Check("Liste: nichts vorgewaehlt, Uebernehmen erst nach Wahl", Alle<CheckBox>(d).Where(cb => cb.Tag is LaufwerksOrdner.Eintrag).All(cb => cb.IsChecked != true)
+                && !Knopf(d, "Übernehmen").IsEffectivelyEnabled);
+            Check("Liste: Groesse erscheint", await Warte(() => DialogText(d).Contains("2 KB") || DialogText(d).Contains("2.0 KB") || DialogText(d).Contains("2,0 KB")), DialogText(d));
+            Check("Liste sagt: erst vormerken, gestartet wird im Hauptfenster", DialogText(d).Contains("merkt sie vor"), DialogText(d));
+            Klicken(Knopf(d, "Abbrechen"));
+            Check("Abgebrochen: Haken wieder weg, nichts vorgemerkt", await Warte(() => !vm.SelLaufwerk) && vm.LaufwerkGewaehlt.Count == 0 && !vm.LaufwerkKnopfSichtbar);
+
+            // Windows-Ordner einblenden, waehlen, wieder ausblenden: faellt heraus.
+            Klicken(kachel);
+            d = await Dialog(w);
+            var ausblenden = Alle<CheckBox>(d).First(cb => Text(cb.Content).StartsWith("Windows-Standardordner ausblenden"));
+            Check("Haken 'Windows-Standardordner ausblenden' steht", ausblenden.IsChecked == true);
+            Klicken(ausblenden);
+            Check("ohne Haken: Windows-Ordner sichtbar", Zeile("Windows").IsVisible && Zeile("Users").IsVisible && Zeile("$Recycle.Bin").IsVisible);
+            Klicken(Zeile("Windows"));
+            Klicken(ausblenden);
+            Check("wieder ausgeblendet: Windows-Ordner abgewaehlt", !Zeile("Windows").IsVisible && Zeile("Windows").IsChecked != true);
+            Klicken(Knopf(d, "Alle"));
+            Check("'Alle' waehlt nur Sichtbares", Zeile("Daten").IsChecked == true && Zeile("Scans").IsChecked == true && Zeile("Users").IsChecked != true);
+            Klicken(Knopf(d, "Keine"));
+            Klicken(Zeile("Daten"));
+            Check("Summe nennt die Wahl", DialogText(d).Contains("1 gewählt"), DialogText(d));
+            Klicken(Knopf(d, "Übernehmen"));
+            Check("Uebernommen: vorgemerkt, Knopf zeigt die Zahl, noch nichts gesichert",
+                await Warte(() => vm.LaufwerkKnopfSichtbar) && vm.SelLaufwerk && vm.LaufwerkKnopf == "1 Ordner …" && vm.LogText.Contains("Vorgemerkt")
+                && !vm.LogText.Contains("Backup-Laufwerk") && !Directory.Exists(ziel) && (vm.TipLaufwerk ?? "").Contains("Vorgemerkt: Daten"), vm.LogText);
+
+            // Aendern ueber den Knopf: Vorgemerktes ist angehakt.
+            Klicken(Knopf(w, "1 Ordner …"));
+            d = await Dialog(w);
+            Check("Aendern: Vorgemerktes angehakt", Zeile("Daten").IsChecked == true && Zeile("Scans").IsChecked != true);
+            Klicken(Zeile("Scans"));
+            Klicken(Knopf(d, "Übernehmen"));
+            Check("Aendern: jetzt zwei", await Warte(() => vm.LaufwerkKnopf == "2 Ordner …") && vm.LaufwerkGewaehlt.Select(e => e.Name).SequenceEqual(new[] { "Daten", "Scans" }), vm.LaufwerkKnopf);
+            Klicken(Knopf(w, "2 Ordner …"));
+            d = await Dialog(w);
+            Klicken(Knopf(d, "Abbrechen"));
+            Check("Aendern abgebrochen: Wahl bleibt", await Warte(() => w.OwnedWindows.Count == 0) && vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 2);
+
+            // Erst jetzt: Start - ohne weitere Liste.
+            Klicken(start);
+            await Task.Delay(300);
+            Rendern();
+            Check("Start fragt nicht noch einmal", w.OwnedWindows.Count == 0);
+            Check("Lauf mit den vorgemerkten Ordnern", await Fertig(vm) && vm.LogText.Contains(": Daten, Scans") && vm.LogText.Contains("Backup-Laufwerk"), vm.LogText);
+            Check("Daten in der Sicherung (Windows)", !OperatingSystem.IsWindows() || File.Exists(Path.Combine(ziel, LaufwerksOrdner.BackupOrdner, "Daten", "Kunden", "liste.txt")), vm.LogText);
+            var bericht = Directory.GetFiles(ziel, "Sicherung-Protokoll_*.txt").FirstOrDefault();
+            Check("Protokolldatei nennt die Aktion", bericht is not null && File.ReadAllText(bericht).Contains("Ordner unter"), bericht);
+            Check("nach dem Lauf bleibt die Wahl vorgemerkt", vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 2);
+
+            // Zurueck: auf ein leeres neues Laufwerk.
+            if (!OperatingSystem.IsWindows()) Datei(Path.Combine(ziel, LaufwerksOrdner.BackupOrdner, "Daten", "Kunden", "liste.txt"), "d");
+            var neu = Path.Combine(root, "LaufwerkNeu");
+            Directory.CreateDirectory(neu);
+            LaufwerksOrdner.Wurzel = neu + Path.DirectorySeparatorChar;
+            Klicken(Element<RadioButton>(w, "Wiederherstellen"));
+            Check("Richtung gewechselt: Wahl verworfen", !vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 0);
+            vm.BackupPath = ziel;
+            Check("Wiederherstellen: Kachel frei", vm.EnLaufwerk && vm.TgLaufwerk.EndsWith("wiederherstellen"), vm.TipLaufwerk);
+            Klicken(Alle<CheckBox>(w).First(cb => Text(cb.Content) == vm.TgLaufwerk));
+            d = await Dialog(w);
+            Check("Wiederherstellen: Gesichertes vorgewaehlt", d.Title?.Contains("wiederherstellen") == true && Zeile("Daten").IsChecked == true && Knopf(d, "Übernehmen").IsEffectivelyEnabled, d.Title);
+            Klicken(Knopf(d, "Übernehmen"));
+            Check("Wiederherstellen: vorgemerkt", await Warte(() => vm.LaufwerkKnopfSichtbar) && vm.LogText.Contains("Vorgemerkt - Ordner nach"), vm.LogText);
+            Klicken(start);
+            Check("Wiederherstellung gelaufen", await Fertig(vm) && vm.LogText.Contains("Restore-Laufwerk"), vm.LogText);
+            Check("Daten auf dem neuen Laufwerk (Windows)", !OperatingSystem.IsWindows() || File.Exists(Path.Combine(neu, "Daten", "Kunden", "liste.txt")), vm.LogText);
+            vm.BackupPath = Path.Combine(root, "Ziel", "Lauf1");
+            Check("andere Sicherung gewaehlt: Wahl verworfen", !vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 0);
+            vm.BackupPath = ziel;
+
+            // Ohne Fenster: eine leere Wahl, ein Abbruch.
+            vm.LaufwerkAuswahl = (_, _, _) => Task.FromResult<List<LaufwerksOrdner.Eintrag>?>(new List<LaufwerksOrdner.Eintrag>());
+            vm.SelLaufwerk = true;
+            Check("leere Wahl: Haken wieder weg", await Warte(() => !vm.SelLaufwerk));
+            vm.LaufwerkAuswahl = (_, _, _) => Task.FromResult<List<LaufwerksOrdner.Eintrag>?>(null);
+            vm.SelLaufwerk = true;
+            Check("Wahl abgebrochen: Haken wieder weg", await Warte(() => !vm.SelLaufwerk));
+        }
+        finally
+        {
+            vm.LaufwerkAuswahl = null;
+            vm.SelLaufwerk = false;
+            LaufwerksOrdner.Wurzel = vorher;
+            Klicken(Element<RadioButton>(w, "Sichern"));
+        }
+    }
+
     private static async Task Dialoge(MainWindow w)
     {
         Console.WriteLine("\n== Dialoge: per Fenster-X geschlossen ==");
@@ -605,6 +764,11 @@ internal static class Program
         Check("Paket ohne Kennung: 'Unbekanntes Paket'", Alle<CheckBox>(d).Any(c => Text(c.Content) == "Unbekanntes Paket"));
         d.Close();
         Check("Winget-Auswahl per X geschlossen: Abbruch", await auswahl is null);
+        var ordner = OrdnerAuswahlDialog.Show(w, new[] { new LaufwerksOrdner.Eintrag("Windows", Path.GetTempPath(), true) }, false);
+        d = await Dialog(w);
+        Check("Ordner-Auswahl: nur Windows-Ordner - Hinweis statt leerer Liste", DialogText(d).Contains("außer den Windows-Ordnern keine Ordner"), DialogText(d));
+        d.Close();
+        Check("Ordner-Auswahl per X geschlossen: Abbruch", await ordner is null);
     }
 
     private static void WeitereFunktionen(string root)

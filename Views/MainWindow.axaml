@@ -178,8 +178,10 @@
                             <!-- Freigabe und Tooltip je Kachel: gesperrt, wenn das Programm beim
                                  Benutzer fehlt (Sichern) oder die Sicherung den Punkt nicht
                                  enthaelt (Wiederherstellen). Der Tooltip nennt den Grund. -->
-                            <!-- Feste Zeilen statt UniformGrid: Das Desktop-Layout steht unten ueber
-                                 volle Breite (mit Auswahl), alle Zeilen bleiben gleich hoch. -->
+                            <!-- Feste Zeilen statt UniformGrid: fuenf Reihen mit je zwei Kacheln,
+                                 darunter "Design & Desktop" ueber volle Breite (mit seinen Teilen),
+                                 alle Reihen gleich hoch - so viele wie bisher, die Oberflaeche wird
+                                 nicht hoeher. -->
                             <Grid Grid.Row="2" ColumnDefinitions="*,*" RowDefinitions="*,*,*,*,*,*">
                                 <Border Grid.Row="0" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgFirefox}" IsChecked="{Binding SelFirefox}" IsEnabled="{Binding EnFirefox}" ToolTip.Tip="{Binding TipFirefox}" ToolTip.ShowOnDisabled="True"/></Border>
                                 <Border Grid.Row="0" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgEdge}" IsChecked="{Binding SelEdge}" IsEnabled="{Binding EnEdge}" ToolTip.Tip="{Binding TipEdge}" ToolTip.ShowOnDisabled="True"/></Border>
@@ -190,26 +192,35 @@
                                 <Border Grid.Row="3" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWinget}" IsChecked="{Binding SelWinget}" IsEnabled="{Binding EnWinget}" ToolTip.Tip="{Binding TipWinget}" ToolTip.ShowOnDisabled="True"/></Border>
                                 <Border Grid.Row="3" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWlan}" IsChecked="{Binding SelWlan}" IsEnabled="{Binding EnWlan}" ToolTip.Tip="{Binding TipWlan}" ToolTip.ShowOnDisabled="True"/></Border>
                                 <Border Grid.Row="4" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgPrinter}" IsChecked="{Binding SelPrinter}" IsEnabled="{Binding EnPrinter}" ToolTip.Tip="{Binding TipPrinter}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <Border Grid.Row="4" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWallpaper}" IsChecked="{Binding SelWallpaper}" IsEnabled="{Binding EnWallpaper}" ToolTip.Tip="{Binding TipWallpaper}" ToolTip.ShowOnDisabled="True"/></Border>
+                                <!-- Ordner unter C:\: Beim Anhaken erscheint die Liste, die Wahl wird nur
+                                     vorgemerkt. Der Knopf rechts zeigt, wie viele, und aendert die Wahl. -->
+                                <Border Grid.Row="4" Grid.Column="1" Classes="cardHost">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <CheckBox Classes="card" Content="{Binding TgLaufwerk}" IsChecked="{Binding SelLaufwerk}" IsEnabled="{Binding EnLaufwerk}" ToolTip.Tip="{Binding TipLaufwerk}" ToolTip.ShowOnDisabled="True"/>
+                                        <Button Grid.Column="1" Classes="secondary" Height="20" Padding="7,0" Margin="6,0,0,0" FontSize="11"
+                                                VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                                Content="{Binding LaufwerkKnopf}" IsVisible="{Binding LaufwerkKnopfSichtbar}"
+                                                Command="{Binding LaufwerkAendernCommand}" IsEnabled="{Binding UiEnabled}"
+                                                ToolTip.Tip="{Binding TipLaufwerk}"/>
+                                    </Grid>
+                                </Border>
 
-                                <!-- Desktop-Layout: Screenshot ODER Symbolpositionen (wie DesktopOK).
-                                     Aufbau wie die Profilkachel - die Auswahl steht buendig ueber
-                                     der rechten Kachelspalte. -->
+                                <!-- Design & Desktop: eine Kachel, die drei Teile rechts in derselben
+                                     Zeile (rechtsbuendig, damit sie beim Umschalten Sichern /
+                                     Wiederherstellen nicht springen). Ein Teil angehakt hakt die Kachel
+                                     mit an (siehe TeilGeaendert). Beim Wiederherstellen ist ein Teil nur
+                                     bedienbar, wenn die Sicherung ihn enthaelt. -->
                                 <Border Grid.Row="5" Grid.ColumnSpan="2" Classes="cardHost">
-                                    <Grid ColumnDefinitions="*,*">
-                                        <CheckBox Grid.Column="0" Classes="card" Content="{Binding TgDesktopShot}" IsChecked="{Binding SelDesktopShot}" IsEnabled="{Binding EnDesktopShot}" ToolTip.Tip="{Binding TipDesktopShot}" ToolTip.ShowOnDisabled="True"/>
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" Margin="18,0,0,0" VerticalAlignment="Center">
-                                            <RadioButton Classes="subRadio" GroupName="desktopLayout"
-                                                         Content="{Binding TgDesktopScreenshot}"
-                                                         IsChecked="{Binding DesktopScreenshotGewaehlt, Mode=TwoWay}"
-                                                         IsEnabled="{Binding EnDesktopScreenshot}"
-                                                         ToolTip.Tip="{Binding TipDesktopScreenshot}" ToolTip.ShowOnDisabled="True"/>
-                                            <RadioButton Classes="subRadio" GroupName="desktopLayout"
-                                                         Content="{Binding TgDesktopSymbole}"
-                                                         IsChecked="{Binding DesktopSymboleGewaehlt, Mode=TwoWay}"
-                                                         IsEnabled="{Binding EnDesktopSymbole}"
-                                                         ToolTip.Tip="{Binding TipDesktopSymbole}" ToolTip.ShowOnDisabled="True"/>
-                                        </StackPanel>
+                                    <Grid ColumnDefinitions="Auto,*">
+                                        <CheckBox Grid.Column="0" Classes="card" Content="{Binding TgDesignDesktop}" IsChecked="{Binding SelDesignDesktop}" IsEnabled="{Binding EnDesignDesktop}" ToolTip.Tip="{Binding TipDesignDesktop}" ToolTip.ShowOnDisabled="True"/>
+                                        <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="18,0,0,0">
+                                            <WrapPanel.Resources>
+                                                <x:Double x:Key="CheckBoxMinHeight">21</x:Double>
+                                            </WrapPanel.Resources>
+                                            <CheckBox Classes="subCard" Margin="0,0,14,0" Content="{Binding TgTeilDesign}" IsChecked="{Binding TeilDesign}" IsEnabled="{Binding EnTeilDesign}" ToolTip.Tip="{Binding TipTeilDesign}" ToolTip.ShowOnDisabled="True"/>
+                                            <CheckBox Classes="subCard" Margin="0,0,14,0" Content="{Binding TgTeilSymbole}" IsChecked="{Binding TeilSymbole}" IsEnabled="{Binding EnTeilSymbole}" ToolTip.Tip="{Binding TipTeilSymbole}" ToolTip.ShowOnDisabled="True"/>
+                                            <CheckBox Classes="subCard" Content="{Binding TgTeilScreenshot}" IsChecked="{Binding TeilScreenshot}" IsEnabled="{Binding EnTeilScreenshot}" ToolTip.Tip="{Binding TipTeilScreenshot}" ToolTip.ShowOnDisabled="True"/>
+                                        </WrapPanel>
                                     </Grid>
                                 </Border>
                             </Grid>

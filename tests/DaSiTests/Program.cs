@@ -82,6 +82,30 @@ internal static partial class Program
 
         // DASI_NUR=hintergrund: nur die echte Hintergrund-Pruefung - fuer den
         // Windows-11-Laeufer, auf dem es um genau das geht.
+#if MIT_UIA
+        // DASI_NUR=taskleiste: nur der Versuch mit der echten Taskleiste.
+        if (Environment.GetEnvironmentVariable("DASI_NUR") == "taskleiste")
+        {
+            TaskleisteVersuch(root);
+            Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
+            try { Directory.Delete(root, true); } catch { }
+            return _failed == 0 ? 0 : 1;
+        }
+#endif
+        // DASI_NUR=thunderbird-alt/-neu, firefox-alt/-neu: Umzug mit echtem Thunderbird bzw. Firefox (CI).
+        if (Environment.GetEnvironmentVariable("DASI_NUR") is "thunderbird-alt" or "thunderbird-neu" or "firefox-alt" or "firefox-neu" && OperatingSystem.IsWindows())
+        {
+            switch (Environment.GetEnvironmentVariable("DASI_NUR"))
+            {
+                case "thunderbird-alt": ThunderbirdAlterPc(); break;
+                case "thunderbird-neu": ThunderbirdNeuerPc(); break;
+                case "firefox-alt": FirefoxAlterPc(); break;
+                default: FirefoxNeuerPc(); break;
+            }
+            Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
+            try { Directory.Delete(root, true); } catch { }
+            return _failed == 0 ? 0 : 1;
+        }
         if (Environment.GetEnvironmentVariable("DASI_NUR") == "hintergrund")
         {
             if (OperatingSystem.IsWindows()) HintergrundEchtPruefen(root);
@@ -2276,6 +2300,14 @@ internal static partial class Program
         WingetInstallerPruefen(root);
         WingetDienstPruefen(root);
         SicherungsdienstPruefen(root);
+        LaufwerkPruefen(root);
+        MozillaPruefen(root);
+        MozillaPflegePruefen(root);
+        if (OperatingSystem.IsWindows()) FirefoxEchtPruefen(root);
+        NeuesZielPruefen();
+        TaskbandNamenPruefen();
+        KennungenPruefen();
+        if (OperatingSystem.IsWindows()) VerknuepfungenEchtPruefen(root);
         SicherungsdienstAmEchtenDesktop(root);
 
         // Zuletzt: den Explorer neu starten - wie beim Zurueckschreiben der
