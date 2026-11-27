@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -14,12 +15,17 @@ namespace WindowsDaSiTool.Views;
 /// Haken "Windows-Standardordner ausblenden" (steht von Anfang an): Windows,
 /// Programme, Benutzer &amp; Co. tauchen erst auf, wenn er weg ist. Neben jedem
 /// Ordner erscheint seine Groesse, sobald sie berechnet ist.
+/// "Uebernehmen" merkt die Wahl nur vor - gesichert wird erst mit "Ausgewaehlte
+/// Aktionen starten" im Hauptfenster.
 /// Liefert die gewaehlten Ordner, oder null bei Abbruch.
 /// </summary>
 public static class OrdnerAuswahlDialog
 {
-    public static async Task<List<LaufwerksOrdner.Eintrag>?> Show(Window owner, IReadOnlyList<LaufwerksOrdner.Eintrag> eintraege, bool wiederherstellen)
+    /// <param name="vorgewaehlt">Die schon vorgemerkten Ordner (Namen) - leer: die Vorgabe.</param>
+    public static async Task<List<LaufwerksOrdner.Eintrag>?> Show(Window owner, IReadOnlyList<LaufwerksOrdner.Eintrag> eintraege, bool wiederherstellen,
+                                                                  IReadOnlyCollection<string>? vorgewaehlt = null)
     {
+        var vorher = new HashSet<string>(vorgewaehlt ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
         var tcs = new TaskCompletionSource<List<LaufwerksOrdner.Eintrag>?>();
         var stop = new CancellationTokenSource();
         var wurzel = LaufwerksOrdner.Wurzel;
@@ -42,9 +48,10 @@ public static class OrdnerAuswahlDialog
             var cb = new CheckBox
             {
                 Content = inhalt,
-                // Beim Wiederherstellen ist alles Gesicherte vorgewaehlt, beim
-                // Sichern nichts: Was mit soll, entscheidet der Benutzer.
-                IsChecked = wiederherstellen && !e.Windows,
+                // Schon vorgemerkt: wieder angehakt. Sonst ist beim
+                // Wiederherstellen alles Gesicherte vorgewaehlt, beim Sichern
+                // nichts: Was mit soll, entscheidet der Benutzer.
+                IsChecked = vorher.Count > 0 ? vorher.Contains(e.Name) : wiederherstellen && !e.Windows,
                 Classes = { "dialogItem" },
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
@@ -76,7 +83,8 @@ public static class OrdnerAuswahlDialog
         {
             Content = Loc.Tr("Windows-Standardordner ausblenden (Windows, Programme, Benutzer …)",
                              "Hide the standard Windows folders (Windows, Program Files, Users …)"),
-            IsChecked = true,
+            // Ist ein Windows-Ordner schon vorgemerkt, bleibt er sichtbar.
+            IsChecked = !eintraege.Any(e => e.Windows && vorher.Contains(e.Name)),
             Classes = { "dialogItem" },
             Margin = new Avalonia.Thickness(0, 0, 0, 8),
         };
@@ -87,7 +95,7 @@ public static class OrdnerAuswahlDialog
         var btnAll = Knopf(Loc.Tr("Alle", "All"));
         var btnNone = Knopf(Loc.Tr("Keine", "None"));
         var btnCancel = Knopf(Loc.Tr("Abbrechen", "Cancel"), "cancel");
-        var btnOk = Knopf(wiederherstellen ? Loc.Tr("Wiederherstellen", "Restore") : Loc.Tr("Sichern", "Back up"), "yes");
+        var btnOk = Knopf(Loc.Tr("Übernehmen", "Apply"), "yes");
         btnOk.Width = 130;
         btnCancel.Width = 100;
 
@@ -176,9 +184,12 @@ public static class OrdnerAuswahlDialog
         var text = new TextBlock
         {
             Text = wiederherstellen
-                ? Loc.Tr($"Wähle die Ordner, die nach {wurzel} zurückgeschrieben werden sollen. Gibt es einen schon, wird er ergänzt - neuere Dateien dort bleiben.",
-                         $"Select the folders to write back to {wurzel}. If one already exists, it is added to - newer files there are kept.")
-                : Loc.Tr($"Wähle die Ordner unter {wurzel}, die gesichert werden sollen:", $"Select the folders under {wurzel} to back up:"),
+                ? Loc.Tr($"Wähle die Ordner, die nach {wurzel} zurückgeschrieben werden sollen. Gibt es einen schon, wird er ergänzt - neuere Dateien dort bleiben. "
+                         + "\"Übernehmen\" merkt sie vor; los geht es mit \"Ausgewählte Aktionen starten\".",
+                         $"Select the folders to write back to {wurzel}. If one already exists, it is added to - newer files there are kept. "
+                         + "\"Apply\" selects them; it starts with \"Start selected actions\".")
+                : Loc.Tr($"Wähle die Ordner unter {wurzel}, die gesichert werden sollen. \"Übernehmen\" merkt sie vor; gesichert wird mit \"Ausgewählte Aktionen starten\".",
+                         $"Select the folders under {wurzel} to back up. \"Apply\" selects them; they are backed up with \"Start selected actions\"."),
             Classes = { "dialogText" }, FontSize = 12, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Avalonia.Thickness(0, 0, 0, 10)
         };
 

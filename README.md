@@ -37,7 +37,7 @@ Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 | **Programme** | Export der installierten Software als Winget-Paketliste, Wiederherstellung mit Auswahldialog. Programme ohne Winget-Paket landen in einer eigenen Liste |
 | **Netzwerk** | Export und Import gespeicherter WLAN-Profile inklusive Zugangsdaten |
 | **Drucker** | Warteschlangen, Treiber, Ports und Einstellungen über PrintBRM in einer Datei |
-| **Ordner unter C:\\** | Eigene Ordner direkt auf dem Systemlaufwerk (etwa `C:\Daten`, `C:\Scans`), ausgewählt beim Start aus einer Liste – die Ordner von Windows (Windows, Programme, Benutzer …) sind darin ausgeblendet |
+| **Ordner unter C:\\** | Eigene Ordner direkt auf dem Systemlaufwerk (etwa `C:\Daten`, `C:\Scans`), beim Anhaken der Kachel aus einer Liste vorgemerkt – die Ordner von Windows (Windows, Programme, Benutzer …) sind darin ausgeblendet |
 | **Design & Desktop** – Design | Der **Hintergrund**: das Bild samt Darstellung (*Füllen*, *Anpassen* …), an derselben Stelle im gewählten Profil, auch wenn der Benutzer dort anders heißt – oder eine **Volltonfarbe**. Dazu die **Design-Einstellungen** von Windows: *Hell/Dunkel* für Windows und Apps, *Akzentfarbe* (auch „automatisch“ und auf Start, Taskleiste und Titelleisten), *Transparenz*, *Mauszeiger* (Schema und Größe), *Taskleiste* (Ausrichtung, Suche, Taskansicht, Gruppieren) und *Start*. Gelesen und gesetzt wird beim angemeldeten Benutzer, auch wenn das Tool per Admin-Abfrage unter einem anderen Konto läuft, damit der Hintergrund nach einem Neustart bleibt; Hell/Dunkel gilt sofort, die Akzentfarbe auf Titelleisten teils erst nach dem nächsten Anmelden. Alles liegt im Ordner `Design` der Sicherung (`Design.json`, bei einem Bild die Datei daneben) |
 | **Design & Desktop** – Symbole, Screenshot | Die Positionen der Desktop-Symbole (wie DesktopOK, beim Wiederherstellen automatisch zurückgesetzt) samt der an die Taskleiste angehefteten Symbole und auf Wunsch ein Foto des Desktops, ein Bild pro Monitor |
 
@@ -189,11 +189,17 @@ Gesichert wird zum Beispiel der Benutzer *Besitzer*, auf dem neuen Rechner heiß
 ### Ordner unter `C:\` – eigene Daten auf dem Systemlaufwerk
 
 Oft liegen Daten nicht im Benutzerprofil, sondern direkt unter `C:\` – `C:\Daten`,
-`C:\Scans`, der Export einer Branchensoftware. Der Punkt **Ordner unter C:\ sichern**
-öffnet beim Start eine Auswahlliste wie die Winget-Auswahl:
+`C:\Scans`, der Export einer Branchensoftware. Hakt man **Ordner unter C:\ sichern**
+an, öffnet sich eine Auswahlliste wie die Winget-Auswahl. **Übernehmen** merkt die
+Ordner nur vor – gesichert wird wie bei jeder anderen Kachel erst mit
+*Ausgewählte Aktionen starten*. Rechts in der Kachel zeigt ein Knopf, wie viele Ordner
+vorgemerkt sind (*2 Ordner …*); ein Klick darauf öffnet die Liste wieder zum Ändern.
+Wechselt man die Richtung (Sichern/Wiederherstellen) oder die Sicherung, ist die Wahl
+verworfen.
 
-- Neben jedem Ordner steht seine Größe, unten die Summe der Wahl. Vorgewählt ist beim
-  Sichern nichts – was mit soll, entscheidet man selbst.
+- Neben jedem Ordner steht seine Größe, unten die Summe der Wahl; auch die
+  Speicherprüfung rechnet die vorgemerkten Ordner mit. Vorgewählt ist beim Sichern
+  nichts – was mit soll, entscheidet man selbst.
 - **Windows-Standardordner ausblenden** steht von Anfang an: Was jede Windows-Installation
   dort anlegt (`Windows`, `Program Files`, `ProgramData`, `Users`, `PerfLogs`,
   `Recovery`, `$Recycle.Bin`, `System Volume Information` …), taucht erst auf, wenn der

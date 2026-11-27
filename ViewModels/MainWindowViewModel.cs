@@ -251,6 +251,8 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnBackupPathChanged(string value)
     {
         OnPropertyChanged(nameof(OwnFolderTip));
+        // Andere Sicherung, andere Ordner darin: die Wahl gilt nicht mehr.
+        if (IsRestoreMode && SelLaufwerk) SelLaufwerk = false;
         VerfuegbarkeitPruefen();
         // Freien Platz am Ziellaufwerk sofort anzeigen (leichtgewichtig).
         if (string.IsNullOrWhiteSpace(value))
@@ -418,6 +420,80 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnSelThunderbirdChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelWlanChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelPrinterChanged(bool value) => ScheduleAutoStorageCheck();
+    // ---- Ordner unter C:\: Auswahl vormerken ----
+    //
+    // Wie das Anhaken jeder anderen Kachel merkt auch diese nur vor: Beim
+    // Anhaken erscheint die Liste, "Uebernehmen" merkt die Ordner vor, und
+    // gesichert bzw. zurueckgeschrieben wird erst mit "Ausgewaehlte Aktionen
+    // starten". Der Knopf in der Kachel zeigt die Zahl und aendert die Wahl.
+    private List<LaufwerksOrdner.Eintrag> _laufwerkGewaehlt = new();
+    private bool _laufwerkWaehltGerade;
+
+    /// <summary>Die vorgemerkten Ordner.</summary>
+    public IReadOnlyList<LaufwerksOrdner.Eintrag> LaufwerkGewaehlt => _laufwerkGewaehlt;
+    public string LaufwerkKnopf => Tr($"{_laufwerkGewaehlt.Count} Ordner …", $"{_laufwerkGewaehlt.Count} {(_laufwerkGewaehlt.Count == 1 ? "folder" : "folders")} …");
+    public bool LaufwerkKnopfSichtbar => SelLaufwerk && _laufwerkGewaehlt.Count > 0;
+
+    partial void OnSelLaufwerkChanged(bool value)
+    {
+        if (value && _laufwerkGewaehlt.Count == 0 && !_laufwerkWaehltGerade)
+            // Erst nach dem Klick: Ist der Haken bis dahin schon wieder weg, keine Liste.
+            Dispatcher.UIThread.Post(async () => { if (SelLaufwerk && _laufwerkGewaehlt.Count == 0) await LaufwerkWaehlen(); });
+        else if (!value) _laufwerkGewaehlt = new();
+        LaufwerkMelden();
+        ScheduleAutoStorageCheck();
+    }
+
+    private void LaufwerkMelden()
+    {
+        OnPropertyChanged(nameof(LaufwerkKnopf));
+        OnPropertyChanged(nameof(LaufwerkKnopfSichtbar));
+        OnPropertyChanged(nameof(LaufwerkGewaehlt));
+        OnPropertyChanged(nameof(TipLaufwerk));
+    }
+
+    [RelayCommand]
+    private async Task LaufwerkAendern() => await LaufwerkWaehlen();
+
+    /// <summary>
+    /// Zeigt die Liste und merkt die Wahl vor. Abgebrochen: Die bisherige Wahl
+    /// bleibt - gab es keine, geht der Haken wieder weg. Nichts gewaehlt: Haken weg.
+    /// </summary>
+    private async Task LaufwerkWaehlen()
+    {
+        if (_laufwerkWaehltGerade) return;
+        _laufwerkWaehltGerade = true;
+        try
+        {
+            var eintraege = IsRestoreMode ? LaufwerksOrdner.InDerSicherung(BackupPath)
+                                          : LaufwerksOrdner.Auflisten(LaufwerksOrdner.Wurzel, BackupPath);
+            var vorher = _laufwerkGewaehlt.Select(e => e.Name).ToList();
+            List<LaufwerksOrdner.Eintrag>? wahl = null;
+            if (LaufwerkAuswahl is not null) wahl = await LaufwerkAuswahl(eintraege, IsRestoreMode, vorher);
+            else if (GetMainWindow() is { } win) wahl = await OrdnerAuswahlDialog.Show(win, eintraege, IsRestoreMode, vorher);
+            if (wahl is null)
+            {
+                if (_laufwerkGewaehlt.Count == 0) SelLaufwerk = false;
+                return;
+            }
+            _laufwerkGewaehlt = wahl;
+            if (wahl.Count == 0) { SelLaufwerk = false; return; }
+            SelLaufwerk = true;
+            var namen = string.Join(", ", wahl.Select(e => e.Name));
+            Log(IsRestoreMode
+                ? Tr($"[INFO] Vorgemerkt - Ordner nach {LaufwerksOrdner.Wurzel}: {namen}. Zurückgeschrieben wird mit \"Ausgewählte Aktionen starten\".",
+                     $"[INFO] Selected - folders to {LaufwerksOrdner.Wurzel}: {namen}. They are written back with \"Start selected actions\".")
+                : Tr($"[INFO] Vorgemerkt - Ordner unter {LaufwerksOrdner.Wurzel}: {namen}. Gesichert wird mit \"Ausgewählte Aktionen starten\".",
+                     $"[INFO] Selected - folders under {LaufwerksOrdner.Wurzel}: {namen}. They are backed up with \"Start selected actions\"."));
+        }
+        finally
+        {
+            _laufwerkWaehltGerade = false;
+            LaufwerkMelden();
+            ScheduleAutoStorageCheck();
+        }
+    }
+
     partial void OnSelDesignDesktopChanged(bool value)
     {
         // Kachel an, aber kein Teil gewaehlt: die Vorgabe. Kachel ab: alle
@@ -469,13 +545,16 @@ public partial class MainWindowViewModel : ObservableObject
     public string? TipWinget      => Grund(Punkt.Winget);
     public string? TipWlan        => Grund(Punkt.Wlan);
     public string? TipPrinter     => Grund(Punkt.Drucker);
-    // Auch im freien Zustand: was beim Start passiert.
+    // Auch im freien Zustand: was beim Anhaken passiert, bzw. was vorgemerkt ist.
     public string? TipLaufwerk    => Grund(Punkt.Laufwerk)
-        ?? (IsRestoreMode
-            ? Tr($"Beim Start erscheint die Liste der gesicherten Ordner. Sie werden nach {LaufwerksOrdner.Wurzel} zurückgeschrieben; was dort schon liegt, wird ergänzt.",
-                 $"On start, the list of the backed-up folders appears. They are written back to {LaufwerksOrdner.Wurzel}; anything already there is added to.")
-            : Tr($"Beim Start erscheint die Liste der Ordner unter {LaufwerksOrdner.Wurzel} (etwa Daten, Scans) zum Auswählen. Die Windows-Ordner (Windows, Programme, Benutzer …) sind dort ausgeblendet.",
-                 $"On start, the list of the folders under {LaufwerksOrdner.Wurzel} (such as data or scans) appears for selection. The Windows folders (Windows, Program Files, Users …) are hidden there."));
+        ?? (_laufwerkGewaehlt.Count > 0
+            ? Tr($"Vorgemerkt: {string.Join(", ", _laufwerkGewaehlt.Select(e => e.Name))}. Ändern über den Knopf rechts.",
+                 $"Selected: {string.Join(", ", _laufwerkGewaehlt.Select(e => e.Name))}. Change with the button on the right.")
+            : IsRestoreMode
+            ? Tr($"Beim Anhaken erscheint die Liste der gesicherten Ordner zum Vormerken. Zurückgeschrieben nach {LaufwerksOrdner.Wurzel} wird mit \"Ausgewählte Aktionen starten\"; was dort schon liegt, wird ergänzt.",
+                 $"When ticked, the list of the backed-up folders appears for selection. They are written back to {LaufwerksOrdner.Wurzel} with \"Start selected actions\"; anything already there is added to.")
+            : Tr($"Beim Anhaken erscheint die Liste der Ordner unter {LaufwerksOrdner.Wurzel} (etwa Daten, Scans) zum Vormerken. Gesichert wird mit \"Ausgewählte Aktionen starten\". Die Windows-Ordner (Windows, Programme, Benutzer …) sind in der Liste ausgeblendet.",
+                 $"When ticked, the list of the folders under {LaufwerksOrdner.Wurzel} (such as data or scans) appears for selection. They are backed up with \"Start selected actions\". The Windows folders (Windows, Program Files, Users …) are hidden in the list."));
     // Auch im freien Zustand: was alles dazugehoert.
     public string? TipDesignDesktop => !Frei(Punkt.Hintergrund) && !Frei(Punkt.DesktopShot)
         ? Tr("Die gewählte Sicherung enthält weder Design noch Desktop-Layout.", "The selected backup contains neither design nor desktop layout.")
@@ -565,6 +644,8 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TgPrinter));
         OnPropertyChanged(nameof(TgDesignDesktop));
         OnPropertyChanged(nameof(TgLaufwerk));
+        // Die Wahl gilt nur fuer die Richtung, in der sie getroffen wurde.
+        SelLaufwerk = false;
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
         ZielAnzeigen();
         VerfuegbarkeitPruefen();
@@ -679,7 +760,7 @@ public partial class MainWindowViewModel : ObservableObject
     // ---- Haken fuer die Pruefungen (tests/DaSiGuiTests) ----
 
     /// <summary>Ersetzt die Auswahl der Ordner unter C:\ - null: das Auswahlfenster.</summary>
-    internal Func<IReadOnlyList<LaufwerksOrdner.Eintrag>, bool, Task<List<LaufwerksOrdner.Eintrag>?>>? LaufwerkAuswahl { get; set; }
+    internal Func<IReadOnlyList<LaufwerksOrdner.Eintrag>, bool, IReadOnlyCollection<string>, Task<List<LaufwerksOrdner.Eintrag>?>>? LaufwerkAuswahl { get; set; }
 
     /// <summary>Ersetzt den Ordner-Dialog des Systems - null: der echte.</summary>
     internal Func<string, Task<string?>>? OrdnerDialog { get; set; }
@@ -887,6 +968,8 @@ public partial class MainWindowViewModel : ObservableObject
             bool selCloud = SelUserCloud;
             var relPaths = SelectedProfileRelPaths();
             var restoreSubdirs = SelectedBackupSubdirs(); // nur fuer Restore
+            // Ordner unter C:\: beim Sichern die Ordner selbst, beim Wiederherstellen ihre Kopie in der Sicherung.
+            var laufwerk = SelLaufwerk ? _laufwerkGewaehlt.Select(e => e.Pfad).ToList() : new List<string>();
 
             var (dataSize, free) = await Task.Run(() =>
             {
@@ -923,6 +1006,8 @@ public partial class MainWindowViewModel : ObservableObject
                             foreach (var cloud in CloudProviders.Detect(profilSicherung))
                                 size += SystemHelpers.GetDirectorySize(cloud.Path, ct: ct);
                     }
+                    foreach (var ordner in laufwerk)
+                        if (System.IO.Directory.Exists(ordner)) size += SystemHelpers.GetDirectorySize(ordner, ct: ct);
                     var restoreTarget = string.IsNullOrWhiteSpace(sourcePath) ? backupPath : sourcePath;
                     return (size, SystemHelpers.GetFreeSpace(restoreTarget));
                 }
@@ -955,6 +1040,8 @@ public partial class MainWindowViewModel : ObservableObject
                                 size += SystemHelpers.GetDirectorySize(full, ct: ct);
                         }
                     }
+                    foreach (var ordner in laufwerk)
+                        if (System.IO.Directory.Exists(ordner)) size += SystemHelpers.GetDirectorySize(ordner, ct: ct);
                     return (size, SystemHelpers.GetFreeSpace(backupPath));
                 }
             }, ct);
@@ -1338,16 +1425,19 @@ public partial class MainWindowViewModel : ObservableObject
             }
         }
 
-        // Ordner unter C:\: Auswahl ebenfalls JETZT auf dem UI-Thread.
+        // Ordner unter C:\: vorgemerkt beim Anhaken der Kachel. Fehlt die Wahl
+        // (Kachel ohne Liste angehakt), wird jetzt noch einmal gefragt.
         _laufwerkAuswahl = null;
         if (tasks.Contains("Backup-Laufwerk") || tasks.Contains("Restore-Laufwerk"))
         {
-            var eintraege = IsRestoreMode ? LaufwerksOrdner.InDerSicherung(BackupPath)
-                                          : LaufwerksOrdner.Auflisten(LaufwerksOrdner.Wurzel, BackupPath);
-            var win = GetMainWindow();
-            if (LaufwerkAuswahl is not null) _laufwerkAuswahl = await LaufwerkAuswahl(eintraege, IsRestoreMode);
-            else if (win != null) _laufwerkAuswahl = await OrdnerAuswahlDialog.Show(win, eintraege, IsRestoreMode);
-            if (_laufwerkAuswahl == null) return; // Abgebrochen
+            if (_laufwerkGewaehlt.Count == 0) await LaufwerkWaehlen();
+            if (_laufwerkGewaehlt.Count == 0)
+            {
+                Log(Tr($"[INFO] Start abgebrochen - keine Ordner unter {LaufwerksOrdner.Wurzel} gewählt.",
+                       $"[INFO] Start cancelled - no folders under {LaufwerksOrdner.Wurzel} selected."));
+                return;
+            }
+            _laufwerkAuswahl = _laufwerkGewaehlt.ToList();
             Log(Tr($"[INFO] Ordner unter {LaufwerksOrdner.Wurzel}: {string.Join(", ", _laufwerkAuswahl.Select(e => e.Name))}",
                    $"[INFO] Folders under {LaufwerksOrdner.Wurzel}: {string.Join(", ", _laufwerkAuswahl.Select(e => e.Name))}"));
         }

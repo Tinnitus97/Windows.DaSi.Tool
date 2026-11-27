@@ -192,8 +192,18 @@
                                 <Border Grid.Row="3" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWinget}" IsChecked="{Binding SelWinget}" IsEnabled="{Binding EnWinget}" ToolTip.Tip="{Binding TipWinget}" ToolTip.ShowOnDisabled="True"/></Border>
                                 <Border Grid.Row="3" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWlan}" IsChecked="{Binding SelWlan}" IsEnabled="{Binding EnWlan}" ToolTip.Tip="{Binding TipWlan}" ToolTip.ShowOnDisabled="True"/></Border>
                                 <Border Grid.Row="4" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgPrinter}" IsChecked="{Binding SelPrinter}" IsEnabled="{Binding EnPrinter}" ToolTip.Tip="{Binding TipPrinter}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <!-- Ordner unter C:\: welche, fragt beim Start eine Liste ab (wie bei Winget). -->
-                                <Border Grid.Row="4" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgLaufwerk}" IsChecked="{Binding SelLaufwerk}" IsEnabled="{Binding EnLaufwerk}" ToolTip.Tip="{Binding TipLaufwerk}" ToolTip.ShowOnDisabled="True"/></Border>
+                                <!-- Ordner unter C:\: Beim Anhaken erscheint die Liste, die Wahl wird nur
+                                     vorgemerkt. Der Knopf rechts zeigt, wie viele, und aendert die Wahl. -->
+                                <Border Grid.Row="4" Grid.Column="1" Classes="cardHost">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <CheckBox Classes="card" Content="{Binding TgLaufwerk}" IsChecked="{Binding SelLaufwerk}" IsEnabled="{Binding EnLaufwerk}" ToolTip.Tip="{Binding TipLaufwerk}" ToolTip.ShowOnDisabled="True"/>
+                                        <Button Grid.Column="1" Classes="secondary" Height="20" Padding="7,0" Margin="6,0,0,0" FontSize="11"
+                                                VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                                Content="{Binding LaufwerkKnopf}" IsVisible="{Binding LaufwerkKnopfSichtbar}"
+                                                Command="{Binding LaufwerkAendernCommand}" IsEnabled="{Binding UiEnabled}"
+                                                ToolTip.Tip="{Binding TipLaufwerk}"/>
+                                    </Grid>
+                                </Border>
 
                                 <!-- Design & Desktop: eine Kachel, die drei Teile rechts in derselben
                                      Zeile (rechtsbuendig, damit sie beim Umschalten Sichern /

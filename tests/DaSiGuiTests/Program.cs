@@ -649,24 +649,25 @@ internal static class Program
             vm.SourcePath = Path.Combine(root, "Besitzer");
             vm.BackupPath = ziel;
             Check("Kachel frei, Beschriftung nennt das Laufwerk", vm.EnLaufwerk && vm.TgLaufwerk == $"Ordner unter {LaufwerksOrdner.Wurzel} sichern", vm.TgLaufwerk);
-            Klicken(Alle<CheckBox>(w).First(cb => Text(cb.Content) == vm.TgLaufwerk));
-            Check("Kachel laesst sich anhaken", vm.SelLaufwerk);
+            var kachel = Alle<CheckBox>(w).First(cb => Text(cb.Content) == vm.TgLaufwerk);
+            Check("Tooltip: Liste beim Anhaken, gesichert wird beim Start", (vm.TipLaufwerk ?? "").Contains("Beim Anhaken") && vm.TipLaufwerk!.Contains("Ausgewählte Aktionen starten"), vm.TipLaufwerk);
 
-            // Abbrechen: nichts laeuft.
-            Klicken(start);
+            // Anhaken oeffnet die Liste. Abbrechen: Haken wieder weg.
+            Klicken(kachel);
             var d = await Dialog(w);
             CheckBox Zeile(string name) => Alle<CheckBox>(d).First(cb => cb.Tag is LaufwerksOrdner.Eintrag e && e.Name == name);
             var sichtbar = Alle<CheckBox>(d).Where(cb => cb.IsVisible && cb.Tag is LaufwerksOrdner.Eintrag).Select(cb => ((LaufwerksOrdner.Eintrag)cb.Tag!).Name).ToList();
-            Check("Auswahl: eigene Ordner sichtbar, Windows-Ordner und Sicherungsziel nicht", string.Join(",", sichtbar) == "Daten,Scans"
+            Check("Anhaken oeffnet die Liste: eigene Ordner sichtbar, Windows-Ordner und Sicherungsziel nicht", string.Join(",", sichtbar) == "Daten,Scans"
                 && !Alle<CheckBox>(d).Any(cb => cb.Tag is LaufwerksOrdner.Eintrag e && e.Name == "DaSi"), string.Join(",", sichtbar));
-            Check("Auswahl: nichts vorgewaehlt, Sichern erst nach Wahl", Alle<CheckBox>(d).Where(cb => cb.Tag is LaufwerksOrdner.Eintrag).All(cb => cb.IsChecked != true)
-                && !Knopf(d, "Sichern").IsEffectivelyEnabled);
-            Check("Auswahl: Groesse erscheint", await Warte(() => DialogText(d).Contains("2 KB") || DialogText(d).Contains("2.0 KB") || DialogText(d).Contains("2,0 KB")), DialogText(d));
+            Check("Liste: nichts vorgewaehlt, Uebernehmen erst nach Wahl", Alle<CheckBox>(d).Where(cb => cb.Tag is LaufwerksOrdner.Eintrag).All(cb => cb.IsChecked != true)
+                && !Knopf(d, "Übernehmen").IsEffectivelyEnabled);
+            Check("Liste: Groesse erscheint", await Warte(() => DialogText(d).Contains("2 KB") || DialogText(d).Contains("2.0 KB") || DialogText(d).Contains("2,0 KB")), DialogText(d));
+            Check("Liste sagt: erst vormerken, gestartet wird im Hauptfenster", DialogText(d).Contains("merkt sie vor"), DialogText(d));
             Klicken(Knopf(d, "Abbrechen"));
-            Check("Abgebrochen: nichts gestartet", await Fertig(vm) && !vm.LogText.Contains("Backup-Laufwerk") && !Directory.Exists(ziel), vm.LogText);
+            Check("Abgebrochen: Haken wieder weg, nichts vorgemerkt", await Warte(() => !vm.SelLaufwerk) && vm.LaufwerkGewaehlt.Count == 0 && !vm.LaufwerkKnopfSichtbar);
 
             // Windows-Ordner einblenden, waehlen, wieder ausblenden: faellt heraus.
-            Klicken(start);
+            Klicken(kachel);
             d = await Dialog(w);
             var ausblenden = Alle<CheckBox>(d).First(cb => Text(cb.Content).StartsWith("Windows-Standardordner ausblenden"));
             Check("Haken 'Windows-Standardordner ausblenden' steht", ausblenden.IsChecked == true);
@@ -680,11 +681,33 @@ internal static class Program
             Klicken(Knopf(d, "Keine"));
             Klicken(Zeile("Daten"));
             Check("Summe nennt die Wahl", DialogText(d).Contains("1 gewählt"), DialogText(d));
-            Klicken(Knopf(d, "Sichern"));
-            Check("Lauf mit gewaehltem Ordner", await Fertig(vm) && vm.LogText.Contains("Ordner unter") && vm.LogText.Contains(": Daten") && vm.LogText.Contains("Backup-Laufwerk"), vm.LogText);
+            Klicken(Knopf(d, "Übernehmen"));
+            Check("Uebernommen: vorgemerkt, Knopf zeigt die Zahl, noch nichts gesichert",
+                await Warte(() => vm.LaufwerkKnopfSichtbar) && vm.SelLaufwerk && vm.LaufwerkKnopf == "1 Ordner …" && vm.LogText.Contains("Vorgemerkt")
+                && !vm.LogText.Contains("Backup-Laufwerk") && !Directory.Exists(ziel) && (vm.TipLaufwerk ?? "").Contains("Vorgemerkt: Daten"), vm.LogText);
+
+            // Aendern ueber den Knopf: Vorgemerktes ist angehakt.
+            Klicken(Knopf(w, "1 Ordner …"));
+            d = await Dialog(w);
+            Check("Aendern: Vorgemerktes angehakt", Zeile("Daten").IsChecked == true && Zeile("Scans").IsChecked != true);
+            Klicken(Zeile("Scans"));
+            Klicken(Knopf(d, "Übernehmen"));
+            Check("Aendern: jetzt zwei", await Warte(() => vm.LaufwerkKnopf == "2 Ordner …") && vm.LaufwerkGewaehlt.Select(e => e.Name).SequenceEqual(new[] { "Daten", "Scans" }), vm.LaufwerkKnopf);
+            Klicken(Knopf(w, "2 Ordner …"));
+            d = await Dialog(w);
+            Klicken(Knopf(d, "Abbrechen"));
+            Check("Aendern abgebrochen: Wahl bleibt", await Warte(() => w.OwnedWindows.Count == 0) && vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 2);
+
+            // Erst jetzt: Start - ohne weitere Liste.
+            Klicken(start);
+            await Task.Delay(300);
+            Rendern();
+            Check("Start fragt nicht noch einmal", w.OwnedWindows.Count == 0);
+            Check("Lauf mit den vorgemerkten Ordnern", await Fertig(vm) && vm.LogText.Contains(": Daten, Scans") && vm.LogText.Contains("Backup-Laufwerk"), vm.LogText);
             Check("Daten in der Sicherung (Windows)", !OperatingSystem.IsWindows() || File.Exists(Path.Combine(ziel, LaufwerksOrdner.BackupOrdner, "Daten", "Kunden", "liste.txt")), vm.LogText);
             var bericht = Directory.GetFiles(ziel, "Sicherung-Protokoll_*.txt").FirstOrDefault();
             Check("Protokolldatei nennt die Aktion", bericht is not null && File.ReadAllText(bericht).Contains("Ordner unter"), bericht);
+            Check("nach dem Lauf bleibt die Wahl vorgemerkt", vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 2);
 
             // Zurueck: auf ein leeres neues Laufwerk.
             if (!OperatingSystem.IsWindows()) Datei(Path.Combine(ziel, LaufwerksOrdner.BackupOrdner, "Daten", "Kunden", "liste.txt"), "d");
@@ -692,24 +715,28 @@ internal static class Program
             Directory.CreateDirectory(neu);
             LaufwerksOrdner.Wurzel = neu + Path.DirectorySeparatorChar;
             Klicken(Element<RadioButton>(w, "Wiederherstellen"));
+            Check("Richtung gewechselt: Wahl verworfen", !vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 0);
             vm.BackupPath = ziel;
             Check("Wiederherstellen: Kachel frei", vm.EnLaufwerk && vm.TgLaufwerk.EndsWith("wiederherstellen"), vm.TipLaufwerk);
-            vm.SelLaufwerk = true;
-            Klicken(start);
+            Klicken(Alle<CheckBox>(w).First(cb => Text(cb.Content) == vm.TgLaufwerk));
             d = await Dialog(w);
-            Check("Wiederherstellen: Gesichertes vorgewaehlt", d.Title?.Contains("wiederherstellen") == true && Zeile("Daten").IsChecked == true && Knopf(d, "Wiederherstellen").IsEffectivelyEnabled, d.Title);
-            Klicken(Knopf(d, "Wiederherstellen"));
+            Check("Wiederherstellen: Gesichertes vorgewaehlt", d.Title?.Contains("wiederherstellen") == true && Zeile("Daten").IsChecked == true && Knopf(d, "Übernehmen").IsEffectivelyEnabled, d.Title);
+            Klicken(Knopf(d, "Übernehmen"));
+            Check("Wiederherstellen: vorgemerkt", await Warte(() => vm.LaufwerkKnopfSichtbar) && vm.LogText.Contains("Vorgemerkt - Ordner nach"), vm.LogText);
+            Klicken(start);
             Check("Wiederherstellung gelaufen", await Fertig(vm) && vm.LogText.Contains("Restore-Laufwerk"), vm.LogText);
             Check("Daten auf dem neuen Laufwerk (Windows)", !OperatingSystem.IsWindows() || File.Exists(Path.Combine(neu, "Daten", "Kunden", "liste.txt")), vm.LogText);
+            vm.BackupPath = Path.Combine(root, "Ziel", "Lauf1");
+            Check("andere Sicherung gewaehlt: Wahl verworfen", !vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 0);
+            vm.BackupPath = ziel;
 
-            // Ohne Fenster: eine leere Wahl.
-            vm.LaufwerkAuswahl = (_, _) => Task.FromResult<List<LaufwerksOrdner.Eintrag>?>(new List<LaufwerksOrdner.Eintrag>());
-            Klicken(start);
-            Check("leere Wahl: Hinweis im Protokoll", await Fertig(vm) && vm.LogText.Contains("nichts wiederherzustellen"), vm.LogText);
-            vm.LaufwerkAuswahl = (_, _) => Task.FromResult<List<LaufwerksOrdner.Eintrag>?>(null);
-            var laeufe = vm.LogText.Split("Restore-Laufwerk").Length;
-            Klicken(start);
-            Check("Wahl abgebrochen: nichts gestartet", await Fertig(vm) && vm.LogText.Split("Restore-Laufwerk").Length == laeufe);
+            // Ohne Fenster: eine leere Wahl, ein Abbruch.
+            vm.LaufwerkAuswahl = (_, _, _) => Task.FromResult<List<LaufwerksOrdner.Eintrag>?>(new List<LaufwerksOrdner.Eintrag>());
+            vm.SelLaufwerk = true;
+            Check("leere Wahl: Haken wieder weg", await Warte(() => !vm.SelLaufwerk));
+            vm.LaufwerkAuswahl = (_, _, _) => Task.FromResult<List<LaufwerksOrdner.Eintrag>?>(null);
+            vm.SelLaufwerk = true;
+            Check("Wahl abgebrochen: Haken wieder weg", await Warte(() => !vm.SelLaufwerk));
         }
         finally
         {

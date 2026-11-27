@@ -13,8 +13,11 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 - **Ordner unter C:\\ sichern.** Eigene Ordner direkt auf dem Systemlaufwerk
   (`C:\Daten`, `C:\Scans`, der Export einer Branchensoftware …) gehören jetzt mit in
-  die Sicherung. Beim Start erscheint eine Auswahlliste wie bei Winget, mit der Größe
-  jedes Ordners und der Summe der Wahl. Der Haken **Windows-Standardordner
+  die Sicherung. Beim Anhaken der Kachel erscheint eine Auswahlliste wie bei Winget,
+  mit der Größe jedes Ordners und der Summe der Wahl. **Übernehmen** merkt die Ordner
+  nur vor; gesichert bzw. zurückgeschrieben wird erst mit *Ausgewählte Aktionen
+  starten*. Ein Knopf in der Kachel zeigt die Zahl (*2 Ordner …*) und öffnet die Liste
+  zum Ändern; die Speicherprüfung rechnet die Ordner mit. Der Haken **Windows-Standardordner
   ausblenden** steht von Anfang an: `Windows`, `Program Files`, `ProgramData`,
   `Users`, `PerfLogs`, `Recovery`, `$Recycle.Bin` & Co. erscheinen erst ohne ihn.
   Verknüpfungen und der Ordner der Sicherung selbst erscheinen nie. Gesichert wird
