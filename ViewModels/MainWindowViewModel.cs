@@ -18,7 +18,7 @@ namespace WindowsDaSiTool.ViewModels;
 public partial class MainWindowViewModel : ObservableObject
 {
     // ---- Konstanten (entsprechen den $script:-Variablen) ----
-    private const string VersionString = "1.2.7";
+    private const string VersionString = "1.2.8";
 
     private readonly CancellationTokenState _cancel = new();
     private readonly ProcessRunner _runner;

@@ -6,7 +6,7 @@
 
 **Datensicherung und Wiederherstellung von Windows-Benutzerprofilen — portabel, schnell, ohne Installation.**
 
-[![Version](https://img.shields.io/badge/Version-1.2.7-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.8-blue)](https://github.com/Tinnitus97/Windows.DaSi.Tool/releases)
 [![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)](https://github.com/Tinnitus97/Windows.DaSi.Tool)
 [![.NET](https://img.shields.io/badge/.NET-10%20LTS-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![License](https://img.shields.io/badge/Lizenz-MIT-green)](LICENSE)
@@ -73,7 +73,10 @@ Punkte, die nichts zu tun hätten, sind **ausgegraut** und lassen sich nicht ank
 - **Wiederherstellen:** Jeder Punkt ist gesperrt, den die gewählte Sicherung nicht
   enthält. Unten im Bild: Gesichert wurden Profil samt AppData, Firefox, Edge,
   Opera, die Programmliste und die Symbolpositionen des Desktops. Alles andere ist
-  grau, auch die Auswahl *Screenshot*. *WLAN-Profile* sind nur frei, wenn die
+  grau, auch *Ordner unter C:\* sowie *Design* und *Screenshot* in der Kachel
+  *Design & Desktop* – dort bleibt nur *Symbole + Taskleiste* angehakt. Die oben
+  vorgemerkten Ordner unter `C:\` gelten nur fürs Sichern und sind beim Umschalten
+  verworfen. *WLAN-Profile* sind nur frei, wenn die
   Sicherung welche enthält und dieser PC einen WLAN-Adapter hat, in den sie sich
   einspielen lassen.
 
@@ -211,6 +214,10 @@ verworfen.
   in der Sicherung liegt (alles vorgewählt), und schreibt es nach `C:\<Name>` zurück.
   Gibt es den Ordner dort schon, wird er ergänzt: Eigenes bleibt, und ist eine Datei
   dort neuer als in der Sicherung, bleibt sie ebenfalls.
+
+<div align="center">
+<img src="docs/images/ordner-auswahl.png" alt="Auswahlliste der Ordner unter C:\ mit Größen, Windows-Standardordner ausgeblendet" width="460">
+</div>
 
 ### Design & Desktop: Wo lag was?
 

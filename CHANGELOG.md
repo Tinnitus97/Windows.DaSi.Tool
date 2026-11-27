@@ -7,7 +7,7 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
-## [Unveröffentlicht]
+## [1.2.8] - 2026-11-27
 
 ### Neu
 
@@ -852,6 +852,7 @@ PowerShell/WPF-Skripts als native C#-Anwendung mit Avalonia.
 
 ---
 
+[1.2.8]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.8
 [1.2.7]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.7
 [1.2.6]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.6
 [1.2.5]: https://github.com/Tinnitus97/Windows.DaSi.Tool/releases/tag/1.2.5
