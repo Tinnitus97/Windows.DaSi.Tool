@@ -269,6 +269,13 @@ internal static class Program
         Check("ausfuehrliches Protokoll an", vm.DetailedLogging && vm.LoggingLabel == "Log: an" && vm.LogText.Contains("[HINWEIS]"));
         Click(FindButton(w, "Log: an"));
         Check("ausfuehrliches Protokoll wieder aus", !vm.DetailedLogging);
+        // The same in English: label, notice and log line.
+        vm.IsEnglish = true;
+        Click(FindButton(w, "Log: off"));
+        await Answer(w, "OK", "Detailed logging is on", "ausfuehrliches Protokoll auf Englisch: Hinweis");
+        Check("ausfuehrliches Protokoll auf Englisch: Beschriftung und [NOTE]-Zeile", vm.LoggingLabel == "Log: on" && vm.LogText.Contains("[NOTE] Detailed logging is on"));
+        Click(FindButton(w, "Log: on"));
+        vm.IsEnglish = false;
 
         foreach (var s in new[] { 0, 1, 2, 3 })
         {

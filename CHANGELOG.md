@@ -16,6 +16,15 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   dem Neustart für die Taskleiste), brach das Lesen der Symbole sofort mit „Kein
   Explorer-Desktop gefunden“ ab. Jetzt wartet das Tool bis zu 20 Sekunden auf den
   Desktop.
+- **Englische Oberfläche: „[HINWEIS]“ im Protokoll.** Beim Einschalten des
+  detaillierten Logs stand die Zeile auch auf Englisch mit „[HINWEIS]“ davor – jetzt
+  „[NOTE]“.
+
+### Intern
+
+- Alle Funktionen tragen englische Namen, alle Kommentare im Quelltext sind englisch.
+  Am Verhalten ändert das nichts: Abgesehen von den Namen ist der Code Zeichen für
+  Zeichen derselbe, Texte der Oberfläche eingeschlossen.
 
 ---
 

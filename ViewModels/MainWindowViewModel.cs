@@ -829,7 +829,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             var msg = Tr("Detailliertes Log ist aktiv. Das erzeugt sehr viele Zeilen und kann die Geschwindigkeit spürbar verringern.",
                          "Detailed logging is on. It produces a lot of output and can noticeably slow things down.");
-            Log("[HINWEIS] " + msg);
+            Log(Tr("[HINWEIS] ", "[NOTE] ") + msg);
             // Trigger the dialog without blocking (the handler is synchronous).
             Dispatcher.UIThread.Post(async () =>
                 await ShowInfo(Tr("Hinweis", "Notice"), msg));
