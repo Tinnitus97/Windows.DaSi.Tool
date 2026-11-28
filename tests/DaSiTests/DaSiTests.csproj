@@ -45,6 +45,7 @@
     <Compile Include="ThunderbirdReal.cs" />
     <Compile Include="FirefoxMigrationReal.cs" />
     <Compile Include="DriveFolderChecks.cs" />
+    <Compile Include="BackupCompatibilityChecks.cs" />
     <Compile Include="../Shared/*.cs" />
     <Compile Include="../../Services/UpdateService.cs" />
     <Compile Include="../../Services/CloudProviders.cs" />

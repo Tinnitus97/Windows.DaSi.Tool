@@ -2316,6 +2316,7 @@ internal static partial class Program
         WingetServiceCheck(root);
         BackupServiceCheck(root);
         DriveFoldersCheck(root);
+        BackupCompatibilityCheck(root);
         MozillaCheck(root);
         MozillaMaintenanceCheck(root);
         if (OperatingSystem.IsWindows()) FirefoxRealCheck(root);

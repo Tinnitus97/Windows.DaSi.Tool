@@ -1,0 +1,24 @@
+{
+  "Version": 1,
+  "Rechner": "DESKTOP-ALT",
+  "Benutzer": "Anwender",
+  "Erstellt": "2026-11-20T18:45:00",
+  "Breite": 1920,
+  "Hoehe": 1080,
+  "AutomatischAnordnen": false,
+  "AmRasterAusrichten": true,
+  "Symbole": [
+    {
+      "Name": "Präsentation.pptx",
+      "Anzeige": "Präsentation",
+      "X": 100,
+      "Y": 200
+    },
+    {
+      "Name": "::{645FF040-5081-101B-9F08-00AA002F954E}",
+      "Anzeige": "Papierkorb",
+      "X": 10,
+      "Y": 10
+    }
+  ]
+}

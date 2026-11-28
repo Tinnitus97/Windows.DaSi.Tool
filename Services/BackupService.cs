@@ -540,13 +540,23 @@ public sealed class BackupService
     /// <summary>Thunderbird accounts whose mail lives outside the profile: in the backup and on restore.</summary>
     public const string ThunderbirdExternOrdner = "Thunderbird-Extern";
 
-    private sealed class ExterneSicherung
+    internal sealed class ExterneSicherung
     {
         public string Benutzerordner { get; set; } = "";
         public List<ExternesPostfach> Postfaecher { get; set; } = new();
     }
 
-    private sealed class ExternesPostfach
+    /// <summary>The list of mail folders outside the profile, in the backup folder <see cref="ThunderbirdExternOrdner"/>.</summary>
+    internal const string ExternalMailFile = "Postfaecher.json";
+
+    /// <summary>Writes the list the way every version so far wrote it - older and newer versions read the same file.</summary>
+    internal static string SerializeExternalMail(ExterneSicherung liste)
+        => System.Text.Json.JsonSerializer.Serialize(liste, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+    internal static ExterneSicherung? DeserializeExternalMail(string json)
+        => System.Text.Json.JsonSerializer.Deserialize<ExterneSicherung>(json);
+
+    internal sealed class ExternesPostfach
     {
         /// <summary>Profile folder relative to the data folder ("Profiles\\abcd.default").</summary>
         public string Profil { get; set; } = "";
@@ -602,7 +612,7 @@ public sealed class BackupService
         if (liste.Postfaecher.Count > 0)
         {
             Directory.CreateDirectory(ablage);
-            File.WriteAllText(Path.Combine(ablage, "Postfaecher.json"), System.Text.Json.JsonSerializer.Serialize(liste, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(Path.Combine(ablage, ExternalMailFile), SerializeExternalMail(liste));
         }
     }
 
@@ -614,10 +624,10 @@ public sealed class BackupService
     /// </summary>
     private async Task RestoreThunderbirdExternal(string name, string datenOrdner)
     {
-        var datei = Path.Combine(BackupPath, ThunderbirdExternOrdner, "Postfaecher.json");
+        var datei = Path.Combine(BackupPath, ThunderbirdExternOrdner, ExternalMailFile);
         if (!File.Exists(datei)) return;
         ExterneSicherung? liste;
-        try { liste = System.Text.Json.JsonSerializer.Deserialize<ExterneSicherung>(File.ReadAllText(datei)); }
+        try { liste = DeserializeExternalMail(File.ReadAllText(datei)); }
         catch (Exception ex)
         {
             _log(Loc.Tr($"[FEHLER] {name}: Die Liste der Mailordner außerhalb des Profils ist unlesbar ({ex.Message}).",

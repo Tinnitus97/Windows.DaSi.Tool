@@ -1,0 +1,30 @@
+{
+  "Version": 2,
+  "Rechner": "DESKTOP-ALT",
+  "Erstellt": "2026-11-20T18:45:00",
+  "Hintergrund": {
+    "Art": "Bild",
+    "Farbe": "0 99 177",
+    "Darstellung": "10",
+    "Kacheln": "0",
+    "Bild": "Strand.jpg",
+    "BildPfad": "C:\\Users\\Anwender\\Pictures\\Strand.jpg",
+    "Profil": "C:\\Users\\Anwender"
+  },
+  "Werte": [
+    {
+      "Gruppe": "Farben",
+      "Schluessel": "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+      "Name": "AppsUseLightTheme",
+      "Typ": "DWord",
+      "Wert": "0"
+    },
+    {
+      "Gruppe": "Mauszeiger",
+      "Schluessel": "Control Panel\\Cursors",
+      "Name": "",
+      "Typ": "String",
+      "Wert": "Windows-Standard (gro\u00DFe Zeiger)"
+    }
+  ]
+}

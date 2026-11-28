@@ -1,0 +1,18 @@
+{
+  "Version": 1,
+  "Rechner": "DESKTOP-ALT",
+  "Erstellt": "2026-11-20T18:45:00",
+  "Verknuepfungen": [
+    "Firefox.lnk",
+    "Microsoft Edge.lnk"
+  ],
+  "Taskband": [
+    {
+      "Gruppe": "Taskband",
+      "Schluessel": "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Taskband",
+      "Name": "Favorites",
+      "Typ": "Binary",
+      "Wert": "AKQDAAA="
+    }
+  ]
+}
