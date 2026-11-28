@@ -31,34 +31,34 @@ internal static partial class Program
     private const string TbArchiv = @"C:\DaSi-Mail\Archiv";
     private const string TbMarke = "DaSi-Pruefmail vom alten PC";
 
-    private static string TbDaten => AppCatalog.Pfad(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), AppCatalog.Thunderbird.ProfilRel);
+    private static string TbDaten => AppCatalog.PathIn(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), AppCatalog.Thunderbird.ProfilRel);
 
     private static string Mbox(string betreff)
         => $"From - Mon Nov 25 10:00:00 2026\r\nFrom: alt@example.com\r\nTo: neu@example.com\r\nSubject: {betreff}\r\nDate: Mon, 25 Nov 2026 10:00:00 +0100\r\n\r\n{TbMarke}\r\n\r\n";
 
     /// <summary>Die Profilordner unter Profiles.</summary>
-    private static List<string> TbProfile()
+    private static List<string> TbProfiles()
     {
         var p = Path.Combine(TbDaten, "Profiles");
         return Directory.Exists(p) ? Directory.GetDirectories(p).Select(Path.GetFileName).OfType<string>().OrderBy(n => n).ToList() : new List<string>();
     }
 
     /// <summary>Das Profil, das profiles.ini einer Installation zuordnet ("xxxx.default-release").</summary>
-    private static string? TbProfilDer(string datenOrdner, string installation)
+    private static string? TbProfileOf(string datenOrdner, string installation)
     {
         var ini = Path.Combine(datenOrdner, "profiles.ini");
         if (!File.Exists(ini)) return null;
-        var pfad = MozillaProfile.Ini.Lesen(File.ReadAllText(ini)).Wert("Install" + MozillaProfile.Schluessel(installation), "Default");
+        var pfad = MozillaProfile.Ini.Read(File.ReadAllText(ini)).Value("Install" + MozillaProfile.InstallHash(installation), "Default");
         return pfad is null ? null : Path.GetFileName(pfad.Replace('/', '\\'));
     }
 
-    private static string TbFassung(string profil)
-        => MozillaProfile.Ini.Lesen(File.Exists(Path.Combine(TbDaten, "Profiles", profil, "compatibility.ini"))
-            ? File.ReadAllText(Path.Combine(TbDaten, "Profiles", profil, "compatibility.ini")) : "").Wert("Compatibility", "LastVersion") ?? "";
+    private static string TbVersion(string profil)
+        => MozillaProfile.Ini.Read(File.Exists(Path.Combine(TbDaten, "Profiles", profil, "compatibility.ini"))
+            ? File.ReadAllText(Path.Combine(TbDaten, "Profiles", profil, "compatibility.ini")) : "").Value("Compatibility", "LastVersion") ?? "";
 
     private static string TbAbi(string profil)
-        => MozillaProfile.Ini.Lesen(File.Exists(Path.Combine(TbDaten, "Profiles", profil, "compatibility.ini"))
-            ? File.ReadAllText(Path.Combine(TbDaten, "Profiles", profil, "compatibility.ini")) : "").Wert("Compatibility", "LastOSABI") ?? "";
+        => MozillaProfile.Ini.Read(File.Exists(Path.Combine(TbDaten, "Profiles", profil, "compatibility.ini"))
+            ? File.ReadAllText(Path.Combine(TbDaten, "Profiles", profil, "compatibility.ini")) : "").Value("Compatibility", "LastOSABI") ?? "";
 
     /// <summary>
     /// Welches Profil Thunderbird 64 Bit geoeffnet hat: das, in dessen
@@ -66,33 +66,33 @@ internal static partial class Program
     /// 32-Bit-Kennung oder gar nichts). Die Version allein verraet es nicht -
     /// 32 und 64 Bit tragen dieselbe.
     /// </summary>
-    private static List<string> Tb64Benutzt()
-        => TbProfile().Where(p => TbAbi(p).Contains("x86_64", StringComparison.OrdinalIgnoreCase)).ToList();
+    private static List<string> Tb64Used()
+        => TbProfiles().Where(p => TbAbi(p).Contains("x86_64", StringComparison.OrdinalIgnoreCase)).ToList();
 
     /// <summary>Startet Thunderbird ohne Fenster, wartet, bis die Bedingung gilt (hoechstens 60 s), und beendet ihn.</summary>
     [SupportedOSPlatform("windows")]
-    private static void ThunderbirdStarten(string ordner, Func<bool> fertig)
+    private static void StartThunderbird(string ordner, Func<bool> fertig)
     {
         var uhr = Stopwatch.StartNew();
         using (var p = Process.Start(new ProcessStartInfo(Path.Combine(ordner, "thunderbird.exe"), "-headless -no-remote") { UseShellExecute = false }))
         {
-            while (uhr.Elapsed < TimeSpan.FromSeconds(60) && !Gefragt(fertig)) System.Threading.Thread.Sleep(500);
+            while (uhr.Elapsed < TimeSpan.FromSeconds(60) && !AskDone(fertig)) System.Threading.Thread.Sleep(500);
             // Noch einen Moment: Konten laden, profiles.ini und compatibility.ini fertig schreiben.
             System.Threading.Thread.Sleep(8000);
             try { p?.Kill(true); } catch { }
         }
-        AlleBeenden("thunderbird");
-        Console.WriteLine($"         {ordner}\\thunderbird.exe ({MozillaProfile.InstallierteFassung(ordner)?.Version}): {uhr.Elapsed.TotalSeconds:F0} s");
+        KillAllNamed("thunderbird");
+        Console.WriteLine($"         {ordner}\\thunderbird.exe ({MozillaProfile.InstalledVersion(ordner)?.Version}): {uhr.Elapsed.TotalSeconds:F0} s");
     }
 
-    private static void Zeigen(string titel, string datei)
+    private static void Dump(string titel, string datei)
     {
         Console.WriteLine($"   -- {titel} --");
         if (!File.Exists(datei)) { Console.WriteLine("         (fehlt)"); return; }
         foreach (var z in File.ReadAllLines(datei)) Console.WriteLine("         " + z);
     }
 
-    private static void OrdnerZeigen(string titel, string ordner)
+    private static void DumpFolder(string titel, string ordner)
     {
         Console.WriteLine($"   -- {titel}: {ordner} --");
         if (!Directory.Exists(ordner)) { Console.WriteLine("         (fehlt)"); return; }
@@ -103,23 +103,23 @@ internal static partial class Program
     // ------------------------------------------------------------ alter PC
 
     [SupportedOSPlatform("windows")]
-    private static void ThunderbirdAlterPc()
+    private static void ThunderbirdOldPc()
     {
         Console.WriteLine("\n== Thunderbird echt, alter PC: 32 Bit, Profil anlegen, sichern ==");
         var sicherung = Environment.GetEnvironmentVariable("DASI_SICHERUNG") ?? throw new InvalidOperationException("DASI_SICHERUNG fehlt");
         Check("alter PC: Thunderbird 32 Bit installiert", File.Exists(Path.Combine(Tb32, "thunderbird.exe")), Tb32);
         if (!File.Exists(Path.Combine(Tb32, "thunderbird.exe"))) return;
-        OrdnerLoeschen(TbDaten);
+        DeleteFolder(TbDaten);
 
         // Erster Start: Thunderbird legt sein Profil an.
-        ThunderbirdStarten(Tb32, () => TbProfilDer(TbDaten, Tb32) is { } p && TbFassung(p).Length > 0);
-        Zeigen("profiles.ini (32 Bit)", Path.Combine(TbDaten, "profiles.ini"));
-        var benutzt = TbProfilDer(TbDaten, Tb32);
+        StartThunderbird(Tb32, () => TbProfileOf(TbDaten, Tb32) is { } p && TbVersion(p).Length > 0);
+        Dump("profiles.ini (32 Bit)", Path.Combine(TbDaten, "profiles.ini"));
+        var benutzt = TbProfileOf(TbDaten, Tb32);
         Check("alter PC: Thunderbird hat ein Profil angelegt, der 32-Bit-Installation zugeordnet",
-            benutzt is not null && Directory.Exists(Path.Combine(TbDaten, "Profiles", benutzt)), $"Profile: {string.Join(", ", TbProfile())}");
+            benutzt is not null && Directory.Exists(Path.Combine(TbDaten, "Profiles", benutzt)), $"Profile: {string.Join(", ", TbProfiles())}");
         if (benutzt is null) return;
         var profil = Path.Combine(TbDaten, "Profiles", benutzt);
-        Zeigen("compatibility.ini (32 Bit)", Path.Combine(profil, "compatibility.ini"));
+        Dump("compatibility.ini (32 Bit)", Path.Combine(profil, "compatibility.ini"));
 
         // Zwei Konten: Lokale Ordner im Profil, ein Archiv ausserhalb.
         var lokal = Path.Combine(profil, "Mail", "Local Folders");
@@ -146,26 +146,26 @@ internal static partial class Program
             + $"user_pref(\"mail.server.server2.directory\", \"{Js(TbArchiv)}\");\n");
 
         // Thunderbird laedt die Konten einmal (wie im Alltag), dann wird gesichert.
-        ThunderbirdStarten(Tb32, () => false);
-        OrdnerZeigen("Archiv nach dem Start", TbArchiv);
+        StartThunderbird(Tb32, () => false);
+        DumpFolder("Archiv nach dem Start", TbArchiv);
 
         var c = new CancellationTokenState();
         var log = new Protokoll();
-        new BackupService(new ProcessRunner(c), c, log.Schreiben)
+        new BackupService(new ProcessRunner(c), c, log.Write)
         {
             SourcePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             BackupPath = sicherung,
         }.BackupAppProfile(AppCatalog.Thunderbird).Wait();
         foreach (var z in log.Zeilen.Where(z => z.Contains("[") && !z.Contains("Beende"))) Console.WriteLine("         Dienst: " + z.Trim());
-        Check("alter PC: Profil gesichert", log.Hat("[ERFOLG] Thunderbird Profil gesichert"), log.Text);
-        Check("alter PC: Archiv ausserhalb des Profils mitgesichert", log.Hat("[ERFOLG] Thunderbird: Mails von server2 außerhalb des Profils gesichert")
+        Check("alter PC: Profil gesichert", log.Has("[ERFOLG] Thunderbird Profil gesichert"), log.Text);
+        Check("alter PC: Archiv ausserhalb des Profils mitgesichert", log.Has("[ERFOLG] Thunderbird: Mails von server2 außerhalb des Profils gesichert")
             && File.Exists(Path.Combine(sicherung, BackupService.ThunderbirdExternOrdner, "1_server2", "Inbox")), log.Text);
     }
 
     // ------------------------------------------------------------ neuer PC
 
     [SupportedOSPlatform("windows")]
-    private static void ThunderbirdNeuerPc()
+    private static void ThunderbirdNewPc()
     {
         Console.WriteLine("\n== Thunderbird echt, neuer PC: 64 Bit, wiederherstellen ==");
         var sicherung = Environment.GetEnvironmentVariable("DASI_SICHERUNG") ?? throw new InvalidOperationException("DASI_SICHERUNG fehlt");
@@ -173,28 +173,28 @@ internal static partial class Program
             File.Exists(Path.Combine(Tb64, "thunderbird.exe")) && !File.Exists(Path.Combine(Tb32, "thunderbird.exe")));
         if (!File.Exists(Path.Combine(Tb64, "thunderbird.exe"))) return;
         var gesichert = Path.Combine(sicherung, AppCatalog.Thunderbird.BackupOrdner);
-        var altesProfil = TbProfilDer(gesichert, Tb32);
-        var anzahl = MozillaProfile.Profilordner(gesichert).Count;
+        var altesProfil = TbProfileOf(gesichert, Tb32);
+        var anzahl = MozillaProfile.ProfileFolders(gesichert).Count;
         Check("neuer PC: Sicherung vom alten PC da", altesProfil is not null, gesichert);
         if (altesProfil is null) return;
         Console.WriteLine($"         Profil vom alten PC: {altesProfil} (von {anzahl} Profilen)");
 
-        void NeuerPc()
+        void NewPc()
         {
-            AlleBeenden("thunderbird");
-            OrdnerLoeschen(TbDaten);
-            OrdnerLoeschen(Path.GetDirectoryName(TbArchiv)!);
+            KillAllNamed("thunderbird");
+            DeleteFolder(TbDaten);
+            DeleteFolder(Path.GetDirectoryName(TbArchiv)!);
             foreach (var alt in Directory.Exists(Path.GetDirectoryName(TbDaten)!) ? Directory.GetDirectories(Path.GetDirectoryName(TbDaten)!, "Thunderbird_alt_*") : Array.Empty<string>())
-                OrdnerLoeschen(alt);
+                DeleteFolder(alt);
         }
 
         // 1. Gegenprobe: die Sicherung nur zurueckkopiert.
-        NeuerPc();
-        OrdnerKopieren(gesichert, TbDaten);
-        ThunderbirdStarten(Tb64, () => Tb64Benutzt().Count > 0);
-        Zeigen("profiles.ini nach dem Start (Gegenprobe)", Path.Combine(TbDaten, "profiles.ini"));
-        var gegenprobe = Tb64Benutzt();
-        Console.WriteLine($"         Profile: {string.Join(", ", TbProfile())}; von Thunderbird 64 Bit geoeffnet: {string.Join(", ", gegenprobe)}");
+        NewPc();
+        CopyFolder(gesichert, TbDaten);
+        StartThunderbird(Tb64, () => Tb64Used().Count > 0);
+        Dump("profiles.ini nach dem Start (Gegenprobe)", Path.Combine(TbDaten, "profiles.ini"));
+        var gegenprobe = Tb64Used();
+        Console.WriteLine($"         Profile: {string.Join(", ", TbProfiles())}; von Thunderbird 64 Bit geoeffnet: {string.Join(", ", gegenprobe)}");
         // Nur zur Auskunft: Anders als Firefox uebernimmt Thunderbird (161, CI)
         // das Profil einer anderen Installation auch ohne Anpassung - es traegt
         // fuer sich einen eigenen Eintrag auf dasselbe Profil ein.
@@ -203,35 +203,35 @@ internal static partial class Program
             : $"         Gegenprobe: ohne Anpassung oeffnet Thunderbird 64 Bit ein anderes Profil ({string.Join(", ", gegenprobe)}) - das alte waere leer erschienen.");
 
         // 2. Mit dem Tool.
-        NeuerPc();
+        NewPc();
         var c = new CancellationTokenState();
         var log = new Protokoll();
-        new BackupService(new ProcessRunner(c), c, log.Schreiben)
+        new BackupService(new ProcessRunner(c), c, log.Write)
         {
             SourcePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             BackupPath = sicherung,
         }.RestoreAppProfile(AppCatalog.Thunderbird).Wait();
         foreach (var z in log.Zeilen.Where(z => z.Contains("[") && !z.Contains("Beende"))) Console.WriteLine("         Dienst: " + z.Trim());
         Check("Tool: Profil zurueck, Standard fuer Thunderbird 64 Bit, alter Ort erkannt",
-            log.Hat("[ERFOLG] Thunderbird Profil wiederhergestellt") && log.Hat($"ist jetzt Standard für {Tb64}") && log.Hat($"lief Thunderbird aus {Tb32}"), log.Text);
+            log.Has("[ERFOLG] Thunderbird Profil wiederhergestellt") && log.Has($"ist jetzt Standard für {Tb64}") && log.Has($"lief Thunderbird aus {Tb32}"), log.Text);
         Check("Tool: Archiv ausserhalb des Profils an seinen Ort zurueck",
-            log.Hat("[ERFOLG] Thunderbird: Mails von server2 an ihren Ort außerhalb des Profils zurückgeschrieben")
+            log.Has("[ERFOLG] Thunderbird: Mails von server2 an ihren Ort außerhalb des Profils zurückgeschrieben")
             && File.Exists(Path.Combine(TbArchiv, "Inbox")) && File.ReadAllText(Path.Combine(TbArchiv, "Inbox")).Contains(TbMarke), log.Text);
-        Zeigen("profiles.ini nach dem Zurueckschreiben", Path.Combine(TbDaten, "profiles.ini"));
+        Dump("profiles.ini nach dem Zurueckschreiben", Path.Combine(TbDaten, "profiles.ini"));
 
         var vorher = TbAbi(altesProfil);
         Check("vor dem Start: das Profil lief zuletzt mit 32 Bit", vorher.Contains("x86-msvc", StringComparison.OrdinalIgnoreCase), vorher);
-        ThunderbirdStarten(Tb64, () => Tb64Benutzt().Count > 0);
-        Zeigen("compatibility.ini nach dem Start", Path.Combine(TbDaten, "Profiles", altesProfil, "compatibility.ini"));
-        var geoeffnet = Tb64Benutzt();
+        StartThunderbird(Tb64, () => Tb64Used().Count > 0);
+        Dump("compatibility.ini nach dem Start", Path.Combine(TbDaten, "Profiles", altesProfil, "compatibility.ini"));
+        var geoeffnet = Tb64Used();
         Check("Thunderbird 64 Bit oeffnet das Profil vom alten PC (32 Bit) - und nur dieses",
             geoeffnet.Count == 1 && geoeffnet[0] == altesProfil, $"geoeffnet: {string.Join(", ", geoeffnet)}, erwartet {altesProfil}; ABI vorher {vorher}, jetzt {TbAbi(altesProfil)}");
-        Check("kein neues, leeres Profil", TbProfile().Count == anzahl, string.Join(", ", TbProfile()));
+        Check("kein neues, leeres Profil", TbProfiles().Count == anzahl, string.Join(", ", TbProfiles()));
         var prefs = File.ReadAllText(Path.Combine(TbDaten, "Profiles", altesProfil, "prefs.js"));
         Check("Konten und Mails noch da: Lokale Ordner, Archiv",
             prefs.Contains("\"mail.server.server2.directory\", \"C:\\\\DaSi-Mail\\\\Archiv\"")
             && File.ReadAllText(Path.Combine(TbDaten, "Profiles", altesProfil, "Mail", "Local Folders", "Inbox")).Contains(TbMarke)
             && File.ReadAllText(Path.Combine(TbArchiv, "Inbox")).Contains(TbMarke));
-        OrdnerZeigen("Archiv nach dem Start (64 Bit)", TbArchiv);
+        DumpFolder("Archiv nach dem Start (64 Bit)", TbArchiv);
     }
 }

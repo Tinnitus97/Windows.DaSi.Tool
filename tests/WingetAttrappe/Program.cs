@@ -30,36 +30,36 @@ if (File.Exists(datei))
 
 try { File.AppendAllText(Path.Combine(ordner, "aufrufe.txt"), string.Join(" ", args) + Environment.NewLine); } catch { }
 
-string Wert(string k, string vorgabe) => szenario.TryGetValue(k, out var v) ? v : vorgabe;
+string Value(string k, string vorgabe) => szenario.TryGetValue(k, out var v) ? v : vorgabe;
 int Code(string k, int vorgabe) => szenario.TryGetValue(k, out var v) && int.TryParse(v, out var c) ? c : vorgabe;
-string? Nach(string schalter) { var i = Array.IndexOf(args, schalter); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
+string? ValueAfter(string schalter) { var i = Array.IndexOf(args, schalter); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
 
 var befehl = args.Length == 0 ? "" : args[0];
 switch (befehl)
 {
     case "--version":
-        Console.WriteLine(Wert("version", "v1.12.460"));
+        Console.WriteLine(Value("version", "v1.12.460"));
         return Code("version.code", 0);
 
     case "source":
         var was = "source " + (args.Length > 1 ? args[1] : "");
         System.Threading.Thread.Sleep(Code(was + ".warte", 0));
         if (was == "source list")
-            Console.WriteLine(Wert("source list", "Name   Argument\n-----------------------------------------\nwinget https://cdn.winget.microsoft.com/cache"));
+            Console.WriteLine(Value("source list", "Name   Argument\n-----------------------------------------\nwinget https://cdn.winget.microsoft.com/cache"));
         return Code(was + ".code", 0);
 
     case "export":
-        var ziel = Nach("-o");
+        var ziel = ValueAfter("-o");
         if (ziel is not null && szenario.TryGetValue("export.datei", out var quelle)) File.Copy(quelle, ziel, true);
-        Console.WriteLine(Wert("export.ausgabe", ""));
+        Console.WriteLine(Value("export.ausgabe", ""));
         return Code("export.code", 0);
 
     case "show":
-        return Code("show." + Nach("--id") + ".code", 1);
+        return Code("show." + ValueAfter("--id") + ".code", 1);
 
     case "install":
-        var id = Nach("--id") ?? "";
-        Console.WriteLine(Wert("install." + id + ".ausgabe", Wert("install.*.ausgabe", "")));
+        var id = ValueAfter("--id") ?? "";
+        Console.WriteLine(Value("install." + id + ".ausgabe", Value("install.*.ausgabe", "")));
         return Code("install." + id + ".code", Code("install.*.code", 0));
 }
 Console.Error.WriteLine("Unbekannter Aufruf: " + string.Join(" ", args));

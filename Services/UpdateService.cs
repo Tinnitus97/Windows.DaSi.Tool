@@ -251,7 +251,7 @@ public static class UpdateService
                 {
                     TryDelete(targetFile);
                     return new DownloadResult(false, targetFile,
-                        $"Prüfsumme stimmt nicht (erwartet {Kurz(expectedSha256)}, erhalten {Kurz(tatsaechlich)})",
+                        $"Prüfsumme stimmt nicht (erwartet {Short(expectedSha256)}, erhalten {Short(tatsaechlich)})",
                         groesse);
                 }
             }
@@ -273,7 +273,7 @@ public static class UpdateService
         return Convert.ToHexString(SHA256.HashData(strom)).ToLowerInvariant();
     }
 
-    private static string Kurz(string hash) => hash.Length > 12 ? hash[..12] + "…" : hash;
+    private static string Short(string hash) => hash.Length > 12 ? hash[..12] + "…" : hash;
 
     private static void TryDelete(string file)
     {

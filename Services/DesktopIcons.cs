@@ -58,15 +58,15 @@ public sealed record IconErgebnis(int Gesetzt, int Gesamt, List<DesktopIcon> Feh
 /// </summary>
 public interface IDesktopView : IDisposable
 {
-    (int Breite, int Hoehe) Groesse();
+    (int Breite, int Hoehe) Size();
     bool AutomatischAnordnen { get; set; }
     bool AmRasterAusrichten { get; set; }
-    /// <summary>Alle Symbole mit ihrer Stelle. Die Reihenfolge gilt fuer <see cref="Setzen"/>.</summary>
-    IReadOnlyList<DesktopIcon> Symbole();
-    /// <summary>Setzt das Symbol mit diesem Index (aus dem letzten <see cref="Symbole"/>) an eine Stelle.</summary>
-    void Setzen(int index, int x, int y);
+    /// <summary>Alle Symbole mit ihrer Stelle. Die Reihenfolge gilt fuer <see cref="Set"/>.</summary>
+    IReadOnlyList<DesktopIcon> Icons();
+    /// <summary>Setzt das Symbol mit diesem Index (aus dem letzten <see cref="Icons"/>) an eine Stelle.</summary>
+    void Set(int index, int x, int y);
     /// <summary>Laesst den Explorer den Desktop neu einlesen (wie F5).</summary>
-    void Aktualisieren();
+    void Refresh();
 }
 
 /// <summary>
@@ -101,7 +101,7 @@ public static class DesktopIcons
         };
 
     /// <summary>"::{20D04FE0-...}" -> "{20D04FE0-...}", wenn es ein Systemsymbol ist; sonst null.</summary>
-    public static string? SystemsymbolKennung(string name)
+    public static string? SystemIconId(string name)
     {
         if (string.IsNullOrEmpty(name) || !name.StartsWith("::", StringComparison.Ordinal)) return null;
         var kennung = name[2..];
@@ -119,7 +119,7 @@ public static class DesktopIcons
     /// Ohne Desktop-Ordner in der Sicherung (nur Symbolpositionen gesichert)
     /// laesst sich das nicht sagen - dann zaehlen alle zum Profil.
     /// </summary>
-    public static (List<DesktopIcon> ImProfil, List<DesktopIcon> Fremd) NachHerkunft(
+    public static (List<DesktopIcon> ImProfil, List<DesktopIcon> Fremd) ByOrigin(
         IReadOnlyList<DesktopIcon> fehlend, string desktopDerSicherung)
     {
         if (!Directory.Exists(desktopDerSicherung)) return (fehlend.ToList(), new List<DesktopIcon>());
@@ -143,10 +143,10 @@ public static class DesktopIcons
     /// fehlen - auf einem frisch eingerichteten Rechner sind "Dieser PC" und
     /// der Benutzerordner meist ausgeschaltet.
     /// </summary>
-    public static List<string> FehlendeSystemsymbole(DesktopLayout gesichert, IReadOnlyList<DesktopIcon> jetzt)
+    public static List<string> MissingSystemIcons(DesktopLayout gesichert, IReadOnlyList<DesktopIcon> jetzt)
     {
-        var da = new HashSet<string>(jetzt.Select(j => SystemsymbolKennung(j.Name)).OfType<string>(), StringComparer.OrdinalIgnoreCase);
-        return gesichert.Symbole.Select(s => SystemsymbolKennung(s.Name)).OfType<string>()
+        var da = new HashSet<string>(jetzt.Select(j => SystemIconId(j.Name)).OfType<string>(), StringComparer.OrdinalIgnoreCase);
+        return gesichert.Symbole.Select(s => SystemIconId(s.Name)).OfType<string>()
                         .Where(k => !da.Contains(k))
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList();
@@ -156,14 +156,14 @@ public static class DesktopIcons
     /// <summary>Wie der Desktop geoeffnet wird - unter Windows der Explorer-Desktop.</summary>
     public static Func<IDesktopView> OeffneDesktop { get; set; } = () =>
         OperatingSystem.IsWindows()
-            ? ExplorerDesktop.Oeffnen()
+            ? ExplorerDesktop.Open()
             : throw new PlatformNotSupportedException("Desktop-Symbole gibt es nur unter Windows.");
 
     /// <summary>
     /// Versucht es erneut, solange <paramref name="nochmal"/> den Fehler als
     /// voruebergehend einstuft - hoechstens <paramref name="hoechstens"/> lang.
     /// </summary>
-    internal static T MitWarten<T>(Func<T> versuch, TimeSpan hoechstens, Func<Exception, bool> nochmal, TimeSpan? pause = null)
+    internal static T WithWaiting<T>(Func<T> versuch, TimeSpan hoechstens, Func<Exception, bool> nochmal, TimeSpan? pause = null)
     {
         var uhr = Stopwatch.StartNew();
         while (true)
@@ -176,11 +176,11 @@ public static class DesktopIcons
         }
     }
 
-    public static string Datei(string sicherung) => Path.Combine(sicherung, FolderName, FileName);
+    public static string FilePath(string sicherung) => Path.Combine(sicherung, FolderName, FileName);
 
-    public static bool Vorhanden(string sicherung)
+    public static bool Exists(string sicherung)
     {
-        try { return File.Exists(Datei(sicherung)); } catch { return false; }
+        try { return File.Exists(FilePath(sicherung)); } catch { return false; }
     }
 
     // ------------------------------------------------------------ Datei
@@ -192,7 +192,7 @@ public static class DesktopIcons
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    public static string Speichern(string ordner, DesktopLayout layout)
+    public static string Save(string ordner, DesktopLayout layout)
     {
         Directory.CreateDirectory(ordner);
         var datei = Path.Combine(ordner, FileName);
@@ -201,7 +201,7 @@ public static class DesktopIcons
     }
 
     /// <summary>Liest eine gesicherte Anordnung - null, wenn es keine (lesbare) gibt.</summary>
-    public static DesktopLayout? Laden(string datei)
+    public static DesktopLayout? Load(string datei)
     {
         try
         {
@@ -234,7 +234,7 @@ public static class DesktopIcons
         var zuordnung = new List<IconZiel>();
         var fehlend = new List<DesktopIcon>();
 
-        int Finde(Func<DesktopIcon, bool> passt)
+        int Find(Func<DesktopIcon, bool> passt)
         {
             for (int i = 0; i < jetzt.Count; i++)
                 if (!vergeben[i] && passt(jetzt[i])) return i;
@@ -248,13 +248,13 @@ public static class DesktopIcons
         var treffer = new Dictionary<DesktopIcon, int>(ReferenceEqualityComparer.Instance);
         foreach (var s in gesichert.Symbole)
         {
-            int i = Finde(j => string.Equals(j.Name, s.Name, StringComparison.OrdinalIgnoreCase));
+            int i = Find(j => string.Equals(j.Name, s.Name, StringComparison.OrdinalIgnoreCase));
             if (i >= 0) { vergeben[i] = true; treffer[s] = i; } else offen.Add(s);
         }
         foreach (var s in offen)
         {
             int i = string.IsNullOrWhiteSpace(s.Anzeige) ? -1
-                : Finde(j => string.Equals(j.Anzeige, s.Anzeige, StringComparison.OrdinalIgnoreCase));
+                : Find(j => string.Equals(j.Anzeige, s.Anzeige, StringComparison.OrdinalIgnoreCase));
             if (i >= 0) { vergeben[i] = true; treffer[s] = i; }
         }
 
@@ -277,10 +277,10 @@ public static class DesktopIcons
     // ------------------------------------------------------------ Ablauf
 
     /// <summary>Liest die aktuelle Anordnung des Desktops.</summary>
-    public static DesktopLayout Lesen(string rechner, string benutzer) => ImEigenenThread(() =>
+    public static DesktopLayout Read(string rechner, string benutzer) => OnOwnThread(() =>
     {
         using var desktop = OeffneDesktop();
-        var (b, h) = desktop.Groesse();
+        var (b, h) = desktop.Size();
         return new DesktopLayout
         {
             Rechner = rechner,
@@ -290,7 +290,7 @@ public static class DesktopIcons
             Hoehe = h,
             AutomatischAnordnen = desktop.AutomatischAnordnen,
             AmRasterAusrichten = desktop.AmRasterAusrichten,
-            Symbole = desktop.Symbole().Where(s => s.Name.Length > 0).ToList(),
+            Symbole = desktop.Icons().Where(s => s.Name.Length > 0).ToList(),
         };
     });
 
@@ -305,16 +305,16 @@ public static class DesktopIcons
     /// Schaltet Systemsymbole ein, die gesichert waren, hier aber fehlen
     /// (Kennungen "{...}"); true, wenn es geklappt hat. null: nichts einschalten.
     /// </param>
-    public static IconErgebnis Wiederherstellen(DesktopLayout gesichert, TimeSpan warten,
-                                                Func<IReadOnlyList<string>, bool>? einschalten = null) => ImEigenenThread(() =>
+    public static IconErgebnis Restore(DesktopLayout gesichert, TimeSpan warten,
+                                                Func<IReadOnlyList<string>, bool>? einschalten = null) => OnOwnThread(() =>
     {
         using var desktop = OeffneDesktop();
-        var (b, h) = desktop.Groesse();
+        var (b, h) = desktop.Size();
 
         // Erst die Systemsymbole einschalten - der Explorer zeigt sie nach
         // einem Moment, die Warteschleife unten nimmt sie dann mit.
         IReadOnlyList<string>? eingeschaltet = null;
-        var fehlendeSystem = FehlendeSystemsymbole(gesichert, desktop.Symbole());
+        var fehlendeSystem = MissingSystemIcons(gesichert, desktop.Icons());
         if (fehlendeSystem.Count > 0 && einschalten is not null)
         {
             try
@@ -322,20 +322,20 @@ public static class DesktopIcons
                 if (einschalten(fehlendeSystem))
                 {
                     eingeschaltet = fehlendeSystem;
-                    desktop.Aktualisieren();
+                    desktop.Refresh();
                 }
             }
             catch { /* dann bleiben sie eben aus - gemeldet werden sie als fehlend */ }
         }
 
-        var plan = Plan(gesichert, desktop.Symbole(), b, h);
+        var plan = Plan(gesichert, desktop.Icons(), b, h);
 
         var uhr = Stopwatch.StartNew();
         int ohneFortschritt = 0;
         while (plan.Fehlend.Count > 0 && uhr.Elapsed < warten && ohneFortschritt < 4)
         {
             Thread.Sleep(1000);
-            var neu = Plan(gesichert, desktop.Symbole(), b, h);
+            var neu = Plan(gesichert, desktop.Icons(), b, h);
             ohneFortschritt = neu.Fehlend.Count < plan.Fehlend.Count ? 0 : ohneFortschritt + 1;
             plan = neu;
         }
@@ -356,7 +356,7 @@ public static class DesktopIcons
         int gesetzt = 0;
         foreach (var z in plan.Zuordnung)
         {
-            try { desktop.Setzen(z.Index, z.X, z.Y); gesetzt++; }
+            try { desktop.Set(z.Index, z.X, z.Y); gesetzt++; }
             catch { /* einzelnes Symbol - die anderen trotzdem */ }
         }
 
@@ -373,7 +373,7 @@ public static class DesktopIcons
     /// COM-Objekte des Explorers gehoeren in einen STA-Thread, und die Masse
     /// sollen echte Bildpunkte sein (nicht auf 100 % umgerechnet).
     /// </summary>
-    private static T ImEigenenThread<T>(Func<T> arbeit)
+    private static T OnOwnThread<T>(Func<T> arbeit)
     {
         T? ergebnis = default;
         ExceptionDispatchInfo? fehler = null;
@@ -409,8 +409,8 @@ public sealed class ExplorerDesktop : IDesktopView
     /// ist die Taskleiste oft schon da, der Desktop aber erst Sekunden spaeter.
     /// So lange wird gewartet, statt mit "Kein Explorer-Desktop" aufzugeben.
     /// </summary>
-    public static ExplorerDesktop Oeffnen(TimeSpan? hoechstens = null)
-        => DesktopIcons.MitWarten(() => new ExplorerDesktop(), hoechstens ?? TimeSpan.FromSeconds(20), ex => ex is KeinDesktopException);
+    public static ExplorerDesktop Open(TimeSpan? hoechstens = null)
+        => DesktopIcons.WithWaiting(() => new ExplorerDesktop(), hoechstens ?? TimeSpan.FromSeconds(20), ex => ex is KeinDesktopException);
 
     private readonly IFolderView2 _ansicht;
     private readonly IShellFolder _ordner;
@@ -441,9 +441,9 @@ public sealed class ExplorerDesktop : IDesktopView
             if (hrAnsicht < 0 || ansicht is null) throw new KeinDesktopException($"Der Explorer-Desktop ist noch nicht bereit (QueryActiveShellView 0x{hrAnsicht:X8}).");
 
             _ansicht = (IFolderView2)ansicht;
-            Pruefe(((IShellView)ansicht).GetWindow(out _fenster), "GetWindow");
+            ThrowIfFailed(((IShellView)ansicht).GetWindow(out _fenster), "GetWindow");
             var iidOrdner = typeof(IShellFolder).GUID;
-            Pruefe(_ansicht.GetFolder(ref iidOrdner, out var ordner), "GetFolder");
+            ThrowIfFailed(_ansicht.GetFolder(ref iidOrdner, out var ordner), "GetFolder");
             _ordner = (IShellFolder)ordner;
         }
         finally
@@ -452,31 +452,31 @@ public sealed class ExplorerDesktop : IDesktopView
         }
     }
 
-    public (int Breite, int Hoehe) Groesse()
+    public (int Breite, int Hoehe) Size()
         => GetClientRect(_fenster, out var r) ? (r.Right - r.Left, r.Bottom - r.Top) : (0, 0);
 
     public bool AutomatischAnordnen
     {
         get => (Flags() & FWF_AUTOARRANGE) != 0;
-        set => Pruefe(_ansicht.SetCurrentFolderFlags(FWF_AUTOARRANGE, value ? FWF_AUTOARRANGE : 0), "SetCurrentFolderFlags");
+        set => ThrowIfFailed(_ansicht.SetCurrentFolderFlags(FWF_AUTOARRANGE, value ? FWF_AUTOARRANGE : 0), "SetCurrentFolderFlags");
     }
 
     public bool AmRasterAusrichten
     {
         get => (Flags() & FWF_SNAPTOGRID) != 0;
-        set => Pruefe(_ansicht.SetCurrentFolderFlags(FWF_SNAPTOGRID, value ? FWF_SNAPTOGRID : 0), "SetCurrentFolderFlags");
+        set => ThrowIfFailed(_ansicht.SetCurrentFolderFlags(FWF_SNAPTOGRID, value ? FWF_SNAPTOGRID : 0), "SetCurrentFolderFlags");
     }
 
     private uint Flags()
     {
-        Pruefe(_ansicht.GetCurrentFolderFlags(out var f), "GetCurrentFolderFlags");
+        ThrowIfFailed(_ansicht.GetCurrentFolderFlags(out var f), "GetCurrentFolderFlags");
         return f;
     }
 
-    public IReadOnlyList<DesktopIcon> Symbole()
+    public IReadOnlyList<DesktopIcon> Icons()
     {
-        FreiePidls();
-        Pruefe(_ansicht.ItemCount(SVGIO_ALLVIEW, out var anzahl), "ItemCount");
+        FreePidls();
+        ThrowIfFailed(_ansicht.ItemCount(SVGIO_ALLVIEW, out var anzahl), "ItemCount");
         var liste = new List<DesktopIcon>(anzahl);
         for (int i = 0; i < anzahl; i++)
         {
@@ -493,17 +493,17 @@ public sealed class ExplorerDesktop : IDesktopView
     /// Ansicht. Erst danach zeigt der Explorer frisch eingeschaltete
     /// Systemsymbole.
     /// </summary>
-    public void Aktualisieren()
+    public void Refresh()
     {
         const uint WM_COMMAND = 0x0111;
         PostMessageW(_fenster, WM_COMMAND, (IntPtr)0x7103, IntPtr.Zero);
     }
 
-    public void Setzen(int index, int x, int y)
+    public void Set(int index, int x, int y)
     {
         var pidl = _pidls[index];
         if (pidl == IntPtr.Zero) throw new InvalidOperationException("Symbol ohne Kennung.");
-        Pruefe(_ansicht.SelectAndPositionItems(1, new[] { pidl }, new[] { new POINT { X = x, Y = y } }, SVSI_POSITIONITEM),
+        ThrowIfFailed(_ansicht.SelectAndPositionItems(1, new[] { pidl }, new[] { new POINT { X = x, Y = y } }, SVSI_POSITIONITEM),
                "SelectAndPositionItems");
     }
 
@@ -521,7 +521,7 @@ public sealed class ExplorerDesktop : IDesktopView
         finally { Marshal.FreeCoTaskMem(strret); }
     }
 
-    private void FreiePidls()
+    private void FreePidls()
     {
         foreach (var p in _pidls) if (p != IntPtr.Zero) Marshal.FreeCoTaskMem(p);
         _pidls.Clear();
@@ -529,12 +529,12 @@ public sealed class ExplorerDesktop : IDesktopView
 
     public void Dispose()
     {
-        FreiePidls();
+        FreePidls();
         try { Marshal.ReleaseComObject(_ordner); } catch { }
         try { Marshal.ReleaseComObject(_ansicht); } catch { }
     }
 
-    private static void Pruefe(int hr, string was)
+    private static void ThrowIfFailed(int hr, string was)
     {
         if (hr < 0) throw new COMException($"{was} fehlgeschlagen (0x{hr:X8}).", hr);
     }

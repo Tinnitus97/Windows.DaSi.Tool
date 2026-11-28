@@ -19,7 +19,7 @@ namespace WindowsDaSiTool.Services;
 public static class DesignRegistry
 {
     /// <summary>(Typ, Wert) oder null, wenn es den Wert nicht gibt oder sein Typ nicht vorgesehen ist.</summary>
-    public static (string Typ, string Wert)? Lesen(RegistryKey wurzel, string schluessel, string name)
+    public static (string Typ, string Wert)? Read(RegistryKey wurzel, string schluessel, string name)
     {
         using var k = wurzel.OpenSubKey(schluessel);
         if (k is null) return null;
@@ -50,17 +50,17 @@ public static class DesignRegistry
     /// </summary>
     /// <param name="eigenerBenutzer">Laeuft das Tool unter dem Benutzer von <paramref name="wurzel"/>?
     /// Die Mauszeiger laedt Windows aus der Registry des PROZESSES - sonst erst ab der naechsten Anmeldung.</param>
-    public static Ergebnis Uebernehmen(RegistryKey wurzel, IEnumerable<DesignEintrag> werte, bool eigenerBenutzer)
+    public static Ergebnis Apply(RegistryKey wurzel, IEnumerable<DesignEintrag> werte, bool eigenerBenutzer)
     {
         var r = new Ergebnis(new List<DesignEintrag>(), new List<string>(), new List<string>());
         foreach (var e in werte)
         {
-            if (DesignEinstellungen.ZeigerFehlt(e, p => File.Exists(Environment.ExpandEnvironmentVariables(p))))
+            if (DesignEinstellungen.PointerMissing(e, p => File.Exists(Environment.ExpandEnvironmentVariables(p))))
             {
                 r.OhneDatei.Add(e.Name);
                 continue;
             }
-            try { Schreiben(wurzel, e); r.Gesetzt.Add(e); }
+            try { Write(wurzel, e); r.Gesetzt.Add(e); }
             catch { r.NichtSchreibbar.Add(e.Name.Length == 0 ? e.Schluessel : e.Name); }
         }
         if (r.Zeiger && eigenerBenutzer)
@@ -83,7 +83,7 @@ public static class DesignRegistry
                                                      uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 
     /// <summary>Schreibt einen gesicherten Wert zurueck. Wirft, wenn es nicht geht.</summary>
-    public static void Schreiben(RegistryKey wurzel, DesignEintrag e)
+    public static void Write(RegistryKey wurzel, DesignEintrag e)
     {
         using var k = wurzel.CreateSubKey(e.Schluessel, writable: true)
                       ?? throw new InvalidOperationException($"Schlüssel nicht anlegbar: {e.Schluessel}");

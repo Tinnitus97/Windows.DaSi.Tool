@@ -66,7 +66,7 @@ public static class BackupTarget
     /// (Benutzerprofil, Browserprofile, Programmliste ... oder ein Protokoll)?
     /// </summary>
     public static bool IsBackupFolder(string path)
-        => IsOwnFolder(path) || AppCatalog.IstSicherung(path);
+        => IsOwnFolder(path) || AppCatalog.IsBackup(path);
 
     /// <summary>
     /// Das tatsaechliche Ziel einer Sicherung.

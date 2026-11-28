@@ -49,7 +49,7 @@ public static class AppCatalog
     /// einzeln angehaengt - unter Windows dasselbe wie Path.Combine mit "\",
     /// und auch in der Pruefumgebung ein echter Pfad.
     /// </summary>
-    public static string Pfad(string basis, string rel)
+    public static string PathIn(string basis, string rel)
         => Path.Combine(new[] { basis }.Concat(rel.Split('\\', StringSplitOptions.RemoveEmptyEntries)).ToArray());
 
     // ------------------------------------------------------------ Opera
@@ -71,7 +71,7 @@ public static class AppCatalog
         private static readonly string[] Merkmale = { "Local State", "Preferences", "Bookmarks" };
 
         /// <summary>Die Profilordner aller Opera-Fassungen unter <paramref name="wurzel"/>, nach Anzeigename.</summary>
-        public static List<string> Varianten(string wurzel)
+        public static List<string> Variants(string wurzel)
         {
             var liste = new List<string>();
             try
@@ -87,16 +87,16 @@ public static class AppCatalog
             }
             catch { /* nicht lesbar - dann eben keine */ }
             // Nach Anzeigename: "Opera, Opera Beta, Opera GX" statt nach Ordnernamen.
-            return liste.OrderBy(Anzeigename, StringComparer.OrdinalIgnoreCase)
+            return liste.OrderBy(DisplayName, StringComparer.OrdinalIgnoreCase)
                         .ThenBy(v => v, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         /// <summary>"Opera GX Stable" -> "Opera GX", "Opera Stable" -> "Opera", "Opera Beta" bleibt.</summary>
-        public static string Anzeigename(string variante)
+        public static string DisplayName(string variante)
             => variante.EndsWith(" Stable", StringComparison.OrdinalIgnoreCase) ? variante[..^" Stable".Length] : variante;
 
         /// <summary>winget-Paket fuer die Neuinstallation - nur fuer die Fassungen, deren Paket sicher bekannt ist.</summary>
-        public static string? WingetId(string variante) => Anzeigename(variante).ToLowerInvariant() switch
+        public static string? WingetId(string variante) => DisplayName(variante).ToLowerInvariant() switch
         {
             "opera" => "Opera.Opera",
             "opera gx" => "Opera.OperaGX",
@@ -110,7 +110,7 @@ public static class AppCatalog
     /// Hat dieser PC einen WLAN-Adapter? Austauschbar, damit sich die
     /// Verfuegbarkeit auch ohne echten Adapter pruefen laesst.
     /// </summary>
-    public static Func<bool> HatWlanAdapter { get; set; } = WlanAdapterVorhanden;
+    public static Func<bool> HatWlanAdapter { get; set; } = WifiAdapterPresent;
 
     /// <summary>
     /// Ein WLAN-Adapter, wie ihn Windows meldet - eingeschaltet, auch im
@@ -119,7 +119,7 @@ public static class AppCatalog
     /// nimmt es welche an. Laesst es sich nicht feststellen, wird nichts
     /// gesperrt.
     /// </summary>
-    public static bool WlanAdapterVorhanden()
+    public static bool WifiAdapterPresent()
     {
         try
         {
@@ -144,7 +144,7 @@ public static class AppCatalog
     /// Benutzer gibt es nichts zu sichern. Ist (noch) kein vorhandenes Profil
     /// gewaehlt, wird nichts gesperrt - dann fehlt die Grundlage dafuer.
     /// </summary>
-    public static (string De, string En)? BeimSichern(Punkt p, string? profil)
+    public static (string De, string En)? ForBackup(Punkt p, string? profil)
     {
         // WLAN haengt am Rechner, nicht am Benutzer: ohne Adapter keine Profile.
         if (p == Punkt.Wlan) return HatWlanAdapter() ? null : KeinWlanSichern;
@@ -157,14 +157,14 @@ public static class AppCatalog
 
         if (p == Punkt.Opera)
         {
-            var wurzel = Pfad(profil, Opera.Rel);
-            return Opera.Varianten(wurzel).Count > 0 ? null
+            var wurzel = PathIn(profil, Opera.Rel);
+            return Opera.Variants(wurzel).Count > 0 ? null
                 : ($"Opera ist bei diesem Benutzer nicht eingerichtet - kein Profil unter {wurzel}.",
                    $"Opera is not set up for this user - no profile under {wurzel}.");
         }
         var app = Programme.FirstOrDefault(a => a.Punkt == p);
         if (app is null) return null;
-        var ort = Pfad(profil, app.ProfilRel);
+        var ort = PathIn(profil, app.ProfilRel);
         return Directory.Exists(ort) ? null
             : ($"{app.Name} ist bei diesem Benutzer nicht eingerichtet - kein Profil unter {ort}.",
                $"{app.Name} is not set up for this user - no profile under {ort}.");
@@ -175,26 +175,26 @@ public static class AppCatalog
     /// Gesperrt wird alles, was in der Sicherung nicht enthalten ist. Ist
     /// (noch) kein vorhandener Sicherungsordner gewaehlt, wird nichts gesperrt.
     /// </summary>
-    public static (string De, string En)? BeimWiederherstellen(Punkt p, string? sicherung)
-        => BeimWiederherstellen(sicherung)[p];
+    public static (string De, string En)? ForRestore(Punkt p, string? sicherung)
+        => ForRestore(sicherung)[p];
 
     /// <summary>
     /// Alle Punkte auf einmal - jeder wird dabei genau einmal nachgesehen, auch
     /// wenn die Sicherung auf einem langsamen Netzlaufwerk liegt.
     /// </summary>
-    public static Dictionary<Punkt, (string De, string En)?> BeimWiederherstellen(string? sicherung)
+    public static Dictionary<Punkt, (string De, string En)?> ForRestore(string? sicherung)
     {
         var punkte = Enum.GetValues<Punkt>();
         var erg = punkte.ToDictionary(p => p, _ => ((string De, string En)?)null);
         if (!string.IsNullOrWhiteSpace(sicherung) && Directory.Exists(sicherung))
         {
-            var da = punkte.ToDictionary(p => p, p => Enthaelt(sicherung, p));
+            var da = punkte.ToDictionary(p => p, p => Contains(sicherung, p));
             // Enthaelt der Ordner gar nichts davon, ist er keine Sicherung - meist
             // ist der Ordner darueber gewaehlt (D:\DaSi statt D:\DaSi\DASI_...).
             // Dann ein gemeinsamer Hinweis statt vierzehn einzelner Gruende.
             bool keine = !da.Values.Any(x => x);
             foreach (var p in punkte)
-                if (!da[p]) erg[p] = keine ? KeineSicherung : Fehlt(p);
+                if (!da[p]) erg[p] = keine ? KeineSicherung : MissingReason(p);
         }
 
         // Liegen WLAN-Profile in der Sicherung, braucht es zum Einspielen
@@ -208,12 +208,12 @@ public static class AppCatalog
     /// Liegt in dem Ordner schon eine Sicherung? Irgendein Punkt oder ein
     /// Protokoll des Tools genuegt.
     /// </summary>
-    public static bool IstSicherung(string? ordner)
+    public static bool IsBackup(string? ordner)
     {
         try
         {
             if (string.IsNullOrWhiteSpace(ordner) || !Directory.Exists(ordner)) return false;
-            if (Enum.GetValues<Punkt>().Any(p => Enthaelt(ordner, p))) return true;
+            if (Enum.GetValues<Punkt>().Any(p => Contains(ordner, p))) return true;
             return Directory.EnumerateFiles(ordner, "Sicherung-Protokoll_*.txt").Any()
                 || Directory.EnumerateFiles(ordner, "Wiederherstellung-Protokoll_*.txt").Any();
         }
@@ -224,7 +224,7 @@ public static class AppCatalog
         ("Der gewählte Ordner enthält keine Sicherung. Bitte den Sicherungsordner selbst wählen (z. B. DASI_<PC>_<Datum>).",
          "The selected folder contains no backup. Please select the backup folder itself (e.g. DASI_<PC>_<date>).");
 
-    private static (string De, string En) Fehlt(Punkt p)
+    private static (string De, string En) MissingReason(Punkt p)
     {
         var was = p switch
         {
@@ -244,18 +244,18 @@ public static class AppCatalog
     }
 
     /// <summary>Desktop-Layout, Variante Screenshot: Bilder in der Sicherung?</summary>
-    public static bool HatDesktopScreenshot(string sicherung)
+    public static bool HasDesktopScreenshot(string sicherung)
         => DesktopScreenshot.FindImages(Path.Combine(sicherung, DesktopScreenshot.FolderName)).Count > 0;
 
     /// <summary>Desktop-Layout, Variante Symbolpositionen: Datei in der Sicherung?</summary>
-    public static bool HatDesktopSymbole(string sicherung) => DesktopIcons.Vorhanden(sicherung) || Taskleiste.Vorhanden(sicherung);
+    public static bool HasDesktopIcons(string sicherung) => DesktopIcons.Exists(sicherung) || Taskleiste.Exists(sicherung);
 
     /// <summary>Hintergrund in der Sicherung - ein Bild oder eine Volltonfarbe (Hintergrund.json)?</summary>
-    public static bool HatHintergrund(string sicherung)
-        => HatDateien(Path.Combine(sicherung, "Hintergrundbild"), "*", ohne: ".txt");
+    public static bool HasWallpaper(string sicherung)
+        => HasFiles(Path.Combine(sicherung, "Hintergrundbild"), "*", ohne: ".txt");
 
     /// <summary>Liegt der Punkt in der Sicherung?</summary>
-    private static bool Enthaelt(string sicherung, Punkt p)
+    private static bool Contains(string sicherung, Punkt p)
     {
         var profil = Path.Combine(sicherung, "Benutzerprofil");
         return p switch
@@ -263,19 +263,19 @@ public static class AppCatalog
             Punkt.Profil => Directory.Exists(profil),
             Punkt.AppData => Directory.Exists(Path.Combine(profil, "AppData")),
             Punkt.Cloud => CloudProviders.Detect(profil).Count > 0,
-            Punkt.Opera => Opera.Varianten(Path.Combine(sicherung, Opera.BackupOrdner)).Count > 0,
+            Punkt.Opera => Opera.Variants(Path.Combine(sicherung, Opera.BackupOrdner)).Count > 0,
             Punkt.Winget => File.Exists(Path.Combine(sicherung, "Winget", "Export.json"))
                             || File.Exists(Path.Combine(sicherung, "Export.json")),
-            Punkt.Wlan => HatDateien(Path.Combine(sicherung, "WLAN-Profile"), "*.xml"),
+            Punkt.Wlan => HasFiles(Path.Combine(sicherung, "WLAN-Profile"), "*.xml"),
             Punkt.Drucker => File.Exists(Path.Combine(sicherung, "Drucker", "Drucker.printerExport")),
-            Punkt.Hintergrund => HatHintergrund(sicherung) || DesignEinstellungen.Vorhanden(sicherung),
-            Punkt.DesktopShot => HatDesktopScreenshot(sicherung) || HatDesktopSymbole(sicherung),
-            Punkt.Laufwerk => LaufwerksOrdner.Vorhanden(sicherung),
+            Punkt.Hintergrund => HasWallpaper(sicherung) || DesignEinstellungen.Exists(sicherung),
+            Punkt.DesktopShot => HasDesktopScreenshot(sicherung) || HasDesktopIcons(sicherung),
+            Punkt.Laufwerk => LaufwerksOrdner.Exists(sicherung),
             _ => Programme.FirstOrDefault(a => a.Punkt == p) is { } app && Directory.Exists(Path.Combine(sicherung, app.BackupOrdner)),
         };
     }
 
-    private static bool HatDateien(string ordner, string muster, string? ohne = null)
+    private static bool HasFiles(string ordner, string muster, string? ohne = null)
     {
         try
         {

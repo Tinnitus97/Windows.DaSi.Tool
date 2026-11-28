@@ -18,7 +18,7 @@ public static class Verknuepfung
     /// <summary>Was in der Verknuepfung steht. Ziel ist leer bei Verknuepfungen auf Shell-Objekte (Datei-Explorer).</summary>
     public sealed record Inhalt(string Ziel, string Arbeitsordner, string Symbol, int SymbolIndex, string? AppId);
 
-    public static Inhalt? Lesen(string lnk)
+    public static Inhalt? Read(string lnk)
     {
         try
         {
@@ -32,7 +32,7 @@ public static class Verknuepfung
                 link.GetWorkingDirectory(ordner, ordner.Capacity);
                 var symbol = new StringBuilder(1024);
                 link.GetIconLocation(symbol, symbol.Capacity, out var index);
-                return new Inhalt(ziel.ToString(), ordner.ToString(), symbol.ToString(), index, AppIdLesen((IPropertyStore)link));
+                return new Inhalt(ziel.ToString(), ordner.ToString(), symbol.ToString(), index, ReadAppId((IPropertyStore)link));
             }
             finally { Marshal.ReleaseComObject(link); }
         }
@@ -45,7 +45,7 @@ public static class Verknuepfung
     /// Installation meinte (Firefox und Thunderbird fuehren den Schluessel ihres
     /// Installationsordners als Kennung).
     /// </summary>
-    public static bool ZielSetzen(string lnk, string neuesZiel)
+    public static bool SetTarget(string lnk, string neuesZiel)
     {
         try
         {
@@ -69,9 +69,9 @@ public static class Verknuepfung
                     link.SetIconLocation(Path.Combine(neuOrdner, Path.GetFileName(symbol.ToString())) is var s && File.Exists(s) ? s : neuesZiel, index);
 
                 var store = (IPropertyStore)link;
-                if (AppIdLesen(store) is { } id && altOrdner.Length > 0
-                    && id.Equals(MozillaProfile.Schluessel(altOrdner), StringComparison.OrdinalIgnoreCase))
-                    AppIdSetzen(store, MozillaProfile.Schluessel(MozillaProfile.EchterPfad(neuOrdner)));
+                if (ReadAppId(store) is { } id && altOrdner.Length > 0
+                    && id.Equals(MozillaProfile.InstallHash(altOrdner), StringComparison.OrdinalIgnoreCase))
+                    SetAppId(store, MozillaProfile.InstallHash(MozillaProfile.RealPath(neuOrdner)));
 
                 ((IPersistFile)link).Save(lnk, true);
                 return true;
@@ -86,7 +86,7 @@ public static class Verknuepfung
     private static PROPERTYKEY AppIdSchluessel = new() { fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), pid = 5 };
     private const ushort VT_LPWSTR = 31;
 
-    private static string? AppIdLesen(IPropertyStore store)
+    private static string? ReadAppId(IPropertyStore store)
     {
         var wert = new PROPVARIANT();
         try
@@ -98,7 +98,7 @@ public static class Verknuepfung
         finally { PropVariantClear(ref wert); }
     }
 
-    private static void AppIdSetzen(IPropertyStore store, string id)
+    private static void SetAppId(IPropertyStore store, string id)
     {
         var wert = new PROPVARIANT { vt = VT_LPWSTR, p = Marshal.StringToCoTaskMemUni(id) };
         try
@@ -110,7 +110,7 @@ public static class Verknuepfung
     }
 
     /// <summary>Nur fuer die Pruefung: eine Verknuepfung anlegen.</summary>
-    internal static void Anlegen(string lnk, string ziel, string? appId = null)
+    internal static void Create(string lnk, string ziel, string? appId = null)
     {
         var link = (IShellLinkW)new CShellLink();
         try
@@ -118,7 +118,7 @@ public static class Verknuepfung
             link.SetPath(ziel);
             link.SetWorkingDirectory(Path.GetDirectoryName(ziel) ?? "");
             link.SetIconLocation(ziel, 0);
-            if (appId is not null) AppIdSetzen((IPropertyStore)link, appId);
+            if (appId is not null) SetAppId((IPropertyStore)link, appId);
             ((IPersistFile)link).Save(lnk, true);
         }
         finally { Marshal.ReleaseComObject(link); }

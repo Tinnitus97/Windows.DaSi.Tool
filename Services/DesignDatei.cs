@@ -36,17 +36,17 @@ public static class DesignDatei
     /// BackgroundType in der Registry). Ein leeres "Wallpaper=" deutet Windows 11
     /// beim Anwenden als "Windows-Blickpunkt".
     /// </summary>
-    public static string FuerFarbe(string inhalt, (byte R, byte G, byte B) farbe)
-        => AbschnittEntfernen(Setzen(inhalt, FarbenAbschnitt, "Background", Hintergrund.FarbeText(farbe)), DiashowAbschnitt);
+    public static string ForColor(string inhalt, (byte R, byte G, byte B) farbe)
+        => RemoveSection(Set(inhalt, FarbenAbschnitt, "Background", Hintergrund.ColorText(farbe)), DiashowAbschnitt);
 
     /// <summary>Bild: Pfad, Darstellung und Randfarbe eintragen, keine Diashow.</summary>
-    public static string FuerBild(string inhalt, string pfad, HintergrundEinstellung? e)
+    public static string ForImage(string inhalt, string pfad, HintergrundEinstellung? e)
     {
-        var t = Setzen(inhalt, DesktopAbschnitt, "Wallpaper", pfad);
-        if (!string.IsNullOrWhiteSpace(e?.Darstellung)) t = Setzen(t, DesktopAbschnitt, "WallpaperStyle", e.Darstellung);
-        if (!string.IsNullOrWhiteSpace(e?.Kacheln)) t = Setzen(t, DesktopAbschnitt, "TileWallpaper", e.Kacheln);
-        if (Hintergrund.FarbeLesen(e?.Farbe) is { } rand) t = Setzen(t, FarbenAbschnitt, "Background", Hintergrund.FarbeText(rand));
-        return AbschnittEntfernen(t, DiashowAbschnitt);
+        var t = Set(inhalt, DesktopAbschnitt, "Wallpaper", pfad);
+        if (!string.IsNullOrWhiteSpace(e?.Darstellung)) t = Set(t, DesktopAbschnitt, "WallpaperStyle", e.Darstellung);
+        if (!string.IsNullOrWhiteSpace(e?.Kacheln)) t = Set(t, DesktopAbschnitt, "TileWallpaper", e.Kacheln);
+        if (Hintergrund.ReadColor(e?.Farbe) is { } rand) t = Set(t, FarbenAbschnitt, "Background", Hintergrund.ColorText(rand));
+        return RemoveSection(t, DiashowAbschnitt);
     }
 
     /// <summary>
@@ -54,7 +54,7 @@ public static class DesignDatei
     /// "automatisch", Mauszeiger. Nur Eintraege, die die Datei schon kennt -
     /// was Windows dort nicht fuehrt, setzt es beim Anmelden auch nicht zurueck.
     /// </summary>
-    public static string FuerDesign(string inhalt, IEnumerable<DesignEintrag> werte)
+    public static string ForDesign(string inhalt, IEnumerable<DesignEintrag> werte)
     {
         var t = inhalt;
         foreach (var e in werte)
@@ -63,23 +63,23 @@ public static class DesignDatei
             if (e.Schluessel.EndsWith(@"Themes\Personalize", StringComparison.OrdinalIgnoreCase) && e.Typ == "DWord")
             {
                 var modus = e.Wert == "0" ? "Dark" : "Light";
-                if (name == "SystemUsesLightTheme") t = NurWennVorhanden(t, StilAbschnitt, "SystemMode", modus);
-                else if (name == "AppsUseLightTheme") t = NurWennVorhanden(t, StilAbschnitt, "AppMode", modus);
+                if (name == "SystemUsesLightTheme") t = OnlyIfPresent(t, StilAbschnitt, "SystemMode", modus);
+                else if (name == "AppsUseLightTheme") t = OnlyIfPresent(t, StilAbschnitt, "AppMode", modus);
             }
             else if (e.Schluessel.EndsWith(@"Windows\DWM", StringComparison.OrdinalIgnoreCase) && name == "ColorizationColor"
                      && int.TryParse(e.Wert, NumberStyles.Integer, CultureInfo.InvariantCulture, out var farbe))
             {
-                t = NurWennVorhanden(t, StilAbschnitt, "ColorizationColor", "0X" + unchecked((uint)farbe).ToString("X8", CultureInfo.InvariantCulture));
+                t = OnlyIfPresent(t, StilAbschnitt, "ColorizationColor", "0X" + unchecked((uint)farbe).ToString("X8", CultureInfo.InvariantCulture));
             }
             else if (string.Equals(e.Schluessel, @"Control Panel\Desktop", StringComparison.OrdinalIgnoreCase) && name == "AutoColorization")
             {
-                t = NurWennVorhanden(t, StilAbschnitt, "AutoColorization", e.Wert);
+                t = OnlyIfPresent(t, StilAbschnitt, "AutoColorization", e.Wert);
             }
             else if (string.Equals(e.Schluessel, @"Control Panel\Cursors", StringComparison.OrdinalIgnoreCase)
                      && e.Typ is "String" or "ExpandString")
             {
                 // Der unbenannte Wert (Schemaname) heisst in der Datei "DefaultValue".
-                t = NurWennVorhanden(t, ZeigerAbschnitt, name.Length == 0 ? "DefaultValue" : name, e.Wert);
+                t = OnlyIfPresent(t, ZeigerAbschnitt, name.Length == 0 ? "DefaultValue" : name, e.Wert);
             }
         }
         return t;
@@ -99,22 +99,22 @@ public static class DesignDatei
     /// eines von Windows-Blickpunkt deutet Windows 11 beim Anwenden als
     /// "Blickpunkt" (unter Windows 11 25H2 geprueft).
     /// </summary>
-    public static string FuerWiederherstellung(string vorlage, string anzeigename, (byte R, byte G, byte B)? farbe,
+    public static string ForRestore(string vorlage, string anzeigename, (byte R, byte G, byte B)? farbe,
                                                string? bild, HintergrundEinstellung? e, IEnumerable<DesignEintrag> werte)
     {
-        var t = ZumAnwenden(vorlage, anzeigename);
+        var t = ForApplying(vorlage, anzeigename);
         if (farbe is { } f)
         {
-            t = FuerFarbe(t, f);
-            var b = Lesen(t, DesktopAbschnitt, "Wallpaper");
+            t = ForColor(t, f);
+            var b = Read(t, DesktopAbschnitt, "Wallpaper");
             if (string.IsNullOrWhiteSpace(b) || b.Contains("DesktopSpotlight", StringComparison.OrdinalIgnoreCase))
-                t = Setzen(t, DesktopAbschnitt, "Wallpaper", Ersatzbild);
+                t = Set(t, DesktopAbschnitt, "Wallpaper", Ersatzbild);
         }
         else if (bild is not null)
         {
-            t = FuerBild(t, bild, e);
+            t = ForImage(t, bild, e);
         }
-        return FuerDesign(t, werte);
+        return ForDesign(t, werte);
     }
 
     /// <summary>
@@ -122,41 +122,41 @@ public static class DesignDatei
     /// soll: eigener Anzeigename, ohne die Kennung des Vorbilds (ThemeId) -
     /// sonst hielte Windows sie fuer dasselbe Design.
     /// </summary>
-    public static string ZumAnwenden(string vorlage, string anzeigename)
+    public static string ForApplying(string vorlage, string anzeigename)
     {
-        var t = Setzen(vorlage, "Theme", "DisplayName", anzeigename);
-        return SchluesselEntfernen(t, "Theme", "ThemeId");
+        var t = Set(vorlage, "Theme", "DisplayName", anzeigename);
+        return RemoveKey(t, "Theme", "ThemeId");
     }
 
     // ------------------------------------------------------------ INI
 
     /// <summary>Wert eines Schluessels - null, wenn es Abschnitt oder Schluessel nicht gibt.</summary>
-    public static string? Lesen(string inhalt, string abschnitt, string schluessel)
+    public static string? Read(string inhalt, string abschnitt, string schluessel)
     {
-        var (zeilen, _, _) = Zerlegen(inhalt);
-        var (von, bis) = Bereich(zeilen, abschnitt);
+        var (zeilen, _, _) = SplitLines(inhalt);
+        var (von, bis) = Section(zeilen, abschnitt);
         if (von < 0) return null;
-        int i = Zeile(zeilen, von, bis, schluessel);
+        int i = Line(zeilen, von, bis, schluessel);
         return i < 0 ? null : zeilen[i][(zeilen[i].IndexOf('=') + 1)..].Trim();
     }
 
     /// <summary>Setzt einen Schluessel - legt ihn (und den Abschnitt) an, wenn noetig.</summary>
-    public static string Setzen(string inhalt, string abschnitt, string schluessel, string wert)
+    public static string Set(string inhalt, string abschnitt, string schluessel, string wert)
     {
-        var (zeilen, umbruch, schlussUmbruch) = Zerlegen(inhalt);
-        var (von, bis) = Bereich(zeilen, abschnitt);
+        var (zeilen, umbruch, schlussUmbruch) = SplitLines(inhalt);
+        var (von, bis) = Section(zeilen, abschnitt);
         if (von < 0)
         {
             while (zeilen.Count > 0 && zeilen[^1].Trim().Length == 0) zeilen.RemoveAt(zeilen.Count - 1);
             if (zeilen.Count > 0) zeilen.Add("");
             zeilen.Add($"[{abschnitt}]");
             zeilen.Add($"{schluessel}={wert}");
-            return Zusammensetzen(zeilen, umbruch, true);
+            return JoinLines(zeilen, umbruch, true);
         }
-        int i = Zeile(zeilen, von, bis, schluessel);
+        int i = Line(zeilen, von, bis, schluessel);
         if (i >= 0)
         {
-            zeilen[i] = $"{schluessel_wie_vorher(zeilen[i])}={wert}";
+            zeilen[i] = $"{KeyAsBefore(zeilen[i])}={wert}";
         }
         else
         {
@@ -165,38 +165,38 @@ public static class DesignDatei
             while (pos > von + 1 && zeilen[pos - 1].Trim().Length == 0) pos--;
             zeilen.Insert(pos, $"{schluessel}={wert}");
         }
-        return Zusammensetzen(zeilen, umbruch, schlussUmbruch);
+        return JoinLines(zeilen, umbruch, schlussUmbruch);
 
-        static string schluessel_wie_vorher(string zeile) => zeile[..zeile.IndexOf('=')].Trim();
+        static string KeyAsBefore(string zeile) => zeile[..zeile.IndexOf('=')].Trim();
     }
 
     /// <summary>Setzt einen Schluessel nur, wenn es ihn schon gibt.</summary>
-    public static string NurWennVorhanden(string inhalt, string abschnitt, string schluessel, string wert)
-        => Lesen(inhalt, abschnitt, schluessel) is null ? inhalt : Setzen(inhalt, abschnitt, schluessel, wert);
+    public static string OnlyIfPresent(string inhalt, string abschnitt, string schluessel, string wert)
+        => Read(inhalt, abschnitt, schluessel) is null ? inhalt : Set(inhalt, abschnitt, schluessel, wert);
 
     /// <summary>Entfernt einen Schluessel, falls es ihn gibt.</summary>
-    public static string SchluesselEntfernen(string inhalt, string abschnitt, string schluessel)
+    public static string RemoveKey(string inhalt, string abschnitt, string schluessel)
     {
-        var (zeilen, umbruch, schlussUmbruch) = Zerlegen(inhalt);
-        var (von, bis) = Bereich(zeilen, abschnitt);
+        var (zeilen, umbruch, schlussUmbruch) = SplitLines(inhalt);
+        var (von, bis) = Section(zeilen, abschnitt);
         if (von < 0) return inhalt;
-        int i = Zeile(zeilen, von, bis, schluessel);
+        int i = Line(zeilen, von, bis, schluessel);
         if (i < 0) return inhalt;
         zeilen.RemoveAt(i);
-        return Zusammensetzen(zeilen, umbruch, schlussUmbruch);
+        return JoinLines(zeilen, umbruch, schlussUmbruch);
     }
 
     /// <summary>Entfernt einen ganzen Abschnitt samt Kopfzeile.</summary>
-    public static string AbschnittEntfernen(string inhalt, string abschnitt)
+    public static string RemoveSection(string inhalt, string abschnitt)
     {
-        var (zeilen, umbruch, schlussUmbruch) = Zerlegen(inhalt);
-        var (von, bis) = Bereich(zeilen, abschnitt);
+        var (zeilen, umbruch, schlussUmbruch) = SplitLines(inhalt);
+        var (von, bis) = Section(zeilen, abschnitt);
         if (von < 0) return inhalt;
         zeilen.RemoveRange(von, bis - von);
-        return Zusammensetzen(zeilen, umbruch, schlussUmbruch);
+        return JoinLines(zeilen, umbruch, schlussUmbruch);
     }
 
-    private static (List<string> Zeilen, string Umbruch, bool SchlussUmbruch) Zerlegen(string inhalt)
+    private static (List<string> Zeilen, string Umbruch, bool SchlussUmbruch) SplitLines(string inhalt)
     {
         var umbruch = inhalt.Contains("\r\n") ? "\r\n" : "\n";
         bool schluss = inhalt.EndsWith('\n');
@@ -205,11 +205,11 @@ public static class DesignDatei
         return (zeilen, umbruch, schluss);
     }
 
-    private static string Zusammensetzen(List<string> zeilen, string umbruch, bool schlussUmbruch)
+    private static string JoinLines(List<string> zeilen, string umbruch, bool schlussUmbruch)
         => string.Join(umbruch, zeilen) + (schlussUmbruch ? umbruch : "");
 
     /// <summary>[von, bis): Kopfzeile bis vor den naechsten Abschnitt; (-1, -1), wenn es ihn nicht gibt.</summary>
-    private static (int Von, int Bis) Bereich(List<string> zeilen, string abschnitt)
+    private static (int Von, int Bis) Section(List<string> zeilen, string abschnitt)
     {
         int von = zeilen.FindIndex(z => string.Equals(z.Trim(), $"[{abschnitt}]", StringComparison.OrdinalIgnoreCase));
         if (von < 0) return (-1, -1);
@@ -218,7 +218,7 @@ public static class DesignDatei
         return (von, bis);
     }
 
-    private static int Zeile(List<string> zeilen, int von, int bis, string schluessel)
+    private static int Line(List<string> zeilen, int von, int bis, string schluessel)
     {
         for (int i = von + 1; i < bis; i++)
         {
@@ -234,7 +234,7 @@ public static class DesignDatei
     /// Liest die Datei samt Kodierung: Windows schreibt Design-Dateien meist
     /// als UTF-16 mit BOM, aeltere oder von Hand erstellte auch ANSI.
     /// </summary>
-    public static (string Inhalt, Encoding Kodierung) DateiLesen(string pfad)
+    public static (string Inhalt, Encoding Kodierung) ReadFile(string pfad)
     {
         var bytes = File.ReadAllBytes(pfad);
         Encoding kodierung;
@@ -251,7 +251,7 @@ public static class DesignDatei
     /// ein Abbruch nie eine halbe Design-Datei hinterlaesst. Passt ein neuer
     /// Wert nicht in ASCII, wird UTF-16 mit BOM daraus (liest Windows auch).
     /// </summary>
-    public static void DateiSchreiben(string pfad, string inhalt, Encoding kodierung)
+    public static void WriteFile(string pfad, string inhalt, Encoding kodierung)
     {
         if (kodierung is ASCIIEncoding && inhalt.Any(c => c >= 0x80)) kodierung = new UnicodeEncoding(false, true);
         var zwischen = pfad + ".dasi-neu";

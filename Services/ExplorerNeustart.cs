@@ -18,10 +18,10 @@ namespace WindowsDaSiTool.Services;
 public static class ExplorerNeustart
 {
     /// <summary>Ist die Taskleiste da?</summary>
-    public static bool TaskleisteDa() => FindWindowW("Shell_TrayWnd", null) != IntPtr.Zero;
+    public static bool TaskbarPresent() => FindWindowW("Shell_TrayWnd", null) != IntPtr.Zero;
 
     /// <returns>Ok: die Taskleiste ist wieder da. VonSelbst: Windows hat die Shell selbst neu gestartet.</returns>
-    public static async Task<(bool Ok, bool VonSelbst)> NeuStarten(TimeSpan warten)
+    public static async Task<(bool Ok, bool VonSelbst)> Restart(TimeSpan warten)
     {
         int sitzung;
         using (var ich = Process.GetCurrentProcess()) sitzung = ich.SessionId;
@@ -33,25 +33,25 @@ public static class ExplorerNeustart
         }
 
         // Erst weg sein lassen - sonst gilt die alte Taskleiste als "wieder da".
-        for (int i = 0; i < 40 && TaskleisteDa(); i++) await Task.Delay(250);
+        for (int i = 0; i < 40 && TaskbarPresent(); i++) await Task.Delay(250);
 
-        if (await WarteAufTaskleiste(warten)) return (true, true);
+        if (await WaitForTaskbar(warten)) return (true, true);
 
         try
         {
             using var neu = Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true });
         }
         catch { return (false, false); }
-        return (await WarteAufTaskleiste(warten), false);
+        return (await WaitForTaskbar(warten), false);
     }
 
-    private static async Task<bool> WarteAufTaskleiste(TimeSpan warten)
+    private static async Task<bool> WaitForTaskbar(TimeSpan warten)
     {
         var uhr = Stopwatch.StartNew();
         while (uhr.Elapsed < warten)
         {
             await Task.Delay(500);
-            if (TaskleisteDa())
+            if (TaskbarPresent())
             {
                 // Desktop und Symbole brauchen nach der Taskleiste noch einen Moment.
                 await Task.Delay(2500);

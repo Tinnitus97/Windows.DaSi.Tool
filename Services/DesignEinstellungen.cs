@@ -77,9 +77,9 @@ public static class DesignEinstellungen
     };
 
     /// <summary>Was gesichert wird.</summary>
-    public static readonly IReadOnlyList<DesignWert> Katalog = BaueKatalog();
+    public static readonly IReadOnlyList<DesignWert> Katalog = BuildCatalog();
 
-    private static List<DesignWert> BaueKatalog()
+    private static List<DesignWert> BuildCatalog()
     {
         var k = new List<DesignWert>
         {
@@ -128,7 +128,7 @@ public static class DesignEinstellungen
     /// Liest alle Werte des Katalogs. <paramref name="lesen"/> liefert zu
     /// Schluessel und Name (Typ, Wert) oder null, wenn es den Wert nicht gibt.
     /// </summary>
-    public static List<DesignEintrag> Auslesen(Func<string, string, (string Typ, string Wert)?> lesen)
+    public static List<DesignEintrag> ReadAll(Func<string, string, (string Typ, string Wert)?> lesen)
     {
         var erg = new List<DesignEintrag>();
         foreach (var w in Katalog)
@@ -147,7 +147,7 @@ public static class DesignEinstellungen
     /// keinen Zeiger an dieser Stelle.
     /// </summary>
     /// <param name="dateiDa">Gibt es die Datei (nach Aufloesen von %SystemRoot% usw.)?</param>
-    public static bool ZeigerFehlt(DesignEintrag e, Func<string, bool> dateiDa)
+    public static bool PointerMissing(DesignEintrag e, Func<string, bool> dateiDa)
         => e.Gruppe == "Mauszeiger" && Zeiger.Contains(e.Name) && e.Typ is "String" or "ExpandString"
            && e.Wert.Trim().Length > 0 && !dateiDa(e.Wert.Trim());
 
@@ -156,53 +156,53 @@ public static class DesignEinstellungen
     /// Transparenz an, Akzentfarbe #0063B1, Mauszeiger "Windows-Standard",
     /// Taskleiste zentriert".
     /// </summary>
-    public static string Zusammenfassung(IReadOnlyList<DesignEintrag> werte, Func<string, string, string> tr)
+    public static string Summary(IReadOnlyList<DesignEintrag> werte, Func<string, string, string> tr)
     {
-        int? Zahl(string schluessel, string name)
+        int? Number(string schluessel, string name)
         {
             var e = werte.FirstOrDefault(x => x.Schluessel == schluessel && x.Name == name && x.Typ == "DWord");
             return e is not null && long.TryParse(e.Wert, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l) ? unchecked((int)l) : null;
         }
-        string HellDunkel(int v) => v == 0 ? tr("dunkel", "dark") : tr("hell", "light");
-        string AnAus(int v) => v == 0 ? tr("aus", "off") : tr("an", "on");
+        string LightDark(int v) => v == 0 ? tr("dunkel", "dark") : tr("hell", "light");
+        string OnOff(int v) => v == 0 ? tr("aus", "off") : tr("an", "on");
 
         var teile = new List<string>();
-        if (Zahl(Personalize, "SystemUsesLightTheme") is { } sys) teile.Add(tr($"Windows {HellDunkel(sys)}", $"Windows {HellDunkel(sys)}"));
-        if (Zahl(Personalize, "AppsUseLightTheme") is { } apps) teile.Add(tr($"Apps {HellDunkel(apps)}", $"apps {HellDunkel(apps)}"));
-        if (Zahl(Personalize, "EnableTransparency") is { } tr1) teile.Add(tr($"Transparenz {AnAus(tr1)}", $"transparency {AnAus(tr1)}"));
-        if (Zahl(@"Control Panel\Desktop", "AutoColorization") == 1)
+        if (Number(Personalize, "SystemUsesLightTheme") is { } sys) teile.Add(tr($"Windows {LightDark(sys)}", $"Windows {LightDark(sys)}"));
+        if (Number(Personalize, "AppsUseLightTheme") is { } apps) teile.Add(tr($"Apps {LightDark(apps)}", $"apps {LightDark(apps)}"));
+        if (Number(Personalize, "EnableTransparency") is { } tr1) teile.Add(tr($"Transparenz {OnOff(tr1)}", $"transparency {OnOff(tr1)}"));
+        if (Number(@"Control Panel\Desktop", "AutoColorization") == 1)
             teile.Add(tr("Akzentfarbe automatisch", "accent color automatic"));
-        else if (Zahl(Dwm, "AccentColor") is { } akzent)
-            teile.Add(tr($"Akzentfarbe {AkzentHex(akzent)}", $"accent color {AkzentHex(akzent)}"));
+        else if (Number(Dwm, "AccentColor") is { } akzent)
+            teile.Add(tr($"Akzentfarbe {AccentHex(akzent)}", $"accent color {AccentHex(akzent)}"));
         var schema = werte.FirstOrDefault(x => x.Schluessel == Cursors && x.Name == "")?.Wert;
         if (!string.IsNullOrWhiteSpace(schema)) teile.Add(tr($"Mauszeiger \"{schema}\"", $"pointer \"{schema}\""));
-        if (Zahl(Advanced, "TaskbarAl") is { } al) teile.Add(al == 0 ? tr("Taskleiste links", "taskbar left") : tr("Taskleiste zentriert", "taskbar centered"));
+        if (Number(Advanced, "TaskbarAl") is { } al) teile.Add(al == 0 ? tr("Taskleiste links", "taskbar left") : tr("Taskleiste zentriert", "taskbar centered"));
         return string.Join(", ", teile);
     }
 
     /// <summary>DWM-Farbe 0xAABBGGRR -> "#RRGGBB".</summary>
-    public static string AkzentHex(int abgr)
+    public static string AccentHex(int abgr)
         => $"#{abgr & 0xFF:X2}{(abgr >> 8) & 0xFF:X2}{(abgr >> 16) & 0xFF:X2}";
 
     /// <summary>Welche Gruppen kommen vor - "Farben, Akzentfarbe, Mauszeiger ..."?</summary>
-    public static string Gruppen(IEnumerable<DesignEintrag> werte)
+    public static string Groups(IEnumerable<DesignEintrag> werte)
         => string.Join(", ", werte.Select(w => w.Gruppe).Distinct());
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
-    public static string Datei(string sicherung) => Path.Combine(sicherung, Ordner, DateiName);
+    public static string FilePath(string sicherung) => Path.Combine(sicherung, Ordner, DateiName);
 
-    public static void Speichern(string sicherung, DesignSicherung s)
+    public static void Save(string sicherung, DesignSicherung s)
     {
         Directory.CreateDirectory(Path.Combine(sicherung, Ordner));
-        File.WriteAllText(Datei(sicherung), JsonSerializer.Serialize(s, Json));
+        File.WriteAllText(FilePath(sicherung), JsonSerializer.Serialize(s, Json));
     }
 
     /// <summary>
     /// Design.json - oder die Datei der Zwischenfassung. null, wenn es keine
     /// (lesbare) gibt oder nichts darin steht.
     /// </summary>
-    public static DesignSicherung? Laden(string sicherung)
+    public static DesignSicherung? Load(string sicherung)
     {
         foreach (var name in new[] { DateiName, AlterDateiName })
         {
@@ -219,5 +219,5 @@ public static class DesignEinstellungen
     }
 
     /// <summary>Liegen Design-Einstellungen in der Sicherung?</summary>
-    public static bool Vorhanden(string sicherung) => Laden(sicherung) is not null;
+    public static bool Exists(string sicherung) => Load(sicherung) is not null;
 }

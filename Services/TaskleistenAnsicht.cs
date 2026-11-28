@@ -23,7 +23,7 @@ public static class TaskleistenAnsicht
     /// sich die Taskleiste nicht lesen laesst (keine Taskleiste, Sperrbildschirm
     /// davor, keine Knoepfe gefunden).
     /// </summary>
-    public static HashSet<string>? Kennungen()
+    public static HashSet<string>? AppIds()
     {
         var tray = FindWindowW("Shell_TrayWnd", null);
         if (tray == IntPtr.Zero) return null;

@@ -278,7 +278,7 @@ public static class SystemHelpers
     /// Oeffnet eine Adresse oder Datei mit dem zustaendigen Programm (Browser,
     /// Bildanzeige). false, wenn das nicht ging - der Aufrufer bleibt stehen.
     /// </summary>
-    public static bool Oeffnen(string ziel)
+    public static bool Open(string ziel)
     {
         try
         {

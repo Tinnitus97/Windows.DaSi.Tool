@@ -31,7 +31,7 @@ namespace WindowsDaSiTool.Services;
 /// </summary>
 public static class MozillaProfile
 {
-    /// <summary>Was <see cref="Anpassen"/> getan hat.</summary>
+    /// <summary>Was <see cref="Adjust"/> getan hat.</summary>
     /// <param name="Profil">Pfad des Profils, wie in profiles.ini (z. B. "Profiles/abcd1234.default"); null: keins gefunden.</param>
     /// <param name="Name">Name des Profils (z. B. "default").</param>
     /// <param name="AlteSchluessel">Die Installationen aus der Sicherung (Schluessel).</param>
@@ -45,7 +45,7 @@ public static class MozillaProfile
     }
 
     /// <summary>Die Programme mit Mozilla-Profilverwaltung: Programmdatei und ueblicher Installationsordner.</summary>
-    public static (string Exe, string Ordner)? Programm(AppEintrag app) => app.Punkt switch
+    public static (string Exe, string Ordner)? ProgramOf(AppEintrag app) => app.Punkt switch
     {
         Punkt.Firefox => ("firefox.exe", "Mozilla Firefox"),
         Punkt.Thunderbird => ("thunderbird.exe", "Mozilla Thunderbird"),
@@ -60,14 +60,14 @@ public static class MozillaProfile
     /// UTF-16, hexadezimal in Grossbuchstaben ohne fuehrende Nullen.
     /// "C:\Program Files\Mozilla Firefox" -> "308046B0AF4A39CB".
     /// </summary>
-    public static string Schluessel(string installationsOrdner)
+    public static string InstallHash(string installationsOrdner)
         => CityHash64(Encoding.Unicode.GetBytes(installationsOrdner)).ToString("X");
 
     private const ulong K0 = 0xc3a5c85c97cb3127UL, K1 = 0xb492b66fbe98f273UL, K2 = 0x9ae16a3b2f90404fUL, K3 = 0xc949d7c7509e6557UL;
 
     private static ulong F64(byte[] s, int i) => BitConverter.ToUInt64(s, i);
     private static ulong F32(byte[] s, int i) => BitConverter.ToUInt32(s, i);
-    private static ulong Rot(ulong v, int n) => n == 0 ? v : (v >> n) | (v << (64 - n));
+    private static ulong Rotate(ulong v, int n) => n == 0 ? v : (v >> n) | (v << (64 - n));
     private static ulong ShiftMix(ulong v) => v ^ (v >> 47);
 
     private static ulong Hash16(ulong u, ulong v)
@@ -78,12 +78,12 @@ public static class MozillaProfile
         return b * mul;
     }
 
-    private static ulong Hash0bis16(byte[] s, int n)
+    private static ulong Hash0To16(byte[] s, int n)
     {
         if (n > 8)
         {
             ulong a = F64(s, 0), b = F64(s, n - 8);
-            return Hash16(a, Rot(b + (ulong)n, n)) ^ b;
+            return Hash16(a, Rotate(b + (ulong)n, n)) ^ b;
         }
         if (n >= 4)
             return Hash16((ulong)n + (F32(s, 0) << 3), F32(s, n - 4));
@@ -96,67 +96,67 @@ public static class MozillaProfile
         return K2;
     }
 
-    private static ulong Hash17bis32(byte[] s, int n)
+    private static ulong Hash17To32(byte[] s, int n)
     {
         ulong a = F64(s, 0) * K1, b = F64(s, 8), c = F64(s, n - 8) * K2, d = F64(s, n - 16) * K0;
-        return Hash16(Rot(a - b, 43) + Rot(c, 30) + d, a + Rot(b ^ K3, 20) - c + (ulong)n);
+        return Hash16(Rotate(a - b, 43) + Rotate(c, 30) + d, a + Rotate(b ^ K3, 20) - c + (ulong)n);
     }
 
-    private static ulong Hash33bis64(byte[] s, int n)
+    private static ulong Hash33To64(byte[] s, int n)
     {
         ulong z = F64(s, 24);
         ulong a = F64(s, 0) + ((ulong)n + F64(s, n - 16)) * K0;
-        ulong b = Rot(a + z, 52), c = Rot(a, 37);
-        a += F64(s, 8); c += Rot(a, 7);
+        ulong b = Rotate(a + z, 52), c = Rotate(a, 37);
+        a += F64(s, 8); c += Rotate(a, 7);
         a += F64(s, 16);
-        ulong vf = a + z, vs = b + Rot(a, 31) + c;
+        ulong vf = a + z, vs = b + Rotate(a, 31) + c;
         a = F64(s, 16) + F64(s, n - 32);
         z = F64(s, n - 8);
-        b = Rot(a + z, 52); c = Rot(a, 37);
-        a += F64(s, n - 24); c += Rot(a, 7);
+        b = Rotate(a + z, 52); c = Rotate(a, 37);
+        a += F64(s, n - 24); c += Rotate(a, 7);
         a += F64(s, n - 16);
-        ulong wf = a + z, ws = b + Rot(a, 31) + c;
+        ulong wf = a + z, ws = b + Rotate(a, 31) + c;
         ulong r = ShiftMix((vf + ws) * K2 + (wf + vs) * K0);
         return ShiftMix(r * K0 + vs) * K2;
     }
 
-    private static (ulong, ulong) Schwach32(ulong w, ulong x, ulong y, ulong z, ulong a, ulong b)
+    private static (ulong, ulong) WeakHashLen32(ulong w, ulong x, ulong y, ulong z, ulong a, ulong b)
     {
         a += w;
-        b = Rot(b + a + z, 21);
+        b = Rotate(b + a + z, 21);
         ulong c = a;
         a += x; a += y;
-        b += Rot(a, 44);
+        b += Rotate(a, 44);
         return (a + z, b + c);
     }
 
-    private static (ulong, ulong) Schwach32(byte[] s, int i, ulong a, ulong b)
-        => Schwach32(F64(s, i), F64(s, i + 8), F64(s, i + 16), F64(s, i + 24), a, b);
+    private static (ulong, ulong) WeakHashLen32(byte[] s, int i, ulong a, ulong b)
+        => WeakHashLen32(F64(s, i), F64(s, i + 8), F64(s, i + 16), F64(s, i + 24), a, b);
 
     internal static ulong CityHash64(byte[] s)
     {
         int n = s.Length;
-        if (n <= 16) return Hash0bis16(s, n);
-        if (n <= 32) return Hash17bis32(s, n);
-        if (n <= 64) return Hash33bis64(s, n);
+        if (n <= 16) return Hash0To16(s, n);
+        if (n <= 32) return Hash17To32(s, n);
+        if (n <= 64) return Hash33To64(s, n);
 
         ulong x = F64(s, 0), y = F64(s, n - 16) ^ K1, z = F64(s, n - 56) ^ K0;
-        var v = Schwach32(s, n - 64, (ulong)n, y);
-        var w = Schwach32(s, n - 32, (ulong)n * K1, K0);
+        var v = WeakHashLen32(s, n - 64, (ulong)n, y);
+        var w = WeakHashLen32(s, n - 32, (ulong)n * K1, K0);
         z += ShiftMix(v.Item2) * K1;
-        x = Rot(z + x, 39) * K1;
-        y = Rot(y, 33) * K1;
+        x = Rotate(z + x, 39) * K1;
+        y = Rotate(y, 33) * K1;
 
         int rest = (n - 1) & ~63, i = 0;
         do
         {
-            x = Rot(x + y + v.Item1 + F64(s, i + 16), 37) * K1;
-            y = Rot(y + v.Item2 + F64(s, i + 48), 42) * K1;
+            x = Rotate(x + y + v.Item1 + F64(s, i + 16), 37) * K1;
+            y = Rotate(y + v.Item2 + F64(s, i + 48), 42) * K1;
             x ^= w.Item2;
             y ^= v.Item1;
-            z = Rot(z ^ w.Item1, 33);
-            v = Schwach32(s, i, v.Item2 * K1, x + w.Item1);
-            w = Schwach32(s, i + 32, z + w.Item2, y);
+            z = Rotate(z ^ w.Item1, 33);
+            v = WeakHashLen32(s, i, v.Item2 * K1, x + w.Item1);
+            w = WeakHashLen32(s, i + 32, z + w.Item2, y);
             (z, x) = (x, z);
             i += 64; rest -= 64;
         } while (rest != 0);
@@ -170,7 +170,7 @@ public static class MozillaProfile
     {
         public List<(string Name, List<KeyValuePair<string, string>> Werte)> Abschnitte { get; } = new();
 
-        public static Ini Lesen(string text)
+        public static Ini Read(string text)
         {
             var ini = new Ini();
             List<KeyValuePair<string, string>>? aktuell = null;
@@ -191,7 +191,7 @@ public static class MozillaProfile
             return ini;
         }
 
-        public string? Wert(string abschnitt, string schluessel)
+        public string? Value(string abschnitt, string schluessel)
             => Abschnitte.FirstOrDefault(a => a.Name.Equals(abschnitt, StringComparison.OrdinalIgnoreCase)).Werte?
                 .FirstOrDefault(w => w.Key.Equals(schluessel, StringComparison.OrdinalIgnoreCase)).Value;
 
@@ -209,23 +209,23 @@ public static class MozillaProfile
     }
 
     // [Install308046B0AF4A39CB], [Profile0] - nicht [General], [BackgroundTasksProfiles] ...
-    private static bool IstInstallation(string abschnitt) => Regex.IsMatch(abschnitt, "^Install[0-9A-Fa-f]+$");
-    private static bool IstProfil(string abschnitt) => Regex.IsMatch(abschnitt, "^Profile[0-9]+$");
+    private static bool IsInstallSection(string abschnitt) => Regex.IsMatch(abschnitt, "^Install[0-9A-Fa-f]+$");
+    private static bool IsProfileSection(string abschnitt) => Regex.IsMatch(abschnitt, "^Profile[0-9]+$");
 
-    private static string? Wert(List<KeyValuePair<string, string>> werte, string schluessel)
+    private static string? Value(List<KeyValuePair<string, string>> werte, string schluessel)
         => werte.FirstOrDefault(w => w.Key.Equals(schluessel, StringComparison.OrdinalIgnoreCase)).Value;
 
     /// <summary>Der Ordner eines Profils (relativ zum Datenordner oder absolut).</summary>
-    private static string ProfilOrdner(string datenOrdner, List<KeyValuePair<string, string>> profil)
+    private static string ProfileFolder(string datenOrdner, List<KeyValuePair<string, string>> profil)
     {
-        var pfad = Wert(profil, "Path") ?? "";
-        return Wert(profil, "IsRelative") == "0"
+        var pfad = Value(profil, "Path") ?? "";
+        return Value(profil, "IsRelative") == "0"
             ? pfad
             : Path.Combine(new[] { datenOrdner }.Concat(pfad.Split('/', '\\', StringSplitOptions.RemoveEmptyEntries)).ToArray());
     }
 
     /// <summary>Zuletzt benutzt: prefs.js schreibt Firefox bei jedem Beenden.</summary>
-    private static DateTime ZuletztBenutzt(string ordner)
+    private static DateTime LastUsed(string ordner)
     {
         try
         {
@@ -250,33 +250,33 @@ public static class MozillaProfile
     /// Firefox beim ersten Start dieses Profil, statt ein neues anzulegen.
     /// </summary>
     /// <param name="installationen">Die Installationsordner auf diesem PC (Schreibweise wie auf der Platte).</param>
-    public static Ergebnis Anpassen(string datenOrdner, IEnumerable<string> installationen)
+    public static Ergebnis Adjust(string datenOrdner, IEnumerable<string> installationen)
     {
-        var neu = installationen.Select(o => (Ordner: o, Schluessel: Schluessel(o)))
+        var neu = installationen.Select(o => (Ordner: o, Schluessel: InstallHash(o)))
                                 .DistinctBy(n => n.Schluessel).ToList();
         var datei = Path.Combine(datenOrdner, "profiles.ini");
         if (!File.Exists(datei)) return new Ergebnis(null, null, Array.Empty<string>(), neu);
 
         var text = File.ReadAllText(datei);
         var zeilenende = text.Contains("\r\n") ? "\r\n" : "\n";
-        var ini = Ini.Lesen(text);
-        var profile = ini.Abschnitte.Where(a => IstProfil(a.Name)).ToList();
-        var installs = ini.Abschnitte.Where(a => IstInstallation(a.Name)).ToList();
+        var ini = Ini.Read(text);
+        var profile = ini.Abschnitte.Where(a => IsProfileSection(a.Name)).ToList();
+        var installs = ini.Abschnitte.Where(a => IsInstallSection(a.Name)).ToList();
         var alteSchluessel = installs.Select(a => a.Name["Install".Length..]).ToList();
 
         // Welches Profil lief auf dem alten PC?
-        var benutzt = installs.Select(a => Wert(a.Werte, "Default")).OfType<string>()
-            .Select(p => profile.FirstOrDefault(pr => string.Equals(Wert(pr.Werte, "Path"), p, StringComparison.OrdinalIgnoreCase)))
+        var benutzt = installs.Select(a => Value(a.Werte, "Default")).OfType<string>()
+            .Select(p => profile.FirstOrDefault(pr => string.Equals(Value(pr.Werte, "Path"), p, StringComparison.OrdinalIgnoreCase)))
             .Where(pr => pr.Werte is not null).ToList();
         if (benutzt.Count == 0)
-            benutzt = profile.Where(pr => Wert(pr.Werte, "Default") == "1").ToList();
+            benutzt = profile.Where(pr => Value(pr.Werte, "Default") == "1").ToList();
         if (benutzt.Count == 0)
             benutzt = profile;
-        var gewaehlt = benutzt.Where(pr => Directory.Exists(ProfilOrdner(datenOrdner, pr.Werte)))
-                              .OrderByDescending(pr => ZuletztBenutzt(ProfilOrdner(datenOrdner, pr.Werte)))
+        var gewaehlt = benutzt.Where(pr => Directory.Exists(ProfileFolder(datenOrdner, pr.Werte)))
+                              .OrderByDescending(pr => LastUsed(ProfileFolder(datenOrdner, pr.Werte)))
                               .FirstOrDefault();
         if (gewaehlt.Werte is null) return new Ergebnis(null, null, alteSchluessel, neu);
-        var pfad = Wert(gewaehlt.Werte, "Path")!;
+        var pfad = Value(gewaehlt.Werte, "Path")!;
 
         // Profile: nur das gewaehlte ist der Standard.
         foreach (var (_, werte) in profile)
@@ -286,10 +286,10 @@ public static class MozillaProfile
         }
 
         // Installationen: die des alten PCs weg, die dieses PCs vorne dazu.
-        ini.Abschnitte.RemoveAll(a => IstInstallation(a.Name));
+        ini.Abschnitte.RemoveAll(a => IsInstallSection(a.Name));
         var eintraege = neu.Select(n => ($"Install{n.Schluessel}", new List<KeyValuePair<string, string>> { new("Default", pfad), new("Locked", "1") })).ToList();
         ini.Abschnitte.InsertRange(0, eintraege);
-        Schreiben(datei, ini.Text(zeilenende));
+        Write(datei, ini.Text(zeilenende));
 
         // installs.ini: dieselben Installationen, dort nur mit dem Schluessel
         // als Namen ("[308046B0AF4A39CB]"). Liest ein Firefox profiles.ini ohne
@@ -299,23 +299,23 @@ public static class MozillaProfile
         {
             var nurInstalls = new Ini();
             nurInstalls.Abschnitte.AddRange(eintraege.Select(e => (e.Item1["Install".Length..], e.Item2.ToList())));
-            Schreiben(installsIni, nurInstalls.Text(zeilenende));
+            Write(installsIni, nurInstalls.Text(zeilenende));
         }
         else if (File.Exists(installsIni))
         {
             File.Delete(installsIni);
         }
 
-        return new Ergebnis(pfad, Wert(gewaehlt.Werte, "Name"), alteSchluessel, neu, ProfilOrdner(datenOrdner, gewaehlt.Werte));
+        return new Ergebnis(pfad, Value(gewaehlt.Werte, "Name"), alteSchluessel, neu, ProfileFolder(datenOrdner, gewaehlt.Werte));
     }
 
     /// <summary>Die Profilordner, die profiles.ini nennt und die es gibt.</summary>
-    public static List<string> Profilordner(string datenOrdner)
+    public static List<string> ProfileFolders(string datenOrdner)
     {
         var datei = Path.Combine(datenOrdner, "profiles.ini");
         if (!File.Exists(datei)) return new List<string>();
-        return Ini.Lesen(File.ReadAllText(datei)).Abschnitte.Where(a => IstProfil(a.Name))
-                  .Select(a => ProfilOrdner(datenOrdner, a.Werte)).Where(Directory.Exists)
+        return Ini.Read(File.ReadAllText(datei)).Abschnitte.Where(a => IsProfileSection(a.Name))
+                  .Select(a => ProfileFolder(datenOrdner, a.Werte)).Where(Directory.Exists)
                   .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
@@ -336,7 +336,7 @@ public static class MozillaProfile
     /// "146.0.1_20261120123456/20261120123456" (compatibility.ini, LastVersion)
     /// bzw. Version und BuildID aus application.ini -> (Version, BuildID).
     /// </summary>
-    public static (string Version, string BuildId)? LetzteVersion(string? lastVersion)
+    public static (string Version, string BuildId)? LastVersion(string? lastVersion)
     {
         if (string.IsNullOrWhiteSpace(lastVersion)) return null;
         var teil = lastVersion.Split('/')[0];
@@ -345,7 +345,7 @@ public static class MozillaProfile
     }
 
     /// <summary>Die Zahlen am Anfang jedes Teils: "147.0b3" -> 147, 0; "128.5.0esr" -> 128, 5, 0.</summary>
-    private static List<long> Zahlen(string version)
+    private static List<long> Numbers(string version)
         => version.Split('.').Select(t => new string(t.TakeWhile(char.IsDigit).ToArray()))
                   .Select(t => long.TryParse(t, out var z) ? z : 0).ToList();
 
@@ -354,10 +354,10 @@ public static class MozillaProfile
     /// installierten - wie Firefox beim Start: erst die Version, bei gleicher
     /// die BuildID.
     /// </summary>
-    public static Abstand Vergleichen((string Version, string BuildId) profil, (string Version, string BuildId) installiert)
+    public static Abstand Compare((string Version, string BuildId) profil, (string Version, string BuildId) installiert)
     {
-        var p = Zahlen(profil.Version);
-        var i = Zahlen(installiert.Version);
+        var p = Numbers(profil.Version);
+        var i = Numbers(installiert.Version);
         for (int n = 0; n < Math.Max(p.Count, i.Count); n++)
         {
             var a = n < p.Count ? p[n] : 0;
@@ -374,23 +374,23 @@ public static class MozillaProfile
     }
 
     /// <summary>Fassung, mit der das Profil zuletzt lief (compatibility.ini) - null, wenn unbekannt.</summary>
-    public static (string Version, string BuildId)? ProfilFassung(string profilOrdner)
+    public static (string Version, string BuildId)? ProfileVersion(string profilOrdner)
     {
         var datei = Path.Combine(profilOrdner, "compatibility.ini");
-        try { return File.Exists(datei) ? LetzteVersion(Ini.Lesen(File.ReadAllText(datei)).Wert("Compatibility", "LastVersion")) : null; }
+        try { return File.Exists(datei) ? LastVersion(Ini.Read(File.ReadAllText(datei)).Value("Compatibility", "LastVersion")) : null; }
         catch { return null; }
     }
 
     /// <summary>Die installierte Fassung (application.ini im Installationsordner) - null, wenn unbekannt.</summary>
-    public static (string Version, string BuildId)? InstallierteFassung(string installationsOrdner)
+    public static (string Version, string BuildId)? InstalledVersion(string installationsOrdner)
     {
         var datei = Path.Combine(installationsOrdner, "application.ini");
         try
         {
             if (!File.Exists(datei)) return null;
-            var ini = Ini.Lesen(File.ReadAllText(datei));
-            var version = ini.Wert("App", "Version");
-            return string.IsNullOrWhiteSpace(version) ? null : (version, ini.Wert("App", "BuildID") ?? "");
+            var ini = Ini.Read(File.ReadAllText(datei));
+            var version = ini.Value("App", "Version");
+            return string.IsNullOrWhiteSpace(version) ? null : (version, ini.Value("App", "BuildID") ?? "");
         }
         catch { return null; }
     }
@@ -406,7 +406,7 @@ public static class MozillaProfile
     /// Pfaden in prefs.js oder extensions.json, die nach AppData zeigen - null,
     /// wenn keiner darin steht.
     /// </summary>
-    public static string? AlterBenutzerordner(string profilOrdner)
+    public static string? OldUserFolder(string profilOrdner)
     {
         var funde = new List<string>();
         foreach (var name in new[] { "prefs.js", "extensions.json" })
@@ -430,7 +430,7 @@ public static class MozillaProfile
     /// nicht gibt.
     /// </summary>
     /// <returns>Wie viele Eintraege umgestellt wurden.</returns>
-    public static int PfadeUmstellen(string profilOrdner, string alt, string neu)
+    public static int RewritePaths(string profilOrdner, string alt, string neu)
     {
         var datei = Path.Combine(profilOrdner, "prefs.js");
         // Windows-Pfade (auch vom alten PC) - unabhaengig von Schreibweise und Schlusszeichen.
@@ -455,7 +455,7 @@ public static class MozillaProfile
                 if (neuZeile != zeilen[z]) { zeilen[z] = neuZeile; anzahl++; break; }
             }
         }
-        if (anzahl > 0) Schreiben(datei, string.Join("\n", zeilen) + "\n");
+        if (anzahl > 0) Write(datei, string.Join("\n", zeilen) + "\n");
         return anzahl;
     }
 
@@ -471,7 +471,7 @@ public static class MozillaProfile
     /// Profilordner liegt - in Thunderbird unter Konten-Einstellungen >
     /// Server-Einstellungen > "Lokaler Ordner" verlegt.
     /// </summary>
-    public static List<Postfach> PostfaecherAusserhalb(string profilOrdner)
+    public static List<Postfach> MailFoldersOutside(string profilOrdner)
     {
         var erg = new List<Postfach>();
         var datei = Path.Combine(profilOrdner, "prefs.js");
@@ -494,7 +494,7 @@ public static class MozillaProfile
     /// Traegt fuer ein Konto einen neuen Ordner ein (absolut und, falls im
     /// Profil, relativ "[ProfD]...") - nachdem sein Ordner verlegt wurde.
     /// </summary>
-    public static bool PostfachVerlegen(string profilOrdner, string server, string neuerOrdner)
+    public static bool MoveMailFolder(string profilOrdner, string server, string neuerOrdner)
     {
         var datei = Path.Combine(profilOrdner, "prefs.js");
         if (!File.Exists(datei)) return false;
@@ -507,11 +507,11 @@ public static class MozillaProfile
         if (i < 0) return false;
         zeilen[i] = abs;
         if (relativ is not null) zeilen.Insert(i + 1, $"user_pref(\"mail.server.{server}.directory-rel\", \"{relativ}\");");
-        Schreiben(datei, string.Join("\n", zeilen) + "\n");
+        Write(datei, string.Join("\n", zeilen) + "\n");
         return true;
     }
 
-    private static void Schreiben(string datei, string inhalt)
+    private static void Write(string datei, string inhalt)
     {
         // Ueber eine Zwischendatei: Bricht das Schreiben ab, bleibt die alte stehen.
         var tmp = datei + ".dasi";
@@ -520,10 +520,10 @@ public static class MozillaProfile
     }
 
     /// <summary>Wo eine Installation laut ihrem Schluessel lag - soweit es ein ueblicher Ort ist.</summary>
-    public static string? BekannterOrt(string schluessel, string ordnerName, string profil)
+    public static string? KnownLocation(string schluessel, string ordnerName, string profil)
     {
-        foreach (var ort in UeblicheOrte(ordnerName, profil))
-            if (Schluessel(ort).Equals(schluessel, StringComparison.OrdinalIgnoreCase)) return ort;
+        foreach (var ort in UsualLocations(ordnerName, profil))
+            if (InstallHash(ort).Equals(schluessel, StringComparison.OrdinalIgnoreCase)) return ort;
         return null;
     }
 
@@ -532,7 +532,7 @@ public static class MozillaProfile
     /// nur fuer den Benutzer (AppData\Local). Feste Laufwerksbuchstaben, wie sie
     /// auf dem alten PC lagen - unabhaengig davon, wo dieser PC Programme ablegt.
     /// </summary>
-    internal static IEnumerable<string> UeblicheOrte(string ordnerName, string profil)
+    internal static IEnumerable<string> UsualLocations(string ordnerName, string profil)
     {
         yield return $@"C:\Program Files\{ordnerName}";
         yield return $@"C:\Program Files (x86)\{ordnerName}";
@@ -548,7 +548,7 @@ public static class MozillaProfile
     /// berechnet Firefox den Schluessel.
     /// </summary>
     [SupportedOSPlatform("windows")]
-    public static List<string> Installationen(string exe, string ordnerName, string profil)
+    public static List<string> Installations(string exe, string ordnerName, string profil)
     {
         var orte = new List<string>
         {
@@ -569,7 +569,7 @@ public static class MozillaProfile
             catch { /* naechste */ }
         }
         return orte.Where(o => o.Length > 0 && File.Exists(Path.Combine(o, exe)))
-                   .Select(EchterPfad)
+                   .Select(RealPath)
                    .Distinct(StringComparer.OrdinalIgnoreCase)
                    .ToList();
     }
@@ -580,7 +580,7 @@ public static class MozillaProfile
     /// berechnet.
     /// </summary>
     [SupportedOSPlatform("windows")]
-    public static string EchterPfad(string ordner)
+    public static string RealPath(string ordner)
     {
         var voll = Path.TrimEndingDirectorySeparator(Path.GetFullPath(ordner));
         using var h = CreateFileW(voll, 0, 7 /* lesen, schreiben, loeschen */, IntPtr.Zero, 3 /* OPEN_EXISTING */,

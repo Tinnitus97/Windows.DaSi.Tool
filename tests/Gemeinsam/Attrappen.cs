@@ -17,7 +17,7 @@ internal static class Attrappen
     }
 
     /// <summary>Die gebaute winget-Attrappe (tests/WingetAttrappe) - null, wenn sie nicht gebaut ist.</summary>
-    public static string? WingetAttrappe()
+    public static string? WingetFake()
     {
         var basis = Path.Combine(Repository(), "tests", "WingetAttrappe", "bin");
         foreach (var konfig in new[] { "Release", "Debug" })
@@ -33,21 +33,21 @@ internal static class Attrappen
     /// Richtet ein Szenario fuer die Attrappe ein: neuer Ordner, szenario.txt,
     /// Umgebungsvariable fuer die gestarteten Prozesse.
     /// </summary>
-    public static string WingetSzenario(string wurzel, IDictionary<string, string> werte)
+    public static string WingetScenario(string wurzel, IDictionary<string, string> werte)
     {
         var ordner = Path.Combine(wurzel, "winget-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(ordner);
-        SzenarioSchreiben(ordner, werte);
+        WriteScenario(ordner, werte);
         Environment.SetEnvironmentVariable("DASI_WINGET_ATTRAPPE", ordner);
         return ordner;
     }
 
-    public static void SzenarioSchreiben(string ordner, IDictionary<string, string> werte)
+    public static void WriteScenario(string ordner, IDictionary<string, string> werte)
         => File.WriteAllLines(Path.Combine(ordner, "szenario.txt"),
                               werte.Select(kv => kv.Key + "=" + kv.Value.Replace("\n", "\\n")));
 
     /// <summary>Was die Attrappe bisher gefragt wurde - je Aufruf eine Zeile.</summary>
-    public static List<string> Aufrufe(string ordner)
+    public static List<string> Calls(string ordner)
     {
         var p = Path.Combine(ordner, "aufrufe.txt");
         return File.Exists(p) ? File.ReadAllLines(p).ToList() : new List<string>();

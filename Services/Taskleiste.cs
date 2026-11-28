@@ -41,15 +41,15 @@ public static class Taskleiste
     /// <summary>Der Ordner der angehefteten Verknuepfungen, relativ zum Profil.</summary>
     public const string PinRel = @"AppData\Roaming\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar";
 
-    public static string PinOrdner(string profil) => AppCatalog.Pfad(profil, PinRel);
+    public static string PinFolder(string profil) => AppCatalog.PathIn(profil, PinRel);
 
     /// <summary>Desktop-Symbole\Taskleiste in der Sicherung.</summary>
-    public static string SicherungsOrdner(string sicherung) => Path.Combine(sicherung, DesktopIcons.FolderName, Ordner);
+    public static string BackupFolder(string sicherung) => Path.Combine(sicherung, DesktopIcons.FolderName, Ordner);
 
-    public static string Datei(string sicherung) => Path.Combine(SicherungsOrdner(sicherung), DateiName);
+    public static string FilePath(string sicherung) => Path.Combine(BackupFolder(sicherung), DateiName);
 
     /// <summary>Die Verknuepfungen in einem Ordner, nach Namen sortiert.</summary>
-    public static List<string> Verknuepfungen(string ordner)
+    public static List<string> Shortcuts(string ordner)
     {
         try
         {
@@ -63,23 +63,23 @@ public static class Taskleiste
     }
 
     /// <summary>"Firefox.lnk", "Microsoft Edge.lnk" -> "Firefox, Microsoft Edge".</summary>
-    public static string Namen(IEnumerable<string> verknuepfungen)
+    public static string Names(IEnumerable<string> verknuepfungen)
         => string.Join(", ", verknuepfungen.Select(Path.GetFileNameWithoutExtension));
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
-    public static void Speichern(string sicherung, TaskleistenSicherung s)
+    public static void Save(string sicherung, TaskleistenSicherung s)
     {
-        Directory.CreateDirectory(SicherungsOrdner(sicherung));
-        File.WriteAllText(Datei(sicherung), JsonSerializer.Serialize(s, Json));
+        Directory.CreateDirectory(BackupFolder(sicherung));
+        File.WriteAllText(FilePath(sicherung), JsonSerializer.Serialize(s, Json));
     }
 
     /// <summary>null, wenn es keine (lesbare) Datei gibt oder nichts darin steht.</summary>
-    public static TaskleistenSicherung? Laden(string sicherung)
+    public static TaskleistenSicherung? Load(string sicherung)
     {
         try
         {
-            var d = Datei(sicherung);
+            var d = FilePath(sicherung);
             if (!File.Exists(d)) return null;
             var s = JsonSerializer.Deserialize<TaskleistenSicherung>(File.ReadAllText(d));
             return s is not null && (s.Taskband.Count > 0 || s.Verknuepfungen.Count > 0) ? s : null;
@@ -87,7 +87,7 @@ public static class Taskleiste
         catch { return null; }
     }
 
-    public static bool Vorhanden(string sicherung) => Laden(sicherung) is not null;
+    public static bool Exists(string sicherung) => Load(sicherung) is not null;
 
     /// <summary>Der Wert Favorites aus der Sicherung (Binaerdaten), falls darin.</summary>
     public static byte[]? Favorites(IEnumerable<DesignEintrag> taskband)
@@ -103,7 +103,7 @@ public static class Taskleiste
     /// tragen den langen Dateinamen in UTF-16 - so laesst sich nach einem
     /// Explorer-Neustart vergleichen, was Windows behalten hat.
     /// </summary>
-    public static List<string> AngehefteteNamen(byte[]? favorites, IEnumerable<string> verknuepfungen)
+    public static List<string> PinnedNames(byte[]? favorites, IEnumerable<string> verknuepfungen)
     {
         if (favorites is null || favorites.Length < 2) return new List<string>();
         // Die Namen stehen nicht immer an geraden Stellen - beide Lesarten.
@@ -126,7 +126,7 @@ public static class Taskleiste
     /// Programmen ohne eigene der Pfad ab einem bekannten Ordner
     /// ("{7C5A40EF-...}\Hersteller\programm.exe").
     /// </summary>
-    public static List<string> Kennungen(byte[]? favorites)
+    public static List<string> AppIds(byte[]? favorites)
     {
         var erg = new List<string>();
         if (favorites is null) return erg;
@@ -151,7 +151,7 @@ public static class Taskleiste
     /// und die Daten; am Ende 0xFF. Verknuepfung: welche der genannten Dateien
     /// der Eintrag meint (Store-Apps haben keine).
     /// </summary>
-    public static List<Eintrag> Eintraege(byte[]? favorites, IEnumerable<string> verknuepfungen)
+    public static List<Eintrag> Entries(byte[]? favorites, IEnumerable<string> verknuepfungen)
     {
         var erg = new List<Eintrag>();
         if (favorites is null) return erg;
@@ -162,7 +162,7 @@ public static class Taskleiste
             var laenge = BitConverter.ToUInt32(favorites, pos + 1);
             if (laenge == 0 || laenge > favorites.Length - pos - 5) break;
             var daten = favorites.AsSpan(pos + 5, (int)laenge).ToArray();
-            erg.Add(new Eintrag(AngehefteteNamen(daten, namen).FirstOrDefault(), Kennungen(daten).FirstOrDefault()));
+            erg.Add(new Eintrag(PinnedNames(daten, namen).FirstOrDefault(), AppIds(daten).FirstOrDefault()));
             pos += 5 + (int)laenge;
         }
         return erg;
@@ -173,7 +173,7 @@ public static class Taskleiste
     /// Binaerdaten (UTF-16). Gleich lang, damit kein Laengenfeld der Eintraege
     /// angepasst werden muss.
     /// </summary>
-    public static byte[] KennungErsetzen(byte[] daten, string alt, string neu)
+    public static byte[] ReplaceAppId(byte[] daten, string alt, string neu)
     {
         if (alt.Length != neu.Length) throw new ArgumentException("Die Kennungen muessen gleich lang sein.");
         var a = System.Text.Encoding.Unicode.GetBytes(alt);
@@ -191,7 +191,7 @@ public static class Taskleiste
     /// <param name="mozilla">Firefox/Thunderbird: Kennung (Schluessel) der Installation auf dem alten PC -> auf diesem.</param>
     /// <param name="ordner">Bekannter Ordner (z. B. <see cref="OrdnerProgramme86"/>) -> sein Pfad auf diesem PC.</param>
     /// <param name="gibtEs">Liegt dort eine Datei?</param>
-    public static string? NeueKennung(string kennung, IReadOnlyDictionary<string, string> mozilla,
+    public static string? NewAppId(string kennung, IReadOnlyDictionary<string, string> mozilla,
                                       IReadOnlyDictionary<string, string> ordner, Func<string, bool> gibtEs)
     {
         if (mozilla.TryGetValue(kennung, out var m))
@@ -222,7 +222,7 @@ public static class Taskleiste
     /// <param name="programme">Der Programme-Ordner dieses PCs (64 Bit).</param>
     /// <param name="programme86">Der Programme-Ordner fuer 32-Bit-Programme.</param>
     /// <returns>null, wenn das Ziel da ist oder sich nirgends findet.</returns>
-    public static string? NeuesZiel(string ziel, Func<string, bool> gibtEs, Func<string, string?> appPath,
+    public static string? NewTarget(string ziel, Func<string, bool> gibtEs, Func<string, string?> appPath,
                                     string programme, string programme86)
     {
         if (string.IsNullOrWhiteSpace(ziel) || gibtEs(ziel)) return null;

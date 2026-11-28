@@ -22,15 +22,15 @@ internal static partial class Program
     private sealed class Protokoll
     {
         private readonly List<string> _zeilen = new();
-        public void Schreiben(string z) { lock (_zeilen) _zeilen.Add(z); }
+        public void Write(string z) { lock (_zeilen) _zeilen.Add(z); }
         public List<string> Zeilen { get { lock (_zeilen) return _zeilen.ToList(); } }
-        public bool Hat(string teil) => Zeilen.Any(z => z.Contains(teil, StringComparison.OrdinalIgnoreCase));
-        public int Anzahl(string teil) => Zeilen.Count(z => z.Contains(teil, StringComparison.OrdinalIgnoreCase));
+        public bool Has(string teil) => Zeilen.Any(z => z.Contains(teil, StringComparison.OrdinalIgnoreCase));
+        public int Count(string teil) => Zeilen.Count(z => z.Contains(teil, StringComparison.OrdinalIgnoreCase));
         public string Text => string.Join(" | ", Zeilen).Replace("\r", "").Replace("\n", " / ");
-        public void Leeren() { lock (_zeilen) _zeilen.Clear(); }
+        public void Clear() { lock (_zeilen) _zeilen.Clear(); }
     }
 
-    private static void LocalizerPruefen()
+    private static void LocalizerCheck()
     {
         Console.WriteLine("\n== Sprache (Localizer) ==");
         var vorher = Localizer.I.Lang;
@@ -53,7 +53,7 @@ internal static partial class Program
         }
     }
 
-    private static void SystemHelferPruefen(string root)
+    private static void SystemHelpersCheck(string root)
     {
         Console.WriteLine("\n== Systemhelfer ==");
         var enc = SystemHelpers.ConsoleEncoding;
@@ -147,11 +147,11 @@ internal static partial class Program
             Check("NTFS: Systemlaufwerk", SystemHelpers.IsNtfsDrive(Environment.SystemDirectory));
             Check("NTFS: Netzwerkpfad gilt als geeignet", SystemHelpers.IsNtfsDrive(@"\\server\freigabe\ordner"));
             Check("Oeffnen: eine Datei, die es nicht gibt -> false (nichts geht auf)",
-                !SystemHelpers.Oeffnen(Path.Combine(root, "gibt-es-nicht.dasi-unbekannt")));
+                !SystemHelpers.Open(Path.Combine(root, "gibt-es-nicht.dasi-unbekannt")));
         }
     }
 
-    private static void AbbruchUndLeistungPruefen()
+    private static void CancellationAndPerformanceCheck()
     {
         Console.WriteLine("\n== Abbruch und Leistungsmodus ==");
         var c = new CancellationTokenState();
@@ -162,11 +162,11 @@ internal static partial class Program
         Check("Abbruch: zurueckgesetzt", !c.IsCancelled);
 
         // KillAll beendet genau die angemeldeten Prozesse.
-        Process Langlaeufer() => OperatingSystem.IsWindows()
+        Process LongRunner() => OperatingSystem.IsWindows()
             ? Process.Start(new ProcessStartInfo("ping.exe", "-n 60 127.0.0.1") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true })!
             : Process.Start(new ProcessStartInfo("sleep", "60") { UseShellExecute = false })!;
-        using var angemeldet = Langlaeufer();
-        using var abgemeldet = Langlaeufer();
+        using var angemeldet = LongRunner();
+        using var abgemeldet = LongRunner();
         c.Register(angemeldet.Id);
         c.Register(abgemeldet.Id);
         c.Unregister(abgemeldet.Id);
@@ -177,22 +177,22 @@ internal static partial class Program
 
         var log = new Protokoll();
         var vorher = Process.GetCurrentProcess().PriorityClass;
-        using (var perf = new PerformanceMode(log.Schreiben))
+        using (var perf = new PerformanceMode(log.Write))
         {
             perf.Enable();
             if (OperatingSystem.IsWindows())
             {
-                Check("Leistungsmodus: Standby unterdrueckt (Protokoll)", log.Hat("Leistungsmodus aktiv"), log.Text);
+                Check("Leistungsmodus: Standby unterdrueckt (Protokoll)", log.Has("Leistungsmodus aktiv"), log.Text);
                 Check("Leistungsmodus: Prioritaet angehoben", Process.GetCurrentProcess().PriorityClass == ProcessPriorityClass.AboveNormal);
             }
             perf.Dispose();
             perf.Dispose();   // doppelt darf nichts doppelt tun
         }
         Check("Leistungsmodus: Prioritaet wie vorher", Process.GetCurrentProcess().PriorityClass == vorher);
-        Check("Leistungsmodus: genau einmal beendet", log.Anzahl("Leistungsmodus beendet") == 1, log.Text);
+        Check("Leistungsmodus: genau einmal beendet", log.Count("Leistungsmodus beendet") == 1, log.Text);
     }
 
-    private static void ProzessePruefen(string root)
+    private static void ProcessesCheck(string root)
     {
         if (!OperatingSystem.IsWindows()) return;
         Console.WriteLine("\n== Prozesse starten (ProcessRunner) ==");
@@ -244,29 +244,29 @@ internal static partial class Program
         var log = new Protokoll();
         var zaehler = new List<int>();
         int code = r.RunRobocopyAsync($"\"{quelle}\" \"{Path.Combine(root, "robo-zaehlen", "ziel1")}\" /E /NP /NJH",
-                                      log.Schreiben, n => { lock (zaehler) zaehler.Add(n); }).GetAwaiter().GetResult();
+                                      log.Write, n => { lock (zaehler) zaehler.Add(n); }).GetAwaiter().GetResult();
         Check("robocopy: Exit-Code < 8", code is > 0 and < 8, code.ToString());
         // Gezaehlt werden die eingerueckten Zeilen von robocopy - Dateien und
         // Ordner. Es geht um den Fortschritt, nicht um eine genaue Bilanz.
         Check("robocopy schnell: gezaehlt, alle 25 gemeldet, Endstand mit allen 60 Dateien",
             zaehler.Count >= 3 && zaehler[0] == 25 && zaehler[1] == 50 && zaehler.Last() >= 60, string.Join(",", zaehler));
-        Check("robocopy schnell: keine Dateizeilen im Protokoll", !log.Hat("datei07.txt"), log.Text);
+        Check("robocopy schnell: keine Dateizeilen im Protokoll", !log.Has("datei07.txt"), log.Text);
 
         c.FastMode = false;
-        log.Leeren();
+        log.Clear();
         code = r.RunRobocopyAsync($"\"{quelle}\" \"{Path.Combine(root, "robo-zaehlen", "ziel2")}\" /E /NP",
-                                  log.Schreiben, _ => { }).GetAwaiter().GetResult();
-        Check("robocopy ausfuehrlich: Dateizeilen im Protokoll", log.Hat("datei07.txt"), log.Text.Length > 300 ? log.Text[..300] : log.Text);
+                                  log.Write, _ => { }).GetAwaiter().GetResult();
+        Check("robocopy ausfuehrlich: Dateizeilen im Protokoll", log.Has("datei07.txt"), log.Text.Length > 300 ? log.Text[..300] : log.Text);
         c.FastMode = true;
 
         c.RequestCancel();
         Check("robocopy nach Abbruch: startet gar nicht (999)",
-            r.RunRobocopyAsync($"\"{quelle}\" \"{Path.Combine(root, "robo-zaehlen", "ziel3")}\"", log.Schreiben).GetAwaiter().GetResult() == 999
+            r.RunRobocopyAsync($"\"{quelle}\" \"{Path.Combine(root, "robo-zaehlen", "ziel3")}\"", log.Write).GetAwaiter().GetResult() == 999
             && !Directory.Exists(Path.Combine(root, "robo-zaehlen", "ziel3")));
         c.Reset();
     }
 
-    private static void UpdateUeberHttpPruefen(string root)
+    private static void UpdateOverHttpCheck(string root)
     {
         Console.WriteLine("\n== Update ueber HTTP (eigener Server) ==");
         using var server = new MiniHttp();
@@ -275,9 +275,9 @@ internal static partial class Program
         var exeDatei = Path.Combine(root, "update-quelle.bin");
         File.WriteAllBytes(exeDatei, exe);
         var sha = UpdateService.ComputeSha256(exeDatei);
-        server.Setze("update.json", $$"""{ "program": { "version": "9.9.9", "url": "{{server.Basis}}neu.exe", "sha256": "{{sha.ToUpperInvariant()}}" } }""");
-        server.Setze("kaputt.json", "{ nicht json");
-        server.Setze("neu.exe", exe);
+        server.Set("update.json", $$"""{ "program": { "version": "9.9.9", "url": "{{server.Basis}}neu.exe", "sha256": "{{sha.ToUpperInvariant()}}" } }""");
+        server.Set("kaputt.json", "{ nicht json");
+        server.Set("neu.exe", exe);
 
         var m = UpdateService.FetchAsync(server.Basis + "update.json", CancellationToken.None).GetAwaiter().GetResult();
         Check("Abfrage: update.json gelesen", m.Success && m.Program.Version == "9.9.9" && m.Program.Sha256 == sha, m.Error ?? m.Program.Version);
@@ -333,13 +333,13 @@ internal static partial class Program
         }
     }
 
-    private static void WingetInstallerPruefen(string root)
+    private static void WingetInstallerCheck(string root)
     {
         Console.WriteLine("\n== winget nachinstallieren (eigener Server statt GitHub) ==");
         var log = new Protokoll();
         if (!OperatingSystem.IsWindows())
         {
-            Check("ausserhalb von Windows: nichts", !WingetInstaller.InstallAsync(log.Schreiben, () => false).GetAwaiter().GetResult());
+            Check("ausserhalb von Windows: nichts", !WingetInstaller.InstallAsync(log.Write, () => false).GetAwaiter().GetResult());
             return;
         }
         using var server = new MiniHttp();
@@ -351,25 +351,25 @@ internal static partial class Program
                 using var w = new StreamWriter(zip.CreateEntry($"{arch}/Microsoft.VCLibs.140.00_14.0.33519.0_{arch}.appx").Open());
                 w.Write("keine echte appx");
             }
-        server.Setze(WingetInstaller.DependenciesFile, File.ReadAllBytes(zipDatei));
+        server.Set(WingetInstaller.DependenciesFile, File.ReadAllBytes(zipDatei));
         var bundle = new byte[600_000];
-        server.Setze(WingetInstaller.BundleFile, bundle);
+        server.Set(WingetInstaller.BundleFile, bundle);
 
         // Echtes Herunterladen, echtes PowerShell - nur das Paket ist eine
         // Attrappe, die Windows ablehnt. Installiert wird dabei nichts.
-        var ok = WingetInstaller.InstallAsync(log.Schreiben, () => false, default, server.Basis).GetAwaiter().GetResult();
-        Check("Download von Abhaengigkeiten und App-Installer", log.Hat("Abhängigkeiten: geladen") && log.Hat("App-Installer: geladen"), log.Text);
-        Check("Fortschritt beim Laden wird gemeldet", log.Hat("25 %"), log.Text);
-        Check("Abhaengigkeiten fuer diese Architektur gefunden", log.Hat("samt 1 Abhängigkeiten"), log.Text);
-        Check("unbrauchbares Paket: Windows lehnt ab, Warnung statt Absturz", !ok && log.Hat("[WARNUNG] Der App-Installer ließ sich nicht installieren"), log.Text);
+        var ok = WingetInstaller.InstallAsync(log.Write, () => false, default, server.Basis).GetAwaiter().GetResult();
+        Check("Download von Abhaengigkeiten und App-Installer", log.Has("Abhängigkeiten: geladen") && log.Has("App-Installer: geladen"), log.Text);
+        Check("Fortschritt beim Laden wird gemeldet", log.Has("25 %"), log.Text);
+        Check("Abhaengigkeiten fuer diese Architektur gefunden", log.Has("samt 1 Abhängigkeiten"), log.Text);
+        Check("unbrauchbares Paket: Windows lehnt ab, Warnung statt Absturz", !ok && log.Has("[WARNUNG] Der App-Installer ließ sich nicht installieren"), log.Text);
 
-        log.Leeren();
-        server.Setze(WingetInstaller.BundleFile, "weg", 404);
-        ok = WingetInstaller.InstallAsync(log.Schreiben, () => false, default, server.Basis).GetAwaiter().GetResult();
-        Check("Download scheitert (404): Warnung, kein Absturz", !ok && log.Hat("ließ sich nicht von GitHub nachinstallieren"), log.Text);
+        log.Clear();
+        server.Set(WingetInstaller.BundleFile, "weg", 404);
+        ok = WingetInstaller.InstallAsync(log.Write, () => false, default, server.Basis).GetAwaiter().GetResult();
+        Check("Download scheitert (404): Warnung, kein Absturz", !ok && log.Has("ließ sich nicht von GitHub nachinstallieren"), log.Text);
 
-        log.Leeren();
-        ok = WingetInstaller.InstallAsync(log.Schreiben, () => true, default, server.Basis).GetAwaiter().GetResult();
-        Check("Abbruch waehrend des Ladens", !ok && !log.Hat("geladen ("), log.Text);
+        log.Clear();
+        ok = WingetInstaller.InstallAsync(log.Write, () => true, default, server.Basis).GetAwaiter().GetResult();
+        Check("Abbruch waehrend des Ladens", !ok && !log.Has("geladen ("), log.Text);
     }
 }

@@ -46,13 +46,13 @@ public static class WingetFehler
     /// neueren winget-Fassung. Dann scheitert JEDES weitere Paket genauso -
     /// erst reparieren, dann weiter.
     /// </summary>
-    public static bool QuelleKaputt(int code)
+    public static bool SourceBroken(int code)
         => code is IndexZuNeu or IndexBeschaedigt or QuellenBeschaedigt or QuellDatenFehlen;
 
     /// <summary>Auch an der Ausgabe erkennbar - falls ein Rueckgabewert fehlt oder verfaelscht ist.</summary>
-    public static bool QuelleKaputt(int code, string? ausgabe)
+    public static bool SourceBroken(int code, string? ausgabe)
     {
-        if (QuelleKaputt(code)) return true;
+        if (SourceBroken(code)) return true;
         if (string.IsNullOrEmpty(ausgabe)) return false;
         return ausgabe.Contains("0x8a150009", StringComparison.OrdinalIgnoreCase)
                || ausgabe.Contains("0x8a15000a", StringComparison.OrdinalIgnoreCase)
@@ -68,7 +68,7 @@ public static class WingetFehler
     /// Ein Satz, was der Wert bedeutet - nur fuer die Werte, bei denen der
     /// Benutzer daraus etwas machen kann. Sonst null.
     /// </summary>
-    public static string? Erklaerung(int code, Func<string, string, string> tr) => code switch
+    public static string? Explanation(int code, Func<string, string, string> tr) => code switch
     {
         IndexZuNeu => tr("Die Paketdatenbank von winget stammt von einer neueren winget-Fassung als der installierten.",
                          "winget's package database comes from a newer winget version than the installed one."),
@@ -99,7 +99,7 @@ public static class WingetFehler
     /// ueberschreibt. Ungefiltert stand im Protokoll nur "-" und eine Zeile
     /// voller Leerzeichen statt der eigentlichen Meldung.
     /// </summary>
-    public static string LetzteMeldung(string? ausgabe, int zeilen = 2)
+    public static string LastMessage(string? ausgabe, int zeilen = 2)
     {
         if (string.IsNullOrEmpty(ausgabe)) return "";
         var sauber = new List<string>();
@@ -124,7 +124,7 @@ public static class WingetFehler
         new(@"^Microsoft\.DesktopAppInstaller_(\d+(?:\.\d+){1,3})_", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     /// <summary>Die Fassung im Namen eines App-Installer-Ordners, sonst null.</summary>
-    public static Version? OrdnerVersion(string ordner)
+    public static Version? FolderVersion(string ordner)
     {
         // Letzter Teil des Pfads - von Hand, damit "\\" auch in der Pruefumgebung
         // unter Linux als Trennzeichen zaehlt.
@@ -142,8 +142,8 @@ public static class WingetFehler
     /// "1.26", und ein uralter App-Installer stand vor dem aktuellen. Mit ihm
     /// passen die heutigen Paketquellen nicht mehr zusammen.
     /// </summary>
-    public static List<string> NeuesteZuerst(IEnumerable<string> ordner)
-        => ordner.OrderByDescending(o => OrdnerVersion(o) ?? new Version(0, 0))
+    public static List<string> NewestFirst(IEnumerable<string> ordner)
+        => ordner.OrderByDescending(o => FolderVersion(o) ?? new Version(0, 0))
                  .ThenByDescending(o => o, StringComparer.OrdinalIgnoreCase)
                  .ToList();
 }

@@ -21,9 +21,9 @@ public static class LaufwerksOrdner
     public const string BackupOrdner = "C-Ordner";
 
     /// <summary>Das Systemlaufwerk ("C:\"). Fuer die Pruefungen austauschbar.</summary>
-    public static string Wurzel { get; set; } = StandardWurzel();
+    public static string Wurzel { get; set; } = DefaultRoot();
 
-    public static string StandardWurzel()
+    public static string DefaultRoot()
         => (Environment.GetEnvironmentVariable("SystemDrive") is { Length: > 0 } d ? d.TrimEnd('\\', '/') : "C:") + @"\";
 
     /// <summary>
@@ -46,7 +46,7 @@ public static class LaufwerksOrdner
     public sealed record Eintrag(string Name, string Pfad, bool Windows);
 
     /// <summary>Legt Windows diesen Ordner selbst an?</summary>
-    public static bool IstWindowsOrdner(string name, FileAttributes attribute = 0)
+    public static bool IsWindowsFolder(string name, FileAttributes attribute = 0)
         => WindowsOrdner.Contains(name)
            || name.StartsWith('$')
            || (attribute.HasFlag(FileAttributes.Hidden) && attribute.HasFlag(FileAttributes.System));
@@ -57,7 +57,7 @@ public static class LaufwerksOrdner
     /// und der Ordner, in dem die Sicherung selbst liegt - sie saehe sich sonst
     /// selbst.
     /// </summary>
-    public static List<Eintrag> Auflisten(string wurzel, string? sicherungsZiel)
+    public static List<Eintrag> ListFolders(string wurzel, string? sicherungsZiel)
     {
         var liste = new List<Eintrag>();
         try
@@ -67,8 +67,8 @@ public static class LaufwerksOrdner
                 try
                 {
                     if (d.Attributes.HasFlag(FileAttributes.ReparsePoint)) continue;
-                    if (!string.IsNullOrWhiteSpace(sicherungsZiel) && Enthaelt(d.FullName, sicherungsZiel)) continue;
-                    liste.Add(new Eintrag(d.Name, d.FullName, IstWindowsOrdner(d.Name, d.Attributes)));
+                    if (!string.IsNullOrWhiteSpace(sicherungsZiel) && Contains(d.FullName, sicherungsZiel)) continue;
+                    liste.Add(new Eintrag(d.Name, d.FullName, IsWindowsFolder(d.Name, d.Attributes)));
                 }
                 catch { /* nicht lesbar - auslassen */ }
             }
@@ -78,7 +78,7 @@ public static class LaufwerksOrdner
     }
 
     /// <summary>Die Ordner, die in der Sicherung liegen.</summary>
-    public static List<Eintrag> InDerSicherung(string? sicherung)
+    public static List<Eintrag> InBackup(string? sicherung)
     {
         var liste = new List<Eintrag>();
         try
@@ -87,17 +87,17 @@ public static class LaufwerksOrdner
             var ort = Path.Combine(sicherung, BackupOrdner);
             if (!Directory.Exists(ort)) return liste;
             foreach (var d in new DirectoryInfo(ort).EnumerateDirectories())
-                liste.Add(new Eintrag(d.Name, d.FullName, IstWindowsOrdner(d.Name)));
+                liste.Add(new Eintrag(d.Name, d.FullName, IsWindowsFolder(d.Name)));
         }
         catch { /* nicht lesbar - dann eben keine */ }
         return liste.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>Liegen Ordner von C:\ in der Sicherung?</summary>
-    public static bool Vorhanden(string? sicherung) => InDerSicherung(sicherung).Count > 0;
+    public static bool Exists(string? sicherung) => InBackup(sicherung).Count > 0;
 
     /// <summary>Ist <paramref name="pfad"/> der Ordner selbst oder liegt er darin?</summary>
-    public static bool Enthaelt(string ordner, string pfad)
+    public static bool Contains(string ordner, string pfad)
     {
         try
         {
@@ -114,7 +114,7 @@ public static class LaufwerksOrdner
     /// Wie gross ist der Ordner? Verknuepfungen wird nicht gefolgt, nicht
     /// Lesbares zaehlt nicht. -1, wenn abgebrochen.
     /// </summary>
-    public static long Groesse(string ordner, CancellationToken stop = default)
+    public static long SizeOf(string ordner, CancellationToken stop = default)
     {
         long summe = 0;
         var optionen = new EnumerationOptions

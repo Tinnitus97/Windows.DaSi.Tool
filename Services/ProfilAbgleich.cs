@@ -36,7 +36,7 @@ public static class ProfilAbgleich
     /// "Profile 1" ...; bei Firefox und Thunderbird "Profiles\xxxx.default-release".
     /// Erkannt an ihrer Einstellungsdatei, nach Namen sortiert.
     /// </summary>
-    public static List<string> Profile(string ordner)
+    public static List<string> Profiles(string ordner)
     {
         var erg = new List<string>();
         try
@@ -61,12 +61,12 @@ public static class ProfilAbgleich
     /// Groesse haben - relativ zum Datenordner. Leer heisst: Das Profil steht
     /// so im Ziel, wie es gesichert wurde.
     /// </summary>
-    public static List<string> Abweichungen(string quelle, string ziel)
+    public static List<string> Differences(string quelle, string ziel)
     {
         var erg = new List<string>();
         if (!Directory.Exists(quelle)) return erg;
 
-        void Vergleiche(string rel)
+        void Compare(string rel)
         {
             var q = Path.Combine(quelle, rel);
             if (!File.Exists(q)) return;
@@ -78,10 +78,10 @@ public static class ProfilAbgleich
             catch { erg.Add(rel); }
         }
 
-        foreach (var datei in Oben) Vergleiche(datei);
-        foreach (var profil in Profile(quelle))
+        foreach (var datei in Oben) Compare(datei);
+        foreach (var profil in Profiles(quelle))
             foreach (var datei in JeProfil)
-                Vergleiche(Path.Combine(profil, datei));
+                Compare(Path.Combine(profil, datei));
         return erg;
     }
 }

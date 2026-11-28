@@ -184,7 +184,7 @@ public sealed class RobocopySkips
             // Mit /R:1 und mehr: noch nicht aufgegeben - Zaehlung zuruecknehmen.
             // Scheitert auch der naechste Versuch, kommt eine neue Meldung;
             // klappt er, wurde die Datei kopiert und gehoert nicht in die Liste.
-            if (!abschluss && fertig.Innen) Zuruecknehmen(fertig);
+            if (!abschluss && fertig.Innen) Undo(fertig);
             return fertig.Innen;
         }
 
@@ -200,7 +200,7 @@ public sealed class RobocopySkips
         return ohneGrund.Innen;
     }
 
-    private void Zuruecknehmen(Offen meldung)
+    private void Undo(Offen meldung)
     {
         if (meldung.Gezaehlt is null) return;
         _gesehen.Remove(meldung.Gezaehlt);
@@ -242,8 +242,8 @@ public sealed class RobocopySkips
         var sb = new StringBuilder();
         if (_zurueck)
         {
-            sb.Append(tr($"[WARNUNG] {was}: {Zahl(Count, tr)} Dateien nicht zurückgeschrieben",
-                         $"[WARNING] {was}: {Zahl(Count, tr)} files not restored"));
+            sb.Append(tr($"[WARNUNG] {was}: {FormatCount(Count, tr)} Dateien nicht zurückgeschrieben",
+                         $"[WARNING] {was}: {FormatCount(Count, tr)} files not restored"));
             sb.Append(AllExpected
                 ? tr(" - im Profil von laufenden Programmen gesperrt; dort bleibt die vorhandene Fassung stehen. "
                      + "Meist sind es Zwischenspeicher, die sich von selbst neu anlegen.",
@@ -253,8 +253,8 @@ public sealed class RobocopySkips
         }
         else
         {
-            sb.Append(tr($"[WARNUNG] {was}: {Zahl(Count, tr)} Dateien nicht gesichert",
-                         $"[WARNING] {was}: {Zahl(Count, tr)} files not backed up"));
+            sb.Append(tr($"[WARNUNG] {was}: {FormatCount(Count, tr)} Dateien nicht gesichert",
+                         $"[WARNING] {was}: {FormatCount(Count, tr)} files not backed up"));
             sb.Append(AllExpected
                 ? tr(" - von laufenden Programmen gesperrt oder während der Sicherung gelöscht. Bei AppData ist das normal.",
                      " - locked by running programs or deleted during the backup. This is normal for AppData.")
@@ -262,7 +262,7 @@ public sealed class RobocopySkips
         }
         foreach (var (code, n) in _anzahl.OrderByDescending(x => x.Value).ThenBy(x => x.Key))
         {
-            sb.Append('\n').Append("    ").Append(Zahl(n, tr).PadLeft(7)).Append(" × ")
+            sb.Append('\n').Append("    ").Append(FormatCount(n, tr).PadLeft(7)).Append(" × ")
               .Append(tr("Fehler", "error")).Append(' ').Append(code.ToString(CultureInfo.InvariantCulture));
             if (_grund.TryGetValue(code, out var g)) sb.Append(": ").Append(g);
         }
@@ -311,20 +311,20 @@ public sealed class RobocopySkips
             sb.AppendLine();
             sb.Append(tr("Fehler ", "Error ")).Append(gruppe.Key.ToString(CultureInfo.InvariantCulture));
             if (_grund.TryGetValue(gruppe.Key, out var g)) sb.Append(" - ").Append(g);
-            sb.AppendLine(tr($" ({Zahl(_anzahl[gruppe.Key], tr)} Dateien)", $" ({Zahl(_anzahl[gruppe.Key], tr)} files)"));
+            sb.AppendLine(tr($" ({FormatCount(_anzahl[gruppe.Key], tr)} Dateien)", $" ({FormatCount(_anzahl[gruppe.Key], tr)} files)"));
             foreach (var (_, pfad) in gruppe) sb.Append("  ").AppendLine(pfad);
         }
         if (Count > _pfade.Count)
         {
             sb.AppendLine();
-            sb.AppendLine(tr($"... und {Zahl(Count - _pfade.Count, tr)} weitere (nicht aufgeführt).",
-                             $"... and {Zahl(Count - _pfade.Count, tr)} more (not listed)."));
+            sb.AppendLine(tr($"... und {FormatCount(Count - _pfade.Count, tr)} weitere (nicht aufgeführt).",
+                             $"... and {FormatCount(Count - _pfade.Count, tr)} more (not listed)."));
         }
         return sb.ToString();
     }
 
     /// <summary>"1.234" bzw. "1,234" - ohne Kulturdaten des Systems.</summary>
-    private static string Zahl(int n, Func<string, string, string> tr)
+    private static string FormatCount(int n, Func<string, string, string> tr)
     {
         var nf = (NumberFormatInfo)NumberFormatInfo.InvariantInfo.Clone();
         nf.NumberGroupSeparator = tr(".", ",");

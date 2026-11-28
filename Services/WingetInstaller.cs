@@ -103,8 +103,8 @@ public static class WingetInstaller
             using (var client = new HttpClient { Timeout = DownloadZeitgrenze })
             {
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("WindowsDaSiTool");
-                if (!await Laden(client, quelle + DependenciesFile, zip, Loc.Tr("Abhängigkeiten", "dependencies"), log, abgebrochen, ct)) return false;
-                if (!await Laden(client, quelle + BundleFile, bundle, "App-Installer", log, abgebrochen, ct)) return false;
+                if (!await Load(client, quelle + DependenciesFile, zip, Loc.Tr("Abhängigkeiten", "dependencies"), log, abgebrochen, ct)) return false;
+                if (!await Load(client, quelle + BundleFile, bundle, "App-Installer", log, abgebrochen, ct)) return false;
             }
 
             var entpackt = Path.Combine(ordner, "abhaengigkeiten");
@@ -141,7 +141,7 @@ public static class WingetInstaller
         }
     }
 
-    private static async Task<bool> Laden(HttpClient client, string url, string ziel, string was,
+    private static async Task<bool> Load(HttpClient client, string url, string ziel, string was,
                                           Action<string> log, Func<bool> abgebrochen, CancellationToken ct)
     {
         using var antwort = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);

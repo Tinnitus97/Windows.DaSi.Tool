@@ -95,7 +95,7 @@ public sealed class WingetService
             {
                 // Neueste Fassung zuerst - nach der Versionsnummer, nicht nach
                 // dem Text (sonst stand "1.9" vor "1.26").
-                results.AddRange(WingetFehler.NeuesteZuerst(
+                results.AddRange(WingetFehler.NewestFirst(
                     Directory.GetDirectories(root, "Microsoft.DesktopAppInstaller_*__8wekyb3d8bbwe")));
             }
         }
@@ -248,10 +248,10 @@ public sealed class WingetService
     }
 
     /// <summary>Antwortet die Paketquelle "winget"? null = ja, sonst was fehlt.</summary>
-    private async Task<WingetReadiness?> QuellenPruefen()
+    private async Task<WingetReadiness?> CheckSources()
     {
         var quellen = await InvokeWinget("source list --disable-interactivity", 60000);
-        if (_cancel.IsCancelled) return Abgebrochen();
+        if (_cancel.IsCancelled) return Cancelled();
 
         if (!quellen.Started || quellen.ExitCode != 0)
             return WingetReadiness.Fail(
@@ -278,7 +278,7 @@ public sealed class WingetService
         return null;
     }
 
-    private static WingetReadiness Abgebrochen() => WingetReadiness.Fail(
+    private static WingetReadiness Cancelled() => WingetReadiness.Fail(
         Loc.Tr("Abgebrochen.", "Cancelled."),
         Loc.Tr("Die Prüfung wurde abgebrochen.", "The check was cancelled."));
 
@@ -350,19 +350,19 @@ public sealed class WingetService
         // Stufe 2: Antwortet die Paketquelle? Wenn nicht: zuruecksetzen, und
         // hilft das nicht, ist winget meist zu alt fuer die heutigen Quellen -
         // dann den App-Installer von GitHub aktualisieren.
-        var problem = await QuellenPruefen();
+        var problem = await CheckSources();
         if (problem is not null && !_cancel.IsCancelled)
         {
             await RepairSources();
-            problem = await QuellenPruefen();
+            problem = await CheckSources();
         }
         if (problem is not null && !_cancel.IsCancelled && await InstallFromGitHub())
         {
             _launcher = null;
             if (await ResolveLauncher() is not null)
             {
-                problem = await QuellenPruefen();
-                if (problem is not null) { await RepairSources(); problem = await QuellenPruefen(); }
+                problem = await CheckSources();
+                if (problem is not null) { await RepairSources(); problem = await CheckSources(); }
             }
         }
         if (problem is not null) return problem;
@@ -633,7 +633,7 @@ public sealed class WingetService
     /// (oder an ihrer Stelle) hiesse zwei Firefox mit zwei Profilen. Das Profil
     /// aus ESR uebernimmt die aktuelle Fassung beim Zurueckschreiben.
     /// </summary>
-    public static string Zielpaket(string id)
+    public static string TargetPackage(string id)
     {
         var m = Regex.Match(id, @"^Mozilla\.Firefox\.ESR(?<rest>\.[A-Za-z]{2,3}(-[A-Za-z]{2,4})?)?$", RegexOptions.IgnoreCase);
         return m.Success ? "Mozilla.Firefox" + m.Groups["rest"].Value : id;
@@ -652,7 +652,7 @@ public sealed class WingetService
         var liste = new List<WingetPackage>();
         foreach (var p in selected)
         {
-            var ziel = Zielpaket(p.PackageIdentifier);
+            var ziel = TargetPackage(p.PackageIdentifier);
             if (!ziel.Equals(p.PackageIdentifier, StringComparison.OrdinalIgnoreCase))
                 _log(Loc.Tr($"[INFO] {p.PackageIdentifier} -> {ziel}: Firefox kommt auf diesem PC in der aktuellen Fassung statt ESR. Das Firefox-Profil übernimmt sie.",
                             $"[INFO] {p.PackageIdentifier} -> {ziel}: Firefox is installed in the current release instead of ESR on this PC. The Firefox profile carries over."));
@@ -685,14 +685,14 @@ public sealed class WingetService
                 case WingetFehler.NichtGefunden:    fail++; _log(Loc.Tr("    -> [FEHLER] Paket wurde im Winget-Katalog nicht gefunden.", "    -> [ERROR] Package was not found in the winget catalog.")); break;
                 default:
                     fail++;
-                    _log(Loc.Tr($"    -> [FEHLER] {Beschreibung(r)}", $"    -> [ERROR] {Beschreibung(r)}"));
+                    _log(Loc.Tr($"    -> [FEHLER] {DescribeResult(r)}", $"    -> [ERROR] {DescribeResult(r)}"));
                     break;
             }
 
             // Scheitert es auch nach der Reparatur an winget selbst, scheitert
             // jedes weitere Paket genauso. Frueher lief die Liste trotzdem bis
             // zum Ende durch - zehnmal dieselbe Meldung.
-            if (r.ExitCode != WingetFehler.Ok && WingetFehler.QuelleKaputt(r.ExitCode, r.Output))
+            if (r.ExitCode != WingetFehler.Ok && WingetFehler.SourceBroken(r.ExitCode, r.Output))
             {
                 var rest = selected.Skip(i).Count(p => !string.IsNullOrWhiteSpace(p.PackageIdentifier));
                 if (rest > 0)
@@ -730,9 +730,9 @@ public sealed class WingetService
     public async Task<ProcessResult> InstallAsync(string id)
     {
         var r = await InstallOnce(id);
-        if (!Kaputt(r) || _cancel.IsCancelled) return r;
+        if (!IsBroken(r) || _cancel.IsCancelled) return r;
 
-        var erklaerung = WingetFehler.Erklaerung(r.ExitCode, Loc.Tr);
+        var erklaerung = WingetFehler.Explanation(r.ExitCode, Loc.Tr);
         _log(Loc.Tr($"[WARNUNG] winget meldet {WingetFehler.Hex(r.ExitCode)}{(erklaerung is null ? "" : ": " + erklaerung)} "
                     + "Das betrifft jedes Paket - winget wird repariert, danach geht es weiter.",
                     $"[WARNING] winget reports {WingetFehler.Hex(r.ExitCode)}{(erklaerung is null ? "" : ": " + erklaerung)} "
@@ -744,7 +744,7 @@ public sealed class WingetService
             await RepairSources();
             if (_cancel.IsCancelled) return r;
             r = await InstallOnce(id);
-            if (!Kaputt(r) || _cancel.IsCancelled) return r;
+            if (!IsBroken(r) || _cancel.IsCancelled) return r;
         }
 
         // Hilft das Zuruecksetzen nicht, ist winget zu alt fuer seine Daten -
@@ -764,15 +764,15 @@ public sealed class WingetService
     private Task<ProcessResult> InstallOnce(string id) => InvokeWinget(
         $"install --exact --id {Quote(id)} --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity");
 
-    private static bool Kaputt(ProcessResult r) => r.Started && r.ExitCode != 0 && WingetFehler.QuelleKaputt(r.ExitCode, r.Output);
+    private static bool IsBroken(ProcessResult r) => r.Started && r.ExitCode != 0 && WingetFehler.SourceBroken(r.ExitCode, r.Output);
 
     /// <summary>"ExitCode -1978335223 (0x8A150009): Erklaerung - letzte Meldung von winget".</summary>
-    public static string Beschreibung(ProcessResult r)
+    public static string DescribeResult(ProcessResult r)
     {
         var text = $"ExitCode {r.ExitCode} ({WingetFehler.Hex(r.ExitCode)})";
-        var erklaerung = WingetFehler.Erklaerung(r.ExitCode, Loc.Tr);
+        var erklaerung = WingetFehler.Explanation(r.ExitCode, Loc.Tr);
         if (erklaerung is not null) text += ": " + erklaerung;
-        var meldung = WingetFehler.LetzteMeldung(r.Output);
+        var meldung = WingetFehler.LastMessage(r.Output);
         if (meldung.Length > 0) text += (erklaerung is null ? ": " : " - ") + meldung;
         return text;
     }

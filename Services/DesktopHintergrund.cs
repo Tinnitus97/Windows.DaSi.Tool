@@ -66,7 +66,7 @@ public static class DesktopHintergrund
     public const string VirtuelleDesktopsSchluessel = @"Software\Microsoft\Windows\CurrentVersion\Explorer\VirtualDesktops\Desktops";
 
     /// <summary>Laeuft das Tool unter dem Benutzer mit dieser SID? (null: unbekannt - dann gilt der Prozess.)</summary>
-    public static bool IstProzessBenutzer(string? sid)
+    public static bool IsProcessUser(string? sid)
     {
         if (string.IsNullOrEmpty(sid)) return true;
         try
@@ -77,7 +77,7 @@ public static class DesktopHintergrund
         catch { return true; }
     }
 
-    public static HintergrundStand Lesen(RegistryKey wurzel)
+    public static HintergrundStand Read(RegistryKey wurzel)
     {
         string? bild = null, farbe = null, stil = null, kacheln = null;
         int? typ = null;
@@ -95,12 +95,12 @@ public static class DesktopHintergrund
             farbe = k?.GetValue("Background") as string;
         }
         catch { /* dann aus der Sitzung */ }
-        if (Hintergrund.FarbeLesen(farbe) is null)
+        if (Hintergrund.ReadColor(farbe) is null)
         {
             try
             {
                 var c = GetSysColor(COLOR_DESKTOP);
-                farbe = Hintergrund.FarbeText(((byte)(c & 0xFF), (byte)((c >> 8) & 0xFF), (byte)((c >> 16) & 0xFF)));
+                farbe = Hintergrund.ColorText(((byte)(c & 0xFF), (byte)((c >> 8) & 0xFF), (byte)((c >> 16) & 0xFF)));
             }
             catch { /* bleibt leer */ }
         }
@@ -111,7 +111,7 @@ public static class DesktopHintergrund
         }
         catch { /* aelteres Windows */ }
         return new HintergrundStand(string.IsNullOrWhiteSpace(bild) ? null : bild, farbe, typ, stil, kacheln,
-                                    DesktopBilderLesen(wurzel));
+                                    ReadDesktopImages(wurzel));
     }
 
     /// <summary>
@@ -120,26 +120,26 @@ public static class DesktopHintergrund
     /// </summary>
     /// <param name="eigenerBenutzer">Laeuft das Tool unter dem Benutzer, dem <paramref name="wurzel"/> gehoert?</param>
     /// <param name="profil">Profilordner des Benutzers - fuer seinen Zwischenspeicher.</param>
-    public static HintergrundGesetzt BildSetzen(RegistryKey wurzel, bool eigenerBenutzer, string pfad, HintergrundEinstellung? e, string? profil = null)
+    public static HintergrundGesetzt SetImage(RegistryKey wurzel, bool eigenerBenutzer, string pfad, HintergrundEinstellung? e, string? profil = null)
     {
-        int vd = BildEintragen(wurzel, pfad, e);
-        if (!eigenerBenutzer) ZwischenspeicherVerwerfen(wurzel, profil);
+        int vd = WriteImage(wurzel, pfad, e);
+        if (!eigenerBenutzer) DiscardCache(wurzel, profil);
         // Wie die Einstellungen-App ueber den Explorer (IDesktopWallpaper) -
         // dann merkt er es sich auch selbst. Sonst bzw. wenn das nicht geht:
         // SystemParametersInfo.
-        var explorer = eigenerBenutzer ? UeberExplorer(() => Schnittstelle.BildSetzen(pfad, e)) : "Tool läuft unter einem anderen Konto";
+        var explorer = eigenerBenutzer ? ViaExplorer(() => Schnittstelle.SetImage(pfad, e)) : "Tool läuft unter einem anderen Konto";
         bool angezeigt = explorer is null || SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, pfad, Flags(eigenerBenutzer));
-        if (Hintergrund.FarbeLesen(e?.Farbe) is { } rand) SitzungsFarbe(rand);
+        if (Hintergrund.ReadColor(e?.Farbe) is { } rand) SessionColor(rand);
 
         // Mit SPIF_UPDATEINIFILE schreibt Windows den Pfad selbst noch einmal -
         // was am Ende dasteht, zaehlt.
-        bool eingetragen = IstEingetragen(wurzel, pfad);
+        bool eingetragen = IsRegistered(wurzel, pfad);
         if (!eingetragen)
         {
-            BildEintragen(wurzel, pfad, e);
-            eingetragen = IstEingetragen(wurzel, pfad);
+            WriteImage(wurzel, pfad, e);
+            eingetragen = IsRegistered(wurzel, pfad);
         }
-        var datei = DesignDateiAngleichen(wurzel, profil, t => DesignDatei.FuerBild(t, pfad, e));
+        var datei = AlignThemeFile(wurzel, profil, t => DesignDatei.ForImage(t, pfad, e));
         return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei, explorer);
     }
 
@@ -147,7 +147,7 @@ public static class DesktopHintergrund
     /// Nur die Registry - so, wie sie der Explorer beim naechsten Start liest.
     /// </summary>
     /// <returns>Wie viele virtuelle Desktops einen eigenen Hintergrund hatten.</returns>
-    public static int BildEintragen(RegistryKey wurzel, string pfad, HintergrundEinstellung? e)
+    public static int WriteImage(RegistryKey wurzel, string pfad, HintergrundEinstellung? e)
     {
         using (var k = wurzel.CreateSubKey(DesktopSchluessel))
         {
@@ -155,44 +155,44 @@ public static class DesktopHintergrund
             if (!string.IsNullOrWhiteSpace(e?.Kacheln)) k.SetValue("TileWallpaper", e.Kacheln);
             k.SetValue("WallPaper", pfad);
         }
-        if (Hintergrund.FarbeLesen(e?.Farbe) is { } rand)
+        if (Hintergrund.ReadColor(e?.Farbe) is { } rand)
         {
             try
             {
                 using var c = wurzel.CreateSubKey(FarbenSchluessel);
-                c.SetValue("Background", Hintergrund.FarbeText(rand));
+                c.SetValue("Background", Hintergrund.ColorText(rand));
             }
             catch { /* Randfarbe ist Nebensache */ }
         }
-        TypEintragen(wurzel, 0);
-        return DesktopBilderAngleichen(wurzel, pfad);
+        WriteKind(wurzel, 0);
+        return AlignDesktopImages(wurzel, pfad);
     }
 
     /// <summary>Eine Volltonfarbe als Hintergrund - wie unter Einstellungen > Personalisierung > Hintergrund.</summary>
-    public static HintergrundGesetzt FarbeSetzen(RegistryKey wurzel, bool eigenerBenutzer, (byte R, byte G, byte B) farbe, string? profil = null)
+    public static HintergrundGesetzt SetColor(RegistryKey wurzel, bool eigenerBenutzer, (byte R, byte G, byte B) farbe, string? profil = null)
     {
-        int vd = FarbeEintragen(wurzel, farbe);
-        if (!eigenerBenutzer) ZwischenspeicherVerwerfen(wurzel, profil);
+        int vd = WriteColor(wurzel, farbe);
+        if (!eigenerBenutzer) DiscardCache(wurzel, profil);
         // Wie die Einstellungen-App ueber den Explorer (IDesktopWallpaper):
         // Unter Windows 11 merkt er sich die Farbe auch selbst und schrieb beim
         // Neustart sonst die alte zurueck. Sonst bzw. wenn das nicht geht:
         // ohne Bild zeigt der Desktop die Farbe der Sitzung.
-        var explorer = eigenerBenutzer ? UeberExplorer(() => Schnittstelle.FarbeSetzen(farbe, abschalten: false)) : "Tool läuft unter einem anderen Konto";
+        var explorer = eigenerBenutzer ? ViaExplorer(() => Schnittstelle.SetColor(farbe, abschalten: false)) : "Tool läuft unter einem anderen Konto";
         if (explorer is not null) SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, "", Flags(eigenerBenutzer));
-        bool angezeigt = SitzungsFarbe(farbe);
+        bool angezeigt = SessionColor(farbe);
 
-        bool eingetragen = IstFarbeEingetragen(wurzel, farbe);
+        bool eingetragen = IsColorRegistered(wurzel, farbe);
         if (!eingetragen)
         {
-            FarbeEintragen(wurzel, farbe);
-            eingetragen = IstFarbeEingetragen(wurzel, farbe);
+            WriteColor(wurzel, farbe);
+            eingetragen = IsColorRegistered(wurzel, farbe);
         }
-        var datei = DesignDateiAngleichen(wurzel, profil, t => DesignDatei.FuerFarbe(t, farbe));
+        var datei = AlignThemeFile(wurzel, profil, t => DesignDatei.ForColor(t, farbe));
         return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei, explorer);
     }
 
     /// <summary>null, wenn der Aufruf ueber IDesktopWallpaper geklappt hat - sonst der Grund.</summary>
-    private static string? UeberExplorer(Action tun)
+    private static string? ViaExplorer(Action tun)
     {
         try { tun(); return null; }
         catch (Exception ex) { return $"{ex.GetType().Name}: {ex.Message}"; }
@@ -207,12 +207,12 @@ public static class DesktopHintergrund
     /// C:\Windows.
     /// </summary>
     /// <param name="profil">Profilordner des Benutzers; null: der des Prozesses.</param>
-    public static DesignDateiErgebnis DesignDateiAngleichen(RegistryKey wurzel, string? profil, Func<string, string> anpassen)
+    public static DesignDateiErgebnis AlignThemeFile(RegistryKey wurzel, string? profil, Func<string, string> anpassen)
     {
         profil ??= Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var p = profil.TrimEnd('\\', '/');
         string? pfad;
-        try { pfad = DesignDateiPfad(wurzel, profil); }
+        try { pfad = ThemeFilePath(wurzel, profil); }
         catch (Exception ex) { return new DesignDateiErgebnis(null, false, ex.Message); }
         if (pfad is null) return new DesignDateiErgebnis(null, false, "kein aktuelles Design eingetragen");
         if (!pfad.StartsWith(p + "\\", StringComparison.OrdinalIgnoreCase))
@@ -220,24 +220,24 @@ public static class DesktopHintergrund
         if (!System.IO.File.Exists(pfad)) return new DesignDateiErgebnis(pfad, false, "Datei fehlt");
         try
         {
-            var (inhalt, kodierung) = DesignDatei.DateiLesen(pfad);
+            var (inhalt, kodierung) = DesignDatei.ReadFile(pfad);
             var neu = anpassen(inhalt);
             if (neu == inhalt) return new DesignDateiErgebnis(pfad, false, null);
-            DesignDatei.DateiSchreiben(pfad, neu, kodierung);
+            DesignDatei.WriteFile(pfad, neu, kodierung);
             return new DesignDateiErgebnis(pfad, true, null);
         }
         catch (Exception ex) { return new DesignDateiErgebnis(pfad, false, ex.Message); }
     }
 
     /// <summary>Nur die Registry: Farbe, kein Bild, Art "Volltonfarbe".</summary>
-    public static int FarbeEintragen(RegistryKey wurzel, (byte R, byte G, byte B) farbe)
+    public static int WriteColor(RegistryKey wurzel, (byte R, byte G, byte B) farbe)
     {
         using (var c = wurzel.CreateSubKey(FarbenSchluessel))
-            c.SetValue("Background", Hintergrund.FarbeText(farbe));
+            c.SetValue("Background", Hintergrund.ColorText(farbe));
         using (var k = wurzel.CreateSubKey(DesktopSchluessel))
             k.SetValue("WallPaper", "");
-        TypEintragen(wurzel, 1);
-        return DesktopBilderAngleichen(wurzel, null);
+        WriteKind(wurzel, 1);
+        return AlignDesktopImages(wurzel, null);
     }
 
     /// <summary>
@@ -248,7 +248,7 @@ public static class DesktopHintergrund
     /// Tool unter einem anderen Konto laeuft: Sonst erneuert Windows die Kopie
     /// beim Setzen selbst.
     /// </summary>
-    public static void ZwischenspeicherVerwerfen(RegistryKey wurzel, string? profil)
+    public static void DiscardCache(RegistryKey wurzel, string? profil)
     {
         try
         {
@@ -258,7 +258,7 @@ public static class DesktopHintergrund
         catch { /* dann eben nur die Datei */ }
         try
         {
-            if (Hintergrund.Zwischenspeicher(profil) is { } datei && System.IO.File.Exists(datei))
+            if (Hintergrund.Cache(profil) is { } datei && System.IO.File.Exists(datei))
                 System.IO.File.Delete(datei);
         }
         catch { /* gesperrt - Windows vergleicht ohnehin den Pfad */ }
@@ -270,7 +270,7 @@ public static class DesktopHintergrund
     /// Volltonfarbe: Ueberwiegt die Farbe? Bild: Ist der Desktop nicht schwarz?
     /// </summary>
     /// <returns>null, wenn ja oder wenn es sich nicht pruefen laesst - sonst, was nicht stimmt.</returns>
-    public static string? Kontrolle(HintergrundStand soll, Func<string, string, string> tr)
+    public static string? Verify(HintergrundStand soll, Func<string, string, string> tr)
     {
         var bild = DesktopScreenshot.CaptureDesktopWindow();
         if (bild is null) return null;
@@ -281,31 +281,31 @@ public static class DesktopHintergrund
         bool schwarz = DesktopScreenshot.IsBlank(bild);
         if (soll.Bild is null)
         {
-            if (Hintergrund.FarbeLesen(soll.Farbe) is not { } f) return null;
+            if (Hintergrund.ReadColor(soll.Farbe) is not { } f) return null;
             if (DesktopScreenshot.ColorShare(bild, f) >= 0.5) return null;
-            if (schwarz && !SchirmSchwarz()) return null;
+            if (schwarz && !IsScreenBlack()) return null;
             return tr($"Der Desktop zeigt nicht die Farbe {Hintergrund.Hex(f)}, sondern meist {meist} ({anteil:P0})",
                       $"The desktop does not show the color {Hintergrund.Hex(f)} but mostly {meist} ({anteil:P0})");
         }
-        return schwarz && SchirmSchwarz()
+        return schwarz && IsScreenBlack()
             ? tr($"Der Desktop ist schwarz statt des Bildes {soll.Bild}", $"The desktop is black instead of the image {soll.Bild}")
             : null;
     }
 
     /// <summary>Ist der ganze Bildschirm ueberwiegend schwarz (nicht nur das Abbild des Desktop-Fensters)?</summary>
-    internal static bool SchirmSchwarz()
+    internal static bool IsScreenBlack()
     {
         try { return DesktopScreenshot.ColorShare(DesktopScreenshot.CaptureVirtualScreen().Bgra, (0, 0, 0), 10) >= 0.5; }
         catch { return false; }
     }
 
     /// <summary>Was sich in der Registry gegenueber <paramref name="soll"/> geaendert hat - null, wenn nichts.</summary>
-    public static string? Unterschied(HintergrundStand soll, HintergrundStand jetzt, Func<string, string, string> tr)
+    public static string? Difference(HintergrundStand soll, HintergrundStand jetzt, Func<string, string, string> tr)
     {
         if (!string.Equals(soll.Bild ?? "", jetzt.Bild ?? "", StringComparison.OrdinalIgnoreCase))
             return tr($"Windows hat das Bild geändert: {soll.Bild ?? "(keins)"} -> {jetzt.Bild ?? "(keins)"}",
                       $"Windows changed the image: {soll.Bild ?? "(none)"} -> {jetzt.Bild ?? "(none)"}");
-        if (soll.Bild is null && Hintergrund.FarbeLesen(soll.Farbe) != Hintergrund.FarbeLesen(jetzt.Farbe))
+        if (soll.Bild is null && Hintergrund.ReadColor(soll.Farbe) != Hintergrund.ReadColor(jetzt.Farbe))
             return tr($"Windows hat die Farbe geändert: {soll.Farbe} -> {jetzt.Farbe}", $"Windows changed the color: {soll.Farbe} -> {jetzt.Farbe}");
         if (soll.Typ is { } t && jetzt.Typ != t)
             return tr($"Windows hat die Art geändert: {t} -> {jetzt.Typ?.ToString() ?? "-"} (0 Bild, 1 Farbe, 2 Diashow, 3 Blickpunkt)",
@@ -314,14 +314,14 @@ public static class DesktopHintergrund
     }
 
     /// <summary>Den Stand <paramref name="soll"/> noch einmal setzen.</summary>
-    public static HintergrundGesetzt Erneut(RegistryKey wurzel, bool eigenerBenutzer, HintergrundStand soll, string? profil)
+    public static HintergrundGesetzt Retry(RegistryKey wurzel, bool eigenerBenutzer, HintergrundStand soll, string? profil)
         => soll.Bild is { } b
-            ? BildSetzen(wurzel, eigenerBenutzer, b, new HintergrundEinstellung { Darstellung = soll.Stil, Kacheln = soll.Kacheln }, profil)
-            : FarbeSetzen(wurzel, eigenerBenutzer, Hintergrund.FarbeLesen(soll.Farbe) ?? ((byte)0, (byte)0, (byte)0), profil);
+            ? SetImage(wurzel, eigenerBenutzer, b, new HintergrundEinstellung { Darstellung = soll.Stil, Kacheln = soll.Kacheln }, profil)
+            : SetColor(wurzel, eigenerBenutzer, Hintergrund.ReadColor(soll.Farbe) ?? ((byte)0, (byte)0, (byte)0), profil);
 
     /// <summary>Was den Hintergrund von aussen festlegen oder wechseln kann - Richtlinien, Blickpunkt, Diashow.</summary>
     /// <param name="mitWechsel">Auch Blickpunkt und Diashow nennen (die schaltet Windows beim Setzen normalerweise selbst ab).</param>
-    public static List<string> Einfluesse(RegistryKey wurzel, bool mitWechsel, Func<string, string, string> tr)
+    public static List<string> Influences(RegistryKey wurzel, bool mitWechsel, Func<string, string, string> tr)
     {
         var l = new List<string>();
         try
@@ -354,7 +354,7 @@ public static class DesktopHintergrund
                 l.Add(tr("Windows-Blickpunkt für den Desktop ist noch eingeschaltet", "Windows Spotlight for the desktop is still on"));
         }
         catch { /* weiter */ }
-        if (Schnittstelle.Diashow() == true)
+        if (Schnittstelle.Slideshow() == true)
             l.Add(tr("Eine Diashow wechselt den Hintergrund", "A slideshow changes the background"));
         return l;
     }
@@ -364,7 +364,7 @@ public static class DesktopHintergrund
     /// %LOCALAPPDATA% &amp; Co. bezogen auf SEIN Profil, nicht das des Prozesses.
     /// null, wenn keine eingetragen ist.
     /// </summary>
-    public static string? DesignDateiPfad(RegistryKey wurzel, string? profil)
+    public static string? ThemeFilePath(RegistryKey wurzel, string? profil)
     {
         string? pfad;
         using (var k = wurzel.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes"))
@@ -377,13 +377,13 @@ public static class DesktopHintergrund
         return Environment.ExpandEnvironmentVariables(pfad);
     }
 
-    private static bool IstEingetragen(RegistryKey wurzel, string pfad)
-        => string.Equals(Lesen(wurzel).Bild, pfad, StringComparison.OrdinalIgnoreCase);
+    private static bool IsRegistered(RegistryKey wurzel, string pfad)
+        => string.Equals(Read(wurzel).Bild, pfad, StringComparison.OrdinalIgnoreCase);
 
-    private static bool IstFarbeEingetragen(RegistryKey wurzel, (byte R, byte G, byte B) farbe)
+    private static bool IsColorRegistered(RegistryKey wurzel, (byte R, byte G, byte B) farbe)
     {
-        var s = Lesen(wurzel);
-        return s.Bild is null && Hintergrund.FarbeLesen(s.Farbe) == farbe;
+        var s = Read(wurzel);
+        return s.Bild is null && Hintergrund.ReadColor(s.Farbe) == farbe;
     }
 
     private static uint Flags(bool eigenerBenutzer)
@@ -395,9 +395,9 @@ public static class DesktopHintergrund
     /// Design-Datei: Steht "Volltonfarbe" darin, uebernimmt Windows aus der
     /// Datei nur die Farbe, nicht das Bild (unter Windows 11 geprueft).
     /// </summary>
-    public static void ArtEintragen(RegistryKey wurzel, int typ) => TypEintragen(wurzel, typ);
+    public static void WriteStyle(RegistryKey wurzel, int typ) => WriteKind(wurzel, typ);
 
-    private static void TypEintragen(RegistryKey wurzel, int typ)
+    private static void WriteKind(RegistryKey wurzel, int typ)
     {
         try
         {
@@ -408,13 +408,13 @@ public static class DesktopHintergrund
     }
 
     /// <summary>Die Farbe der laufenden Sitzung - gilt sofort, aber nur bis zur Abmeldung.</summary>
-    private static bool SitzungsFarbe((byte R, byte G, byte B) farbe)
+    private static bool SessionColor((byte R, byte G, byte B) farbe)
     {
         try { return SetSysColors(1, new[] { COLOR_DESKTOP }, new[] { Hintergrund.ColorRef(farbe) }); }
         catch { return false; }
     }
 
-    private static List<string> DesktopBilderLesen(RegistryKey wurzel)
+    private static List<string> ReadDesktopImages(RegistryKey wurzel)
     {
         var bilder = new List<string>();
         try
@@ -436,7 +436,7 @@ public static class DesktopHintergrund
     /// einer Volltonfarbe (bild null) faellt ihr eigener weg, sie zeigen dann
     /// den allgemeinen.
     /// </summary>
-    private static int DesktopBilderAngleichen(RegistryKey wurzel, string? bild)
+    private static int AlignDesktopImages(RegistryKey wurzel, string? bild)
     {
         int n = 0;
         try
@@ -470,11 +470,11 @@ public static class DesktopHintergrund
     public static class Schnittstelle
     {
         /// <summary>Zustand laut Explorer, als Text - fuer Protokoll und Pruefung; null, wenn nicht erreichbar.</summary>
-        public static string? Stand()
+        public static string? Snapshot()
         {
             try
             {
-                return Sta(dw =>
+                return OnSta(dw =>
                 {
                     string bild;
                     try { bild = dw.GetWallpaper(null) ?? ""; } catch (Exception ex) { bild = $"({ex.GetType().Name})"; }
@@ -489,25 +489,25 @@ public static class DesktopHintergrund
         }
 
         /// <summary>Laeuft eine Diashow? null, wenn nicht erreichbar.</summary>
-        public static bool? Diashow()
+        public static bool? Slideshow()
         {
-            try { return Sta(dw => (dw.GetStatus() & 2) != 0); }   // DSS_SLIDESHOW
+            try { return OnSta(dw => (dw.GetStatus() & 2) != 0); }   // DSS_SLIDESHOW
             catch { return null; }
         }
 
         /// <summary>Ein Bild fuer alle Monitore, samt Darstellung.</summary>
-        public static void BildSetzen(string pfad, HintergrundEinstellung? e)
-            => Sta(dw =>
+        public static void SetImage(string pfad, HintergrundEinstellung? e)
+            => OnSta(dw =>
             {
                 if (Position(e) is { } pos) dw.SetPosition(pos);
-                if (Hintergrund.FarbeLesen(e?.Farbe) is { } rand) dw.SetBackgroundColor((uint)Hintergrund.ColorRef(rand));
+                if (Hintergrund.ReadColor(e?.Farbe) is { } rand) dw.SetBackgroundColor((uint)Hintergrund.ColorRef(rand));
                 dw.SetWallpaper(null, pfad);
                 return true;
             });
 
         /// <summary>Volltonfarbe: Farbe setzen, Bild leeren (wie die Einstellungen-App).</summary>
-        public static void FarbeSetzen((byte R, byte G, byte B) farbe, bool abschalten)
-            => Sta(dw =>
+        public static void SetColor((byte R, byte G, byte B) farbe, bool abschalten)
+            => OnSta(dw =>
             {
                 dw.SetBackgroundColor((uint)Hintergrund.ColorRef(farbe));
                 if (abschalten) dw.Enable(false);
@@ -515,8 +515,8 @@ public static class DesktopHintergrund
                 return true;
             });
 
-        /// <summary>Hintergrundbild wieder einschalten (nach <see cref="FarbeSetzen"/> mit abschalten).</summary>
-        public static void Einschalten() => Sta(dw => { dw.Enable(true); return true; });
+        /// <summary>Hintergrundbild wieder einschalten (nach <see cref="SetColor"/> mit abschalten).</summary>
+        public static void Enable() => OnSta(dw => { dw.Enable(true); return true; });
 
         /// <summary>WallpaperStyle/TileWallpaper -> DESKTOP_WALLPAPER_POSITION.</summary>
         public static int? Position(HintergrundEinstellung? e)
@@ -533,7 +533,7 @@ public static class DesktopHintergrund
             };
         }
 
-        private static T Sta<T>(Func<IDesktopWallpaper, T> tun)
+        private static T OnSta<T>(Func<IDesktopWallpaper, T> tun)
         {
             T ergebnis = default!;
             Exception? fehler = null;

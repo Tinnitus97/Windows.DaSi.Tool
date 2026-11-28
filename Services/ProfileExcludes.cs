@@ -97,7 +97,7 @@ public static class ProfileExcludes
     /// Alles innerhalb von AppData, was nie mitgenommen wird - relativ zum
     /// Profil. Oeffentlich fuer die Pruefungen.
     /// </summary>
-    public static IEnumerable<string> AppDataAusschluesse()
+    public static IEnumerable<string> AppDataExcludes()
     {
         foreach (var c in AppDataCaches) yield return c;
         foreach (var browser in ChromiumUserData)
@@ -179,7 +179,7 @@ public static class ProfileExcludes
 
         // Die Zwischenspeicher immer - bei ausgeschlossenem AppData sind sie
         // ohnehin schon mit drin, doppelt genannt stoert robocopy nicht.
-        excluded.AddRange(AppDataAusschluesse().Select(d => Path.Combine(userDir, d)));
+        excluded.AddRange(AppDataExcludes().Select(d => Path.Combine(userDir, d)));
 
         if (!includeCloud)
         {
@@ -201,7 +201,7 @@ public static class ProfileExcludes
     /// <param name="zielProfil">Das Profil, in das zurueckgeschrieben wird.</param>
     /// <param name="sicherungsProfil">Der Ordner "Benutzerprofil" der Sicherung.</param>
     /// <param name="programmPfad">Pfad des laufenden Programms (Environment.ProcessPath).</param>
-    public static string? LaufendesProgrammInSicherung(string zielProfil, string sicherungsProfil, string? programmPfad)
+    public static string? RunningProgramInBackup(string zielProfil, string sicherungsProfil, string? programmPfad)
     {
         if (string.IsNullOrWhiteSpace(programmPfad) || !IsInside(programmPfad, zielProfil) || SameFolder(programmPfad, zielProfil))
             return null;

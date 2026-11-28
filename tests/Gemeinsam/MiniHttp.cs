@@ -30,24 +30,24 @@ internal sealed class MiniHttp : IDisposable
     {
         _listener.Start();
         Basis = $"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/";
-        _ = Task.Run(Annehmen);
+        _ = Task.Run(Accept);
     }
 
-    public void Setze(string pfad, byte[] inhalt, int status = 200) => _seiten[pfad.TrimStart('/')] = (status, inhalt);
-    public void Setze(string pfad, string text, int status = 200) => Setze(pfad, Encoding.UTF8.GetBytes(text), status);
+    public void Set(string pfad, byte[] inhalt, int status = 200) => _seiten[pfad.TrimStart('/')] = (status, inhalt);
+    public void Set(string pfad, string text, int status = 200) => Set(pfad, Encoding.UTF8.GetBytes(text), status);
 
-    private async Task Annehmen()
+    private async Task Accept()
     {
         while (!_cts.IsCancellationRequested)
         {
             TcpClient client;
             try { client = await _listener.AcceptTcpClientAsync(_cts.Token); }
             catch { return; }
-            _ = Task.Run(() => Bedienen(client));
+            _ = Task.Run(() => Serve(client));
         }
     }
 
-    private async Task Bedienen(TcpClient client)
+    private async Task Serve(TcpClient client)
     {
         using (client)
         {

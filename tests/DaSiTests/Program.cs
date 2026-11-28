@@ -86,7 +86,7 @@ internal static partial class Program
         // DASI_NUR=taskleiste: nur der Versuch mit der echten Taskleiste.
         if (Environment.GetEnvironmentVariable("DASI_NUR") == "taskleiste")
         {
-            TaskleisteVersuch(root);
+            TaskbarTrial(root);
             Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
             try { Directory.Delete(root, true); } catch { }
             return _failed == 0 ? 0 : 1;
@@ -97,10 +97,10 @@ internal static partial class Program
         {
             switch (Environment.GetEnvironmentVariable("DASI_NUR"))
             {
-                case "thunderbird-alt": ThunderbirdAlterPc(); break;
-                case "thunderbird-neu": ThunderbirdNeuerPc(); break;
-                case "firefox-alt": FirefoxAlterPc(); break;
-                default: FirefoxNeuerPc(); break;
+                case "thunderbird-alt": ThunderbirdOldPc(); break;
+                case "thunderbird-neu": ThunderbirdNewPc(); break;
+                case "firefox-alt": FirefoxOldPc(); break;
+                default: FirefoxNewPc(); break;
             }
             Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
             try { Directory.Delete(root, true); } catch { }
@@ -108,7 +108,7 @@ internal static partial class Program
         }
         if (Environment.GetEnvironmentVariable("DASI_NUR") == "hintergrund")
         {
-            if (OperatingSystem.IsWindows()) HintergrundEchtPruefen(root);
+            if (OperatingSystem.IsWindows()) WallpaperRealCheck(root);
             Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
             try { Directory.Delete(root, true); } catch { }
             return _failed == 0 ? 0 : 1;
@@ -320,38 +320,38 @@ internal static partial class Program
         // ================================================================
         Console.WriteLine("\n== Ausschlussliste fuer das Benutzerprofil ==");
 
-        static bool Hat(System.Collections.Generic.List<string> liste, string profil, string rel)
+        static bool Has(System.Collections.Generic.List<string> liste, string profil, string rel)
             => liste.Contains(Path.Combine(profil, rel), StringComparer.OrdinalIgnoreCase);
 
         var vorgabe = ProfileExcludes.Build(profil);
-        Check("Vorgabe: AppData bleibt draussen", Hat(vorgabe, profil, "AppData"));
+        Check("Vorgabe: AppData bleibt draussen", Has(vorgabe, profil, "AppData"));
         Check("Vorgabe: Cloud-Ordner bleiben draussen",
-            Hat(vorgabe, profil, "Dropbox") && Hat(vorgabe, profil, "OneDrive - Muster GmbH"));
+            Has(vorgabe, profil, "Dropbox") && Has(vorgabe, profil, "OneDrive - Muster GmbH"));
         Check("Vorgabe: Junctions bleiben draussen",
-            Hat(vorgabe, profil, "Anwendungsdaten") && Hat(vorgabe, profil, "Eigene Dateien"));
+            Has(vorgabe, profil, "Anwendungsdaten") && Has(vorgabe, profil, "Eigene Dateien"));
 
         var mitAppData = ProfileExcludes.Build(profil, includeAppData: true);
         Check("AppData an: AppData ist nicht mehr ausgeschlossen",
-            !Hat(mitAppData, profil, "AppData"));
+            !Has(mitAppData, profil, "AppData"));
         Check("AppData an: die Zwischenspeicher bleiben trotzdem draussen",
-            Hat(mitAppData, profil, @"AppData\Local\Temp")
-            && Hat(mitAppData, profil, @"AppData\Local\Microsoft\Windows\INetCache"));
+            Has(mitAppData, profil, @"AppData\Local\Temp")
+            && Has(mitAppData, profil, @"AppData\Local\Microsoft\Windows\INetCache"));
         Check("AppData an: Cloud-Ordner bleiben unveraendert draussen",
-            Hat(mitAppData, profil, "Dropbox"));
+            Has(mitAppData, profil, "Dropbox"));
 
         var mitCloud = ProfileExcludes.Build(profil, includeCloud: true);
         Check("Cloud an: kein Cloud-Ordner mehr ausgeschlossen",
-            !Hat(mitCloud, profil, "Dropbox")
-            && !Hat(mitCloud, profil, "OneDrive")
-            && !Hat(mitCloud, profil, "Nextcloud"));
+            !Has(mitCloud, profil, "Dropbox")
+            && !Has(mitCloud, profil, "OneDrive")
+            && !Has(mitCloud, profil, "Nextcloud"));
         Check("Cloud an: AppData bleibt unveraendert draussen",
-            Hat(mitCloud, profil, "AppData"));
+            Has(mitCloud, profil, "AppData"));
 
         var beides = ProfileExcludes.Build(profil, includeAppData: true, includeCloud: true);
         Check("beides an: weder AppData noch Cloud ausgeschlossen",
-            !Hat(beides, profil, "AppData") && !Hat(beides, profil, "Dropbox"));
+            !Has(beides, profil, "AppData") && !Has(beides, profil, "Dropbox"));
         Check("beides an: Junctions und Zwischenspeicher bleiben draussen",
-            Hat(beides, profil, "Anwendungsdaten") && Hat(beides, profil, @"AppData\Local\Temp"));
+            Has(beides, profil, "Anwendungsdaten") && Has(beides, profil, @"AppData\Local\Temp"));
 
         Check("die Liste enthaelt keine Dubletten",
             beides.Count == beides.Distinct(StringComparer.OrdinalIgnoreCase).Count());
@@ -586,31 +586,31 @@ internal static partial class Program
         Console.WriteLine("\n== Opera: alle Fassungen ==");
         {
             var os = Path.Combine(root, "opera", "Besitzer", "AppData", "Roaming", "Opera Software");
-            void Profil(string ordner, string datei)
+            void Profile(string ordner, string datei)
             {
                 var p = Path.Combine(os, ordner, datei);
                 Directory.CreateDirectory(Path.GetDirectoryName(p)!);
                 File.WriteAllText(p, "{}");
             }
-            Profil("Opera Stable", "Local State");
-            Profil("Opera GX Stable", "Preferences");
-            Profil("Opera Beta", Path.Combine("Default", "Bookmarks"));   // neuere Fassungen: Profil in "Default"
+            Profile("Opera Stable", "Local State");
+            Profile("Opera GX Stable", "Preferences");
+            Profile("Opera Beta", Path.Combine("Default", "Bookmarks"));   // neuere Fassungen: Profil in "Default"
             Directory.CreateDirectory(Path.Combine(os, "Opera Crash Reports"));  // kein Profil
-            Profil("Fremd", "Local State");                                   // kein Opera-Ordner
-            var gefunden = AppCatalog.Opera.Varianten(os);
+            Profile("Fremd", "Local State");                                   // kein Opera-Ordner
+            var gefunden = AppCatalog.Opera.Variants(os);
             Check("Opera, Opera Beta und Opera GX werden gefunden, nach Anzeigename",
                 gefunden.SequenceEqual(new[] { "Opera Stable", "Opera Beta", "Opera GX Stable" }), string.Join(", ", gefunden));
             Check("Ordner ohne Profildateien und fremde Ordner nicht",
                 !gefunden.Contains("Opera Crash Reports") && !gefunden.Contains("Fremd"));
             Check("Anzeigenamen ohne \"Stable\"",
-                AppCatalog.Opera.Anzeigename("Opera GX Stable") == "Opera GX" && AppCatalog.Opera.Anzeigename("Opera Stable") == "Opera"
-                && AppCatalog.Opera.Anzeigename("Opera Beta") == "Opera Beta");
+                AppCatalog.Opera.DisplayName("Opera GX Stable") == "Opera GX" && AppCatalog.Opera.DisplayName("Opera Stable") == "Opera"
+                && AppCatalog.Opera.DisplayName("Opera Beta") == "Opera Beta");
             Check("winget-Pakete fuer Opera und Opera GX, sonst keins",
                 AppCatalog.Opera.WingetId("Opera Stable") == "Opera.Opera" && AppCatalog.Opera.WingetId("Opera GX Stable") == "Opera.OperaGX"
                 && AppCatalog.Opera.WingetId("Opera Developer") is null);
-            Check("ohne Ordner: keine Fassung", AppCatalog.Opera.Varianten(Path.Combine(root, "gibt-es-nicht")).Count == 0);
+            Check("ohne Ordner: keine Fassung", AppCatalog.Opera.Variants(Path.Combine(root, "gibt-es-nicht")).Count == 0);
             Check("Katalogpfad: Teile einzeln angehaengt",
-                AppCatalog.Pfad(Path.Combine(root, "x"), @"AppData\Roaming\Opera Software") == Path.Combine(root, "x", "AppData", "Roaming", "Opera Software"));
+                AppCatalog.PathIn(Path.Combine(root, "x"), @"AppData\Roaming\Opera Software") == Path.Combine(root, "x", "AppData", "Roaming", "Opera Software"));
         }
 
         Console.WriteLine("\n== Verfuegbarkeit der Punkte ==");
@@ -619,43 +619,43 @@ internal static partial class Program
             AppCatalog.HatWlanAdapter = () => true;
             // Sichern: Profil mit Firefox und Opera, ohne die anderen Programme.
             var pr = Path.Combine(root, "verf", "Besitzer");
-            Directory.CreateDirectory(AppCatalog.Pfad(pr, AppCatalog.Firefox.ProfilRel));
-            var gx = Path.Combine(AppCatalog.Pfad(pr, AppCatalog.Opera.Rel), "Opera GX Stable");
+            Directory.CreateDirectory(AppCatalog.PathIn(pr, AppCatalog.Firefox.ProfilRel));
+            var gx = Path.Combine(AppCatalog.PathIn(pr, AppCatalog.Opera.Rel), "Opera GX Stable");
             Directory.CreateDirectory(gx);
             File.WriteAllText(Path.Combine(gx, "Local State"), "{}");
 
             Check("Sichern: Firefox und Opera frei",
-                AppCatalog.BeimSichern(Punkt.Firefox, pr) is null && AppCatalog.BeimSichern(Punkt.Opera, pr) is null);
-            var grund = AppCatalog.BeimSichern(Punkt.Chrome, pr);
+                AppCatalog.ForBackup(Punkt.Firefox, pr) is null && AppCatalog.ForBackup(Punkt.Opera, pr) is null);
+            var grund = AppCatalog.ForBackup(Punkt.Chrome, pr);
             Check("Sichern: Chrome gesperrt, mit Grund und Ort",
                 grund is { } g1 && g1.De.StartsWith("Chrome ist bei diesem Benutzer nicht eingerichtet") && g1.De.Contains("Chrome"), grund?.De);
             Check("Sichern: Edge, Brave, Thunderbird gesperrt",
-                new[] { Punkt.Edge, Punkt.Brave, Punkt.Thunderbird }.All(p => AppCatalog.BeimSichern(p, pr) is not null));
+                new[] { Punkt.Edge, Punkt.Brave, Punkt.Thunderbird }.All(p => AppCatalog.ForBackup(p, pr) is not null));
             Check("Sichern: alles andere ist nie gesperrt",
                 new[] { Punkt.Profil, Punkt.AppData, Punkt.Cloud, Punkt.Winget, Punkt.Wlan, Punkt.Drucker, Punkt.Hintergrund, Punkt.DesktopShot }
-                    .All(p => AppCatalog.BeimSichern(p, pr) is null));
+                    .All(p => AppCatalog.ForBackup(p, pr) is null));
             Check("Sichern: ohne (vorhandenes) Profil wird nichts gesperrt",
-                AppCatalog.BeimSichern(Punkt.Chrome, "") is null && AppCatalog.BeimSichern(Punkt.Chrome, Path.Combine(root, "gibt-es-nicht")) is null);
+                AppCatalog.ForBackup(Punkt.Chrome, "") is null && AppCatalog.ForBackup(Punkt.Chrome, Path.Combine(root, "gibt-es-nicht")) is null);
 
             // Wiederherstellen: leere Sicherung - alles gesperrt.
             var si = Path.Combine(root, "verf", "Sicherung");
             Directory.CreateDirectory(si);
             Check("Wiederherstellen: leere Sicherung sperrt jeden Punkt",
-                Enum.GetValues<Punkt>().All(p => AppCatalog.BeimWiederherstellen(p, si) is not null),
-                string.Join(", ", Enum.GetValues<Punkt>().Where(p => AppCatalog.BeimWiederherstellen(p, si) is null)));
+                Enum.GetValues<Punkt>().All(p => AppCatalog.ForRestore(p, si) is not null),
+                string.Join(", ", Enum.GetValues<Punkt>().Where(p => AppCatalog.ForRestore(p, si) is null)));
             Check("Wiederherstellen: Ordner ohne jede Sicherung - ein gemeinsamer Hinweis",
-                Enum.GetValues<Punkt>().All(p => AppCatalog.BeimWiederherstellen(p, si)?.De.StartsWith("Der gewählte Ordner enthält keine Sicherung") == true),
-                AppCatalog.BeimWiederherstellen(Punkt.Wlan, si)?.De);
+                Enum.GetValues<Punkt>().All(p => AppCatalog.ForRestore(p, si)?.De.StartsWith("Der gewählte Ordner enthält keine Sicherung") == true),
+                AppCatalog.ForRestore(Punkt.Wlan, si)?.De);
             // Typischer Fall: der Ordner ueber den Sicherungen ist gewaehlt.
             Directory.CreateDirectory(Path.Combine(si, "..", "Ueber", "DASI_PC_11_11_2026_17_55", "Benutzerprofil"));
             Check("Wiederherstellen: auch der Ordner ueber den Sicherungen ist keine Sicherung",
-                AppCatalog.BeimWiederherstellen(Punkt.Profil, Path.Combine(root, "verf", "Ueber"))?.De.StartsWith("Der gewählte Ordner enthält keine Sicherung") == true);
+                AppCatalog.ForRestore(Punkt.Profil, Path.Combine(root, "verf", "Ueber"))?.De.StartsWith("Der gewählte Ordner enthält keine Sicherung") == true);
 
             // Nach und nach befuellen.
             Directory.CreateDirectory(Path.Combine(si, "Benutzerprofil", "Documents"));
             Check("Wiederherstellen: Grund nennt, was fehlt",
-                AppCatalog.BeimWiederherstellen(Punkt.Wlan, si)?.De == "Die gewählte Sicherung enthält keine WLAN-Profile.",
-                AppCatalog.BeimWiederherstellen(Punkt.Wlan, si)?.De);
+                AppCatalog.ForRestore(Punkt.Wlan, si)?.De == "Die gewählte Sicherung enthält keine WLAN-Profile.",
+                AppCatalog.ForRestore(Punkt.Wlan, si)?.De);
             Directory.CreateDirectory(Path.Combine(si, "Firefox-Profil"));
             Directory.CreateDirectory(Path.Combine(si, "Opera-Profil", "Opera GX Stable"));
             File.WriteAllText(Path.Combine(si, "Opera-Profil", "Opera GX Stable", "Local State"), "{}");
@@ -664,46 +664,46 @@ internal static partial class Program
             Directory.CreateDirectory(Path.Combine(si, "Drucker")); File.WriteAllText(Path.Combine(si, "Drucker", "Drucker.printerExport"), "x");
             Directory.CreateDirectory(Path.Combine(si, "Hintergrundbild")); File.WriteAllText(Path.Combine(si, "Hintergrundbild", "Hintergrundbild-Pfad.txt"), "x");
             Check("Hintergrundbild: nur die Pfad-Datei ist noch kein Bild",
-                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, si) is not null);
+                AppCatalog.ForRestore(Punkt.Hintergrund, si) is not null);
             File.WriteAllText(Path.Combine(si, "Hintergrundbild", "Urlaub.jpg"), "x");
             Directory.CreateDirectory(Path.Combine(si, "Desktop-Screenshot")); File.WriteAllText(Path.Combine(si, "Desktop-Screenshot", "Bildschirm-1.png"), "x");
             var frei = new[] { Punkt.Profil, Punkt.Firefox, Punkt.Opera, Punkt.Winget, Punkt.Wlan, Punkt.Drucker, Punkt.Hintergrund, Punkt.DesktopShot };
             Check("Wiederherstellen: was in der Sicherung liegt, ist frei",
-                frei.All(p => AppCatalog.BeimWiederherstellen(p, si) is null),
-                string.Join(", ", frei.Where(p => AppCatalog.BeimWiederherstellen(p, si) is not null)));
+                frei.All(p => AppCatalog.ForRestore(p, si) is null),
+                string.Join(", ", frei.Where(p => AppCatalog.ForRestore(p, si) is not null)));
             Check("Wiederherstellen: was fehlt, bleibt gesperrt (AppData, Cloud, Edge, Chrome, Brave, Thunderbird)",
                 new[] { Punkt.AppData, Punkt.Cloud, Punkt.Edge, Punkt.Chrome, Punkt.Brave, Punkt.Thunderbird }
-                    .All(p => AppCatalog.BeimWiederherstellen(p, si) is not null));
+                    .All(p => AppCatalog.ForRestore(p, si) is not null));
             Directory.CreateDirectory(Path.Combine(si, "Benutzerprofil", "AppData"));
             Directory.CreateDirectory(Path.Combine(si, "Benutzerprofil", "OneDrive"));
             Check("Wiederherstellen: AppData und Cloud frei, sobald sie in der Sicherung liegen",
-                AppCatalog.BeimWiederherstellen(Punkt.AppData, si) is null && AppCatalog.BeimWiederherstellen(Punkt.Cloud, si) is null);
+                AppCatalog.ForRestore(Punkt.AppData, si) is null && AppCatalog.ForRestore(Punkt.Cloud, si) is null);
 
             // Ohne WLAN-Adapter.
             AppCatalog.HatWlanAdapter = () => false;
-            var ohneWlan = AppCatalog.BeimSichern(Punkt.Wlan, pr);
+            var ohneWlan = AppCatalog.ForBackup(Punkt.Wlan, pr);
             Check("ohne WLAN-Adapter: Sichern gesperrt, mit Grund", ohneWlan?.De.StartsWith("Dieser PC hat keinen WLAN-Adapter") == true, ohneWlan?.De);
             Check("ohne WLAN-Adapter: Sichern gesperrt, auch bevor ein Profil gewaehlt ist",
-                AppCatalog.BeimSichern(Punkt.Wlan, "") is not null && AppCatalog.BeimSichern(Punkt.Wlan, null) is not null);
+                AppCatalog.ForBackup(Punkt.Wlan, "") is not null && AppCatalog.ForBackup(Punkt.Wlan, null) is not null);
             Check("ohne WLAN-Adapter: die anderen Punkte bleiben, wie sie sind",
-                AppCatalog.BeimSichern(Punkt.Profil, pr) is null && AppCatalog.BeimSichern(Punkt.Firefox, pr) is null
-                && AppCatalog.BeimWiederherstellen(Punkt.Drucker, si) is null);
-            var zurueckOhne = AppCatalog.BeimWiederherstellen(Punkt.Wlan, si);
+                AppCatalog.ForBackup(Punkt.Profil, pr) is null && AppCatalog.ForBackup(Punkt.Firefox, pr) is null
+                && AppCatalog.ForRestore(Punkt.Drucker, si) is null);
+            var zurueckOhne = AppCatalog.ForRestore(Punkt.Wlan, si);
             Check("ohne WLAN-Adapter: Profile in der Sicherung lassen sich nicht einspielen",
                 zurueckOhne?.De.Contains("nicht einspielen") == true, zurueckOhne?.De);
             var ohneWlanSich = Path.Combine(root, "verf", "OhneWlan");
             Directory.CreateDirectory(Path.Combine(ohneWlanSich, "Benutzerprofil"));
             Check("ohne WLAN-Adapter: fehlen die Profile in der Sicherung, bleibt das der Grund",
-                AppCatalog.BeimWiederherstellen(Punkt.Wlan, ohneWlanSich)?.De == "Die gewählte Sicherung enthält keine WLAN-Profile.",
-                AppCatalog.BeimWiederherstellen(Punkt.Wlan, ohneWlanSich)?.De);
+                AppCatalog.ForRestore(Punkt.Wlan, ohneWlanSich)?.De == "Die gewählte Sicherung enthält keine WLAN-Profile.",
+                AppCatalog.ForRestore(Punkt.Wlan, ohneWlanSich)?.De);
             AppCatalog.HatWlanAdapter = () => true;
             Check("mit WLAN-Adapter: Sichern frei, Wiederherstellen frei, wenn Profile in der Sicherung liegen",
-                AppCatalog.BeimSichern(Punkt.Wlan, pr) is null && AppCatalog.BeimWiederherstellen(Punkt.Wlan, si) is null
-                && AppCatalog.BeimWiederherstellen(Punkt.Wlan, ohneWlanSich) is not null);
-            Console.WriteLine($"         WLAN-Adapter auf diesem Rechner: {(AppCatalog.WlanAdapterVorhanden() ? "ja" : "nein")}");
+                AppCatalog.ForBackup(Punkt.Wlan, pr) is null && AppCatalog.ForRestore(Punkt.Wlan, si) is null
+                && AppCatalog.ForRestore(Punkt.Wlan, ohneWlanSich) is not null);
+            Console.WriteLine($"         WLAN-Adapter auf diesem Rechner: {(AppCatalog.WifiAdapterPresent() ? "ja" : "nein")}");
             Check("Wiederherstellen: ohne (vorhandene) Sicherung wird nichts gesperrt",
-                AppCatalog.BeimWiederherstellen(Punkt.Firefox, "") is null
-                && AppCatalog.BeimWiederherstellen(Punkt.Firefox, Path.Combine(root, "gibt-es-nicht")) is null);
+                AppCatalog.ForRestore(Punkt.Firefox, "") is null
+                && AppCatalog.ForRestore(Punkt.Firefox, Path.Combine(root, "gibt-es-nicht")) is null);
         }
 
         Console.WriteLine("\n== Desktop-Symbole: Zuordnen und Umrechnen ==");
@@ -761,21 +761,21 @@ internal static partial class Program
             // Datei: lesbar, mit Umlauten, und wieder einlesbar.
             var ordner = Path.Combine(root, "symbole", DesktopIcons.FolderName);
             gesichert.Rechner = "PC"; gesichert.Benutzer = "Anwender"; gesichert.AmRasterAusrichten = true;
-            var symDatei = DesktopIcons.Speichern(ordner, gesichert);
-            Check("Datei: Desktop-Symbole\\Symbolpositionen.json", symDatei == DesktopIcons.Datei(Path.Combine(root, "symbole")));
+            var symDatei = DesktopIcons.Save(ordner, gesichert);
+            Check("Datei: Desktop-Symbole\\Symbolpositionen.json", symDatei == DesktopIcons.FilePath(Path.Combine(root, "symbole")));
             Check("Datei: Umlaute bleiben lesbar", File.ReadAllText(symDatei).Contains("Präsentation.pptx"));
-            var gelesen = DesktopIcons.Laden(symDatei);
+            var gelesen = DesktopIcons.Load(symDatei);
             Check("Datei: wieder eingelesen ist alles gleich", gelesen is not null && gelesen.Breite == 1920 && gelesen.AmRasterAusrichten
                 && gelesen.Symbole.Count == 4 && gelesen.Symbole[1] == gesichert.Symbole[1]);
             File.WriteAllText(Path.Combine(root, "kaputt.json"), "{ kein json");
             Check("Datei: fehlend oder kaputt -> null",
-                DesktopIcons.Laden(Path.Combine(root, "gibt-es-nicht.json")) is null && DesktopIcons.Laden(Path.Combine(root, "kaputt.json")) is null);
+                DesktopIcons.Load(Path.Combine(root, "gibt-es-nicht.json")) is null && DesktopIcons.Load(Path.Combine(root, "kaputt.json")) is null);
 
             // Verfuegbarkeit beim Wiederherstellen: Symbolpositionen allein genuegen.
             var nurSymbole = Path.Combine(root, "symbole");
             Check("Wiederherstellen: Desktop-Layout frei, wenn nur Symbolpositionen da sind",
-                AppCatalog.BeimWiederherstellen(Punkt.DesktopShot, nurSymbole) is null
-                && AppCatalog.HatDesktopSymbole(nurSymbole) && !AppCatalog.HatDesktopScreenshot(nurSymbole));
+                AppCatalog.ForRestore(Punkt.DesktopShot, nurSymbole) is null
+                && AppCatalog.HasDesktopIcons(nurSymbole) && !AppCatalog.HasDesktopScreenshot(nurSymbole));
         }
 
         Console.WriteLine("\n== Desktop-Symbole: Ablauf (nachgebauter Desktop) ==");
@@ -783,7 +783,7 @@ internal static partial class Program
             var testDesktop = new TestDesktop(1920, 1080, autoAnordnen: true, raster: false,
                 new DesktopIcon("a.txt", "a", 10, 10), new DesktopIcon("b.txt", "b", 10, 110), new DesktopIcon("", "", 0, 0));
             DesktopIcons.OeffneDesktop = () => testDesktop;
-            var gelesen = DesktopIcons.Lesen("PC", "Anwender");
+            var gelesen = DesktopIcons.Read("PC", "Anwender");
             Check("Lesen: Groesse, Schalter und Symbole (ohne namenlose)", gelesen.Breite == 1920 && gelesen.AutomatischAnordnen
                 && !gelesen.AmRasterAusrichten && gelesen.Symbole.Count == 2 && gelesen.Rechner == "PC");
 
@@ -795,47 +795,47 @@ internal static partial class Program
             // "c.txt" erscheint erst nach dem zweiten Nachsehen - wie eine Datei,
             // die der Explorer nach dem Zurueckschreiben gerade erst entdeckt.
             testDesktop.SpaeterDazu = (2, new DesktopIcon("c.txt", "c", 10, 210));
-            var erg = DesktopIcons.Wiederherstellen(symZiel, TimeSpan.FromSeconds(8));
+            var erg = DesktopIcons.Restore(symZiel, TimeSpan.FromSeconds(8));
             Check("Wiederherstellen: alle drei gesetzt, auch das spaet erschienene", erg.Gesetzt == 3 && erg.Fehlend.Count == 0,
                 $"{erg.Gesetzt}/{erg.Gesamt}, fehlend {erg.Fehlend.Count}");
-            Check("Wiederherstellen: Stellen stimmen", testDesktop.Stelle("b.txt") == (500, 400) && testDesktop.Stelle("a.txt") == (700, 50)
-                && testDesktop.Stelle("c.txt") == (900, 900));
+            Check("Wiederherstellen: Stellen stimmen", testDesktop.PositionOf("b.txt") == (500, 400) && testDesktop.PositionOf("a.txt") == (700, 50)
+                && testDesktop.PositionOf("c.txt") == (900, 900));
             Check("Wiederherstellen: \"Automatisch anordnen\" aus und gemeldet", !testDesktop.AutomatischAnordnen && erg.AnordnenAusgeschaltet);
             Check("Wiederherstellen: Raster wie gesichert", testDesktop.AmRasterAusrichten && erg.RasterUmgestellt);
             Check("Wiederherstellen: \"Automatisch anordnen\" erst AUS, dann wieder wie gesichert",
                 testDesktop.Protokoll.IndexOf("anordnen=False") < testDesktop.Protokoll.IndexOf("setzen b.txt"));
 
             var mitAuto = new DesktopLayout { Breite = 1920, Hoehe = 1080, AutomatischAnordnen = true, Symbole = { new("a.txt", "a", 1, 1) } };
-            var erg2 = DesktopIcons.Wiederherstellen(mitAuto, TimeSpan.Zero);
+            var erg2 = DesktopIcons.Restore(mitAuto, TimeSpan.Zero);
             Check("war beim Sichern \"Automatisch anordnen\" an, ist es danach wieder an", testDesktop.AutomatischAnordnen && erg2.AnordnenWiederAn && !erg2.AnordnenAusgeschaltet);
 
             var fehlt = new DesktopLayout { Breite = 1920, Hoehe = 1080, Symbole = { new("weg.txt", "weg", 1, 1) } };
             var uhr = System.Diagnostics.Stopwatch.StartNew();
-            var erg3 = DesktopIcons.Wiederherstellen(fehlt, TimeSpan.FromSeconds(30));
+            var erg3 = DesktopIcons.Restore(fehlt, TimeSpan.FromSeconds(30));
             Check("fehlt etwas dauerhaft, wird nicht die ganze Zeit gewartet", erg3.Fehlend.Count == 1 && uhr.Elapsed.TotalSeconds < 8,
                 $"{uhr.Elapsed.TotalSeconds:F1} s");
 
             DesktopIcons.OeffneDesktop = () => throw new InvalidOperationException("Kein Explorer-Desktop gefunden");
             bool gemeldet = false;
-            try { DesktopIcons.Lesen("PC", "x"); } catch (InvalidOperationException) { gemeldet = true; }
+            try { DesktopIcons.Read("PC", "x"); } catch (InvalidOperationException) { gemeldet = true; }
             Check("ohne Desktop: der Fehler kommt beim Aufrufer an (nicht verschluckt)", gemeldet);
 
             // Explorer startet gerade (neu): erst kein Desktop, dann doch.
             int versuche = 0;
-            var wert = DesktopIcons.MitWarten(() => ++versuche < 3 ? throw new KeinDesktopException("noch nicht") : 42,
+            var wert = DesktopIcons.WithWaiting(() => ++versuche < 3 ? throw new KeinDesktopException("noch nicht") : 42,
                 TimeSpan.FromSeconds(5), ex => ex is KeinDesktopException, TimeSpan.FromMilliseconds(10));
             Check("Desktop kommt nach einem Moment: gewartet statt aufgegeben", wert == 42 && versuche == 3, versuche.ToString());
             versuche = 0;
             bool sofort = false;
-            try { DesktopIcons.MitWarten<int>(() => { versuche++; throw new InvalidOperationException("anderer Fehler"); }, TimeSpan.FromSeconds(5), ex => ex is KeinDesktopException); }
+            try { DesktopIcons.WithWaiting<int>(() => { versuche++; throw new InvalidOperationException("anderer Fehler"); }, TimeSpan.FromSeconds(5), ex => ex is KeinDesktopException); }
             catch (InvalidOperationException) { sofort = versuche == 1; }
             Check("anderer Fehler: sofort gemeldet, kein Warten", sofort, versuche.ToString());
             var warteUhr = System.Diagnostics.Stopwatch.StartNew();
             bool aufgegeben = false;
-            try { DesktopIcons.MitWarten<int>(() => throw new KeinDesktopException("nie"), TimeSpan.FromMilliseconds(300), ex => ex is KeinDesktopException, TimeSpan.FromMilliseconds(20)); }
+            try { DesktopIcons.WithWaiting<int>(() => throw new KeinDesktopException("nie"), TimeSpan.FromMilliseconds(300), ex => ex is KeinDesktopException, TimeSpan.FromMilliseconds(20)); }
             catch (KeinDesktopException) { aufgegeben = true; }
             Check("kommt der Desktop nie: nach der Frist aufgegeben", aufgegeben && warteUhr.Elapsed.TotalSeconds < 3, $"{warteUhr.Elapsed.TotalSeconds:F1} s");
-            DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? ExplorerDesktop.Oeffnen() : throw new PlatformNotSupportedException();
+            DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? ExplorerDesktop.Open() : throw new PlatformNotSupportedException();
         }
 
         Console.WriteLine("\n== winget nachinstallieren: Bausteine ==");
@@ -1192,36 +1192,36 @@ internal static partial class Program
         {
             var ap = Path.Combine(root, "ausschluss", "Anwender");
             var mit = ProfileExcludes.Build(ap, includeAppData: true);
-            bool Drin(string rel) => mit.Contains(Path.Combine(ap, rel), StringComparer.OrdinalIgnoreCase);
+            bool Contains(string rel) => mit.Contains(Path.Combine(ap, rel), StringComparer.OrdinalIgnoreCase);
             Check("winget-Zustand (App-Installer) bleibt draussen - Ursache von 0x8A150009",
-                Drin(@"AppData\Local\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe")
-                && Drin(@"AppData\Local\Packages\Microsoft.Winget.Source_8wekyb3d8bbwe"));
+                Contains(@"AppData\Local\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe")
+                && Contains(@"AppData\Local\Packages\Microsoft.Winget.Source_8wekyb3d8bbwe"));
             Check("Windows-Shell (Suche/Widgets) bleibt draussen",
-                Drin(@"AppData\Local\Packages\MicrosoftWindows.Client.CBS_cw5n1h2txyewy")
-                && Drin(@"AppData\Local\Packages\Microsoft.Windows.Search_cw5n1h2txyewy"));
+                Contains(@"AppData\Local\Packages\MicrosoftWindows.Client.CBS_cw5n1h2txyewy")
+                && Contains(@"AppData\Local\Packages\Microsoft.Windows.Search_cw5n1h2txyewy"));
             Check("Grafik-Zwischenspeicher der Browser bleiben draussen",
-                Drin(@"AppData\Local\Microsoft\Edge\User Data\GrShaderCache")
-                && Drin(@"AppData\Local\Microsoft\Edge\User Data\ShaderCache")
-                && Drin(@"AppData\Local\Google\Chrome\User Data\Default\GPUCache")
-                && Drin(@"AppData\Local\BraveSoftware\Brave-Browser\User Data\Default\DawnWebGPUCache"));
-            Check("wie bisher: Cache im Standardprofil", Drin(@"AppData\Local\Microsoft\Edge\User Data\Default\Cache")
-                && Drin(@"AppData\Local\Google\Chrome\User Data\Default\Cache"));
+                Contains(@"AppData\Local\Microsoft\Edge\User Data\GrShaderCache")
+                && Contains(@"AppData\Local\Microsoft\Edge\User Data\ShaderCache")
+                && Contains(@"AppData\Local\Google\Chrome\User Data\Default\GPUCache")
+                && Contains(@"AppData\Local\BraveSoftware\Brave-Browser\User Data\Default\DawnWebGPUCache"));
+            Check("wie bisher: Cache im Standardprofil", Contains(@"AppData\Local\Microsoft\Edge\User Data\Default\Cache")
+                && Contains(@"AppData\Local\Google\Chrome\User Data\Default\Cache"));
             Check("die Browserprofile selbst bleiben drin",
-                !Drin(@"AppData\Local\Microsoft\Edge\User Data") && !Drin(@"AppData\Local\Microsoft\Edge\User Data\Default")
-                && !Drin(@"AppData\Local\Packages"));
-            Check("alles liegt in AppData", ProfileExcludes.AppDataAusschluesse().All(a => a.StartsWith(@"AppData\", StringComparison.Ordinal)));
-            Check("App-Aliase (WindowsApps) bleiben draussen - Fehler 1920", Drin(@"AppData\Local\Microsoft\WindowsApps"));
+                !Contains(@"AppData\Local\Microsoft\Edge\User Data") && !Contains(@"AppData\Local\Microsoft\Edge\User Data\Default")
+                && !Contains(@"AppData\Local\Packages"));
+            Check("alles liegt in AppData", ProfileExcludes.AppDataExcludes().All(a => a.StartsWith(@"AppData\", StringComparison.Ordinal)));
+            Check("App-Aliase (WindowsApps) bleiben draussen - Fehler 1920", Contains(@"AppData\Local\Microsoft\WindowsApps"));
 
             // Das Tool laeuft vom Desktop des Zielprofils.
             var zielP = Path.Combine(root, "selbst", "Users", "Anwender123");
             var sichP = Path.Combine(root, "selbst", "DASI", "Benutzerprofil");
             Check("laufendes Tool im Zielprofil: dieselbe Stelle in der Sicherung",
-                ProfileExcludes.LaufendesProgrammInSicherung(zielP, sichP, Path.Combine(zielP, "Desktop", "WindowsDaSiTool.exe"))
+                ProfileExcludes.RunningProgramInBackup(zielP, sichP, Path.Combine(zielP, "Desktop", "WindowsDaSiTool.exe"))
                 == Path.Combine(sichP, "Desktop", "WindowsDaSiTool.exe"));
             Check("laufendes Tool ausserhalb des Profils: nichts auszulassen",
-                ProfileExcludes.LaufendesProgrammInSicherung(zielP, sichP, Path.Combine(root, "selbst", "USB", "WindowsDaSiTool.exe")) is null
-                && ProfileExcludes.LaufendesProgrammInSicherung(zielP, sichP, Path.Combine(root, "selbst", "Users", "Anwender1234", "x.exe")) is null
-                && ProfileExcludes.LaufendesProgrammInSicherung(zielP, sichP, null) is null);
+                ProfileExcludes.RunningProgramInBackup(zielP, sichP, Path.Combine(root, "selbst", "USB", "WindowsDaSiTool.exe")) is null
+                && ProfileExcludes.RunningProgramInBackup(zielP, sichP, Path.Combine(root, "selbst", "Users", "Anwender1234", "x.exe")) is null
+                && ProfileExcludes.RunningProgramInBackup(zielP, sichP, null) is null);
             Check("keine Dubletten", mit.Count == mit.Distinct(StringComparer.OrdinalIgnoreCase).Count());
         }
 
@@ -1231,29 +1231,29 @@ internal static partial class Program
             Check("bisherige Werte unveraendert", WingetFehler.SchonAktuell == -1978335189
                 && WingetFehler.SchonInstalliert == -1978335135 && WingetFehler.NichtGefunden == -1978335212);
             Check("Hex-Schreibweise wie in der winget-Doku", WingetFehler.Hex(-1978335223) == "0x8A150009", WingetFehler.Hex(-1978335223));
-            Check("kaputte Quelle erkannt", WingetFehler.QuelleKaputt(WingetFehler.IndexZuNeu)
-                && WingetFehler.QuelleKaputt(WingetFehler.IndexBeschaedigt) && WingetFehler.QuelleKaputt(WingetFehler.QuellenBeschaedigt)
-                && WingetFehler.QuelleKaputt(WingetFehler.QuellDatenFehlen));
-            Check("Paketfehler sind keine kaputte Quelle", !WingetFehler.QuelleKaputt(0) && !WingetFehler.QuelleKaputt(WingetFehler.NichtGefunden)
-                && !WingetFehler.QuelleKaputt(WingetFehler.SchonInstalliert) && !WingetFehler.QuelleKaputt(1603));
-            Check("auch an der Ausgabe erkannt", WingetFehler.QuelleKaputt(1, "0x8a150009 : Cannot write to index; it is a higher schema version")
-                && !WingetFehler.QuelleKaputt(1, "Installer failed with exit code: 1603"));
-            Check("Erklaerung fuer 0x8A150009", WingetFehler.Erklaerung(WingetFehler.IndexZuNeu, De)?.Contains("neueren winget-Fassung") == true);
-            Check("keine Erklaerung fuer unbekannte Werte", WingetFehler.Erklaerung(1603, De) is null);
+            Check("kaputte Quelle erkannt", WingetFehler.SourceBroken(WingetFehler.IndexZuNeu)
+                && WingetFehler.SourceBroken(WingetFehler.IndexBeschaedigt) && WingetFehler.SourceBroken(WingetFehler.QuellenBeschaedigt)
+                && WingetFehler.SourceBroken(WingetFehler.QuellDatenFehlen));
+            Check("Paketfehler sind keine kaputte Quelle", !WingetFehler.SourceBroken(0) && !WingetFehler.SourceBroken(WingetFehler.NichtGefunden)
+                && !WingetFehler.SourceBroken(WingetFehler.SchonInstalliert) && !WingetFehler.SourceBroken(1603));
+            Check("auch an der Ausgabe erkannt", WingetFehler.SourceBroken(1, "0x8a150009 : Cannot write to index; it is a higher schema version")
+                && !WingetFehler.SourceBroken(1, "Installer failed with exit code: 1603"));
+            Check("Erklaerung fuer 0x8A150009", WingetFehler.Explanation(WingetFehler.IndexZuNeu, De)?.Contains("neueren winget-Fassung") == true);
+            Check("keine Erklaerung fuer unbekannte Werte", WingetFehler.Explanation(1603, De) is null);
 
             // So kam die Ausgabe an: Fortschrittskreisel und eine Zeile voller
             // Leerzeichen, per Wagenruecklauf ueberschrieben.
             var roh = "   - \r   \\ \r   | \r   / \r" + new string(' ', 120) + "\r"
                       + "An unexpected error occurred while executing the command:\r\n"
                       + "0x8a150009 : Cannot write to index; it is a higher schema version\r\n";
-            var meldung = WingetFehler.LetzteMeldung(roh);
+            var meldung = WingetFehler.LastMessage(roh);
             Check("Ausgabe: nur die Meldung, ohne Kreisel und Leerzeilen",
                 meldung == "An unexpected error occurred while executing the command: | 0x8a150009 : Cannot write to index; it is a higher schema version",
                 meldung);
             Check("Ausgabe: Fortschrittsbalken fallen weg",
-                WingetFehler.LetzteMeldung("Gefunden Firefox [Mozilla.Firefox.de]\n  ██████████████▒▒▒▒▒▒  40.0 MB / 70.1 MB\nInstallation fehlgeschlagen mit Exitcode: 1603\n")
+                WingetFehler.LastMessage("Gefunden Firefox [Mozilla.Firefox.de]\n  ██████████████▒▒▒▒▒▒  40.0 MB / 70.1 MB\nInstallation fehlgeschlagen mit Exitcode: 1603\n")
                 == "Gefunden Firefox [Mozilla.Firefox.de] | Installation fehlgeschlagen mit Exitcode: 1603");
-            Check("Ausgabe: leer bleibt leer", WingetFehler.LetzteMeldung("") == "" && WingetFehler.LetzteMeldung(" \r - \r\n") == "");
+            Check("Ausgabe: leer bleibt leer", WingetFehler.LastMessage("") == "" && WingetFehler.LastMessage(" \r - \r\n") == "");
 
             var ordner = new[]
             {
@@ -1261,11 +1261,11 @@ internal static partial class Program
                 @"C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_1.26.430.0_x64__8wekyb3d8bbwe",
                 @"C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_1.21.10120.0_x64__8wekyb3d8bbwe",
             };
-            var sortiert = WingetFehler.NeuesteZuerst(ordner);
+            var sortiert = WingetFehler.NewestFirst(ordner);
             Check("App-Installer: neueste Fassung zuerst (1.26 vor 1.21 vor 1.9)",
                 sortiert[0].Contains("_1.26.") && sortiert[1].Contains("_1.21.") && sortiert[2].Contains("_1.9."), string.Join(" ", sortiert.Select(Path.GetFileName)));
-            Check("App-Installer: Fassung aus dem Ordnernamen", WingetFehler.OrdnerVersion(ordner[1]) == new Version(1, 26, 430, 0)
-                && WingetFehler.OrdnerVersion(@"C:\x\Microsoft.DesktopAppInstaller_kaputt") is null);
+            Check("App-Installer: Fassung aus dem Ordnernamen", WingetFehler.FolderVersion(ordner[1]) == new Version(1, 26, 430, 0)
+                && WingetFehler.FolderVersion(@"C:\x\Microsoft.DesktopAppInstaller_kaputt") is null);
         }
 
         Console.WriteLine("\n== Desktop-Symbole: Systemsymbole einschalten ==");
@@ -1273,10 +1273,10 @@ internal static partial class Program
             const string dieserPc = "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}";
             const string benutzer = "::{59031a47-3f72-44a7-89c5-5595fe6b30ee}";
             const string papierkorb = "::{645FF040-5081-101B-9F08-00AA002F954E}";
-            Check("Kennung eines Systemsymbols", DesktopIcons.SystemsymbolKennung(dieserPc) == "{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
-                && DesktopIcons.SystemsymbolKennung(benutzer) == "{59031A47-3F72-44A7-89C5-5595FE6B30EE}");
-            Check("Dateien und unbekannte Kennungen sind keine Systemsymbole", DesktopIcons.SystemsymbolKennung("Firefox.lnk") is null
-                && DesktopIcons.SystemsymbolKennung("::{00000000-0000-0000-0000-000000000000}") is null);
+            Check("Kennung eines Systemsymbols", DesktopIcons.SystemIconId(dieserPc) == "{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
+                && DesktopIcons.SystemIconId(benutzer) == "{59031A47-3F72-44A7-89C5-5595FE6B30EE}");
+            Check("Dateien und unbekannte Kennungen sind keine Systemsymbole", DesktopIcons.SystemIconId("Firefox.lnk") is null
+                && DesktopIcons.SystemIconId("::{00000000-0000-0000-0000-000000000000}") is null);
 
             // Wie im Protokoll: Auf dem alten Desktop lagen "Dieser PC" und der
             // Benutzerordner ("Anwender"), auf dem neuen nur der Papierkorb.
@@ -1286,25 +1286,25 @@ internal static partial class Program
                 Symbole = { new(dieserPc, "Dieser PC", 10, 10), new(benutzer, "Anwender", 10, 110), new(papierkorb, "Papierkorb", 10, 210), new("Firefox.lnk", "Firefox", 10, 310) }
             };
             var neuDesk = new TestDesktop(1920, 1080, autoAnordnen: false, raster: true, new DesktopIcon(papierkorb, "Papierkorb", 5, 5));
-            Check("fehlende Systemsymbole: genau die zwei", DesktopIcons.FehlendeSystemsymbole(alt, neuDesk.Symbole())
+            Check("fehlende Systemsymbole: genau die zwei", DesktopIcons.MissingSystemIcons(alt, neuDesk.Icons())
                 .SequenceEqual(new[] { "{20D04FE0-3AEA-1069-A2D8-08002B30309D}", "{59031A47-3F72-44A7-89C5-5595FE6B30EE}" }));
 
             // Nach dem Einschalten zeigt der Explorer sie - hier: beim naechsten Nachsehen.
             List<string>? angefragt = null;
             DesktopIcons.OeffneDesktop = () => neuDesk;
-            var ergSys = DesktopIcons.Wiederherstellen(alt, TimeSpan.FromSeconds(8), k =>
+            var ergSys = DesktopIcons.Restore(alt, TimeSpan.FromSeconds(8), k =>
             {
                 angefragt = k.ToList();
                 neuDesk.SpaeterDazu = (0, new DesktopIcon(dieserPc, "Dieser PC", 100, 100));
-                neuDesk.Dazu(new DesktopIcon(benutzer.ToUpperInvariant(), "Anwender123", 100, 200));
+                neuDesk.Add(new DesktopIcon(benutzer.ToUpperInvariant(), "Anwender123", 100, 200));
                 return true;
             });
             Check("Einschalten: mit den fehlenden Kennungen aufgerufen", angefragt?.Count == 2, string.Join(", ", angefragt ?? new()));
             Check("Einschalten: Desktop danach aktualisiert", neuDesk.Protokoll.Contains("aktualisieren"));
             Check("Einschalten: gemeldet", ergSys.Eingeschaltet?.Count == 2);
             Check("Benutzerordner heisst hier anders (Anwender123) - zugeordnet trotzdem, ueber die Kennung",
-                neuDesk.Stelle(benutzer.ToUpperInvariant()) == (10, 110));
-            Check("Dieser PC an seine Stelle", neuDesk.Stelle(dieserPc) == (10, 10));
+                neuDesk.PositionOf(benutzer.ToUpperInvariant()) == (10, 110));
+            Check("Dieser PC an seine Stelle", neuDesk.PositionOf(dieserPc) == (10, 10));
             Check("nur Firefox fehlt noch", ergSys.Fehlend.Count == 1 && ergSys.Fehlend[0].Name == "Firefox.lnk",
                 string.Join(", ", ergSys.Fehlend.Select(f => f.Name)));
 
@@ -1315,55 +1315,55 @@ internal static partial class Program
             Directory.CreateDirectory(sichDesktop);
             File.WriteAllText(Path.Combine(sichDesktop, "Firefox.lnk"), "x");
             var fehlendeH = new List<DesktopIcon> { new("Firefox.lnk", "Firefox", 1, 1), new("Finalisierung.lnk", "Finalisierung", 2, 2), new(dieserPc, "Dieser PC", 3, 3) };
-            var (imProfil, fremd) = DesktopIcons.NachHerkunft(fehlendeH, sichDesktop);
+            var (imProfil, fremd) = DesktopIcons.ByOrigin(fehlendeH, sichDesktop);
             Check("Herkunft: Datei im Desktop-Ordner der Sicherung kommt mit dem Profil",
                 imProfil.Select(f => f.Name).SequenceEqual(new[] { "Firefox.lnk", dieserPc }));
             Check("Herkunft: nicht im Profil (oeffentlicher Desktop)", fremd.Count == 1 && fremd[0].Name == "Finalisierung.lnk");
-            var (ohneOrdner, ohneFremd) = DesktopIcons.NachHerkunft(fehlendeH, Path.Combine(root, "herkunft", "gibt-es-nicht"));
+            var (ohneOrdner, ohneFremd) = DesktopIcons.ByOrigin(fehlendeH, Path.Combine(root, "herkunft", "gibt-es-nicht"));
             Check("Herkunft: ohne Profil in der Sicherung zaehlt alles zum Profil", ohneOrdner.Count == 3 && ohneFremd.Count == 0);
 
-            var nochmal = DesktopIcons.Wiederherstellen(alt, TimeSpan.Zero, k => throw new InvalidOperationException("darf nicht kommen"));
+            var nochmal = DesktopIcons.Restore(alt, TimeSpan.Zero, k => throw new InvalidOperationException("darf nicht kommen"));
             Check("sind alle Systemsymbole da, wird nichts eingeschaltet", nochmal.Eingeschaltet is null);
             var ohne = new TestDesktop(1920, 1080, false, true);
             DesktopIcons.OeffneDesktop = () => ohne;
-            var ergOhne = DesktopIcons.Wiederherstellen(alt, TimeSpan.Zero, k => false);
+            var ergOhne = DesktopIcons.Restore(alt, TimeSpan.Zero, k => false);
             Check("klappt das Einschalten nicht, steht nichts als eingeschaltet da", ergOhne.Eingeschaltet is null && ergOhne.Fehlend.Count == 4);
-            DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? ExplorerDesktop.Oeffnen() : throw new PlatformNotSupportedException();
+            DesktopIcons.OeffneDesktop = () => OperatingSystem.IsWindows() ? ExplorerDesktop.Open() : throw new PlatformNotSupportedException();
         }
 
         Console.WriteLine("\n== Browserprofil nach dem Zurueckschreiben pruefen ==");
         {
             // Wie Chrome: "Local State" oben, zwei Profile mit Preferences & Co.
             var sicherungCh = Path.Combine(root, "abgleich", "Chrome-Profil");
-            void DateiAb(string basis, string rel, string inhalt)
+            void WriteFileUnder(string basis, string rel, string inhalt)
             {
                 var f = Path.Combine(basis, rel);
                 Directory.CreateDirectory(Path.GetDirectoryName(f)!);
                 File.WriteAllText(f, inhalt);
             }
-            DateiAb(sicherungCh, "Local State", "{\"profile\":{\"last_used\":\"Profile 1\",\"info_cache\":{}}, \"os_crypt\":{}}");
-            DateiAb(sicherungCh, Path.Combine("Default", "Preferences"), new string('d', 4000));
-            DateiAb(sicherungCh, Path.Combine("Default", "Bookmarks"), new string('b', 900));
-            DateiAb(sicherungCh, Path.Combine("Profile 1", "Preferences"), new string('p', 5000));
-            DateiAb(sicherungCh, Path.Combine("Profile 1", "History"), new string('h', 20000));
-            DateiAb(sicherungCh, Path.Combine("Crowd Deny", "1.0", "manifest.json"), "x");
+            WriteFileUnder(sicherungCh, "Local State", "{\"profile\":{\"last_used\":\"Profile 1\",\"info_cache\":{}}, \"os_crypt\":{}}");
+            WriteFileUnder(sicherungCh, Path.Combine("Default", "Preferences"), new string('d', 4000));
+            WriteFileUnder(sicherungCh, Path.Combine("Default", "Bookmarks"), new string('b', 900));
+            WriteFileUnder(sicherungCh, Path.Combine("Profile 1", "Preferences"), new string('p', 5000));
+            WriteFileUnder(sicherungCh, Path.Combine("Profile 1", "History"), new string('h', 20000));
+            WriteFileUnder(sicherungCh, Path.Combine("Crowd Deny", "1.0", "manifest.json"), "x");
             Check("Profile erkannt: Default und Profile 1 (nicht \"Crowd Deny\")",
-                ProfilAbgleich.Profile(sicherungCh).SequenceEqual(new[] { "Default", "Profile 1" }),
-                string.Join(", ", ProfilAbgleich.Profile(sicherungCh)));
+                ProfilAbgleich.Profiles(sicherungCh).SequenceEqual(new[] { "Default", "Profile 1" }),
+                string.Join(", ", ProfilAbgleich.Profiles(sicherungCh)));
 
             // Vollstaendig kopiert.
             var zielUd = Path.Combine(root, "abgleich", "User Data");
             foreach (var f in Directory.GetFiles(sicherungCh, "*", SearchOption.AllDirectories))
-                DateiAb(zielUd, Path.GetRelativePath(sicherungCh, f), File.ReadAllText(f));
-            Check("vollstaendig: keine Abweichung", ProfilAbgleich.Abweichungen(sicherungCh, zielUd).Count == 0,
-                string.Join(", ", ProfilAbgleich.Abweichungen(sicherungCh, zielUd)));
+                WriteFileUnder(zielUd, Path.GetRelativePath(sicherungCh, f), File.ReadAllText(f));
+            Check("vollstaendig: keine Abweichung", ProfilAbgleich.Differences(sicherungCh, zielUd).Count == 0,
+                string.Join(", ", ProfilAbgleich.Differences(sicherungCh, zielUd)));
 
             // Wie am 19.11.2026: Chrome lief und schrieb beim Beenden ein frisches
             // "Local State" und "Preferences" ueber das zurueckgeschriebene Profil.
             File.WriteAllText(Path.Combine(zielUd, "Local State"), "{\"profile\":{}}");
             File.WriteAllText(Path.Combine(zielUd, "Profile 1", "Preferences"), "{}");
             File.Delete(Path.Combine(zielUd, "Default", "Bookmarks"));
-            var abw = ProfilAbgleich.Abweichungen(sicherungCh, zielUd);
+            var abw = ProfilAbgleich.Differences(sicherungCh, zielUd);
             Check("ueberschrieben: Local State, Preferences und fehlende Lesezeichen werden erkannt",
                 abw.Contains("Local State") && abw.Contains(Path.Combine("Profile 1", "Preferences"))
                 && abw.Contains(Path.Combine("Default", "Bookmarks")) && abw.Count == 3, string.Join(", ", abw));
@@ -1371,95 +1371,95 @@ internal static partial class Program
 
             // Firefox: profiles.ini und Profiles\xxxx.default-release\prefs.js
             var ff = Path.Combine(root, "abgleich", "Firefox-Profil");
-            DateiAb(ff, "profiles.ini", "[Profile0]\nPath=Profiles/abcd.default-release\n");
-            DateiAb(ff, Path.Combine("Profiles", "abcd.default-release", "prefs.js"), "user_pref(\"a\", 1);");
-            DateiAb(ff, Path.Combine("Profiles", "abcd.default-release", "places.sqlite"), new string('s', 3000));
+            WriteFileUnder(ff, "profiles.ini", "[Profile0]\nPath=Profiles/abcd.default-release\n");
+            WriteFileUnder(ff, Path.Combine("Profiles", "abcd.default-release", "prefs.js"), "user_pref(\"a\", 1);");
+            WriteFileUnder(ff, Path.Combine("Profiles", "abcd.default-release", "places.sqlite"), new string('s', 3000));
             Check("Firefox: Profil unter Profiles erkannt",
-                ProfilAbgleich.Profile(ff).SequenceEqual(new[] { Path.Combine("Profiles", "abcd.default-release") }));
+                ProfilAbgleich.Profiles(ff).SequenceEqual(new[] { Path.Combine("Profiles", "abcd.default-release") }));
             var ffZiel = Path.Combine(root, "abgleich", "Firefox");
             Check("Firefox: leeres Ziel - alle wichtigen Dateien fehlen",
-                ProfilAbgleich.Abweichungen(ff, ffZiel).Count == 3, string.Join(", ", ProfilAbgleich.Abweichungen(ff, ffZiel)));
-            Check("ohne Sicherung: nichts zu vergleichen", ProfilAbgleich.Abweichungen(Path.Combine(root, "abgleich", "fehlt"), ffZiel).Count == 0);
+                ProfilAbgleich.Differences(ff, ffZiel).Count == 3, string.Join(", ", ProfilAbgleich.Differences(ff, ffZiel)));
+            Check("ohne Sicherung: nichts zu vergleichen", ProfilAbgleich.Differences(Path.Combine(root, "abgleich", "fehlt"), ffZiel).Count == 0);
         }
 
         Console.WriteLine("\n== Hintergrund: Volltonfarbe ==");
         {
-            Check("Farbe aus der Registry lesen", Hintergrund.FarbeLesen("0 99 177") == ((byte)0, (byte)99, (byte)177)
-                && Hintergrund.FarbeLesen("  255 255 255 ") == ((byte)255, (byte)255, (byte)255));
-            Check("ungueltige Farben werden abgelehnt", Hintergrund.FarbeLesen("256 0 0") is null && Hintergrund.FarbeLesen("0,99,177") is null
-                && Hintergrund.FarbeLesen("") is null && Hintergrund.FarbeLesen(null) is null && Hintergrund.FarbeLesen("1 2") is null);
+            Check("Farbe aus der Registry lesen", Hintergrund.ReadColor("0 99 177") == ((byte)0, (byte)99, (byte)177)
+                && Hintergrund.ReadColor("  255 255 255 ") == ((byte)255, (byte)255, (byte)255));
+            Check("ungueltige Farben werden abgelehnt", Hintergrund.ReadColor("256 0 0") is null && Hintergrund.ReadColor("0,99,177") is null
+                && Hintergrund.ReadColor("") is null && Hintergrund.ReadColor(null) is null && Hintergrund.ReadColor("1 2") is null);
             var blau = ((byte)0, (byte)99, (byte)177);
-            Check("Farbe zurueck in Registry-Form", Hintergrund.FarbeText(blau) == "0 99 177");
+            Check("Farbe zurueck in Registry-Form", Hintergrund.ColorText(blau) == "0 99 177");
             Check("Farbe als Hex", Hintergrund.Hex(blau) == "#0063B1", Hintergrund.Hex(blau));
             Check("COLORREF fuer SetSysColors (0x00BBGGRR)", Hintergrund.ColorRef(blau) == 0xB16300, Hintergrund.ColorRef(blau).ToString("X6"));
 
             // Was ist eingestellt? (BackgroundType: 0 Bild, 1 Volltonfarbe, 2 Diashow, 3 Blickpunkt)
             Check("Volltonfarbe laut Windows (BackgroundType 1)",
-                Hintergrund.Bestimmen(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg", true, 1, "0 99 177") == HintergrundArt.Volltonfarbe);
+                Hintergrund.Determine(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg", true, 1, "0 99 177") == HintergrundArt.Volltonfarbe);
             Check("Volltonfarbe: kein Bildpfad, Farbe gesetzt (aelteres Windows ohne BackgroundType)",
-                Hintergrund.Bestimmen("", false, null, "0 99 177") == HintergrundArt.Volltonfarbe);
-            Check("Bild", Hintergrund.Bestimmen(@"C:\Users\A\Pictures\Urlaub.jpg", true, 0, "0 0 0") == HintergrundArt.Bild
-                && Hintergrund.Bestimmen(@"C:\Users\A\Pictures\Urlaub.jpg", true, null, null) == HintergrundArt.Bild);
-            Check("Diashow/Blickpunkt ohne aktuelles Bild: wechselnd", Hintergrund.Bestimmen("", false, 2, "0 0 0") == HintergrundArt.Wechselnd
-                && Hintergrund.Bestimmen(null, false, 3, null) == HintergrundArt.Wechselnd);
-            Check("Diashow mit aktuellem Bild: das Bild", Hintergrund.Bestimmen(@"C:\x\TranscodedWallpaper", true, 2, null) == HintergrundArt.Bild);
-            Check("Bildpfad ohne Datei: unbekannt", Hintergrund.Bestimmen(@"C:\weg.jpg", false, 0, "0 0 0") == HintergrundArt.Unbekannt);
+                Hintergrund.Determine("", false, null, "0 99 177") == HintergrundArt.Volltonfarbe);
+            Check("Bild", Hintergrund.Determine(@"C:\Users\A\Pictures\Urlaub.jpg", true, 0, "0 0 0") == HintergrundArt.Bild
+                && Hintergrund.Determine(@"C:\Users\A\Pictures\Urlaub.jpg", true, null, null) == HintergrundArt.Bild);
+            Check("Diashow/Blickpunkt ohne aktuelles Bild: wechselnd", Hintergrund.Determine("", false, 2, "0 0 0") == HintergrundArt.Wechselnd
+                && Hintergrund.Determine(null, false, 3, null) == HintergrundArt.Wechselnd);
+            Check("Diashow mit aktuellem Bild: das Bild", Hintergrund.Determine(@"C:\x\TranscodedWallpaper", true, 2, null) == HintergrundArt.Bild);
+            Check("Bildpfad ohne Datei: unbekannt", Hintergrund.Determine(@"C:\weg.jpg", false, 0, "0 0 0") == HintergrundArt.Unbekannt);
 
             // Windows' Zwischenspeicher ist kein Ort fuer den Hintergrund.
             Check("Zwischenspeicher: TranscodedWallpaper und CachedFiles erkannt",
-                Hintergrund.IstWindowsZwischenspeicher(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper")
-                && Hintergrund.IstWindowsZwischenspeicher(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\CachedFiles\CachedImage_1920_1080_POS4.jpg")
-                && Hintergrund.IstWindowsZwischenspeicher(@"D:\DASI_PC_01_01_2026\Design\TranscodedWallpaper"));
+                Hintergrund.IsWindowsCache(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper")
+                && Hintergrund.IsWindowsCache(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\CachedFiles\CachedImage_1920_1080_POS4.jpg")
+                && Hintergrund.IsWindowsCache(@"D:\DASI_PC_01_01_2026\Design\TranscodedWallpaper"));
             Check("Zwischenspeicher: gewoehnliche Bilder und installierte Designs nicht",
-                !Hintergrund.IstWindowsZwischenspeicher(@"C:\Users\A\Pictures\Urlaub.jpg")
-                && !Hintergrund.IstWindowsZwischenspeicher(@"C:\Users\A\AppData\Local\Microsoft\Windows\Themes\Natur\DesktopBackground\img1.jpg")
-                && !Hintergrund.IstWindowsZwischenspeicher(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg")
-                && !Hintergrund.IstWindowsZwischenspeicher(null) && !Hintergrund.IstWindowsZwischenspeicher(""));
+                !Hintergrund.IsWindowsCache(@"C:\Users\A\Pictures\Urlaub.jpg")
+                && !Hintergrund.IsWindowsCache(@"C:\Users\A\AppData\Local\Microsoft\Windows\Themes\Natur\DesktopBackground\img1.jpg")
+                && !Hintergrund.IsWindowsCache(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg")
+                && !Hintergrund.IsWindowsCache(null) && !Hintergrund.IsWindowsCache(""));
             Check("Zwischenspeicher eines Profils",
-                Hintergrund.Zwischenspeicher(Path.Combine(root, "Anwender"))!.EndsWith(Path.Combine("Themes", "TranscodedWallpaper"))
-                && Hintergrund.Zwischenspeicher(null) is null);
+                Hintergrund.Cache(Path.Combine(root, "Anwender"))!.EndsWith(Path.Combine("Themes", "TranscodedWallpaper"))
+                && Hintergrund.Cache(null) is null);
             byte[] kJpg = { 0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10 }, kPng = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A },
                    kBmp = { 0x42, 0x4D, 1, 2 }, kGif = { 0x47, 0x49, 0x46, 0x38, 0x39, 0x61 },
                    kWebp = { 0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50 }, kSonst = { 1, 2, 3, 4 };
             Check("Bildart an den ersten Bytes",
-                Hintergrund.BildEndung(kJpg) == ".jpg" && Hintergrund.BildEndung(kPng) == ".png" && Hintergrund.BildEndung(kBmp) == ".bmp"
-                && Hintergrund.BildEndung(kGif) == ".gif" && Hintergrund.BildEndung(kWebp) == ".webp"
-                && Hintergrund.BildEndung(kSonst) is null && Hintergrund.BildEndung(ReadOnlySpan<byte>.Empty) is null);
+                Hintergrund.ImageExtension(kJpg) == ".jpg" && Hintergrund.ImageExtension(kPng) == ".png" && Hintergrund.ImageExtension(kBmp) == ".bmp"
+                && Hintergrund.ImageExtension(kGif) == ".gif" && Hintergrund.ImageExtension(kWebp) == ".webp"
+                && Hintergrund.ImageExtension(kSonst) is null && Hintergrund.ImageExtension(ReadOnlySpan<byte>.Empty) is null);
             Check("Name: Zwischenspeicher wird zu Hintergrundbild.<Endung>",
-                Hintergrund.SicherungsName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", kJpg) == "Hintergrundbild.jpg"
-                && Hintergrund.SicherungsName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", kPng) == "Hintergrundbild.png"
-                && Hintergrund.SicherungsName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\CachedFiles\CachedImage_1920_1080_POS4.jpg", kJpg) == "Hintergrundbild.jpg"
-                && Hintergrund.SicherungsName(@"D:\DASI\Design\TranscodedWallpaper", kSonst) == "Hintergrundbild.jpg");
+                Hintergrund.BackupName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", kJpg) == "Hintergrundbild.jpg"
+                && Hintergrund.BackupName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", kPng) == "Hintergrundbild.png"
+                && Hintergrund.BackupName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\CachedFiles\CachedImage_1920_1080_POS4.jpg", kJpg) == "Hintergrundbild.jpg"
+                && Hintergrund.BackupName(@"D:\DASI\Design\TranscodedWallpaper", kSonst) == "Hintergrundbild.jpg");
             Check("Name: gewoehnliches Bild behaelt seinen Namen, ohne Endung bekommt es die passende",
-                Hintergrund.SicherungsName(@"C:\Users\A\Pictures\Urlaub.jpg", kJpg) == "Urlaub.jpg"
-                && Hintergrund.SicherungsName(@"C:\Users\A\Pictures\Urlaub.jpeg", kPng) == "Urlaub.jpeg"
-                && Hintergrund.SicherungsName(@"C:\x\Bild", kPng) == "Bild.png"
-                && Hintergrund.SicherungsName(@"C:\x\Bild", kSonst) == "Bild");
+                Hintergrund.BackupName(@"C:\Users\A\Pictures\Urlaub.jpg", kJpg) == "Urlaub.jpg"
+                && Hintergrund.BackupName(@"C:\Users\A\Pictures\Urlaub.jpeg", kPng) == "Urlaub.jpeg"
+                && Hintergrund.BackupName(@"C:\x\Bild", kPng) == "Bild.png"
+                && Hintergrund.BackupName(@"C:\x\Bild", kSonst) == "Bild");
 
             // Gespeichert und wieder gelesen.
             var hg = Path.Combine(root, "hintergrund", "Hintergrundbild");
             Directory.CreateDirectory(hg);
-            Hintergrund.Speichern(hg, new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "0 99 177" });
-            var gelesen = Hintergrund.Laden(hg);
-            Check("Hintergrund.json: Volltonfarbe wieder gelesen", Hintergrund.IstVolltonfarbe(gelesen) && gelesen!.Farbe == "0 99 177");
+            Hintergrund.Save(hg, new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "0 99 177" });
+            var gelesen = Hintergrund.Load(hg);
+            Check("Hintergrund.json: Volltonfarbe wieder gelesen", Hintergrund.IsSolidColor(gelesen) && gelesen!.Farbe == "0 99 177");
             Check("Bild-Einstellung ist keine Volltonfarbe",
-                !Hintergrund.IstVolltonfarbe(new HintergrundEinstellung { Art = "Bild", Farbe = "0 0 0", Darstellung = "10" }));
-            Check("aeltere Sicherung ohne Hintergrund.json", Hintergrund.Laden(Path.Combine(root, "hintergrund", "fehlt")) is null);
+                !Hintergrund.IsSolidColor(new HintergrundEinstellung { Art = "Bild", Farbe = "0 0 0", Darstellung = "10" }));
+            Check("aeltere Sicherung ohne Hintergrund.json", Hintergrund.Load(Path.Combine(root, "hintergrund", "fehlt")) is null);
             File.WriteAllText(Path.Combine(root, "hintergrund", "kaputt.json"), "{");
             Directory.CreateDirectory(Path.Combine(root, "hintergrund", "kaputt"));
             File.WriteAllText(Path.Combine(root, "hintergrund", "kaputt", HintergrundEinstellung.DateiName), "{ kaputt");
-            Check("kaputte Hintergrund.json: null statt Absturz", Hintergrund.Laden(Path.Combine(root, "hintergrund", "kaputt")) is null);
+            Check("kaputte Hintergrund.json: null statt Absturz", Hintergrund.Load(Path.Combine(root, "hintergrund", "kaputt")) is null);
 
             // Verfuegbarkeit: eine Sicherung, die nur die Farbe enthaelt.
             AppCatalog.HatWlanAdapter = () => true;
             var nurFarbe = Path.Combine(root, "hintergrund");
             Check("Wiederherstellen: Volltonfarbe allein macht den Punkt frei",
-                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, nurFarbe) is null, AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, nurFarbe)?.De);
+                AppCatalog.ForRestore(Punkt.Hintergrund, nurFarbe) is null, AppCatalog.ForRestore(Punkt.Hintergrund, nurFarbe)?.De);
             var leerHg = Path.Combine(root, "hintergrund-leer");
             Directory.CreateDirectory(Path.Combine(leerHg, "Benutzerprofil"));
             Check("Wiederherstellen: ohne Hintergrund und Design-Einstellungen gesperrt, mit Grund",
-                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerHg)?.De == "Die gewählte Sicherung enthält kein Design (weder Hintergrund noch Design-Einstellungen).",
-                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerHg)?.De);
+                AppCatalog.ForRestore(Punkt.Hintergrund, leerHg)?.De == "Die gewählte Sicherung enthält kein Design (weder Hintergrund noch Design-Einstellungen).",
+                AppCatalog.ForRestore(Punkt.Hintergrund, leerHg)?.De);
         }
 
         Console.WriteLine("\n== Design-Datei von Windows (Custom.theme) ==");
@@ -1472,52 +1472,52 @@ internal static partial class Program
                 + "[VisualStyles]\r\nPath=%ResourceDir%\\Themes\\Aero\\Aero.msstyles\r\nColorStyle=NormalColor\r\nAutoColorization=0\r\nColorizationColor=0XC40078D4\r\nSystemMode=Light\r\nAppMode=Light\r\n\r\n"
                 + "[Slideshow]\r\nInterval=1800000\r\nShuffle=1\r\n\r\n"
                 + "[Control Panel\\Colors]\r\nBackground=0 0 0\r\n";
-            var farbe = DesignDatei.FuerFarbe(thema, ((byte)107, (byte)105, (byte)214));
-            Check("Volltonfarbe: Background in [Control Panel\\Colors] ersetzt", DesignDatei.Lesen(farbe, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214");
+            var farbe = DesignDatei.ForColor(thema, ((byte)107, (byte)105, (byte)214));
+            Check("Volltonfarbe: Background in [Control Panel\\Colors] ersetzt", DesignDatei.Read(farbe, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214");
             Check("Volltonfarbe: Bild bleibt stehen (wie die Einstellungen-App), keine Diashow",
-                DesignDatei.Lesen(farbe, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"%SystemRoot%\web\wallpaper\Windows\img0.jpg"
+                DesignDatei.Read(farbe, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"%SystemRoot%\web\wallpaper\Windows\img0.jpg"
                 && !farbe.Contains("[Slideshow]") && !farbe.Contains("Interval="));
             Check("Volltonfarbe: alles andere unveraendert, Zeilenenden CRLF",
                 farbe.Contains("DisplayName=Benutzerdefiniert\r\n") && farbe.Contains("ColorizationColor=0XC40078D4") && farbe.Contains("TileWallpaper=0")
                 && !farbe.Replace("\r\n", "").Contains('\n') && farbe.EndsWith("\r\n"));
-            var bild = DesignDatei.FuerBild(thema, @"C:\Users\Anwender\Pictures\Urlaub.jpg",
+            var bild = DesignDatei.ForImage(thema, @"C:\Users\Anwender\Pictures\Urlaub.jpg",
                 new HintergrundEinstellung { Darstellung = "6", Kacheln = "0", Farbe = "0 99 177" });
             Check("Bild: Pfad, Darstellung und Randfarbe eingetragen",
-                DesignDatei.Lesen(bild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\Anwender\Pictures\Urlaub.jpg"
-                && DesignDatei.Lesen(bild, DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "6"
-                && DesignDatei.Lesen(bild, DesignDatei.FarbenAbschnitt, "Background") == "0 99 177" && !bild.Contains("[Slideshow]"));
+                DesignDatei.Read(bild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\Anwender\Pictures\Urlaub.jpg"
+                && DesignDatei.Read(bild, DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "6"
+                && DesignDatei.Read(bild, DesignDatei.FarbenAbschnitt, "Background") == "0 99 177" && !bild.Contains("[Slideshow]"));
             Check("WallpaperStyle ist nicht Wallpaper (Schluessel genau verglichen)",
-                DesignDatei.Lesen(DesignDatei.Setzen(thema, DesignDatei.DesktopAbschnitt, "Wallpaper", "x"), DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "10");
-            var ohneFarben = DesignDatei.FuerFarbe("[Theme]\nDisplayName=x\n", ((byte)1, (byte)2, (byte)3));
+                DesignDatei.Read(DesignDatei.Set(thema, DesignDatei.DesktopAbschnitt, "Wallpaper", "x"), DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "10");
+            var ohneFarben = DesignDatei.ForColor("[Theme]\nDisplayName=x\n", ((byte)1, (byte)2, (byte)3));
             Check("fehlende Abschnitte werden angelegt (LF bleibt LF)",
-                DesignDatei.Lesen(ohneFarben, DesignDatei.FarbenAbschnitt, "Background") == "1 2 3" && ohneFarben.Contains("\n[Control Panel\\Colors]\nBackground=1 2 3\n") && !ohneFarben.Contains('\r'), ohneFarben);
-            var neuerSchluessel = DesignDatei.Setzen("[A]\r\nx=1\r\n\r\n[B]\r\ny=2\r\n", "A", "z", "3");
+                DesignDatei.Read(ohneFarben, DesignDatei.FarbenAbschnitt, "Background") == "1 2 3" && ohneFarben.Contains("\n[Control Panel\\Colors]\nBackground=1 2 3\n") && !ohneFarben.Contains('\r'), ohneFarben);
+            var neuerSchluessel = DesignDatei.Set("[A]\r\nx=1\r\n\r\n[B]\r\ny=2\r\n", "A", "z", "3");
             Check("neuer Schluessel ans Ende seines Abschnitts, vor die Leerzeile", neuerSchluessel == "[A]\r\nx=1\r\nz=3\r\n\r\n[B]\r\ny=2\r\n", neuerSchluessel);
-            var eigenes = DesignDatei.ZumAnwenden("[Theme]\r\nDisplayName=@%SystemRoot%\\x.dll,-1\r\nThemeId={1234}\r\nSetLogonBackground=0\r\n\r\n[Control Panel\\Desktop]\r\nWallpaper=a.jpg\r\n", "Design aus der Sicherung (DaSi)");
+            var eigenes = DesignDatei.ForApplying("[Theme]\r\nDisplayName=@%SystemRoot%\\x.dll,-1\r\nThemeId={1234}\r\nSetLogonBackground=0\r\n\r\n[Control Panel\\Desktop]\r\nWallpaper=a.jpg\r\n", "Design aus der Sicherung (DaSi)");
             Check("zum Anwenden: eigener Name, ohne ThemeId, Rest bleibt",
-                DesignDatei.Lesen(eigenes, "Theme", "DisplayName") == "Design aus der Sicherung (DaSi)" && DesignDatei.Lesen(eigenes, "Theme", "ThemeId") is null
-                && eigenes.Contains("SetLogonBackground=0\r\n") && DesignDatei.Lesen(eigenes, DesignDatei.DesktopAbschnitt, "Wallpaper") == "a.jpg", eigenes);
+                DesignDatei.Read(eigenes, "Theme", "DisplayName") == "Design aus der Sicherung (DaSi)" && DesignDatei.Read(eigenes, "Theme", "ThemeId") is null
+                && eigenes.Contains("SetLogonBackground=0\r\n") && DesignDatei.Read(eigenes, DesignDatei.DesktopAbschnitt, "Wallpaper") == "a.jpg", eigenes);
             var lilaW = ((byte)107, (byte)105, (byte)214);
-            var ohneBild = DesignDatei.FuerWiederherstellung(DesignDatei.Setzen(thema, DesignDatei.DesktopAbschnitt, "Wallpaper", ""), "x", lilaW, null, null, Array.Empty<DesignEintrag>());
-            var blick = DesignDatei.FuerWiederherstellung(DesignDatei.Setzen(thema, DesignDatei.DesktopAbschnitt, "Wallpaper",
+            var ohneBild = DesignDatei.ForRestore(DesignDatei.Set(thema, DesignDatei.DesktopAbschnitt, "Wallpaper", ""), "x", lilaW, null, null, Array.Empty<DesignEintrag>());
+            var blick = DesignDatei.ForRestore(DesignDatei.Set(thema, DesignDatei.DesktopAbschnitt, "Wallpaper",
                 @"C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\DesktopSpotlight\Assets\Images\image_2.jpg"), "x", lilaW, null, null, Array.Empty<DesignEintrag>());
-            var mitBild = DesignDatei.FuerWiederherstellung(thema, "x", lilaW, null, null, Array.Empty<DesignEintrag>());
+            var mitBild = DesignDatei.ForRestore(thema, "x", lilaW, null, null, Array.Empty<DesignEintrag>());
             Check("Wiederherstellung, Volltonfarbe: Farbe drin, leeres Bild und Blickpunkt-Bild durch img0 ersetzt, vorhandenes Bild bleibt",
-                DesignDatei.Lesen(ohneBild, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214"
-                && DesignDatei.Lesen(ohneBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == DesignDatei.Ersatzbild
-                && DesignDatei.Lesen(blick, DesignDatei.DesktopAbschnitt, "Wallpaper") == DesignDatei.Ersatzbild
-                && DesignDatei.Lesen(mitBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"%SystemRoot%\web\wallpaper\Windows\img0.jpg"
-                && DesignDatei.Lesen(mitBild, "Theme", "DisplayName") == "x" && !mitBild.Contains("[Slideshow]"));
-            var wiederBild = DesignDatei.FuerWiederherstellung(thema, "x", null, @"C:\Users\A\Pictures\Urlaub.jpg", new HintergrundEinstellung { Darstellung = "6" },
+                DesignDatei.Read(ohneBild, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214"
+                && DesignDatei.Read(ohneBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == DesignDatei.Ersatzbild
+                && DesignDatei.Read(blick, DesignDatei.DesktopAbschnitt, "Wallpaper") == DesignDatei.Ersatzbild
+                && DesignDatei.Read(mitBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"%SystemRoot%\web\wallpaper\Windows\img0.jpg"
+                && DesignDatei.Read(mitBild, "Theme", "DisplayName") == "x" && !mitBild.Contains("[Slideshow]"));
+            var wiederBild = DesignDatei.ForRestore(thema, "x", null, @"C:\Users\A\Pictures\Urlaub.jpg", new HintergrundEinstellung { Darstellung = "6" },
                 new[] { new DesignEintrag { Gruppe = "Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = "SystemUsesLightTheme", Typ = "DWord", Wert = "0" } });
             Check("Wiederherstellung, Bild: Pfad, Darstellung und Hell/Dunkel drin",
-                DesignDatei.Lesen(wiederBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\A\Pictures\Urlaub.jpg"
-                && DesignDatei.Lesen(wiederBild, DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "6"
-                && DesignDatei.Lesen(wiederBild, DesignDatei.StilAbschnitt, "SystemMode") == "Dark");
+                DesignDatei.Read(wiederBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\A\Pictures\Urlaub.jpg"
+                && DesignDatei.Read(wiederBild, DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "6"
+                && DesignDatei.Read(wiederBild, DesignDatei.StilAbschnitt, "SystemMode") == "Dark");
             Check("Gross-/Kleinschreibung bei Abschnitt und Schluessel egal",
-                DesignDatei.Lesen("[control panel\\COLORS]\r\nbackground = 9 9 9\r\n", DesignDatei.FarbenAbschnitt, "Background") == "9 9 9");
+                DesignDatei.Read("[control panel\\COLORS]\r\nbackground = 9 9 9\r\n", DesignDatei.FarbenAbschnitt, "Background") == "9 9 9");
 
-            var design = DesignDatei.FuerDesign(thema, new[]
+            var design = DesignDatei.ForDesign(thema, new[]
             {
                 new DesignEintrag { Gruppe = "Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = "SystemUsesLightTheme", Typ = "DWord", Wert = "0" },
                 new DesignEintrag { Gruppe = "Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = "AppsUseLightTheme", Typ = "DWord", Wert = "1" },
@@ -1528,14 +1528,14 @@ internal static partial class Program
                 new DesignEintrag { Gruppe = "Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = "Hand", Typ = "String", Wert = @"C:\x.cur" },
             });
             Check("Design: Hell/Dunkel als SystemMode/AppMode",
-                DesignDatei.Lesen(design, DesignDatei.StilAbschnitt, "SystemMode") == "Dark" && DesignDatei.Lesen(design, DesignDatei.StilAbschnitt, "AppMode") == "Light");
+                DesignDatei.Read(design, DesignDatei.StilAbschnitt, "SystemMode") == "Dark" && DesignDatei.Read(design, DesignDatei.StilAbschnitt, "AppMode") == "Light");
             Check("Design: Akzentfarbe als 0X-Wert, automatisch uebernommen",
-                DesignDatei.Lesen(design, DesignDatei.StilAbschnitt, "ColorizationColor") == "0XC40078D4"
-                && DesignDatei.Lesen(design, DesignDatei.StilAbschnitt, "AutoColorization") == "1");
+                DesignDatei.Read(design, DesignDatei.StilAbschnitt, "ColorizationColor") == "0XC40078D4"
+                && DesignDatei.Read(design, DesignDatei.StilAbschnitt, "AutoColorization") == "1");
             Check("Design: Zeigerschema als DefaultValue, Zeiger ersetzt, unbekannte nicht angelegt",
-                DesignDatei.Lesen(design, DesignDatei.ZeigerAbschnitt, "DefaultValue") == "Windows-Voreinstellung (groß)"
-                && DesignDatei.Lesen(design, DesignDatei.ZeigerAbschnitt, "Arrow") == @"%SystemRoot%\cursors\aero_arrow_l.cur"
-                && DesignDatei.Lesen(design, DesignDatei.ZeigerAbschnitt, "Hand") is null);
+                DesignDatei.Read(design, DesignDatei.ZeigerAbschnitt, "DefaultValue") == "Windows-Voreinstellung (groß)"
+                && DesignDatei.Read(design, DesignDatei.ZeigerAbschnitt, "Arrow") == @"%SystemRoot%\cursors\aero_arrow_l.cur"
+                && DesignDatei.Read(design, DesignDatei.ZeigerAbschnitt, "Hand") is null);
 
             // Kodierung bleibt: UTF-16 mit BOM, UTF-8 mit BOM, ASCII; Umlaut in ASCII -> UTF-16.
             var dd = Path.Combine(root, "design-datei");
@@ -1548,22 +1548,22 @@ internal static partial class Program
                 var thDatei = Path.Combine(dd, name + ".theme");
                 var thStart = "[Control Panel\\Colors]\r\nBackground=0 0 0\r\n";
                 File.WriteAllBytes(thDatei, kod.GetPreamble().Concat(kod.GetBytes(thStart)).ToArray());
-                var (gelesen, erkannt) = DesignDatei.DateiLesen(thDatei);
-                DesignDatei.DateiSchreiben(thDatei, DesignDatei.FuerFarbe(gelesen, ((byte)107, (byte)105, (byte)214)), erkannt);
+                var (gelesen, erkannt) = DesignDatei.ReadFile(thDatei);
+                DesignDatei.WriteFile(thDatei, DesignDatei.ForColor(gelesen, ((byte)107, (byte)105, (byte)214)), erkannt);
                 var thBytes = File.ReadAllBytes(thDatei);
                 var bomGleich = thBytes.Take(kod.GetPreamble().Length).SequenceEqual(kod.GetPreamble());
-                var (wieder, _) = DesignDatei.DateiLesen(thDatei);
+                var (wieder, _) = DesignDatei.ReadFile(thDatei);
                 Check($"Kodierung {name}: erkannt, gleich zurueckgeschrieben, lesbar",
-                    gelesen == thStart && bomGleich && DesignDatei.Lesen(wieder, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214"
+                    gelesen == thStart && bomGleich && DesignDatei.Read(wieder, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214"
                     && !File.Exists(thDatei + ".dasi-neu"));
             }
             var asciiDatei = Path.Combine(dd, "ascii.theme");
-            var (asciiText, asciiKod) = DesignDatei.DateiLesen(asciiDatei);
-            DesignDatei.DateiSchreiben(asciiDatei, DesignDatei.FuerBild(asciiText, @"C:\Users\Jürgen\Bilder\Strand.jpg", null), asciiKod);
+            var (asciiText, asciiKod) = DesignDatei.ReadFile(asciiDatei);
+            DesignDatei.WriteFile(asciiDatei, DesignDatei.ForImage(asciiText, @"C:\Users\Jürgen\Bilder\Strand.jpg", null), asciiKod);
             var asciiBytes = File.ReadAllBytes(asciiDatei);
             Check("Umlaut in einer ASCII-Datei: als UTF-16 mit BOM geschrieben und wieder lesbar",
                 asciiBytes[0] == 0xFF && asciiBytes[1] == 0xFE
-                && DesignDatei.Lesen(DesignDatei.DateiLesen(asciiDatei).Inhalt, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\Jürgen\Bilder\Strand.jpg");
+                && DesignDatei.Read(DesignDatei.ReadFile(asciiDatei).Inhalt, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\Jürgen\Bilder\Strand.jpg");
         }
 
         Console.WriteLine("\n== Design: Einstellungen von Windows ==");
@@ -1573,17 +1573,17 @@ internal static partial class Program
             const string dwm = @"Software\Microsoft\Windows\DWM";
             const string adv = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
             const string cur = @"Control Panel\Cursors";
-            bool ImKatalog(string s, string n) => designKat.Any(k => k.Schluessel == s && k.Name == n);
+            bool InCatalog(string s, string n) => designKat.Any(k => k.Schluessel == s && k.Name == n);
             Check("Katalog: Hell/Dunkel fuer Windows und Apps, Transparenz",
-                ImKatalog(pers, "SystemUsesLightTheme") && ImKatalog(pers, "AppsUseLightTheme") && ImKatalog(pers, "EnableTransparency"));
+                InCatalog(pers, "SystemUsesLightTheme") && InCatalog(pers, "AppsUseLightTheme") && InCatalog(pers, "EnableTransparency"));
             Check("Katalog: Akzentfarbe (Palette, DWM, automatisch)",
-                ImKatalog(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent", "AccentPalette") && ImKatalog(dwm, "AccentColor")
-                && ImKatalog(dwm, "ColorPrevalence") && ImKatalog(@"Control Panel\Desktop", "AutoColorization"));
-            Check("Katalog: Mauszeiger-Schema, Groesse und Zeiger", ImKatalog(cur, "") && ImKatalog(cur, "CursorBaseSize") && ImKatalog(cur, "Arrow") && ImKatalog(cur, "Hand"));
-            Check("Katalog: Taskleiste und Start", ImKatalog(adv, "TaskbarAl") && ImKatalog(@"Software\Microsoft\Windows\CurrentVersion\Search", "SearchboxTaskbarMode")
-                && ImKatalog(adv, "Start_Layout"));
+                InCatalog(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent", "AccentPalette") && InCatalog(dwm, "AccentColor")
+                && InCatalog(dwm, "ColorPrevalence") && InCatalog(@"Control Panel\Desktop", "AutoColorization"));
+            Check("Katalog: Mauszeiger-Schema, Groesse und Zeiger", InCatalog(cur, "") && InCatalog(cur, "CursorBaseSize") && InCatalog(cur, "Arrow") && InCatalog(cur, "Hand"));
+            Check("Katalog: Taskleiste und Start", InCatalog(adv, "TaskbarAl") && InCatalog(@"Software\Microsoft\Windows\CurrentVersion\Search", "SearchboxTaskbarMode")
+                && InCatalog(adv, "Start_Layout"));
             Check("Katalog: keine geschuetzten Werte (Widgets) und keine Bildschirmpositionen",
-                !ImKatalog(adv, "TaskbarDa") && !designKat.Any(k => k.Schluessel.Contains("StuckRects")));
+                !InCatalog(adv, "TaskbarDa") && !designKat.Any(k => k.Schluessel.Contains("StuckRects")));
             Check("Katalog: keine Dubletten", designKat.Select(k => k.Schluessel + "|" + k.Name).Distinct().Count() == designKat.Count);
             Check("Katalog: nur HKEY_CURRENT_USER-Pfade (Software\\..., Control Panel\\...)",
                 designKat.All(k => k.Schluessel.StartsWith(@"Software\", StringComparison.Ordinal) || k.Schluessel.StartsWith(@"Control Panel\", StringComparison.Ordinal)));
@@ -1601,31 +1601,31 @@ internal static partial class Program
                 [cur + "|Hand"] = ("ExpandString", @"C:\Users\Alt\Zeiger\eigene_hand.cur"),
                 [adv + "|TaskbarAl"] = ("DWord", "0"),
             };
-            var designWerte = DesignEinstellungen.Auslesen((s, n) => fakeReg.TryGetValue(s + "|" + n, out var v) ? v : null);
+            var designWerte = DesignEinstellungen.ReadAll((s, n) => fakeReg.TryGetValue(s + "|" + n, out var v) ? v : null);
             Check("Auslesen: genau die vorhandenen Werte", designWerte.Count == fakeReg.Count, designWerte.Count.ToString());
-            Check("Auslesen: Gruppen", DesignEinstellungen.Gruppen(designWerte) == "Farben, Akzentfarbe, Mauszeiger, Taskleiste", DesignEinstellungen.Gruppen(designWerte));
+            Check("Auslesen: Gruppen", DesignEinstellungen.Groups(designWerte) == "Farben, Akzentfarbe, Mauszeiger, Taskleiste", DesignEinstellungen.Groups(designWerte));
             Check("Auslesen: ein Lesefehler bricht nicht ab",
-                DesignEinstellungen.Auslesen((s, n) => n == "AppsUseLightTheme" ? throw new UnauthorizedAccessException() : fakeReg.TryGetValue(s + "|" + n, out var v) ? v : null).Count == fakeReg.Count - 1);
-            var designKurz = DesignEinstellungen.Zusammenfassung(designWerte, De);
+                DesignEinstellungen.ReadAll((s, n) => n == "AppsUseLightTheme" ? throw new UnauthorizedAccessException() : fakeReg.TryGetValue(s + "|" + n, out var v) ? v : null).Count == fakeReg.Count - 1);
+            var designKurz = DesignEinstellungen.Summary(designWerte, De);
             Check("Zusammenfassung fuers Protokoll",
                 designKurz == "Windows dunkel, Apps dunkel, Transparenz an, Akzentfarbe #0063B1, Mauszeiger \"Windows-Standard (groß)\", Taskleiste links", designKurz);
-            Check("Zusammenfassung englisch", DesignEinstellungen.Zusammenfassung(designWerte, En).StartsWith("Windows dark, apps dark, transparency on"));
-            Check("Akzentfarbe aus DWM (0xAABBGGRR)", DesignEinstellungen.AkzentHex(unchecked((int)0xFFB16300)) == "#0063B1");
+            Check("Zusammenfassung englisch", DesignEinstellungen.Summary(designWerte, En).StartsWith("Windows dark, apps dark, transparency on"));
+            Check("Akzentfarbe aus DWM (0xAABBGGRR)", DesignEinstellungen.AccentHex(unchecked((int)0xFFB16300)) == "#0063B1");
             var mitAuto = designWerte.Append(new DesignEintrag { Schluessel = @"Control Panel\Desktop", Name = "AutoColorization", Typ = "DWord", Wert = "1" }).ToList();
-            Check("Akzentfarbe automatisch statt fester Farbe", DesignEinstellungen.Zusammenfassung(mitAuto, De).Contains("Akzentfarbe automatisch"));
+            Check("Akzentfarbe automatisch statt fester Farbe", DesignEinstellungen.Summary(mitAuto, De).Contains("Akzentfarbe automatisch"));
 
             // Mauszeiger aus einem eigenen Schema, dessen Datei hier fehlt.
-            bool ZeigerDa(string pfad) => pfad.Contains("aero_arrow");
-            Check("Zeiger mit vorhandener Datei wird gesetzt", !DesignEinstellungen.ZeigerFehlt(designWerte.First(e => e.Name == "Arrow"), ZeigerDa));
-            Check("Zeiger ohne Datei wird ausgelassen", DesignEinstellungen.ZeigerFehlt(designWerte.First(e => e.Name == "Hand"), ZeigerDa));
+            bool PointerPresent(string pfad) => pfad.Contains("aero_arrow");
+            Check("Zeiger mit vorhandener Datei wird gesetzt", !DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "Arrow"), PointerPresent));
+            Check("Zeiger ohne Datei wird ausgelassen", DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "Hand"), PointerPresent));
             Check("Schema-Name und andere Werte sind nie \"Zeiger ohne Datei\"",
-                !DesignEinstellungen.ZeigerFehlt(designWerte.First(e => e.Name == "" && e.Gruppe == "Mauszeiger"), ZeigerDa)
-                && !DesignEinstellungen.ZeigerFehlt(designWerte.First(e => e.Name == "TaskbarAl"), ZeigerDa));
+                !DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "" && e.Gruppe == "Mauszeiger"), PointerPresent)
+                && !DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "TaskbarAl"), PointerPresent));
 
             // Speichern und Laden.
             var designOrdner = Path.Combine(root, "design", "DASI");
-            DesignEinstellungen.Speichern(designOrdner, new DesignSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Werte = designWerte });
-            var designZurueck = DesignEinstellungen.Laden(designOrdner);
+            DesignEinstellungen.Save(designOrdner, new DesignSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Werte = designWerte });
+            var designZurueck = DesignEinstellungen.Load(designOrdner);
             Check("Design.json: Werte wieder gelesen, gleich", designZurueck is not null && designZurueck.Werte.Count == designWerte.Count
                 && designZurueck.Werte.Select(w => w.Schluessel + w.Name + w.Typ + w.Wert).SequenceEqual(designWerte.Select(w => w.Schluessel + w.Name + w.Typ + w.Wert)));
             Check("Design.json: Umlaute bleiben", designZurueck!.Werte.Any(w => w.Wert == "Windows-Standard (groß)"));
@@ -1634,23 +1634,23 @@ internal static partial class Program
 
             // Hintergrund und Einstellungen in einer Datei - Bild mit Herkunft.
             var eins = Path.Combine(root, "design", "eins");
-            DesignEinstellungen.Speichern(eins, new DesignSicherung
+            DesignEinstellungen.Save(eins, new DesignSicherung
             {
                 Rechner = "PC", Erstellt = new DateTime(2026, 11, 21),
                 Hintergrund = new HintergrundEinstellung { Art = "Bild", Bild = "Urlaub.jpg", BildPfad = @"C:\Users\Alt\Pictures\Urlaub.jpg",
                                                            Profil = @"C:\Users\Alt", Farbe = "0 0 0", Darstellung = "6", Kacheln = "0" },
                 Werte = designWerte,
             });
-            var einsZurueck = DesignEinstellungen.Laden(eins);
+            var einsZurueck = DesignEinstellungen.Load(eins);
             Check("eine Datei: Bild samt Herkunft und Darstellung wieder gelesen",
                 einsZurueck?.Hintergrund is { Art: "Bild", Bild: "Urlaub.jpg", Darstellung: "6" } hb && hb.BildPfad == @"C:\Users\Alt\Pictures\Urlaub.jpg"
                 && hb.Profil == @"C:\Users\Alt" && einsZurueck.Werte.Count == designWerte.Count && einsZurueck.Version == 2);
             var nurHg = Path.Combine(root, "design", "nur-hintergrund");
-            DesignEinstellungen.Speichern(nurHg, new DesignSicherung { Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "107 105 214" } });
+            DesignEinstellungen.Save(nurHg, new DesignSicherung { Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "107 105 214" } });
             Check("eine Datei: nur der Hintergrund (Einstellungen nicht lesbar) genuegt",
-                DesignEinstellungen.Vorhanden(nurHg) && Hintergrund.IstVolltonfarbe(DesignEinstellungen.Laden(nurHg)!.Hintergrund));
+                DesignEinstellungen.Exists(nurHg) && Hintergrund.IsSolidColor(DesignEinstellungen.Load(nurHg)!.Hintergrund));
             AppCatalog.HatWlanAdapter = () => true;
-            Check("eine Datei: Punkt beim Wiederherstellen frei", AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, nurHg) is null);
+            Check("eine Datei: Punkt beim Wiederherstellen frei", AppCatalog.ForRestore(Punkt.Hintergrund, nurHg) is null);
 
             // Zwischenfassung (Sicherung vom 21.11.2026, 20:41): Einstellungen in
             // Design\Design-Einstellungen.json, Volltonfarbe getrennt in
@@ -1661,42 +1661,42 @@ internal static partial class Program
                 "{ \"Version\": 1, \"Rechner\": \"PC\", \"Werte\": [ { \"Gruppe\": \"Farben\", \"Schluessel\": \"" + pers.Replace("\\", "\\\\")
                 + "\", \"Name\": \"SystemUsesLightTheme\", \"Typ\": \"DWord\", \"Wert\": \"0\" } ] }");
             Directory.CreateDirectory(Path.Combine(zwischen, "Hintergrundbild"));
-            Hintergrund.Speichern(Path.Combine(zwischen, "Hintergrundbild"), new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "107 105 214" });
-            var zw = DesignEinstellungen.Laden(zwischen);
+            Hintergrund.Save(Path.Combine(zwischen, "Hintergrundbild"), new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "107 105 214" });
+            var zw = DesignEinstellungen.Load(zwischen);
             Check("Zwischenfassung: Einstellungen werden gelesen, Hintergrund kommt aus dem alten Ordner",
-                zw is { Werte.Count: 1, Hintergrund: null } && AppCatalog.HatHintergrund(zwischen)
-                && Hintergrund.IstVolltonfarbe(Hintergrund.Laden(Path.Combine(zwischen, "Hintergrundbild"))));
-            Check("Zwischenfassung: Punkt beim Wiederherstellen frei", AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, zwischen) is null);
+                zw is { Werte.Count: 1, Hintergrund: null } && AppCatalog.HasWallpaper(zwischen)
+                && Hintergrund.IsSolidColor(Hintergrund.Load(Path.Combine(zwischen, "Hintergrundbild"))));
+            Check("Zwischenfassung: Punkt beim Wiederherstellen frei", AppCatalog.ForRestore(Punkt.Hintergrund, zwischen) is null);
 
             // Liegen beide Dateien da, gilt Design.json.
-            DesignEinstellungen.Speichern(zwischen, new DesignSicherung { Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "1 2 3" } });
-            Check("Design.json hat Vorrang vor der Datei der Zwischenfassung", DesignEinstellungen.Laden(zwischen)?.Hintergrund?.Farbe == "1 2 3");
-            Check("ohne Datei: nicht vorhanden", !DesignEinstellungen.Vorhanden(Path.Combine(root, "design", "leer")));
+            DesignEinstellungen.Save(zwischen, new DesignSicherung { Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "1 2 3" } });
+            Check("Design.json hat Vorrang vor der Datei der Zwischenfassung", DesignEinstellungen.Load(zwischen)?.Hintergrund?.Farbe == "1 2 3");
+            Check("ohne Datei: nicht vorhanden", !DesignEinstellungen.Exists(Path.Combine(root, "design", "leer")));
 
             // Verfuegbarkeit: nur Design-Einstellungen (Hintergrund Diashow) genuegen.
             AppCatalog.HatWlanAdapter = () => true;
             Check("Wiederherstellen: Design-Einstellungen allein machen den Punkt frei",
-                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, designOrdner) is null, AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, designOrdner)?.De);
+                AppCatalog.ForRestore(Punkt.Hintergrund, designOrdner) is null, AppCatalog.ForRestore(Punkt.Hintergrund, designOrdner)?.De);
             var leerD = Path.Combine(root, "design", "ohne");
             Directory.CreateDirectory(Path.Combine(leerD, "Benutzerprofil"));
             Check("Wiederherstellen: Grund nennt Hintergrund und Design-Einstellungen",
-                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerD)?.De == "Die gewählte Sicherung enthält kein Design (weder Hintergrund noch Design-Einstellungen).",
-                AppCatalog.BeimWiederherstellen(Punkt.Hintergrund, leerD)?.De);
+                AppCatalog.ForRestore(Punkt.Hintergrund, leerD)?.De == "Die gewählte Sicherung enthält kein Design (weder Hintergrund noch Design-Einstellungen).",
+                AppCatalog.ForRestore(Punkt.Hintergrund, leerD)?.De);
         }
 
         Console.WriteLine("\n== Taskleisten-Symbole ==");
         {
             var tlProfil = Path.Combine(root, "taskleiste", "Users", "Anwender");
-            var pin = Taskleiste.PinOrdner(tlProfil);
+            var pin = Taskleiste.PinFolder(tlProfil);
             Check("Ordner der angehefteten Verknuepfungen im Profil",
                 pin == Path.Combine(tlProfil, "AppData", "Roaming", "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar"), pin);
             Directory.CreateDirectory(pin);
             foreach (var n in new[] { "Microsoft Edge.lnk", "Datei-Explorer.lnk", "Firefox.lnk" }) File.WriteAllText(Path.Combine(pin, n), "lnk");
             File.WriteAllText(Path.Combine(pin, "desktop.ini"), "x");
-            var lnk = Taskleiste.Verknuepfungen(pin);
+            var lnk = Taskleiste.Shortcuts(pin);
             Check("nur Verknuepfungen, nach Namen", lnk.SequenceEqual(new[] { "Datei-Explorer.lnk", "Firefox.lnk", "Microsoft Edge.lnk" }), string.Join(", ", lnk));
-            Check("Namen fuers Protokoll", Taskleiste.Namen(lnk) == "Datei-Explorer, Firefox, Microsoft Edge");
-            Check("kein Ordner: keine Verknuepfungen", Taskleiste.Verknuepfungen(Path.Combine(root, "taskleiste", "fehlt")).Count == 0);
+            Check("Namen fuers Protokoll", Taskleiste.Names(lnk) == "Datei-Explorer, Firefox, Microsoft Edge");
+            Check("kein Ordner: keine Verknuepfungen", Taskleiste.Shortcuts(Path.Combine(root, "taskleiste", "fehlt")).Count == 0);
 
             var tlSich = Path.Combine(root, "taskleiste", "DASI");
             var band = new List<DesignEintrag>
@@ -1704,20 +1704,20 @@ internal static partial class Program
                 new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "Favorites", Typ = "Binary", Wert = Convert.ToBase64String(new byte[] { 0, 1, 2, 255 }) },
                 new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "FavoritesVersion", Typ = "DWord", Wert = "3" },
             };
-            Taskleiste.Speichern(tlSich, new TaskleistenSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Verknuepfungen = lnk, Taskband = band });
-            var tlZurueck = Taskleiste.Laden(tlSich);
+            Taskleiste.Save(tlSich, new TaskleistenSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Verknuepfungen = lnk, Taskband = band });
+            var tlZurueck = Taskleiste.Load(tlSich);
             Check("Taskleiste.json: Verknuepfungen und Taskband wieder gelesen",
                 tlZurueck is not null && tlZurueck.Verknuepfungen.SequenceEqual(lnk)
                 && tlZurueck.Taskband.Select(b => b.Name + b.Typ + b.Wert).SequenceEqual(band.Select(b => b.Name + b.Typ + b.Wert)));
             Check("liegt unter Desktop-Symbole\\Taskleiste", File.Exists(Path.Combine(tlSich, "Desktop-Symbole", "Taskleiste", "Taskleiste.json")));
             var leerTl = Path.Combine(root, "taskleiste", "leer");
-            Taskleiste.Speichern(leerTl, new TaskleistenSicherung());
-            Check("leere Taskleiste gilt nicht als gesichert", !Taskleiste.Vorhanden(leerTl) && Taskleiste.Laden(Path.Combine(root, "taskleiste", "nichts")) is null);
+            Taskleiste.Save(leerTl, new TaskleistenSicherung());
+            Check("leere Taskleiste gilt nicht als gesichert", !Taskleiste.Exists(leerTl) && Taskleiste.Load(Path.Combine(root, "taskleiste", "nichts")) is null);
 
             // Verfuegbarkeit: nur die Taskleiste, keine Symbolpositionen.
             AppCatalog.HatWlanAdapter = () => true;
-            Check("nur Taskleiste: Variante Symbole frei", AppCatalog.HatDesktopSymbole(tlSich) && !DesktopIcons.Vorhanden(tlSich));
-            Check("nur Taskleiste: Desktop-Layout beim Wiederherstellen frei", AppCatalog.BeimWiederherstellen(Punkt.DesktopShot, tlSich) is null);
+            Check("nur Taskleiste: Variante Symbole frei", AppCatalog.HasDesktopIcons(tlSich) && !DesktopIcons.Exists(tlSich));
+            Check("nur Taskleiste: Desktop-Layout beim Wiederherstellen frei", AppCatalog.ForRestore(Punkt.DesktopShot, tlSich) is null);
         }
 
         // ================================================================
@@ -1850,8 +1850,8 @@ internal static partial class Program
 
             Console.WriteLine("\n== Design-Einstellungen echt (Registry) ==");
             {
-                var echt = DesignEinstellungen.Auslesen((s, n) => DesignRegistry.Lesen(Microsoft.Win32.Registry.CurrentUser, s, n));
-                Console.WriteLine($"         gelesen: {echt.Count} Werte ({DesignEinstellungen.Gruppen(echt)}) - {DesignEinstellungen.Zusammenfassung(echt, De)}");
+                var echt = DesignEinstellungen.ReadAll((s, n) => DesignRegistry.Read(Microsoft.Win32.Registry.CurrentUser, s, n));
+                Console.WriteLine($"         gelesen: {echt.Count} Werte ({DesignEinstellungen.Groups(echt)}) - {DesignEinstellungen.Summary(echt, De)}");
                 Check("echt: Design-Einstellungen lesbar (mindestens das Mauszeiger-Schema)", echt.Count > 0);
                 Check("echt: %SystemRoot% in Zeigerpfaden bleibt unaufgeloest",
                     !echt.Any(e => e.Typ == "ExpandString") || echt.Where(e => e.Typ == "ExpandString").Any(e => e.Wert.Contains('%')));
@@ -1867,13 +1867,13 @@ internal static partial class Program
                 };
                 try
                 {
-                    foreach (var pr in proben) DesignRegistry.Schreiben(Microsoft.Win32.Registry.CurrentUser, pr);
-                    var wieder = proben.Select(pr => DesignRegistry.Lesen(Microsoft.Win32.Registry.CurrentUser, pr.Schluessel, pr.Name)).ToList();
+                    foreach (var pr in proben) DesignRegistry.Write(Microsoft.Win32.Registry.CurrentUser, pr);
+                    var wieder = proben.Select(pr => DesignRegistry.Read(Microsoft.Win32.Registry.CurrentUser, pr.Schluessel, pr.Name)).ToList();
                     Check("echt: alle vier Typen hin und zurueck unveraendert",
                         wieder.Zip(proben).All(x => x.First is { } w && w.Typ == x.Second.Typ && w.Wert == x.Second.Wert),
                         string.Join(" | ", wieder.Select(w => w is null ? "null" : $"{w.Value.Typ}={w.Value.Wert}")));
-                    Check("echt: fehlender Wert -> null", DesignRegistry.Lesen(Microsoft.Win32.Registry.CurrentUser, test, "gibt-es-nicht") is null
-                        && DesignRegistry.Lesen(Microsoft.Win32.Registry.CurrentUser, @"Software\DaSiTest\gibt-es-nicht", "x") is null);
+                    Check("echt: fehlender Wert -> null", DesignRegistry.Read(Microsoft.Win32.Registry.CurrentUser, test, "gibt-es-nicht") is null
+                        && DesignRegistry.Read(Microsoft.Win32.Registry.CurrentUser, @"Software\DaSiTest\gibt-es-nicht", "x") is null);
                 }
                 finally
                 {
@@ -1917,7 +1917,7 @@ internal static partial class Program
                     {
                         try
                         {
-                            var l = DesktopIcons.Lesen("CI", "runner");
+                            var l = DesktopIcons.Read("CI", "runner");
                             if (l.Symbole.Any(x => x.Name.Equals(testName, StringComparison.OrdinalIgnoreCase))) vorher = l;
                             else grund = $"Testsymbol nicht unter {l.Symbole.Count} Symbolen";
                         }
@@ -1946,9 +1946,9 @@ internal static partial class Program
                             Breite = vorher.Breite, Hoehe = vorher.Hoehe, AmRasterAusrichten = vorher.AmRasterAusrichten,
                             Symbole = { symStart with { X = zielX, Y = zielY } }
                         };
-                        var e1 = DesktopIcons.Wiederherstellen(verschoben, TimeSpan.FromSeconds(5));
+                        var e1 = DesktopIcons.Restore(verschoben, TimeSpan.FromSeconds(5));
                         System.Threading.Thread.Sleep(800);
-                        var mitte = DesktopIcons.Lesen("CI", "runner").Symbole.First(x => x.Name == testName);
+                        var mitte = DesktopIcons.Read("CI", "runner").Symbole.First(x => x.Name == testName);
                         Console.WriteLine($"         verschoben nach ({mitte.X},{mitte.Y}), Ziel war ({zielX},{zielY})");
                         Check("echt: Symbol laesst sich versetzen", e1.Gesetzt == 1
                             && Math.Abs(mitte.X - zielX) < 200 && Math.Abs(mitte.Y - zielY) < 200
@@ -1956,11 +1956,11 @@ internal static partial class Program
 
                         // Zurueck: die gesicherte Anordnung von vorhin - ueber die Datei.
                         var dateiOrdner = Path.Combine(root, "echt-symbole");
-                        DesktopIcons.Speichern(Path.Combine(dateiOrdner, DesktopIcons.FolderName), vorher);
-                        var zurueck = DesktopIcons.Laden(DesktopIcons.Datei(dateiOrdner))!;
-                        var e2 = DesktopIcons.Wiederherstellen(zurueck, TimeSpan.FromSeconds(5));
+                        DesktopIcons.Save(Path.Combine(dateiOrdner, DesktopIcons.FolderName), vorher);
+                        var zurueck = DesktopIcons.Load(DesktopIcons.FilePath(dateiOrdner))!;
+                        var e2 = DesktopIcons.Restore(zurueck, TimeSpan.FromSeconds(5));
                         System.Threading.Thread.Sleep(800);
-                        var symNachher = DesktopIcons.Lesen("CI", "runner");
+                        var symNachher = DesktopIcons.Read("CI", "runner");
                         var ende = symNachher.Symbole.First(x => x.Name == testName);
                         Console.WriteLine($"         zurueck bei ({ende.X},{ende.Y}), {e2.Gesetzt} von {e2.Gesamt} gesetzt");
                         Check("echt: aus der Sicherung wieder an der alten Stelle",
@@ -2158,7 +2158,7 @@ internal static partial class Program
                 File.WriteAllText(laufend, "laufende Fassung");
                 File.SetLastWriteTimeUtc(laufend, DateTime.UtcNow.AddDays(-1));
 
-                var ausSelbst = ProfileExcludes.LaufendesProgrammInSicherung(zielSelbst, sichSelbst, laufend);
+                var ausSelbst = ProfileExcludes.RunningProgramInBackup(zielSelbst, sichSelbst, laufend);
                 var schalter = string.Join(" ", ProfileExcludes.RestoreSwitches().Select(s => s.Contains(' ') ? $"\"{s}\"" : s));
                 var psiSelbst = new System.Diagnostics.ProcessStartInfo("robocopy.exe",
                     $"\"{sichSelbst}\" \"{zielSelbst}\" {schalter} /XF \"{ausSelbst}\" /NP /NDL")
@@ -2181,29 +2181,29 @@ internal static partial class Program
             Console.WriteLine("\n== echtes robocopy: was die Profilsicherung aus Dokumente mitnimmt ==");
             var besitzer = Path.Combine(root, "profilwechsel", "Besitzer");
             var doks = Path.Combine(besitzer, "Documents");
-            void Datei(string rel, string inhalt, FileAttributes? attr = null)
+            void WriteFile(string rel, string inhalt, FileAttributes? attr = null)
             {
                 var p = Path.Combine(besitzer, rel);
                 Directory.CreateDirectory(Path.GetDirectoryName(p)!);
                 File.WriteAllText(p, inhalt);
                 if (attr is { } a) File.SetAttributes(p, a);
             }
-            Datei(@"Documents\Normal\a.txt", "a");
+            WriteFile(@"Documents\Normal\a.txt", "a");
             // Ein angepasster Ordner (eigenes Symbol/eigene Ansicht): Windows setzt
             // dafuer das System-Attribut und legt eine versteckte desktop.ini hinein.
-            Datei(@"Documents\Angepasst\brief.docx", "b");
-            Datei(@"Documents\Angepasst\desktop.ini", "[.ShellClassInfo]\r\nIconResource=C:\\Windows\\System32\\imageres.dll,-3\r\n",
+            WriteFile(@"Documents\Angepasst\brief.docx", "b");
+            WriteFile(@"Documents\Angepasst\desktop.ini", "[.ShellClassInfo]\r\nIconResource=C:\\Windows\\System32\\imageres.dll,-3\r\n",
                   FileAttributes.Hidden | FileAttributes.System);
             new DirectoryInfo(Path.Combine(doks, "Angepasst")).Attributes |= FileAttributes.System;
-            Datei(@"Documents\Schreibgeschuetzt\c.txt", "c");
+            WriteFile(@"Documents\Schreibgeschuetzt\c.txt", "c");
             new DirectoryInfo(Path.Combine(doks, "Schreibgeschuetzt")).Attributes |= FileAttributes.ReadOnly;
-            Datei(@"Documents\Versteckt\d.txt", "d");
+            WriteFile(@"Documents\Versteckt\d.txt", "d");
             new DirectoryInfo(Path.Combine(doks, "Versteckt")).Attributes |= FileAttributes.Hidden;
-            Datei(@"Documents\versteckt.txt", "e", FileAttributes.Hidden);
-            Datei(@"Documents\system.dat", "f", FileAttributes.System);
-            Datei(@"Pictures\p.jpg", "p");
-            Datei("NTUSER.DAT", "hive", FileAttributes.Hidden | FileAttributes.System);
-            Datei("ntuser.dat.LOG1", "log", FileAttributes.Hidden | FileAttributes.System);
+            WriteFile(@"Documents\versteckt.txt", "e", FileAttributes.Hidden);
+            WriteFile(@"Documents\system.dat", "f", FileAttributes.System);
+            WriteFile(@"Pictures\p.jpg", "p");
+            WriteFile("NTUSER.DAT", "hive", FileAttributes.Hidden | FileAttributes.System);
+            WriteFile("ntuser.dat.LOG1", "log", FileAttributes.Hidden | FileAttributes.System);
             // Verknuepfungspunkt wie "Eigene Bilder" in Dokumente - zeigt auf Pictures.
             using (var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe",
                        $"/c mklink /J \"{Path.Combine(doks, "Eigene Bilder")}\" \"{Path.Combine(besitzer, "Pictures")}\"")
@@ -2288,14 +2288,14 @@ internal static partial class Program
             Robo(sicherungNeu, anwenderAlt, new[] { "/E", "/ZB", "/COPYALL", "/R:1", "/W:1", "/MT:32" });
             Robo(sicherungNeu, anwenderNeu, ProfileExcludes.RestoreSwitches());
 
-            static (bool Geschuetzt, int Eigene) Rechte(string datei)
+            static (bool Geschuetzt, int Eigene) Rights(string datei)
             {
                 var s = new FileInfo(datei).GetAccessControl();
                 return (s.AreAccessRulesProtected,
                         s.GetAccessRules(true, false, typeof(System.Security.Principal.SecurityIdentifier)).Count);
             }
-            var rAlt = Rechte(Path.Combine(anwenderAlt, @"Documents\Normal\a.txt"));
-            var rNeu = Rechte(Path.Combine(anwenderNeu, @"Documents\Normal\a.txt"));
+            var rAlt = Rights(Path.Combine(anwenderAlt, @"Documents\Normal\a.txt"));
+            var rNeu = Rights(Path.Combine(anwenderNeu, @"Documents\Normal\a.txt"));
             Console.WriteLine($"         alt (/COPYALL): Vererbung aus = {rAlt.Geschuetzt}, eigene Regeln = {rAlt.Eigene}");
             Console.WriteLine($"         neu (/COPY:DAT): Vererbung aus = {rNeu.Geschuetzt}, eigene Regeln = {rNeu.Eigene}");
             Check("neue Schalter: Datei erbt die Rechte des Zielprofils (keine fremden Rechte)",
@@ -2308,23 +2308,23 @@ internal static partial class Program
         }
 
         // Die Dienste, die anfangs keine eigenen Pruefungen hatten.
-        LocalizerPruefen();
-        SystemHelferPruefen(root);
-        AbbruchUndLeistungPruefen();
-        ProzessePruefen(root);
-        UpdateUeberHttpPruefen(root);
-        WingetInstallerPruefen(root);
-        WingetDienstPruefen(root);
-        SicherungsdienstPruefen(root);
-        LaufwerkPruefen(root);
-        MozillaPruefen(root);
-        MozillaPflegePruefen(root);
-        if (OperatingSystem.IsWindows()) FirefoxEchtPruefen(root);
-        NeuesZielPruefen();
-        TaskbandNamenPruefen();
-        KennungenPruefen();
-        if (OperatingSystem.IsWindows()) VerknuepfungenEchtPruefen(root);
-        SicherungsdienstAmEchtenDesktop(root);
+        LocalizerCheck();
+        SystemHelpersCheck(root);
+        CancellationAndPerformanceCheck();
+        ProcessesCheck(root);
+        UpdateOverHttpCheck(root);
+        WingetInstallerCheck(root);
+        WingetServiceCheck(root);
+        BackupServiceCheck(root);
+        DriveFoldersCheck(root);
+        MozillaCheck(root);
+        MozillaMaintenanceCheck(root);
+        if (OperatingSystem.IsWindows()) FirefoxRealCheck(root);
+        NewTargetCheck();
+        TaskbandNamesCheck();
+        AppIdsCheck();
+        if (OperatingSystem.IsWindows()) ShortcutsRealCheck(root);
+        BackupServiceOnRealDesktop(root);
 
         // Zuletzt: den Explorer neu starten - wie beim Zurueckschreiben der
         // Taskleiste. Laeuft als letzte Pruefung, weil danach der Desktop kurz weg ist.
@@ -2334,38 +2334,38 @@ internal static partial class Program
             var echtBand = new List<string>();
             using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(Taskleiste.TaskbandSchluessel))
                 foreach (var name in k?.GetValueNames() ?? Array.Empty<string>())
-                    if (DesignRegistry.Lesen(Microsoft.Win32.Registry.CurrentUser, Taskleiste.TaskbandSchluessel, name) is { } v)
+                    if (DesignRegistry.Read(Microsoft.Win32.Registry.CurrentUser, Taskleiste.TaskbandSchluessel, name) is { } v)
                         echtBand.Add($"{name} ({v.Typ})");
-            var echtPins = Taskleiste.Verknuepfungen(Taskleiste.PinOrdner(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
+            var echtPins = Taskleiste.Shortcuts(Taskleiste.PinFolder(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
             Console.WriteLine($"         Taskband: {(echtBand.Count == 0 ? "leer" : string.Join(", ", echtBand))}");
-            Console.WriteLine($"         angeheftet: {(echtPins.Count == 0 ? "nichts" : Taskleiste.Namen(echtPins))}");
+            Console.WriteLine($"         angeheftet: {(echtPins.Count == 0 ? "nichts" : Taskleiste.Names(echtPins))}");
 
-            if (!ExplorerNeustart.TaskleisteDa())
+            if (!ExplorerNeustart.TaskbarPresent())
             {
                 Console.WriteLine("         (keine Taskleiste auf diesem Laeufer - Neustart-Pruefung uebersprungen)");
             }
             else
             {
                 var uhrNeu = System.Diagnostics.Stopwatch.StartNew();
-                var (neuOk, vonSelbst) = ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+                var (neuOk, vonSelbst) = ExplorerNeustart.Restart(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
                 Console.WriteLine($"         Neustart: {(neuOk ? "Taskleiste wieder da" : "Taskleiste NICHT wieder da")}, "
                                   + $"{(vonSelbst ? "von Windows selbst" : "vom Tool gestartet")}, {uhrNeu.Elapsed.TotalSeconds:F1} s");
                 Check("echt: nach dem Neustart ist die Taskleiste wieder da", neuOk);
             }
         }
 
-        SymboleAmEchtenDesktop(root);
+        IconsOnRealDesktop(root);
 
         // Hintergrund: so setzen wie das Tool, Explorer neu starten, auf dem
         // Bildschirm nachsehen. Ganz am Ende, der Desktop wechselt dabei mehrfach.
-        if (OperatingSystem.IsWindows()) HintergrundEchtPruefen(root);
+        if (OperatingSystem.IsWindows()) WallpaperRealCheck(root);
 
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
         try { Directory.Delete(root, true); } catch { }
         return _failed == 0 ? 0 : 1;
     }
 
-    private static string Deutsch(string de, string en) => de;
+    private static string German(string de, string en) => de;
 
     /// <summary>
     /// Hintergrund echt: setzen wie das Tool, den Explorer neu starten und am
@@ -2374,11 +2374,11 @@ internal static partial class Program
     /// zum Vergleich die Schnittstelle der Einstellungen-App (IDesktopWallpaper).
     /// </summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private static void HintergrundEchtPruefen(string root)
+    private static void WallpaperRealCheck(string root)
     {
         Console.WriteLine("\n== Hintergrund echt: setzen, Explorer neu starten, Bildschirm pruefen ==");
-        HintergrundEcht.WindowsFassung();
-        if (!ExplorerNeustart.TaskleisteDa())
+        HintergrundEcht.WindowsVersion();
+        if (!ExplorerNeustart.TaskbarPresent())
         {
             Console.WriteLine("         (keine Taskleiste auf diesem Laeufer - uebersprungen)");
             return;
@@ -2386,8 +2386,8 @@ internal static partial class Program
         var hgNutzer = DesktopScreenshot.GetInteractiveUser();
         using var hgHku = hgNutzer?.Sid is { } hgSid ? Microsoft.Win32.Registry.Users.OpenSubKey(hgSid, true) : null;
         var hgWurzel = hgHku ?? Microsoft.Win32.Registry.CurrentUser;
-        bool hgEigen = DesktopHintergrund.IstProzessBenutzer(hgNutzer?.Sid);
-        var hgVorher = DesktopHintergrund.Lesen(hgWurzel);
+        bool hgEigen = DesktopHintergrund.IsProcessUser(hgNutzer?.Sid);
+        var hgVorher = DesktopHintergrund.Read(hgWurzel);
         Console.WriteLine($"         Zweig: {(hgHku is null ? "HKCU" : @"HKU\" + hgNutzer!.Sid)}, Tool laeuft als dieser Benutzer: {hgEigen}");
         Console.WriteLine($"         vorher: Bild={hgVorher.Bild ?? "-"}, Farbe={hgVorher.Farbe}, Typ={hgVorher.Typ?.ToString() ?? "-"}, "
                           + $"Stil={hgVorher.Stil ?? "-"}, virtuelle Desktops mit eigenem Bild: {hgVorher.DesktopBilder.Count}");
@@ -2399,32 +2399,32 @@ internal static partial class Program
         var lila = ((byte)107, (byte)105, (byte)214);
         var tuerkis = ((byte)0, (byte)150, (byte)160);
         string rotBild = Path.Combine(hgOrdner, "rot.png"), gruenBild = Path.Combine(hgOrdner, "gruen.png");
-        HintergrundEcht.EinfarbigesPng(rotBild, rot);
-        HintergrundEcht.EinfarbigesPng(gruenBild, gruen);
+        HintergrundEcht.SolidColorPng(rotBild, rot);
+        HintergrundEcht.SolidColorPng(gruenBild, gruen);
         var strecken = new HintergrundEinstellung { Darstellung = "2", Kacheln = "0" };
-        void Neustart(string wozu)
+        void Restart(string wozu)
         {
-            var (ok, _) = ExplorerNeustart.NeuStarten(TimeSpan.FromSeconds(25)).GetAwaiter().GetResult();
+            var (ok, _) = ExplorerNeustart.Restart(TimeSpan.FromSeconds(25)).GetAwaiter().GetResult();
             Console.WriteLine($"         Explorer neu gestartet ({wozu}): {(ok ? "ok" : "Taskleiste NICHT wieder da")}");
         }
 
-        HintergrundEcht.Zustand("Ausgangslage", hgWurzel, hgNutzer?.ProfilePath);
-        HintergrundEcht.GrosseFenster("Ausgangslage");
-        Console.WriteLine($"         [Ausgangslage] meist: {HintergrundEcht.Meist()}");
+        HintergrundEcht.State("Ausgangslage", hgWurzel, hgNutzer?.ProfilePath);
+        HintergrundEcht.LargeWindows("Ausgangslage");
+        Console.WriteLine($"         [Ausgangslage] meist: {HintergrundEcht.MostCommon()}");
         var hgWeg = DesktopScreenshot.HideWindows();
         System.Threading.Thread.Sleep(1000);
-        HintergrundEcht.GrosseFenster("Fenster beiseite");
+        HintergrundEcht.LargeWindows("Fenster beiseite");
         try
         {
             // 1. Ein Bild - wie das Tool es setzt.
-            var r1 = DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken);
+            var r1 = DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken);
             Console.WriteLine($"         Bild: eingetragen {r1.Eingetragen}, angezeigt {r1.Angezeigt}, virtuelle Desktops {r1.VirtuelleDesktops}");
             Check("echt: Bild beim angemeldeten Benutzer eingetragen", r1.Eingetragen);
             Check("echt: Windows zeigt das Bild sofort", r1.Angezeigt);
-            var a1 = HintergrundEcht.Sichtbar(rot);
+            var a1 = HintergrundEcht.IsVisible(rot);
             Check("echt: das Bild ist auf dem Bildschirm", a1 > 0.5, $"{a1:P0} rot");
-            Neustart("Bild");
-            var a2 = HintergrundEcht.Sichtbar(rot);
+            Restart("Bild");
+            var a2 = HintergrundEcht.IsVisible(rot);
             Check("echt: nach dem Explorer-Neustart ist das Bild noch da", a2 > 0.5, $"{a2:P0} rot");
 
             // 2. Nur in der Registry - so steht es beim angemeldeten Benutzer,
@@ -2432,103 +2432,103 @@ internal static partial class Program
             //    Explorer-Neustart liest den Hintergrund nicht neu ein (er
             //    gehoert zur Sitzung) - der Neustart fuer die Taskleiste kann
             //    ihn also nicht verlieren. Erst die Anmeldung liest die Registry.
-            DesktopHintergrund.BildEintragen(hgWurzel, gruenBild, strecken);
-            Neustart("nur eingetragen");
+            DesktopHintergrund.WriteImage(hgWurzel, gruenBild, strecken);
+            Restart("nur eingetragen");
             System.Threading.Thread.Sleep(3000);
-            var a3 = HintergrundEcht.Anteil(rot);
+            var a3 = HintergrundEcht.Share(rot);
             Check("echt: ein Explorer-Neustart laesst den Hintergrund der Sitzung stehen", a3 > 0.5,
-                $"{a3:P0} rot, {HintergrundEcht.Anteil(gruen):P0} gruen");
+                $"{a3:P0} rot, {HintergrundEcht.Share(gruen):P0} gruen");
 
             // Zur Auskunft: was die Anmeldung taete (UpdatePerUserSystemParameters
             // liest die Registry wie beim Anmelden) - erst mit altem
             // Zwischenspeicher, dann verworfen wie beim fremden Konto.
-            HintergrundEcht.WieBeimAnmelden();
-            Console.WriteLine($"         wie beim Anmelden, alter Zwischenspeicher: {HintergrundEcht.Anteil(gruen):P0} gruen (Registry), {HintergrundEcht.Anteil(rot):P0} rot (alt)");
-            DesktopHintergrund.ZwischenspeicherVerwerfen(hgWurzel, hgNutzer?.ProfilePath);
-            HintergrundEcht.WieBeimAnmelden();
-            Console.WriteLine($"         wie beim Anmelden, Zwischenspeicher verworfen: {HintergrundEcht.Anteil(gruen):P0} gruen (Registry), {HintergrundEcht.Anteil(rot):P0} rot (alt)");
+            HintergrundEcht.AsAtSignIn();
+            Console.WriteLine($"         wie beim Anmelden, alter Zwischenspeicher: {HintergrundEcht.Share(gruen):P0} gruen (Registry), {HintergrundEcht.Share(rot):P0} rot (alt)");
+            DesktopHintergrund.DiscardCache(hgWurzel, hgNutzer?.ProfilePath);
+            HintergrundEcht.AsAtSignIn();
+            Console.WriteLine($"         wie beim Anmelden, Zwischenspeicher verworfen: {HintergrundEcht.Share(gruen):P0} gruen (Registry), {HintergrundEcht.Share(rot):P0} rot (alt)");
 
             // 3. Volltonfarbe.
-            var r4 = DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, lila);
+            var r4 = DesktopHintergrund.SetColor(hgWurzel, hgEigen, lila);
             Console.WriteLine($"         Volltonfarbe: eingetragen {r4.Eingetragen}, angezeigt {r4.Angezeigt}");
             Check("echt: Volltonfarbe eingetragen", r4.Eingetragen);
-            var a4 = HintergrundEcht.Sichtbar(lila);
+            var a4 = HintergrundEcht.IsVisible(lila);
             Check("echt: die Volltonfarbe ist auf dem Bildschirm", a4 > 0.5, $"{a4:P0} lila");
             Console.WriteLine($"         Design-Datei: {r4.DesignDatei?.Datei ?? "-"}, geaendert {r4.DesignDatei?.Geaendert}, {r4.DesignDatei?.Grund ?? "ok"}");
             if (r4.DesignDatei is { Datei: { } themaDatei } && File.Exists(themaDatei)
                 && themaDatei.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), StringComparison.OrdinalIgnoreCase))
             {
-                var themaText = DesignDatei.DateiLesen(themaDatei).Inhalt;
+                var themaText = DesignDatei.ReadFile(themaDatei).Inhalt;
                 Check("echt: Volltonfarbe steht auch in der Design-Datei (Custom.theme)",
-                    DesignDatei.Lesen(themaText, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214");
+                    DesignDatei.Read(themaText, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214");
             }
             else
             {
                 Check("echt: Windows-Design ausserhalb des Profils bleibt unangetastet", r4.DesignDatei is { Geaendert: false });
             }
-            var standLila = DesktopHintergrund.Lesen(hgWurzel);
-            var k1 = DesktopHintergrund.Kontrolle(standLila, Deutsch);
+            var standLila = DesktopHintergrund.Read(hgWurzel);
+            var k1 = DesktopHintergrund.Verify(standLila, German);
             Check("echt: Kontrolle bestaetigt die gesetzte Volltonfarbe", k1 is null, k1);
             var desktopFoto = DesktopScreenshot.CaptureDesktopWindow();
             Console.WriteLine($"         Desktop-Fenster (PrintWindow): {(desktopFoto is null ? "nicht abbildbar" : $"{DesktopScreenshot.ColorShare(desktopFoto, lila):P0} lila, meist {DesktopScreenshot.MostCommonColor(desktopFoto)}")}");
 
             // Kontrolle bemerkt, wenn der Desktop etwas anderes zeigt, und Erneut repariert es.
-            DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, tuerkis, hgNutzer?.ProfilePath);
-            HintergrundEcht.Sichtbar(tuerkis);
-            var k2 = DesktopHintergrund.Kontrolle(standLila, Deutsch);
+            DesktopHintergrund.SetColor(hgWurzel, hgEigen, tuerkis, hgNutzer?.ProfilePath);
+            HintergrundEcht.IsVisible(tuerkis);
+            var k2 = DesktopHintergrund.Verify(standLila, German);
             Console.WriteLine($"         Kontrolle bei falscher Farbe: {k2 ?? "(nichts bemerkt)"}");
             Check("echt: Kontrolle bemerkt eine andere Farbe", k2 is not null);
             Check("echt: Unterschied in der Registry wird benannt",
-                DesktopHintergrund.Unterschied(standLila, DesktopHintergrund.Lesen(hgWurzel), Deutsch)?.Contains("Farbe") == true);
-            DesktopHintergrund.Erneut(hgWurzel, hgEigen, standLila, hgNutzer?.ProfilePath);
-            HintergrundEcht.Sichtbar(lila);
-            var k3 = DesktopHintergrund.Kontrolle(standLila, Deutsch);
+                DesktopHintergrund.Difference(standLila, DesktopHintergrund.Read(hgWurzel), German)?.Contains("Farbe") == true);
+            DesktopHintergrund.Retry(hgWurzel, hgEigen, standLila, hgNutzer?.ProfilePath);
+            HintergrundEcht.IsVisible(lila);
+            var k3 = DesktopHintergrund.Verify(standLila, German);
             Check("echt: erneut gesetzt - Kontrolle wieder zufrieden", k3 is null, k3);
-            var einfluesse = string.Join("; ", DesktopHintergrund.Einfluesse(hgWurzel, true, Deutsch));
+            var einfluesse = string.Join("; ", DesktopHintergrund.Influences(hgWurzel, true, German));
             Console.WriteLine($"         Einfluesse: {(einfluesse.Length > 0 ? einfluesse : "keine")}");
-            Neustart("Volltonfarbe");
-            var a5 = HintergrundEcht.Sichtbar(lila);
+            Restart("Volltonfarbe");
+            var a5 = HintergrundEcht.IsVisible(lila);
             Check("echt: nach dem Explorer-Neustart ist die Volltonfarbe noch da", a5 > 0.5, $"{a5:P0} lila");
 
             // 4. Nur eingetragene Farbe: Der Explorer-Neustart laesst die der Sitzung stehen.
-            DesktopHintergrund.FarbeEintragen(hgWurzel, tuerkis);
-            Neustart("Farbe nur eingetragen");
+            DesktopHintergrund.WriteColor(hgWurzel, tuerkis);
+            Restart("Farbe nur eingetragen");
             System.Threading.Thread.Sleep(3000);
-            var a6 = HintergrundEcht.Anteil(lila);
+            var a6 = HintergrundEcht.Share(lila);
             Check("echt: auch die Volltonfarbe der Sitzung bleibt beim Explorer-Neustart stehen", a6 > 0.5,
-                $"{a6:P0} lila, {HintergrundEcht.Anteil(tuerkis):P0} tuerkis");
-            HintergrundEcht.WieBeimAnmelden();
-            Console.WriteLine($"         wie beim Anmelden: {HintergrundEcht.Anteil(tuerkis):P0} tuerkis (Registry), {HintergrundEcht.Anteil(lila):P0} lila (Sitzung)");
+                $"{a6:P0} lila, {HintergrundEcht.Share(tuerkis):P0} tuerkis");
+            HintergrundEcht.AsAtSignIn();
+            Console.WriteLine($"         wie beim Anmelden: {HintergrundEcht.Share(tuerkis):P0} tuerkis (Registry), {HintergrundEcht.Share(lila):P0} lila (Sitzung)");
 
             // 5. Ablauf wie beim Anwender (Protokoll vom 22.11.2026): erst die
             //    Design-Werte (seine 33), dann die Volltonfarbe #6B69D6, dann der
             //    Explorer-Neustart fuer die Taskleiste. Ausgangslage: ein Bild.
             Console.WriteLine("   -- Ablauf wie beim Anwender: Design-Werte, Volltonfarbe, Explorer-Neustart --");
-            DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
-            HintergrundEcht.Sichtbar(rot);
-            var ue = DesignRegistry.Uebernehmen(hgWurzel, HintergrundEcht.AnwenderDesign(), hgEigen);
+            DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
+            HintergrundEcht.IsVisible(rot);
+            var ue = DesignRegistry.Apply(hgWurzel, HintergrundEcht.UserTheme(), hgEigen);
             Console.WriteLine($"         Design-Werte: {ue.Gesetzt.Count} gesetzt, {ue.OhneDatei.Count} ohne Datei, {ue.NichtSchreibbar.Count} nicht schreibbar");
-            var r5 = DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, lila, hgNutzer?.ProfilePath);
+            var r5 = DesktopHintergrund.SetColor(hgWurzel, hgEigen, lila, hgNutzer?.ProfilePath);
             Console.WriteLine($"         Volltonfarbe (Tool): eingetragen {r5.Eingetragen}, angezeigt {r5.Angezeigt}");
-            HintergrundEcht.Verlauf("Volltonfarbe (Tool)", lila, 1, 3, 6);
-            Neustart("wie beim Anwender");
-            var v5 = HintergrundEcht.Verlauf("nach dem Explorer-Neustart", lila, 1, 4, 8);
-            HintergrundEcht.Zustand("danach", hgWurzel, hgNutzer?.ProfilePath);
+            HintergrundEcht.ShareOverTime("Volltonfarbe (Tool)", lila, 1, 3, 6);
+            Restart("wie beim Anwender");
+            var v5 = HintergrundEcht.ShareOverTime("nach dem Explorer-Neustart", lila, 1, 4, 8);
+            HintergrundEcht.State("danach", hgWurzel, hgNutzer?.ProfilePath);
             Check("echt: Volltonfarbe nach Design-Werten und Explorer-Neustart noch da (Ablauf des Anwenders)", v5 > 0.5, $"{v5:P0} lila");
 
             // 5b. Wie 5, aber jeder virtuelle Desktop behaelt einen LEEREN
             //     Wallpaper-Eintrag statt keinen.
             Console.WriteLine("   -- wie 5, virtuelle Desktops mit leerem Wallpaper-Eintrag --");
-            DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
-            HintergrundEcht.Sichtbar(rot);
-            DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, lila, hgNutzer?.ProfilePath);
+            DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
+            HintergrundEcht.IsVisible(rot);
+            DesktopHintergrund.SetColor(hgWurzel, hgEigen, lila, hgNutzer?.ProfilePath);
             using (var vd = hgWurzel.OpenSubKey(DesktopHintergrund.VirtuelleDesktopsSchluessel, true))
                 foreach (var n in vd?.GetSubKeyNames() ?? Array.Empty<string>())
                     using (var d = vd!.OpenSubKey(n, true)) d?.SetValue("Wallpaper", "");
-            HintergrundEcht.Verlauf("Volltonfarbe, leerer Eintrag", lila, 1, 3);
-            Neustart("leerer Eintrag");
-            HintergrundEcht.Verlauf("leerer Eintrag, nach dem Explorer-Neustart", lila, 1, 4, 8);
-            HintergrundEcht.Zustand("danach", hgWurzel, hgNutzer?.ProfilePath);
+            HintergrundEcht.ShareOverTime("Volltonfarbe, leerer Eintrag", lila, 1, 3);
+            Restart("leerer Eintrag");
+            HintergrundEcht.ShareOverTime("leerer Eintrag, nach dem Explorer-Neustart", lila, 1, 4, 8);
+            HintergrundEcht.State("danach", hgWurzel, hgNutzer?.ProfilePath);
             using (var vd = hgWurzel.OpenSubKey(DesktopHintergrund.VirtuelleDesktopsSchluessel, true))
                 foreach (var n in vd?.GetSubKeyNames() ?? Array.Empty<string>())
                     using (var d = vd!.OpenSubKey(n, true)) d?.DeleteValue("Wallpaper", false);
@@ -2537,18 +2537,18 @@ internal static partial class Program
             //     explorer.exe), danach die Volltonfarbe bzw. das Bild direkt.
             //     Im Design bleibt bei einer Farbe ein Bild stehen - ein leeres
             //     deutete Windows 11 als Blickpunkt.
-            var aktuellesDesign = DesktopHintergrund.DesignDateiPfad(hgWurzel, hgNutzer?.ProfilePath);
+            var aktuellesDesign = DesktopHintergrund.ThemeFilePath(hgWurzel, hgNutzer?.ProfilePath);
             Console.WriteLine($"   -- Windows wendet das Design an (aktuell: {aktuellesDesign ?? "-"}) --");
             if (aktuellesDesign is not null && File.Exists(aktuellesDesign) && hgNutzer?.ProfilePath is { } profilWd)
             {
                 var themesWd = Path.Combine(profilWd, @"AppData\Local\Microsoft\Windows\Themes");
                 var dateiWd = "";
-                bool Aktuell(string d) => string.Equals(DesktopHintergrund.DesignDateiPfad(hgWurzel, profilWd), d, StringComparison.OrdinalIgnoreCase);
-                bool Anwenden(string inhalt, int art, Func<bool> da)
+                bool IsCurrent(string d) => string.Equals(DesktopHintergrund.ThemeFilePath(hgWurzel, profilWd), d, StringComparison.OrdinalIgnoreCase);
+                bool Apply(string inhalt, int art, Func<bool> da)
                 {
                     var uhr = System.Diagnostics.Stopwatch.StartNew();
-                    DesktopHintergrund.ArtEintragen(hgWurzel, art);
-                    var r = WindowsDesign.AnwendenUndWarten(themesWd, inhalt, hgNutzer.Name, d => Aktuell(d) && da(), Aktuell,
+                    DesktopHintergrund.WriteStyle(hgWurzel, art);
+                    var r = WindowsDesign.ApplyAndWait(themesWd, inhalt, hgNutzer.Name, d => IsCurrent(d) && da(), IsCurrent,
                         TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
                     dateiWd = r.Datei;
                     Console.WriteLine($"         angewendet: {r.Gestartet} {r.Fehler}, uebernommen: {r.Uebernommen} nach {uhr.Elapsed.TotalSeconds:F1} s ({Path.GetFileName(r.Datei)})");
@@ -2556,32 +2556,32 @@ internal static partial class Program
                 }
 
                 var gruenFarbe = ((byte)16, (byte)124, (byte)16);
-                var vorlageWd = DesignDatei.DateiLesen(aktuellesDesign).Inhalt;
-                var themaFarbe = DesignDatei.FuerWiederherstellung(vorlageWd, "DaSi-Pruefung", gruenFarbe, null, null, HintergrundEcht.AnwenderDesign());
+                var vorlageWd = DesignDatei.ReadFile(aktuellesDesign).Inhalt;
+                var themaFarbe = DesignDatei.ForRestore(vorlageWd, "DaSi-Pruefung", gruenFarbe, null, null, HintergrundEcht.UserTheme());
                 Check("echt: Windows wendet das Design mit der Volltonfarbe an (Farbe in der Registry)",
-                    Anwenden(themaFarbe, 1, () => Hintergrund.FarbeLesen(DesktopHintergrund.Lesen(hgWurzel).Farbe) == gruenFarbe));
-                var rWd = DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, gruenFarbe, hgNutzer.ProfilePath);
+                    Apply(themaFarbe, 1, () => Hintergrund.ReadColor(DesktopHintergrund.Read(hgWurzel).Farbe) == gruenFarbe));
+                var rWd = DesktopHintergrund.SetColor(hgWurzel, hgEigen, gruenFarbe, hgNutzer.ProfilePath);
                 Console.WriteLine($"         danach Volltonfarbe direkt: eingetragen {rWd.Eingetragen}, Explorer {(rWd.ExplorerFehler ?? "ok")}");
-                HintergrundEcht.Zustand("Design + Farbe", hgWurzel, hgNutzer.ProfilePath);
-                var v1Wd = HintergrundEcht.Verlauf("Design + Farbe", gruenFarbe, 1, 3);
+                HintergrundEcht.State("Design + Farbe", hgWurzel, hgNutzer.ProfilePath);
+                var v1Wd = HintergrundEcht.ShareOverTime("Design + Farbe", gruenFarbe, 1, 3);
                 Check("echt: Design + Farbe - der Desktop zeigt die Farbe (kein Blickpunkt)", v1Wd > 0.5, $"{v1Wd:P0}");
-                Check("echt: Design + Farbe - Blickpunkt bleibt aus", !DesktopHintergrund.Einfluesse(hgWurzel, true, Deutsch).Any(e => e.Contains("Blickpunkt")));
+                Check("echt: Design + Farbe - Blickpunkt bleibt aus", !DesktopHintergrund.Influences(hgWurzel, true, German).Any(e => e.Contains("Blickpunkt")));
                 Check("echt: Design + Farbe - das Design ist jetzt das aktuelle",
-                    string.Equals(DesktopHintergrund.DesignDateiPfad(hgWurzel, hgNutzer.ProfilePath), dateiWd, StringComparison.OrdinalIgnoreCase));
-                Neustart("Design + Farbe");
-                var v2Wd = HintergrundEcht.Verlauf("Design + Farbe, nach dem Explorer-Neustart", gruenFarbe, 1, 4);
+                    string.Equals(DesktopHintergrund.ThemeFilePath(hgWurzel, hgNutzer.ProfilePath), dateiWd, StringComparison.OrdinalIgnoreCase));
+                Restart("Design + Farbe");
+                var v2Wd = HintergrundEcht.ShareOverTime("Design + Farbe, nach dem Explorer-Neustart", gruenFarbe, 1, 4);
                 Check("echt: Design + Farbe - nach dem Explorer-Neustart noch da", v2Wd > 0.5, $"{v2Wd:P0}");
 
-                var themaBild = DesignDatei.FuerWiederherstellung(DesignDatei.DateiLesen(dateiWd).Inhalt, "DaSi-Pruefung", null, rotBild, strecken, Array.Empty<DesignEintrag>());
+                var themaBild = DesignDatei.ForRestore(DesignDatei.ReadFile(dateiWd).Inhalt, "DaSi-Pruefung", null, rotBild, strecken, Array.Empty<DesignEintrag>());
                 var ersteDatei = dateiWd;
-                Check("echt: Windows wendet das Design mit dem Bild an (ist das aktuelle)", Anwenden(themaBild, 0, () => true));
+                Check("echt: Windows wendet das Design mit dem Bild an (ist das aktuelle)", Apply(themaBild, 0, () => true));
                 Check("echt: zweites Anwenden unter neuem Namen, das fruehere DaSi-Design ist weg",
                     dateiWd != ersteDatei && File.Exists(dateiWd) && !File.Exists(ersteDatei));
-                DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken, hgNutzer.ProfilePath);
-                var v3Wd = HintergrundEcht.Verlauf("Design + Bild", rot, 1, 3);
+                DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer.ProfilePath);
+                var v3Wd = HintergrundEcht.ShareOverTime("Design + Bild", rot, 1, 3);
                 Check("echt: Design + Bild - der Desktop zeigt das Bild", v3Wd > 0.5, $"{v3Wd:P0}");
-                Neustart("Design + Bild");
-                var v4Wd = HintergrundEcht.Verlauf("Design + Bild, nach dem Explorer-Neustart", rot, 1, 4);
+                Restart("Design + Bild");
+                var v4Wd = HintergrundEcht.ShareOverTime("Design + Bild, nach dem Explorer-Neustart", rot, 1, 4);
                 Check("echt: Design + Bild - nach dem Explorer-Neustart noch da", v4Wd > 0.5, $"{v4Wd:P0}");
             }
             else
@@ -2590,34 +2590,34 @@ internal static partial class Program
             }
 
             // 6./7. Dasselbe ueber IDesktopWallpaper - die Schnittstelle der Einstellungen-App.
-            Console.WriteLine($"   -- IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Stand() ?? "nicht erreichbar"} --");
+            Console.WriteLine($"   -- IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Snapshot() ?? "nicht erreichbar"} --");
             foreach (var abschalten in new[] { false, true })
             {
                 var was = abschalten ? "Farbe + Enable(false)" : "Farbe + SetWallpaper(\"\")";
-                DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
-                HintergrundEcht.Sichtbar(rot);
+                DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
+                HintergrundEcht.IsVisible(rot);
                 try
                 {
-                    DesktopHintergrund.FarbeEintragen(hgWurzel, tuerkis);
-                    DesktopHintergrund.Schnittstelle.FarbeSetzen(tuerkis, abschalten);
-                    HintergrundEcht.Verlauf($"IDesktopWallpaper {was}", tuerkis, 1, 3);
-                    Neustart(was);
-                    HintergrundEcht.Verlauf($"IDesktopWallpaper {was}, nach dem Explorer-Neustart", tuerkis, 1, 4, 8);
-                    HintergrundEcht.Zustand("danach", hgWurzel, hgNutzer?.ProfilePath);
+                    DesktopHintergrund.WriteColor(hgWurzel, tuerkis);
+                    DesktopHintergrund.Schnittstelle.SetColor(tuerkis, abschalten);
+                    HintergrundEcht.ShareOverTime($"IDesktopWallpaper {was}", tuerkis, 1, 3);
+                    Restart(was);
+                    HintergrundEcht.ShareOverTime($"IDesktopWallpaper {was}, nach dem Explorer-Neustart", tuerkis, 1, 4, 8);
+                    HintergrundEcht.State("danach", hgWurzel, hgNutzer?.ProfilePath);
                 }
                 catch (Exception ex) { Console.WriteLine($"         IDesktopWallpaper {was}: {ex.GetType().Name}: {ex.Message}"); }
                 finally
                 {
-                    if (abschalten) try { DesktopHintergrund.Schnittstelle.Einschalten(); } catch { }
+                    if (abschalten) try { DesktopHintergrund.Schnittstelle.Enable(); } catch { }
                 }
             }
             try
             {
-                DesktopHintergrund.Schnittstelle.BildSetzen(gruenBild, strecken);
-                HintergrundEcht.Verlauf("IDesktopWallpaper Bild", gruen, 1, 3);
-                Neustart("IDesktopWallpaper Bild");
-                HintergrundEcht.Verlauf("IDesktopWallpaper Bild, nach dem Explorer-Neustart", gruen, 1, 4, 8);
-                HintergrundEcht.Zustand("danach", hgWurzel, hgNutzer?.ProfilePath);
+                DesktopHintergrund.Schnittstelle.SetImage(gruenBild, strecken);
+                HintergrundEcht.ShareOverTime("IDesktopWallpaper Bild", gruen, 1, 3);
+                Restart("IDesktopWallpaper Bild");
+                HintergrundEcht.ShareOverTime("IDesktopWallpaper Bild, nach dem Explorer-Neustart", gruen, 1, 4, 8);
+                HintergrundEcht.State("danach", hgWurzel, hgNutzer?.ProfilePath);
             }
             catch (Exception ex) { Console.WriteLine($"         IDesktopWallpaper Bild: {ex.GetType().Name}: {ex.Message}"); }
         }
@@ -2626,10 +2626,10 @@ internal static partial class Program
             try
             {
                 if (hgVorher.Bild is { } altBild && File.Exists(altBild))
-                    DesktopHintergrund.BildSetzen(hgWurzel, hgEigen, altBild,
+                    DesktopHintergrund.SetImage(hgWurzel, hgEigen, altBild,
                         new HintergrundEinstellung { Darstellung = hgVorher.Stil, Kacheln = hgVorher.Kacheln });
-                else if (Hintergrund.FarbeLesen(hgVorher.Farbe) is { } altFarbe)
-                    DesktopHintergrund.FarbeSetzen(hgWurzel, hgEigen, altFarbe);
+                else if (Hintergrund.ReadColor(hgVorher.Farbe) is { } altFarbe)
+                    DesktopHintergrund.SetColor(hgWurzel, hgEigen, altFarbe);
             }
             catch { /* Laeufer */ }
             DesktopScreenshot.RestoreWindows(hgWeg);
@@ -2653,28 +2653,28 @@ internal sealed class TestDesktop : IDesktopView
     }
 
     private bool _auto, _raster;
-    public (int Breite, int Hoehe) Groesse() => (_b, _h);
+    public (int Breite, int Hoehe) Size() => (_b, _h);
     public bool AutomatischAnordnen { get => _auto; set { _auto = value; Protokoll.Add($"anordnen={value}"); } }
     public bool AmRasterAusrichten { get => _raster; set { _raster = value; Protokoll.Add($"raster={value}"); } }
 
-    public IReadOnlyList<DesktopIcon> Symbole()
+    public IReadOnlyList<DesktopIcon> Icons()
     {
         _aufrufe++;
         if (SpaeterDazu is { } d && _aufrufe > d.NachAufruf && !_symbole.Contains(d.Symbol)) _symbole.Add(d.Symbol);
         return _symbole.ToList();
     }
 
-    public void Aktualisieren() => Protokoll.Add("aktualisieren");
+    public void Refresh() => Protokoll.Add("aktualisieren");
 
-    public void Dazu(DesktopIcon symbol) => _symbole.Add(symbol);
+    public void Add(DesktopIcon symbol) => _symbole.Add(symbol);
 
-    public void Setzen(int index, int x, int y)
+    public void Set(int index, int x, int y)
     {
         Protokoll.Add($"setzen {_symbole[index].Name}");
         _symbole[index] = _symbole[index] with { X = x, Y = y };
     }
 
-    public (int, int) Stelle(string name) => _symbole.First(s => s.Name == name) is var s ? (s.X, s.Y) : (-1, -1);
+    public (int, int) PositionOf(string name) => _symbole.First(s => s.Name == name) is var s ? (s.X, s.Y) : (-1, -1);
 
     public void Dispose() { }
 }
@@ -2683,7 +2683,7 @@ internal sealed class TestDesktop : IDesktopView
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 internal static class HintergrundEcht
 {
-    public static void EinfarbigesPng(string pfad, (byte R, byte G, byte B) f)
+    public static void SolidColorPng(string pfad, (byte R, byte G, byte B) f)
     {
         const int n = 64;
         var px = new byte[n * n * 4];
@@ -2701,14 +2701,14 @@ internal static class HintergrundEcht
     /// Desktop-Fenster zaehlt mit, weil auf manchem Laeufer ein Fenster den
     /// Desktop verdeckt, das sich nicht beiseitelegen laesst.
     /// </summary>
-    public static double Anteil((byte R, byte G, byte B) f)
+    public static double Share((byte R, byte G, byte B) f)
     {
-        double schirm = AnteilIn(DesktopScreenshot.CaptureVirtualScreen().Bgra, f);
-        var d = DesktopFenster();
-        return d is null ? schirm : Math.Max(schirm, AnteilIn(d, f));
+        double schirm = ShareIn(DesktopScreenshot.CaptureVirtualScreen().Bgra, f);
+        var d = DesktopWindow();
+        return d is null ? schirm : Math.Max(schirm, ShareIn(d, f));
     }
 
-    private static double AnteilIn(byte[] b, (byte R, byte G, byte B) f)
+    private static double ShareIn(byte[] b, (byte R, byte G, byte B) f)
     {
         int pixel = b.Length / 4, schritt = Math.Max(1, pixel / 20000), treffer = 0, gesamt = 0;
         for (int i = 0; i < pixel; i += schritt)
@@ -2725,7 +2725,7 @@ internal static class HintergrundEcht
     /// Anmelden. Unter neueren Windows-Fassungen nicht immer wirksam - daher
     /// nur zur Auskunft.
     /// </summary>
-    public static void WieBeimAnmelden()
+    public static void AsAtSignIn()
     {
         try
         {
@@ -2742,7 +2742,7 @@ internal static class HintergrundEcht
     /// wenn andere Fenster darueber liegen. null, wenn das nicht geht oder es
     /// leer bleibt.
     /// </summary>
-    public static byte[]? DesktopFenster()
+    public static byte[]? DesktopWindow()
     {
         var h = FindWindowW("Progman", null);
         if (h == IntPtr.Zero || !GetWindowRect(h, out var r)) return null;
@@ -2770,7 +2770,7 @@ internal static class HintergrundEcht
     }
 
     /// <summary>Sichtbare Fenster, die mindestens die Haelfte des Hauptbildschirms bedecken - fuer das Protokoll.</summary>
-    public static void GrosseFenster(string wann)
+    public static void LargeWindows(string wann)
     {
         int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
         var liste = new List<string>();
@@ -2814,7 +2814,7 @@ internal static class HintergrundEcht
     [DllImport("gdi32.dll")] private static extern IntPtr CreateDIBSection(IntPtr hdc, ref BITMAPINFO bmi, uint usage, out IntPtr bits, IntPtr section, uint offset);
 
     /// <summary>Welche Windows-Fassung - fuer das Protokoll.</summary>
-    public static void WindowsFassung()
+    public static void WindowsVersion()
     {
         string name = "?", fassung = "?", build = "?";
         try
@@ -2829,7 +2829,7 @@ internal static class HintergrundEcht
     }
 
     /// <summary>Die Design-Werte aus der Sicherung eines Anwenders (Windows 11, dunkel, Akzentfarbe #0078D4).</summary>
-    public static List<DesignEintrag> AnwenderDesign() => new()
+    public static List<DesignEintrag> UserTheme() => new()
     {
             new() { Gruppe = @"Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = @"SystemUsesLightTheme", Typ = @"DWord", Wert = @"0" },
             new() { Gruppe = @"Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = @"AppsUseLightTheme", Typ = @"DWord", Wert = @"0" },
@@ -2867,14 +2867,14 @@ internal static class HintergrundEcht
     };
 
     /// <summary>Die haeufigsten Farben auf dem Bildschirm und im Desktop-Fenster.</summary>
-    public static string Meist()
+    public static string MostCommon()
     {
-        var d = DesktopFenster();
-        return $"Bildschirm {MeistIn(DesktopScreenshot.CaptureVirtualScreen().Bgra)}; Desktop-Fenster {(d is null ? "-" : MeistIn(d))}";
+        var d = DesktopWindow();
+        return $"Bildschirm {MostCommonIn(DesktopScreenshot.CaptureVirtualScreen().Bgra)}; Desktop-Fenster {(d is null ? "-" : MostCommonIn(d))}";
     }
 
     /// <summary>Die zwei haeufigsten Farben, z. B. "#6B69D6 83 %, #000000 9 %".</summary>
-    private static string MeistIn(byte[] b)
+    private static string MostCommonIn(byte[] b)
     {
         int pixel = b.Length / 4, schritt = Math.Max(1, pixel / 20000), gesamt = 0;
         var zaehler = new Dictionary<int, int>();
@@ -2890,7 +2890,7 @@ internal static class HintergrundEcht
     }
 
     /// <summary>Anteil der Farbe nach 1, 3 ... Sekunden - mit den haeufigsten Farben. Gibt den letzten Anteil zurueck.</summary>
-    public static double Verlauf(string was, (byte R, byte G, byte B) f, params int[] sekunden)
+    public static double ShareOverTime(string was, (byte R, byte G, byte B) f, params int[] sekunden)
     {
         var uhr = System.Diagnostics.Stopwatch.StartNew();
         double a = 0;
@@ -2898,22 +2898,22 @@ internal static class HintergrundEcht
         {
             var warten = TimeSpan.FromSeconds(s) - uhr.Elapsed;
             if (warten > TimeSpan.Zero) System.Threading.Thread.Sleep(warten);
-            a = Anteil(f);
-            Console.WriteLine($"         {was}, nach {s} s: {a:P0} erwartete Farbe - meist {Meist()}");
+            a = Share(f);
+            Console.WriteLine($"         {was}, nach {s} s: {a:P0} erwartete Farbe - meist {MostCommon()}");
         }
         return a;
     }
 
     /// <summary>Was Windows zum Hintergrund meint: Registry, Sitzung, Zwischenspeicher, Blickpunkt, Design-Datei, IDesktopWallpaper.</summary>
-    public static void Zustand(string wann, Microsoft.Win32.RegistryKey wurzel, string? profil)
+    public static void State(string wann, Microsoft.Win32.RegistryKey wurzel, string? profil)
     {
-        var s = DesktopHintergrund.Lesen(wurzel);
+        var s = DesktopHintergrund.Read(wurzel);
         var c = FarbeEcht.GetSysColor(1);
         Console.WriteLine($"         [{wann}] Registry: Bild={s.Bild ?? "-"}, Farbe={s.Farbe}, Typ={s.Typ?.ToString() ?? "-"}, Stil={s.Stil ?? "-"}; "
                           + $"Sitzungsfarbe #{c & 0xFF:X2}{(c >> 8) & 0xFF:X2}{(c >> 16) & 0xFF:X2}");
         try
         {
-            var z = Hintergrund.Zwischenspeicher(profil);
+            var z = Hintergrund.Cache(profil);
             var fi = z is null ? null : new FileInfo(z);
             using var d = wurzel.OpenSubKey(DesktopHintergrund.DesktopSchluessel);
             Console.WriteLine($"         [{wann}] TranscodedWallpaper: {(fi is { Exists: true } ? $"{fi.Length} Bytes, {fi.LastWriteTime:HH:mm:ss}" : "fehlt")}, "
@@ -2934,7 +2934,7 @@ internal static class HintergrundEcht
             Console.WriteLine($"         [{wann}] Blickpunkt EnabledState={sp?.GetValue("EnabledState")?.ToString() ?? "-"}; Design-Datei {design ?? "-"}: {auszug}");
         }
         catch (Exception ex) { Console.WriteLine($"         [{wann}] Blickpunkt/Design: {ex.Message}"); }
-        Console.WriteLine($"         [{wann}] IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Stand() ?? "nicht erreichbar"}");
+        Console.WriteLine($"         [{wann}] IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Snapshot() ?? "nicht erreichbar"}");
         try
         {
             using var vd = wurzel.OpenSubKey(DesktopHintergrund.VirtuelleDesktopsSchluessel);
@@ -2949,13 +2949,13 @@ internal static class HintergrundEcht
     }
 
     /// <summary>Wartet bis zu 15 Sekunden, bis die Farbe ueberwiegt - der Desktop braucht nach dem Setzen einen Moment.</summary>
-    public static double Sichtbar((byte R, byte G, byte B) f)
+    public static double IsVisible((byte R, byte G, byte B) f)
     {
         var uhr = System.Diagnostics.Stopwatch.StartNew();
         double a;
         while (true)
         {
-            a = Anteil(f);
+            a = Share(f);
             if (a > 0.5 || uhr.Elapsed.TotalSeconds > 15) return a;
             System.Threading.Thread.Sleep(1000);
         }

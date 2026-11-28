@@ -92,16 +92,16 @@ public static class OrdnerAuswahlDialog
 
         var summe = new TextBlock { Classes = { "dialogText" }, FontSize = 11, Opacity = 0.8, VerticalAlignment = VerticalAlignment.Center, Margin = new Avalonia.Thickness(10, 0, 0, 0) };
 
-        var btnAll = Knopf(Loc.Tr("Alle", "All"));
-        var btnNone = Knopf(Loc.Tr("Keine", "None"));
-        var btnCancel = Knopf(Loc.Tr("Abbrechen", "Cancel"), "cancel");
-        var btnOk = Knopf(Loc.Tr("Übernehmen", "Apply"), "yes");
+        var btnAll = MakeButton(Loc.Tr("Alle", "All"));
+        var btnNone = MakeButton(Loc.Tr("Keine", "None"));
+        var btnCancel = MakeButton(Loc.Tr("Abbrechen", "Cancel"), "cancel");
+        var btnOk = MakeButton(Loc.Tr("Übernehmen", "Apply"), "yes");
         btnOk.Width = 130;
         btnCancel.Width = 100;
 
-        IEnumerable<Zeile> Sichtbar() => zeilen.Where(z => z.Cb.IsVisible);
+        IEnumerable<Zeile> Visible() => zeilen.Where(z => z.Cb.IsVisible);
 
-        void Zusammenfassen()
+        void Summarize()
         {
             var gewaehlt = zeilen.Where(z => z.Cb.IsChecked == true).ToList();
             btnOk.IsEnabled = gewaehlt.Count > 0;
@@ -112,27 +112,27 @@ public static class OrdnerAuswahlDialog
         }
 
         // Groessen im Hintergrund - nur fuer die sichtbaren Ordner, jeder einmal.
-        void GroessenHolen()
+        void FetchSizes()
         {
-            foreach (var z in Sichtbar().Where(z => !z.Gestartet))
+            foreach (var z in Visible().Where(z => !z.Gestartet))
             {
                 z.Gestartet = true;
                 z.Anzeige.Text = "…";
                 var zeile = z;
-                _ = Task.Run(() => LaufwerksOrdner.Groesse(zeile.E.Pfad, stop.Token)).ContinueWith(t =>
+                _ = Task.Run(() => LaufwerksOrdner.SizeOf(zeile.E.Pfad, stop.Token)).ContinueWith(t =>
                 {
                     if (stop.IsCancellationRequested || t.Result < 0) return;
                     Dispatcher.UIThread.Post(() =>
                     {
                         zeile.Bytes = t.Result;
                         zeile.Anzeige.Text = SystemHelpers.FormatBytes(t.Result);
-                        Zusammenfassen();
+                        Summarize();
                     });
                 }, TaskScheduler.Default);
             }
         }
 
-        void Filtern()
+        void Filter()
         {
             bool aus = ausblenden.IsChecked == true;
             foreach (var z in zeilen)
@@ -141,14 +141,14 @@ public static class OrdnerAuswahlDialog
                 // Ausgeblendetes darf nicht unbemerkt mitlaufen.
                 if (!z.Cb.IsVisible) z.Cb.IsChecked = false;
             }
-            leer.IsVisible = !Sichtbar().Any();
-            GroessenHolen();
-            Zusammenfassen();
+            leer.IsVisible = !Visible().Any();
+            FetchSizes();
+            Summarize();
         }
 
-        foreach (var z in zeilen) z.Cb.IsCheckedChanged += (_, _) => Zusammenfassen();
-        ausblenden.IsCheckedChanged += (_, _) => Filtern();
-        btnAll.Click += (_, _) => { foreach (var z in Sichtbar()) z.Cb.IsChecked = true; };
+        foreach (var z in zeilen) z.Cb.IsCheckedChanged += (_, _) => Summarize();
+        ausblenden.IsCheckedChanged += (_, _) => Filter();
+        btnAll.Click += (_, _) => { foreach (var z in Visible()) z.Cb.IsChecked = true; };
         btnNone.Click += (_, _) => { foreach (var z in zeilen) z.Cb.IsChecked = false; };
 
         var dialog = new Window
@@ -206,7 +206,7 @@ public static class OrdnerAuswahlDialog
 
         dialog.Content = root;
         dialog.Closed += (_, _) => { stop.Cancel(); tcs.TrySetResult(null); };
-        Filtern();
+        Filter();
 
         await dialog.ShowDialog(owner);
         return await tcs.Task;
@@ -223,7 +223,7 @@ public static class OrdnerAuswahlDialog
     }
 
     /// <param name="art">"yes", "cancel" oder nichts (neutral) - siehe Button.dialog in App.axaml.</param>
-    private static Button Knopf(string inhalt, string? art = null)
+    private static Button MakeButton(string inhalt, string? art = null)
     {
         var b = new Button { Content = inhalt, Width = 70, Height = 30, CornerRadius = new Avalonia.CornerRadius(4), Classes = { "dialog" } };
         if (art is not null) b.Classes.Add(art);

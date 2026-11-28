@@ -200,7 +200,7 @@
                                         <Button Grid.Column="1" Classes="secondary" Height="20" Padding="7,0" Margin="6,0,0,0" FontSize="11"
                                                 VerticalAlignment="Center" VerticalContentAlignment="Center"
                                                 Content="{Binding LaufwerkKnopf}" IsVisible="{Binding LaufwerkKnopfSichtbar}"
-                                                Command="{Binding LaufwerkAendernCommand}" IsEnabled="{Binding UiEnabled}"
+                                                Command="{Binding ChangeDriveFoldersCommand}" IsEnabled="{Binding UiEnabled}"
                                                 ToolTip.Tip="{Binding TipLaufwerk}"/>
                                     </Grid>
                                 </Border>

@@ -56,7 +56,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
         // Nach einem Lauf neu bewerten: Eine Sicherung hat Ordner angelegt,
         // eine Wiederherstellung Programme installiert.
-        if (value) VerfuegbarkeitPruefen(); else PunkteNeuMelden();
+        if (value) CheckAvailability(); else NotifyItemsChanged();
     }
 
     /// <summary>
@@ -86,7 +86,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (!string.IsNullOrEmpty(value) && UserProfiles.Contains(value) && SelectedProfile != value)
             SelectedProfile = value;
-        VerfuegbarkeitPruefen();
+        CheckAvailability();
         ScheduleAutoStorageCheck();
     }
 
@@ -181,7 +181,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(OwnFolderLabel));
         OnPropertyChanged(nameof(OwnFolderTip));
-        ZielAnzeigen();
+        ShowTarget();
     }
 
     /// <summary>
@@ -193,13 +193,13 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     private string _zielBasis = "";
 
-    private void SetzeZiel(string basis)
+    private void SetTarget(string basis)
     {
         _zielBasis = basis;
-        ZielAnzeigen();
+        ShowTarget();
     }
 
-    private void ZielAnzeigen()
+    private void ShowTarget()
     {
         if (string.IsNullOrWhiteSpace(_zielBasis)) return;
         BackupPath = !IsRestoreMode && OwnBackupFolder
@@ -253,7 +253,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(OwnFolderTip));
         // Andere Sicherung, andere Ordner darin: die Wahl gilt nicht mehr.
         if (IsRestoreMode && SelLaufwerk) SelLaufwerk = false;
-        VerfuegbarkeitPruefen();
+        CheckAvailability();
         // Freien Platz am Ziellaufwerk sofort anzeigen (leichtgewichtig).
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -438,13 +438,13 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (value && _laufwerkGewaehlt.Count == 0 && !_laufwerkWaehltGerade)
             // Erst nach dem Klick: Ist der Haken bis dahin schon wieder weg, keine Liste.
-            Dispatcher.UIThread.Post(async () => { if (SelLaufwerk && _laufwerkGewaehlt.Count == 0) await LaufwerkWaehlen(); });
+            Dispatcher.UIThread.Post(async () => { if (SelLaufwerk && _laufwerkGewaehlt.Count == 0) await ChooseDriveFolders(); });
         else if (!value) _laufwerkGewaehlt = new();
-        LaufwerkMelden();
+        NotifyDriveFolders();
         ScheduleAutoStorageCheck();
     }
 
-    private void LaufwerkMelden()
+    private void NotifyDriveFolders()
     {
         OnPropertyChanged(nameof(LaufwerkKnopf));
         OnPropertyChanged(nameof(LaufwerkKnopfSichtbar));
@@ -453,20 +453,20 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task LaufwerkAendern() => await LaufwerkWaehlen();
+    private async Task ChangeDriveFolders() => await ChooseDriveFolders();
 
     /// <summary>
     /// Zeigt die Liste und merkt die Wahl vor. Abgebrochen: Die bisherige Wahl
     /// bleibt - gab es keine, geht der Haken wieder weg. Nichts gewaehlt: Haken weg.
     /// </summary>
-    private async Task LaufwerkWaehlen()
+    private async Task ChooseDriveFolders()
     {
         if (_laufwerkWaehltGerade) return;
         _laufwerkWaehltGerade = true;
         try
         {
-            var eintraege = IsRestoreMode ? LaufwerksOrdner.InDerSicherung(BackupPath)
-                                          : LaufwerksOrdner.Auflisten(LaufwerksOrdner.Wurzel, BackupPath);
+            var eintraege = IsRestoreMode ? LaufwerksOrdner.InBackup(BackupPath)
+                                          : LaufwerksOrdner.ListFolders(LaufwerksOrdner.Wurzel, BackupPath);
             var vorher = _laufwerkGewaehlt.Select(e => e.Name).ToList();
             List<LaufwerksOrdner.Eintrag>? wahl = null;
             if (LaufwerkAuswahl is not null) wahl = await LaufwerkAuswahl(eintraege, IsRestoreMode, vorher);
@@ -489,7 +489,7 @@ public partial class MainWindowViewModel : ObservableObject
         finally
         {
             _laufwerkWaehltGerade = false;
-            LaufwerkMelden();
+            NotifyDriveFolders();
             ScheduleAutoStorageCheck();
         }
     }
@@ -501,8 +501,8 @@ public partial class MainWindowViewModel : ObservableObject
         // von einem Teil (TeilGeaendert), bleiben die Teile, wie sie sind.
         if (!_teileSetzen)
         {
-            if (value && !TeilDesign && !TeilSymbole && !TeilScreenshot) TeileSetzen(_vorgabe);
-            else if (!value) TeileSetzen((false, false, false));
+            if (value && !TeilDesign && !TeilSymbole && !TeilScreenshot) SetParts(_vorgabe);
+            else if (!value) SetParts((false, false, false));
         }
         ScheduleAutoStorageCheck();
     }
@@ -516,37 +516,37 @@ public partial class MainWindowViewModel : ObservableObject
     private readonly System.Collections.Generic.Dictionary<Punkt, (string De, string En)?> _gesperrt = new();
     private string? _operaFunde;
 
-    private bool Frei(Punkt p) => !_gesperrt.TryGetValue(p, out var g) || g is null;
-    private string? Grund(Punkt p) => _gesperrt.TryGetValue(p, out var g) && g is { } x ? Tr(x.De, x.En) : null;
+    private bool IsAvailable(Punkt p) => !_gesperrt.TryGetValue(p, out var g) || g is null;
+    private string? Reason(Punkt p) => _gesperrt.TryGetValue(p, out var g) && g is { } x ? Tr(x.De, x.En) : null;
 
-    public bool EnUser        => UiEnabled && Frei(Punkt.Profil);
-    public bool EnAppData     => UserOptionsEnabled && Frei(Punkt.AppData);
-    public bool EnCloud       => UserOptionsEnabled && Frei(Punkt.Cloud);
-    public bool EnFirefox     => UiEnabled && Frei(Punkt.Firefox);
-    public bool EnEdge        => UiEnabled && Frei(Punkt.Edge);
-    public bool EnChrome      => UiEnabled && Frei(Punkt.Chrome);
-    public bool EnBrave       => UiEnabled && Frei(Punkt.Brave);
-    public bool EnOpera       => UiEnabled && Frei(Punkt.Opera);
-    public bool EnThunderbird => UiEnabled && Frei(Punkt.Thunderbird);
-    public bool EnWinget      => UiEnabled && Frei(Punkt.Winget);
-    public bool EnWlan        => UiEnabled && Frei(Punkt.Wlan);
-    public bool EnPrinter     => UiEnabled && Frei(Punkt.Drucker);
-    public bool EnDesignDesktop => UiEnabled && (Frei(Punkt.Hintergrund) || Frei(Punkt.DesktopShot));
-    public bool EnLaufwerk    => UiEnabled && Frei(Punkt.Laufwerk);
+    public bool EnUser        => UiEnabled && IsAvailable(Punkt.Profil);
+    public bool EnAppData     => UserOptionsEnabled && IsAvailable(Punkt.AppData);
+    public bool EnCloud       => UserOptionsEnabled && IsAvailable(Punkt.Cloud);
+    public bool EnFirefox     => UiEnabled && IsAvailable(Punkt.Firefox);
+    public bool EnEdge        => UiEnabled && IsAvailable(Punkt.Edge);
+    public bool EnChrome      => UiEnabled && IsAvailable(Punkt.Chrome);
+    public bool EnBrave       => UiEnabled && IsAvailable(Punkt.Brave);
+    public bool EnOpera       => UiEnabled && IsAvailable(Punkt.Opera);
+    public bool EnThunderbird => UiEnabled && IsAvailable(Punkt.Thunderbird);
+    public bool EnWinget      => UiEnabled && IsAvailable(Punkt.Winget);
+    public bool EnWlan        => UiEnabled && IsAvailable(Punkt.Wlan);
+    public bool EnPrinter     => UiEnabled && IsAvailable(Punkt.Drucker);
+    public bool EnDesignDesktop => UiEnabled && (IsAvailable(Punkt.Hintergrund) || IsAvailable(Punkt.DesktopShot));
+    public bool EnLaufwerk    => UiEnabled && IsAvailable(Punkt.Laufwerk);
 
-    public string? TipUser        => Grund(Punkt.Profil);
-    public string? TipAppData     => Grund(Punkt.AppData);
-    public string? TipCloud       => Grund(Punkt.Cloud);
-    public string? TipFirefox     => Grund(Punkt.Firefox);
-    public string? TipEdge        => Grund(Punkt.Edge);
-    public string? TipChrome      => Grund(Punkt.Chrome);
-    public string? TipBrave       => Grund(Punkt.Brave);
-    public string? TipThunderbird => Grund(Punkt.Thunderbird);
-    public string? TipWinget      => Grund(Punkt.Winget);
-    public string? TipWlan        => Grund(Punkt.Wlan);
-    public string? TipPrinter     => Grund(Punkt.Drucker);
+    public string? TipUser        => Reason(Punkt.Profil);
+    public string? TipAppData     => Reason(Punkt.AppData);
+    public string? TipCloud       => Reason(Punkt.Cloud);
+    public string? TipFirefox     => Reason(Punkt.Firefox);
+    public string? TipEdge        => Reason(Punkt.Edge);
+    public string? TipChrome      => Reason(Punkt.Chrome);
+    public string? TipBrave       => Reason(Punkt.Brave);
+    public string? TipThunderbird => Reason(Punkt.Thunderbird);
+    public string? TipWinget      => Reason(Punkt.Winget);
+    public string? TipWlan        => Reason(Punkt.Wlan);
+    public string? TipPrinter     => Reason(Punkt.Drucker);
     // Auch im freien Zustand: was beim Anhaken passiert, bzw. was vorgemerkt ist.
-    public string? TipLaufwerk    => Grund(Punkt.Laufwerk)
+    public string? TipLaufwerk    => Reason(Punkt.Laufwerk)
         ?? (_laufwerkGewaehlt.Count > 0
             ? Tr($"Vorgemerkt: {string.Join(", ", _laufwerkGewaehlt.Select(e => e.Name))}. Ändern über den Knopf rechts.",
                  $"Selected: {string.Join(", ", _laufwerkGewaehlt.Select(e => e.Name))}. Change with the button on the right.")
@@ -556,27 +556,27 @@ public partial class MainWindowViewModel : ObservableObject
             : Tr($"Beim Anhaken erscheint die Liste der Ordner unter {LaufwerksOrdner.Wurzel} (etwa Daten, Scans) zum Vormerken. Gesichert wird mit \"Ausgewählte Aktionen starten\". Die Windows-Ordner (Windows, Programme, Benutzer …) sind in der Liste ausgeblendet.",
                  $"When ticked, the list of the folders under {LaufwerksOrdner.Wurzel} (such as data or scans) appears for selection. They are backed up with \"Start selected actions\". The Windows folders (Windows, Program Files, Users …) are hidden in the list."));
     // Auch im freien Zustand: was alles dazugehoert.
-    public string? TipDesignDesktop => !Frei(Punkt.Hintergrund) && !Frei(Punkt.DesktopShot)
+    public string? TipDesignDesktop => !IsAvailable(Punkt.Hintergrund) && !IsAvailable(Punkt.DesktopShot)
         ? Tr("Die gewählte Sicherung enthält weder Design noch Desktop-Symbole oder Screenshot.", "The selected backup contains neither design nor desktop icons or a screenshot.")
         : Tr("Wie der Arbeitsplatz aussieht: Design (Hintergrund, Farben, Mauszeiger, Taskleiste, Start), die Lage der Desktop-Symbole, die angehefteten Taskleisten-Symbole und auf Wunsch ein Foto des Desktops.",
              "How the workspace looks: design (wallpaper, colors, pointer, taskbar, Start), where the desktop icons are, the icons pinned to the taskbar and, if wanted, a picture of the desktop.");
     // Bei Opera auch im freien Zustand: welche Fassungen gefunden wurden.
-    public string? TipOpera => Grund(Punkt.Opera)
+    public string? TipOpera => Reason(Punkt.Opera)
         ?? (_operaFunde is null ? null : Tr($"Gefunden: {_operaFunde}", $"Found: {_operaFunde}"));
 
     /// <summary>Bewertet alle Punkte neu und waehlt gesperrte ab.</summary>
-    private void VerfuegbarkeitPruefen()
+    private void CheckAvailability()
     {
-        var sicherung = IsRestoreMode ? AppCatalog.BeimWiederherstellen(BackupPath) : null;
+        var sicherung = IsRestoreMode ? AppCatalog.ForRestore(BackupPath) : null;
         foreach (var p in Enum.GetValues<Punkt>())
-            _gesperrt[p] = sicherung is not null ? sicherung[p] : AppCatalog.BeimSichern(p, SourcePath);
+            _gesperrt[p] = sicherung is not null ? sicherung[p] : AppCatalog.ForBackup(p, SourcePath);
 
         // Welche Opera-Fassungen gibt es dort, wo gerade gelesen wird?
         var operaOrt = IsRestoreMode
             ? (string.IsNullOrWhiteSpace(BackupPath) ? null : Path.Combine(BackupPath, AppCatalog.Opera.BackupOrdner))
-            : (string.IsNullOrWhiteSpace(SourcePath) ? null : AppCatalog.Pfad(SourcePath, AppCatalog.Opera.Rel));
-        var funde = operaOrt is null ? new System.Collections.Generic.List<string>() : AppCatalog.Opera.Varianten(operaOrt);
-        _operaFunde = funde.Count == 0 ? null : string.Join(", ", funde.Select(AppCatalog.Opera.Anzeigename));
+            : (string.IsNullOrWhiteSpace(SourcePath) ? null : AppCatalog.PathIn(SourcePath, AppCatalog.Opera.Rel));
+        var funde = operaOrt is null ? new System.Collections.Generic.List<string>() : AppCatalog.Opera.Variants(operaOrt);
+        _operaFunde = funde.Count == 0 ? null : string.Join(", ", funde.Select(AppCatalog.Opera.DisplayName));
 
         // Design & Desktop: welche Teile liegen in der Sicherung? Beim Sichern
         // gibt es alle. Aendert sich das (Modus, andere Sicherung), stehen die
@@ -584,31 +584,31 @@ public partial class MainWindowViewModel : ObservableObject
         _hatScreenshot = _hatSymbole = true;
         if (IsRestoreMode && !string.IsNullOrWhiteSpace(BackupPath) && Directory.Exists(BackupPath))
         {
-            _hatScreenshot = AppCatalog.HatDesktopScreenshot(BackupPath);
-            _hatSymbole = AppCatalog.HatDesktopSymbole(BackupPath);
+            _hatScreenshot = AppCatalog.HasDesktopScreenshot(BackupPath);
+            _hatSymbole = AppCatalog.HasDesktopIcons(BackupPath);
         }
-        TeileVorgeben();
+        ApplyPartDefaults();
 
         // Was gesperrt ist, kann nicht gewaehlt bleiben.
-        if (!Frei(Punkt.Profil)) SelUser = false;
-        if (!Frei(Punkt.AppData)) SelUserAppData = false;
-        if (!Frei(Punkt.Cloud)) SelUserCloud = false;
-        if (!Frei(Punkt.Firefox)) SelFirefox = false;
-        if (!Frei(Punkt.Edge)) SelEdge = false;
-        if (!Frei(Punkt.Chrome)) SelChrome = false;
-        if (!Frei(Punkt.Brave)) SelBrave = false;
-        if (!Frei(Punkt.Opera)) SelOpera = false;
-        if (!Frei(Punkt.Thunderbird)) SelThunderbird = false;
-        if (!Frei(Punkt.Winget)) SelWinget = false;
-        if (!Frei(Punkt.Wlan)) SelWlan = false;
-        if (!Frei(Punkt.Drucker)) SelPrinter = false;
-        if (!Frei(Punkt.Hintergrund) && !Frei(Punkt.DesktopShot)) SelDesignDesktop = false;
-        if (!Frei(Punkt.Laufwerk)) SelLaufwerk = false;
+        if (!IsAvailable(Punkt.Profil)) SelUser = false;
+        if (!IsAvailable(Punkt.AppData)) SelUserAppData = false;
+        if (!IsAvailable(Punkt.Cloud)) SelUserCloud = false;
+        if (!IsAvailable(Punkt.Firefox)) SelFirefox = false;
+        if (!IsAvailable(Punkt.Edge)) SelEdge = false;
+        if (!IsAvailable(Punkt.Chrome)) SelChrome = false;
+        if (!IsAvailable(Punkt.Brave)) SelBrave = false;
+        if (!IsAvailable(Punkt.Opera)) SelOpera = false;
+        if (!IsAvailable(Punkt.Thunderbird)) SelThunderbird = false;
+        if (!IsAvailable(Punkt.Winget)) SelWinget = false;
+        if (!IsAvailable(Punkt.Wlan)) SelWlan = false;
+        if (!IsAvailable(Punkt.Drucker)) SelPrinter = false;
+        if (!IsAvailable(Punkt.Hintergrund) && !IsAvailable(Punkt.DesktopShot)) SelDesignDesktop = false;
+        if (!IsAvailable(Punkt.Laufwerk)) SelLaufwerk = false;
 
-        PunkteNeuMelden();
+        NotifyItemsChanged();
     }
 
-    private void PunkteNeuMelden()
+    private void NotifyItemsChanged()
     {
         foreach (var n in new[]
                  {
@@ -647,8 +647,8 @@ public partial class MainWindowViewModel : ObservableObject
         // Die Wahl gilt nur fuer die Richtung, in der sie getroffen wurde.
         SelLaufwerk = false;
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
-        ZielAnzeigen();
-        VerfuegbarkeitPruefen();
+        ShowTarget();
+        CheckAvailability();
         ScheduleAutoStorageCheck();
     }
 
@@ -680,12 +680,12 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _teilSymbole;
     [ObservableProperty] private bool _teilScreenshot;
 
-    partial void OnTeilDesignChanged(bool value) { TeilGeaendert(value); ScheduleAutoStorageCheck(); }
-    partial void OnTeilSymboleChanged(bool value) => TeilGeaendert(value);
-    partial void OnTeilScreenshotChanged(bool value) => TeilGeaendert(value);
+    partial void OnTeilDesignChanged(bool value) { PartChanged(value); ScheduleAutoStorageCheck(); }
+    partial void OnTeilSymboleChanged(bool value) => PartChanged(value);
+    partial void OnTeilScreenshotChanged(bool value) => PartChanged(value);
 
     /// <summary>Ein Teil angehakt: die Kachel mit. Der letzte abgehakt: die Kachel ab.</summary>
-    private void TeilGeaendert(bool an)
+    private void PartChanged(bool an)
     {
         if (_teileSetzen) return;
         _teileSetzen = true;
@@ -703,7 +703,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>Die Teile, die das Anhaken der Kachel waehlt - siehe TeileVorgeben.</summary>
     private (bool Design, bool Symbole, bool Screenshot) _vorgabe = (true, true, false);
 
-    private void TeileSetzen((bool Design, bool Symbole, bool Screenshot) t)
+    private void SetParts((bool Design, bool Symbole, bool Screenshot) t)
     {
         var vorher = _teileSetzen;
         _teileSetzen = true;
@@ -719,7 +719,7 @@ public partial class MainWindowViewModel : ObservableObject
     private bool _hatScreenshot = true, _hatSymbole = true;
     private (bool, bool, bool, bool)? _teileStand;
     // Bedienbar, soweit es den Teil gibt - auch ohne angehakte Kachel.
-    public bool EnTeilDesign => EnDesignDesktop && Frei(Punkt.Hintergrund);
+    public bool EnTeilDesign => EnDesignDesktop && IsAvailable(Punkt.Hintergrund);
     public bool EnTeilSymbole => EnDesignDesktop && _hatSymbole;
     public bool EnTeilScreenshot => EnDesignDesktop && _hatScreenshot;
 
@@ -731,17 +731,17 @@ public partial class MainWindowViewModel : ObservableObject
     /// Symbolpositionen gibt (dann ordnet man nach ihm von Hand). Ist die
     /// Kachel an, gilt die neue Vorgabe sofort, sonst beim Anhaken.
     /// </summary>
-    private void TeileVorgeben()
+    private void ApplyPartDefaults()
     {
-        var design = Frei(Punkt.Hintergrund);
+        var design = IsAvailable(Punkt.Hintergrund);
         var stand = (IsRestoreMode, design, _hatSymbole, _hatScreenshot);
         if (_teileStand == stand) return;
         _teileStand = stand;
         _vorgabe = (design, _hatSymbole, IsRestoreMode && _hatScreenshot && !_hatSymbole);
-        if (SelDesignDesktop) TeileSetzen(_vorgabe);
+        if (SelDesignDesktop) SetParts(_vorgabe);
     }
 
-    public string? TipTeilDesign => Grund(Punkt.Hintergrund)
+    public string? TipTeilDesign => Reason(Punkt.Hintergrund)
         ?? Tr("Hintergrund (Bild oder Volltonfarbe), Hell/Dunkel für Windows und Apps, Akzentfarbe, Transparenz, Mauszeiger, Taskleiste und Start",
               "Wallpaper (image or solid color), light/dark mode for Windows and apps, accent color, transparency, mouse pointer, taskbar and Start");
     public string TipTeilSymbole => !_hatSymbole
@@ -766,7 +766,7 @@ public partial class MainWindowViewModel : ObservableObject
     internal Func<string, Task<string?>>? OrdnerDialog { get; set; }
 
     /// <summary>Oeffnet eine Adresse im Browser.</summary>
-    internal Func<string, bool> Oeffnen { get; set; } = SystemHelpers.Oeffnen;
+    internal Func<string, bool> Oeffnen { get; set; } = SystemHelpers.Open;
 
     /// <summary>Die Dienste hinter der Oberflaeche - fuer die winget-Attrappe und die Bild-Anzeige.</summary>
     internal WingetService Winget => _winget;
@@ -1176,7 +1176,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         var folder = await PickFolder(Tr("Backup Basis-Verzeichnis auswählen", "Select backup base directory"));
         if (folder == null) return;
-        if (SystemHelpers.IsNtfsDrive(folder)) SetzeZiel(folder);
+        if (SystemHelpers.IsNtfsDrive(folder)) SetTarget(folder);
         else await ShowInfo(Tr("Fehler", "Error"),
             Tr("Das ausgewählte Laufwerk ist NICHT mit NTFS formatiert!\nRobocopy benötigt zwingend NTFS.",
                "The selected drive is NOT formatted as NTFS!\nRobocopy strictly requires NTFS."));
@@ -1430,7 +1430,7 @@ public partial class MainWindowViewModel : ObservableObject
         _laufwerkAuswahl = null;
         if (tasks.Contains("Backup-Laufwerk") || tasks.Contains("Restore-Laufwerk"))
         {
-            if (_laufwerkGewaehlt.Count == 0) await LaufwerkWaehlen();
+            if (_laufwerkGewaehlt.Count == 0) await ChooseDriveFolders();
             if (_laufwerkGewaehlt.Count == 0)
             {
                 Log(Tr($"[INFO] Start abgebrochen - keine Ordner unter {LaufwerksOrdner.Wurzel} gewählt.",
@@ -1628,7 +1628,7 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Export-Wlan":        await _backup.ExportWlan(); break;
                     case "Export-Printer":     await _backup.ExportPrinters(); break;
                     case "Export-Design":      await _backup.ExportDesign(); break;
-                    case "Backup-Laufwerk":    await _backup.BackupLaufwerksOrdner((_laufwerkAuswahl ?? new()).Select(e => e.Pfad).ToList()); break;
+                    case "Backup-Laufwerk":    await _backup.BackupDriveFolders((_laufwerkAuswahl ?? new()).Select(e => e.Pfad).ToList()); break;
                     case "Capture-DesktopShot":
                         await _backup.CaptureDesktop();
                         await BringMainWindowToFront();
@@ -1648,7 +1648,7 @@ public partial class MainWindowViewModel : ObservableObject
                     case "Import-Wlan":         await _backup.ImportWlan(); break;
                     case "Import-Printer":      await _backup.ImportPrinters(); break;
                     case "Import-Design":       await _backup.ImportDesign(); break;
-                    case "Restore-Laufwerk":    await _backup.RestoreLaufwerksOrdner((_laufwerkAuswahl ?? new()).Select(e => e.Name).ToList()); break;
+                    case "Restore-Laufwerk":    await _backup.RestoreDriveFolders((_laufwerkAuswahl ?? new()).Select(e => e.Name).ToList()); break;
                     case "Show-DesktopShot":    await _backup.ShowDesktopScreenshot(); break;
                     case "Restore-DesktopIcons": await _backup.RestoreDesktopIcons(); break;
                 }

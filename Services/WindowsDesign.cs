@@ -41,9 +41,9 @@ public static class WindowsDesign
     /// aktuelle ist, wendet Windows nicht noch einmal an (unter Windows 11
     /// geprueft) - ein zweites Wiederherstellen haette sonst nichts bewirkt.
     /// </summary>
-    public static string NeuerDateiName() => $"{DateiPraefix}-{DateTime.Now:yyyyMMdd-HHmmss-fff}.theme";
+    public static string NewFileName() => $"{DateiPraefix}-{DateTime.Now:yyyyMMdd-HHmmss-fff}.theme";
 
-    /// <summary>Was <see cref="AnwendenUndWarten"/> ergab.</summary>
+    /// <summary>Was <see cref="ApplyAndWait"/> ergab.</summary>
     /// <param name="Gestartet">Liess sich das Anwenden starten?</param>
     /// <param name="Uebernommen">Hat Windows es innerhalb der Wartezeit uebernommen?</param>
     public sealed record Ergebnis(bool Gestartet, bool Uebernommen, string Datei, string? Fehler);
@@ -58,30 +58,30 @@ public static class WindowsDesign
     /// fruehere DaSi-Designs geloescht; sonst die neue Datei. Das aktuelle
     /// Design wird nie geloescht.
     /// </summary>
-    public static async Task<Ergebnis> AnwendenUndWarten(string ordner, string inhalt, string? benutzer,
+    public static async Task<Ergebnis> ApplyAndWait(string ordner, string inhalt, string? benutzer,
                                                          Func<string, bool> uebernommen, Func<string, bool> istAktuell,
                                                          TimeSpan hoechstens)
     {
         Directory.CreateDirectory(ordner);
-        var datei = Path.Combine(ordner, NeuerDateiName());
-        DesignDatei.DateiSchreiben(datei, inhalt, new System.Text.UnicodeEncoding(false, true));
+        var datei = Path.Combine(ordner, NewFileName());
+        DesignDatei.WriteFile(datei, inhalt, new System.Text.UnicodeEncoding(false, true));
         var start = DateTime.Now;
-        var (ok, fehler) = await Anwenden(datei, benutzer);
+        var (ok, fehler) = await Apply(datei, benutzer);
         bool da = false;
         if (ok)
         {
             var uhr = Stopwatch.StartNew();
             while (!(da = uebernommen(datei)) && uhr.Elapsed < hoechstens) await Task.Delay(500);
             await Task.Delay(1500);
-            EinstellungenSchliessen(start);
+            CloseSettings(start);
         }
         bool aktuell = istAktuell(datei);
-        Aufraeumen(ordner, aktuell ? datei : null, verwerfen: aktuell ? null : datei);
+        CleanUp(ordner, aktuell ? datei : null, verwerfen: aktuell ? null : datei);
         return new Ergebnis(ok, da, datei, fehler);
     }
 
     /// <summary>Fruehere DaSi-Designs loeschen - ausser <paramref name="behalten"/>; <paramref name="verwerfen"/> in jedem Fall.</summary>
-    private static void Aufraeumen(string ordner, string? behalten, string? verwerfen)
+    private static void CleanUp(string ordner, string? behalten, string? verwerfen)
     {
         try
         {
@@ -100,13 +100,13 @@ public static class WindowsDesign
     /// ueber eine geplante Aufgabe in seiner Sitzung, sonst direkt.
     /// </summary>
     /// <returns>Ob es sich starten liess, und was dabei schiefging.</returns>
-    public static async Task<(bool Ok, string? Fehler)> Anwenden(string datei, string? benutzer, CancellationToken ct = default)
+    public static async Task<(bool Ok, string? Fehler)> Apply(string datei, string? benutzer, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(benutzer))
         {
             try
             {
-                using var p = Process.Start(new ProcessStartInfo("explorer.exe", Anfuehrung(datei)) { UseShellExecute = false });
+                using var p = Process.Start(new ProcessStartInfo("explorer.exe", Quote(datei)) { UseShellExecute = false });
                 return (true, null);
             }
             catch (Exception ex) { return (false, ex.Message); }
@@ -114,8 +114,8 @@ public static class WindowsDesign
 
         var skript = string.Join("\n",
             "$ErrorActionPreference = 'Stop'",
-            $"$design = {PsText(datei)}",
-            $"$benutzer = {PsText(benutzer)}",
+            $"$design = {PsLiteral(datei)}",
+            $"$benutzer = {PsLiteral(benutzer)}",
             "$aufgabe = 'DaSi-Design-' + [guid]::NewGuid().ToString('N')",
             "$aktion = New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'explorer.exe') -Argument ('\"' + $design + '\"')",
             "$wer = New-ScheduledTaskPrincipal -UserId $benutzer -LogonType Interactive -RunLevel Limited",
@@ -152,7 +152,7 @@ public static class WindowsDesign
             var text = (await aus) + (await err);
             return text.Contains("GESTARTET", StringComparison.Ordinal)
                 ? (true, null)
-                : (false, ErsteZeile(text) ?? $"PowerShell endete mit {p.ExitCode}");
+                : (false, FirstLine(text) ?? $"PowerShell endete mit {p.ExitCode}");
         }
         catch (Exception ex) { return (false, ex.Message); }
     }
@@ -162,7 +162,7 @@ public static class WindowsDesign
     /// Einstellungen - das Fenster, wenn es seit <paramref name="seit"/>
     /// aufging, wieder schliessen.
     /// </summary>
-    public static void EinstellungenSchliessen(DateTime seit)
+    public static void CloseSettings(DateTime seit)
     {
         foreach (var p in Process.GetProcessesByName("SystemSettings"))
         {
@@ -172,11 +172,11 @@ public static class WindowsDesign
         }
     }
 
-    private static string Anfuehrung(string s) => "\"" + s + "\"";
+    private static string Quote(string s) => "\"" + s + "\"";
 
     /// <summary>PowerShell-Zeichenkette in einfachen Anfuehrungszeichen.</summary>
-    private static string PsText(string s) => "'" + s.Replace("'", "''") + "'";
+    private static string PsLiteral(string s) => "'" + s.Replace("'", "''") + "'";
 
-    private static string? ErsteZeile(string text)
+    private static string? FirstLine(string text)
         => text.Split('\n').Select(z => z.Trim()).FirstOrDefault(z => z.Length > 0);
 }
