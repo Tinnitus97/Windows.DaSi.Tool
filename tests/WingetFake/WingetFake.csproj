@@ -2,8 +2,8 @@
 
   <!--
     A fake winget for the tests: answers like winget, as dictated by the file
-    szenario.txt in the folder from DASI_WINGET_ATTRAPPE, and writes every
-    call to aufrufe.txt. That way every path of WingetService (export,
+    scenario.txt in the folder from DASI_WINGET_FAKE, and writes every
+    call to calls.txt. That way every path of WingetService (export,
     import, repair, reinstall) runs without installing anything on the test
     machine.
   -->
@@ -12,7 +12,7 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <AssemblyName>winget</AssemblyName>
-    <RootNamespace>WingetAttrappe</RootNamespace>
+    <RootNamespace>WingetFake</RootNamespace>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>

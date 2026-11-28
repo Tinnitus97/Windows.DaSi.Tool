@@ -100,11 +100,11 @@ Services/  ViewModels/  Views/
 Assets/app.ico
 
 tools/write-update-json.py    schreibt update.json fort
-tools/abdeckung.py            meldet Funktionen ohne Prüfung (CI)
+tools/coverage.py             meldet Funktionen ohne Prüfung (CI)
 tests/DaSiTests/              Prüfungen der Dienste
 tests/DaSiGuiTests/           Prüfungen der Oberfläche (ohne Bildschirm)
-tests/WingetAttrappe/         antwortet in den Prüfungen wie winget
-tests/abdeckung-ausnahmen.txt begründete Ausnahmen (derzeit keine)
+tests/WingetFake/             antwortet in den Prüfungen wie winget
+tests/coverage-exceptions.txt begründete Ausnahmen (derzeit keine)
 update.json                   was das Programm abfragt
 .github/workflows/            Bauen, Prüfen, Veröffentlichen
 ```

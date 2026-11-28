@@ -82,7 +82,7 @@ internal static class Program
         finally
         {
             try { File.Delete(urlDatei); } catch { }
-            Environment.SetEnvironmentVariable("DASI_WINGET_ATTRAPPE", null);
+            Environment.SetEnvironmentVariable("DASI_WINGET_FAKE", null);
             try { Directory.Delete(root, true); } catch { }
         }
         Console.WriteLine($"\nErgebnis: {_ok} bestanden, {_fehler} fehlgeschlagen.");
@@ -555,7 +555,7 @@ internal static class Program
     private static async Task WingetInUi(MainWindow w, MainWindowViewModel vm, string root)
     {
         Console.WriteLine("\n== winget in der Oberflaeche (Attrappe) ==");
-        var attrappe = Attrappen.WingetFake();
+        var attrappe = Fakes.WingetFake();
         if (attrappe is null || !OperatingSystem.IsWindows())
         {
             Console.WriteLine("         (nur unter Windows mit gebauter Attrappe)");
@@ -569,7 +569,7 @@ internal static class Program
         File.WriteAllText(roh, """{ "Sources": [ { "Packages": [ { "PackageIdentifier": "Notepad++.Notepad++" }, { "PackageIdentifier": "7zip.7zip" } ] } ] }""");
 
         // winget broken, but something else selected as well: continue without winget.
-        Attrappen.WingetScenario(root, new Dictionary<string, string> { ["version.code"] = "1" });
+        Fakes.WingetScenario(root, new Dictionary<string, string> { ["version.code"] = "1" });
         vm.SourcePath = Path.Combine(root, "Besitzer");
         vm.BackupPath = sicherung;
         vm.SelWinget = true;
@@ -589,7 +589,7 @@ internal static class Program
         vm.SelUser = false;
 
         // winget healthy: export through the fake.
-        Attrappen.WingetScenario(root, new Dictionary<string, string> { ["export.datei"] = roh });
+        Fakes.WingetScenario(root, new Dictionary<string, string> { ["export.datei"] = roh });
         Click(start);
         Check("Export ueber die Oberflaeche", await Finished(vm) && File.Exists(Path.Combine(sicherung, "Winget", "Export.json")), vm.LogText);
 
@@ -628,7 +628,7 @@ internal static class Program
         Check("Import: nur das Ausgewaehlte installiert", await Finished(vm) && vm.LogText.Contains("Installiere Notepad++.Notepad++") && !vm.LogText.Contains("Installiere 7zip"), vm.LogText);
         Click(Element<RadioButton>(w, "Sichern"));
         vm.SelWinget = false;
-        Environment.SetEnvironmentVariable("DASI_WINGET_ATTRAPPE", null);
+        Environment.SetEnvironmentVariable("DASI_WINGET_FAKE", null);
     }
 
     /// <summary>
@@ -643,11 +643,11 @@ internal static class Program
         WriteFile(Path.Combine(c, "Daten", "Kunden", "liste.txt"), new string('d', 2048));
         WriteFile(Path.Combine(c, "Scans", "scan.pdf"), "s");
         var ziel = Path.Combine(c, "DaSi", "Lauf");
-        var vorher = LaufwerksOrdner.Wurzel;
+        var vorher = DriveFolders.Wurzel;
         var start = FindButton(w, "Ausgewählte Aktionen starten");
         try
         {
-            LaufwerksOrdner.Wurzel = c + Path.DirectorySeparatorChar;
+            DriveFolders.Wurzel = c + Path.DirectorySeparatorChar;
             // There and back: re-reads the labels with the new drive.
             Click(Element<RadioButton>(w, "Wiederherstellen"));
             Click(Element<RadioButton>(w, "Sichern"));
@@ -655,18 +655,18 @@ internal static class Program
                 p.SetValue(vm, false);
             vm.SourcePath = Path.Combine(root, "Besitzer");
             vm.BackupPath = ziel;
-            Check("Kachel frei, Beschriftung nennt das Laufwerk", vm.EnLaufwerk && vm.TgLaufwerk == $"Ordner unter {LaufwerksOrdner.Wurzel} sichern", vm.TgLaufwerk);
+            Check("Kachel frei, Beschriftung nennt das Laufwerk", vm.EnLaufwerk && vm.TgLaufwerk == $"Ordner unter {DriveFolders.Wurzel} sichern", vm.TgLaufwerk);
             var kachel = All<CheckBox>(w).First(cb => Text(cb.Content) == vm.TgLaufwerk);
             Check("Tooltip: Liste beim Anhaken, gesichert wird beim Start", (vm.TipLaufwerk ?? "").Contains("Beim Anhaken") && vm.TipLaufwerk!.Contains("Ausgewählte Aktionen starten"), vm.TipLaufwerk);
 
             // Checking the box opens the list. Cancel: box unchecked again.
             Click(kachel);
             var d = await Dialog(w);
-            CheckBox Row(string name) => All<CheckBox>(d).First(cb => cb.Tag is LaufwerksOrdner.Eintrag e && e.Name == name);
-            var sichtbar = All<CheckBox>(d).Where(cb => cb.IsVisible && cb.Tag is LaufwerksOrdner.Eintrag).Select(cb => ((LaufwerksOrdner.Eintrag)cb.Tag!).Name).ToList();
+            CheckBox Row(string name) => All<CheckBox>(d).First(cb => cb.Tag is DriveFolders.Eintrag e && e.Name == name);
+            var sichtbar = All<CheckBox>(d).Where(cb => cb.IsVisible && cb.Tag is DriveFolders.Eintrag).Select(cb => ((DriveFolders.Eintrag)cb.Tag!).Name).ToList();
             Check("Anhaken oeffnet die Liste: eigene Ordner sichtbar, Windows-Ordner und Sicherungsziel nicht", string.Join(",", sichtbar) == "Daten,Scans"
-                && !All<CheckBox>(d).Any(cb => cb.Tag is LaufwerksOrdner.Eintrag e && e.Name == "DaSi"), string.Join(",", sichtbar));
-            Check("Liste: nichts vorgewaehlt, Uebernehmen erst nach Wahl", All<CheckBox>(d).Where(cb => cb.Tag is LaufwerksOrdner.Eintrag).All(cb => cb.IsChecked != true)
+                && !All<CheckBox>(d).Any(cb => cb.Tag is DriveFolders.Eintrag e && e.Name == "DaSi"), string.Join(",", sichtbar));
+            Check("Liste: nichts vorgewaehlt, Uebernehmen erst nach Wahl", All<CheckBox>(d).Where(cb => cb.Tag is DriveFolders.Eintrag).All(cb => cb.IsChecked != true)
                 && !FindButton(d, "Übernehmen").IsEffectivelyEnabled);
             Check("Liste: Groesse erscheint", await WaitFor(() => DialogText(d).Contains("2 KB") || DialogText(d).Contains("2.0 KB") || DialogText(d).Contains("2,0 KB")), DialogText(d));
             Check("Liste sagt: erst vormerken, gestartet wird im Hauptfenster", DialogText(d).Contains("merkt sie vor"), DialogText(d));
@@ -711,16 +711,16 @@ internal static class Program
             Render();
             Check("Start fragt nicht noch einmal", w.OwnedWindows.Count == 0);
             Check("Lauf mit den vorgemerkten Ordnern", await Finished(vm) && vm.LogText.Contains(": Daten, Scans") && vm.LogText.Contains("Backup-Laufwerk"), vm.LogText);
-            Check("Daten in der Sicherung (Windows)", !OperatingSystem.IsWindows() || File.Exists(Path.Combine(ziel, LaufwerksOrdner.BackupOrdner, "Daten", "Kunden", "liste.txt")), vm.LogText);
+            Check("Daten in der Sicherung (Windows)", !OperatingSystem.IsWindows() || File.Exists(Path.Combine(ziel, DriveFolders.BackupOrdner, "Daten", "Kunden", "liste.txt")), vm.LogText);
             var bericht = Directory.GetFiles(ziel, "Sicherung-Protokoll_*.txt").FirstOrDefault();
             Check("Protokolldatei nennt die Aktion", bericht is not null && File.ReadAllText(bericht).Contains("Ordner unter"), bericht);
             Check("nach dem Lauf bleibt die Wahl vorgemerkt", vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 2);
 
             // Restore: onto an empty new drive.
-            if (!OperatingSystem.IsWindows()) WriteFile(Path.Combine(ziel, LaufwerksOrdner.BackupOrdner, "Daten", "Kunden", "liste.txt"), "d");
+            if (!OperatingSystem.IsWindows()) WriteFile(Path.Combine(ziel, DriveFolders.BackupOrdner, "Daten", "Kunden", "liste.txt"), "d");
             var neu = Path.Combine(root, "LaufwerkNeu");
             Directory.CreateDirectory(neu);
-            LaufwerksOrdner.Wurzel = neu + Path.DirectorySeparatorChar;
+            DriveFolders.Wurzel = neu + Path.DirectorySeparatorChar;
             Click(Element<RadioButton>(w, "Wiederherstellen"));
             Check("Richtung gewechselt: Wahl verworfen", !vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 0);
             vm.BackupPath = ziel;
@@ -738,10 +738,10 @@ internal static class Program
             vm.BackupPath = ziel;
 
             // Without a window: an empty choice, a cancel.
-            vm.LaufwerkAuswahl = (_, _, _) => Task.FromResult<List<LaufwerksOrdner.Eintrag>?>(new List<LaufwerksOrdner.Eintrag>());
+            vm.LaufwerkAuswahl = (_, _, _) => Task.FromResult<List<DriveFolders.Eintrag>?>(new List<DriveFolders.Eintrag>());
             vm.SelLaufwerk = true;
             Check("leere Wahl: Haken wieder weg", await WaitFor(() => !vm.SelLaufwerk));
-            vm.LaufwerkAuswahl = (_, _, _) => Task.FromResult<List<LaufwerksOrdner.Eintrag>?>(null);
+            vm.LaufwerkAuswahl = (_, _, _) => Task.FromResult<List<DriveFolders.Eintrag>?>(null);
             vm.SelLaufwerk = true;
             Check("Wahl abgebrochen: Haken wieder weg", await WaitFor(() => !vm.SelLaufwerk));
         }
@@ -749,7 +749,7 @@ internal static class Program
         {
             vm.LaufwerkAuswahl = null;
             vm.SelLaufwerk = false;
-            LaufwerksOrdner.Wurzel = vorher;
+            DriveFolders.Wurzel = vorher;
             Click(Element<RadioButton>(w, "Sichern"));
         }
     }
@@ -771,7 +771,7 @@ internal static class Program
         Check("Paket ohne Kennung: 'Unbekanntes Paket'", All<CheckBox>(d).Any(c => Text(c.Content) == "Unbekanntes Paket"));
         d.Close();
         Check("Winget-Auswahl per X geschlossen: Abbruch", await auswahl is null);
-        var ordner = OrdnerAuswahlDialog.Show(w, new[] { new LaufwerksOrdner.Eintrag("Windows", Path.GetTempPath(), true) }, false);
+        var ordner = FolderSelectionDialog.Show(w, new[] { new DriveFolders.Eintrag("Windows", Path.GetTempPath(), true) }, false);
         d = await Dialog(w);
         Check("Ordner-Auswahl: nur Windows-Ordner - Hinweis statt leerer Liste", DialogText(d).Contains("außer den Windows-Ordnern keine Ordner"), DialogText(d));
         d.Close();

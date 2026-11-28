@@ -31,19 +31,19 @@ internal static partial class Program
         Console.WriteLine("\n== Taskleiste: Versuch am echten Windows ==");
         using (var nt = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
             Console.WriteLine($"         Windows: {nt?.GetValue("ProductName")} {nt?.GetValue("DisplayVersion")}, Build {nt?.GetValue("CurrentBuild")}.{nt?.GetValue("UBR")}");
-        if (!ExplorerNeustart.TaskbarPresent())
+        if (!ExplorerRestart.TaskbarPresent())
         {
             Console.WriteLine("         (keine Taskleiste auf diesem Laeufer - uebersprungen)");
             return;
         }
 
         var profil = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var pinOrdner = Taskleiste.PinFolder(profil);
+        var pinOrdner = Taskbar.PinFolder(profil);
         Directory.CreateDirectory(pinOrdner);
         var original = ReadTaskband();
         var originalLnk = Path.Combine(root, "tl-original");
         Directory.CreateDirectory(originalLnk);
-        foreach (var n in Taskleiste.Shortcuts(pinOrdner)) File.Copy(Path.Combine(pinOrdner, n), Path.Combine(originalLnk, n));
+        foreach (var n in Taskbar.Shortcuts(pinOrdner)) File.Copy(Path.Combine(pinOrdner, n), Path.Combine(originalLnk, n));
 
         try
         {
@@ -85,8 +85,8 @@ internal static partial class Program
 
             // 4. A shortcut whose target does not exist here (like Firefox from
             //    "Program Files (x86)" on a PC with 64-bit Firefox).
-            var tlSicherung = Taskleiste.BackupFolder(sicherung);
-            var tlJson = Taskleiste.Load(sicherung);
+            var tlSicherung = Taskbar.BackupFolder(sicherung);
+            var tlJson = Taskbar.Load(sicherung);
             if (Directory.Exists(tlSicherung) && tlJson is not null)
             {
                 string? umgebogen = null;
@@ -128,7 +128,7 @@ internal static partial class Program
             // 6. Does the taskbar match by the app ID (AppUserModelID) in Favorites?
             //    Bend the Edge entry to an unknown ID (same length), then add a
             //    program with that ID.
-            var tlJson2 = Taskleiste.Load(sicherung);
+            var tlJson2 = Taskbar.Load(sicherung);
             if (tlJson2 is not null && tlJson2.Taskband.Any(e => e.Name == "Favorites"))
             {
                 var unbekannt = Path.Combine(root, "tl-unbekannt");
@@ -138,7 +138,7 @@ internal static partial class Program
                     Directory.CreateDirectory(Path.GetDirectoryName(z)!);
                     File.Copy(datei, z, true);
                 }
-                var umgebaut = Taskleiste.Load(unbekannt)!;
+                var umgebaut = Taskbar.Load(unbekannt)!;
                 foreach (var e in umgebaut.Taskband.Where(e => e.Typ == "Binary"))
                 {
                     var b = Convert.FromBase64String(e.Wert);
@@ -150,7 +150,7 @@ internal static partial class Program
                     e.Wert = Convert.ToBase64String(b);
                     Console.WriteLine($"         {e.Name}: MSEdge -> DaSiXY ({n2}x)");
                 }
-                Taskleiste.Save(unbekannt, umgebaut);
+                Taskbar.Save(unbekannt, umgebaut);
                 // The Edge shortcut itself is missing since step 4b - Edge hangs on the ID alone.
                 ClearTaskbar(pinOrdner);
                 log.Clear();
@@ -170,11 +170,11 @@ internal static partial class Program
                 var edge = new[] { @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", @"C:\Program Files\Microsoft\Edge\Application\msedge.exe" }.FirstOrDefault(File.Exists);
                 if (edge is not null)
                 {
-                    Verknuepfung.Create(start, edge, "DaSiXY");
-                    Console.WriteLine($"         Startmenue: {start} -> {edge}, Kennung {Verknuepfung.Read(start)?.AppId}");
+                    Shortcut.Create(start, edge, "DaSiXY");
+                    Console.WriteLine($"         Startmenue: {start} -> {edge}, Kennung {Shortcut.Read(start)?.AppId}");
                     System.Threading.Thread.Sleep(5000);
                     DumpTaskbar("Programm mit der Kennung nachgereicht (ohne Neustart)", pinOrdner, mitInhalt: false);
-                    ExplorerNeustart.Restart(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+                    ExplorerRestart.Restart(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
                     System.Threading.Thread.Sleep(5000);
                     DumpTaskbar("Programm mit der Kennung nachgereicht (nach Explorer-Neustart)", pinOrdner, mitInhalt: false);
                     File.Delete(start);
@@ -183,7 +183,7 @@ internal static partial class Program
 
             // 7. Entries in the format of an old Windows 10 (root without the
             //    extension block, 20 instead of 58 bytes) - does Windows take them?
-            if (Taskleiste.Load(sicherung) is { } tl7 && Taskleiste.Favorites(tl7.Taskband) is { } fav7)
+            if (Taskbar.Load(sicherung) is { } tl7 && Taskbar.Favorites(tl7.Taskband) is { } fav7)
             {
                 var alt7 = new List<byte> { };
                 int pos = 0, umgebaut7 = 0;
@@ -213,7 +213,7 @@ internal static partial class Program
                     File.Copy(datei, z, true);
                 }
                 tl7.Taskband.First(e => e.Name == "Favorites").Wert = Convert.ToBase64String(alt7.ToArray());
-                Taskleiste.Save(ordner7, tl7);
+                Taskbar.Save(ordner7, tl7);
                 Console.WriteLine($"   == altes Format: {umgebaut7} Eintraege umgebaut, {fav7.Length} -> {alt7.Count} Bytes ==");
                 ClearTaskbar(pinOrdner);
                 log.Clear();
@@ -226,7 +226,7 @@ internal static partial class Program
             if (Environment.GetEnvironmentVariable("DASI_TASKLEISTE_FREMD") is { Length: > 0 } fremd && Directory.Exists(fremd))
             {
                 Console.WriteLine($"   == Sicherung eines anderen PCs: {fremd} ==");
-                var tl = Taskleiste.Load(fremd);
+                var tl = Taskbar.Load(fremd);
                 Console.WriteLine($"         gesichert auf {tl?.Rechner}: {string.Join(", ", tl?.Verknuepfungen ?? new List<string>())}, Taskband: {string.Join(", ", tl?.Taskband.Select(e => e.Name) ?? Array.Empty<string>())}");
                 ClearTaskbar(pinOrdner);
                 log.Clear();
@@ -237,7 +237,7 @@ internal static partial class Program
                 System.Threading.Thread.Sleep(10000);
                 Console.WriteLine($"         Favorites 10 s spaeter: {(SameValue(geschriebenFremd, ReadTaskband(), "Favorites") ? "unveraendert" : "VOM EXPLORER GEAENDERT")}");
                 DumpTaskbar("fremde Sicherung, 10 s spaeter", pinOrdner, mitInhalt: true);
-                ExplorerNeustart.Restart(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+                ExplorerRestart.Restart(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
                 System.Threading.Thread.Sleep(5000);
                 DumpTaskbar("fremde Sicherung, nach noch einem Explorer-Neustart", pinOrdner, mitInhalt: false);
             }
@@ -253,10 +253,10 @@ internal static partial class Program
             {
                 foreach (var alt in Directory.GetFiles(pinOrdner, "*.lnk")) File.Delete(alt);
                 foreach (var n in Directory.GetFiles(originalLnk)) File.Copy(n, Path.Combine(pinOrdner, Path.GetFileName(n)), true);
-                using (var k = Registry.CurrentUser.CreateSubKey(Taskleiste.TaskbandSchluessel))
+                using (var k = Registry.CurrentUser.CreateSubKey(Taskbar.TaskbandSchluessel))
                     foreach (var n in k.GetValueNames()) k.DeleteValue(n, false);
                 foreach (var e in original) DesignRegistry.Write(Registry.CurrentUser, e);
-                ExplorerNeustart.Restart(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+                ExplorerRestart.Restart(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
                 DumpTaskbar("Ausgangslage zurueck", pinOrdner, mitInhalt: false);
             }
             catch (Exception ex) { Console.WriteLine("         Ausgangslage NICHT zurueck: " + ex.Message); }
@@ -267,10 +267,10 @@ internal static partial class Program
     private static List<DesignEintrag> ReadTaskband()
     {
         var erg = new List<DesignEintrag>();
-        using var k = Registry.CurrentUser.OpenSubKey(Taskleiste.TaskbandSchluessel);
+        using var k = Registry.CurrentUser.OpenSubKey(Taskbar.TaskbandSchluessel);
         foreach (var name in k?.GetValueNames() ?? Array.Empty<string>())
-            if (DesignRegistry.Read(Registry.CurrentUser, Taskleiste.TaskbandSchluessel, name) is { } v)
-                erg.Add(new DesignEintrag { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = name, Typ = v.Typ, Wert = v.Wert });
+            if (DesignRegistry.Read(Registry.CurrentUser, Taskbar.TaskbandSchluessel, name) is { } v)
+                erg.Add(new DesignEintrag { Gruppe = "Taskleiste", Schluessel = Taskbar.TaskbandSchluessel, Name = name, Typ = v.Typ, Wert = v.Wert });
         return erg;
     }
 
@@ -281,9 +281,9 @@ internal static partial class Program
     private static void ClearTaskbar(string pinOrdner)
     {
         foreach (var alt in Directory.GetFiles(pinOrdner, "*.lnk")) File.Delete(alt);
-        using (var k = Registry.CurrentUser.CreateSubKey(Taskleiste.TaskbandSchluessel))
+        using (var k = Registry.CurrentUser.CreateSubKey(Taskbar.TaskbandSchluessel))
             foreach (var n in k.GetValueNames()) k.DeleteValue(n, false);
-        var (ok, _) = ExplorerNeustart.Restart(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+        var (ok, _) = ExplorerRestart.Restart(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
         Console.WriteLine($"         geleert, Explorer neu gestartet: {ok}");
         System.Threading.Thread.Sleep(3000);
     }
@@ -306,7 +306,7 @@ internal static partial class Program
                     Console.WriteLine($"           {i:X4}: {Convert.ToHexString(b, i, Math.Min(32, b.Length - i))}");
             }
         }
-        foreach (var n in Taskleiste.Shortcuts(pinOrdner))
+        foreach (var n in Taskbar.Shortcuts(pinOrdner))
             Console.WriteLine($"         Verknuepfung {n} -> {LinkTarget(Path.Combine(pinOrdner, n))}");
         var knoepfe = new List<string>();
         try
@@ -328,8 +328,8 @@ internal static partial class Program
         TaskbarScreenshot(wann);
         knoepfe.Sort(StringComparer.OrdinalIgnoreCase);
         Console.WriteLine($"         App-Knoepfe: {(knoepfe.Count == 0 ? "keine" : string.Join(", ", knoepfe))}");
-        var com = TaskleistenAnsicht.AppIds();
-        Console.WriteLine($"         Kennungen (TaskleistenAnsicht): {(com is null ? "nicht lesbar" : string.Join(", ", com.OrderBy(k => k, StringComparer.OrdinalIgnoreCase)))}");
+        var com = TaskbarView.AppIds();
+        Console.WriteLine($"         Kennungen (TaskbarView): {(com is null ? "nicht lesbar" : string.Join(", ", com.OrderBy(k => k, StringComparer.OrdinalIgnoreCase)))}");
         return knoepfe;
     }
 

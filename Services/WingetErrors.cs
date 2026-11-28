@@ -15,7 +15,7 @@ namespace WindowsDaSiTool.Services;
 /// e.g. 0x8A150009; as a process exit code they arrive signed
 /// (-1978335223).
 /// </summary>
-public static class WingetFehler
+public static class WingetErrors
 {
     public const int Ok = 0;
 

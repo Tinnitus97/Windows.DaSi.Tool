@@ -62,7 +62,7 @@ public static class WindowsDesign
     {
         Directory.CreateDirectory(ordner);
         var datei = Path.Combine(ordner, NewFileName());
-        DesignDatei.WriteFile(datei, inhalt, new System.Text.UnicodeEncoding(false, true));
+        ThemeFile.WriteFile(datei, inhalt, new System.Text.UnicodeEncoding(false, true));
         var start = DateTime.Now;
         var (ok, fehler) = await Apply(datei, benutzer);
         bool da = false;

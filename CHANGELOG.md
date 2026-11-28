@@ -25,6 +25,11 @@ die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 - Alle Funktionen tragen englische Namen, alle Kommentare im Quelltext sind englisch.
   Am Verhalten ändert das nichts: Abgesehen von den Namen ist der Code Zeichen für
   Zeichen derselbe, Texte der Oberfläche eingeschlossen.
+- Dateien mit deutschem Namen heißen jetzt englisch, samt dem Typ darin – etwa
+  `Services/Taskbar.cs`, `Views/FolderSelectionDialog.cs`, `tests/WingetFake/`,
+  `tools/coverage.py`, `docs/RELEASING.md`. Unverändert bleiben die Ordner- und
+  Dateinamen in einer Sicherung (`Benutzerprofil`, `C-Ordner`, `Design.json`,
+  `Taskleiste.json` …) – ältere Sicherungen lassen sich weiter wiederherstellen.
 
 ---
 

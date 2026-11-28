@@ -1227,33 +1227,33 @@ internal static partial class Program
 
         Console.WriteLine("\n== winget: Rueckgabewerte und Ausgabe ==");
         {
-            Check("0x8A150009 ist -1978335223 (Wert aus dem Protokoll)", WingetFehler.IndexZuNeu == -1978335223);
-            Check("bisherige Werte unveraendert", WingetFehler.SchonAktuell == -1978335189
-                && WingetFehler.SchonInstalliert == -1978335135 && WingetFehler.NichtGefunden == -1978335212);
-            Check("Hex-Schreibweise wie in der winget-Doku", WingetFehler.Hex(-1978335223) == "0x8A150009", WingetFehler.Hex(-1978335223));
-            Check("kaputte Quelle erkannt", WingetFehler.SourceBroken(WingetFehler.IndexZuNeu)
-                && WingetFehler.SourceBroken(WingetFehler.IndexBeschaedigt) && WingetFehler.SourceBroken(WingetFehler.QuellenBeschaedigt)
-                && WingetFehler.SourceBroken(WingetFehler.QuellDatenFehlen));
-            Check("Paketfehler sind keine kaputte Quelle", !WingetFehler.SourceBroken(0) && !WingetFehler.SourceBroken(WingetFehler.NichtGefunden)
-                && !WingetFehler.SourceBroken(WingetFehler.SchonInstalliert) && !WingetFehler.SourceBroken(1603));
-            Check("auch an der Ausgabe erkannt", WingetFehler.SourceBroken(1, "0x8a150009 : Cannot write to index; it is a higher schema version")
-                && !WingetFehler.SourceBroken(1, "Installer failed with exit code: 1603"));
-            Check("Erklaerung fuer 0x8A150009", WingetFehler.Explanation(WingetFehler.IndexZuNeu, De)?.Contains("neueren winget-Fassung") == true);
-            Check("keine Erklaerung fuer unbekannte Werte", WingetFehler.Explanation(1603, De) is null);
+            Check("0x8A150009 ist -1978335223 (Wert aus dem Protokoll)", WingetErrors.IndexZuNeu == -1978335223);
+            Check("bisherige Werte unveraendert", WingetErrors.SchonAktuell == -1978335189
+                && WingetErrors.SchonInstalliert == -1978335135 && WingetErrors.NichtGefunden == -1978335212);
+            Check("Hex-Schreibweise wie in der winget-Doku", WingetErrors.Hex(-1978335223) == "0x8A150009", WingetErrors.Hex(-1978335223));
+            Check("kaputte Quelle erkannt", WingetErrors.SourceBroken(WingetErrors.IndexZuNeu)
+                && WingetErrors.SourceBroken(WingetErrors.IndexBeschaedigt) && WingetErrors.SourceBroken(WingetErrors.QuellenBeschaedigt)
+                && WingetErrors.SourceBroken(WingetErrors.QuellDatenFehlen));
+            Check("Paketfehler sind keine kaputte Quelle", !WingetErrors.SourceBroken(0) && !WingetErrors.SourceBroken(WingetErrors.NichtGefunden)
+                && !WingetErrors.SourceBroken(WingetErrors.SchonInstalliert) && !WingetErrors.SourceBroken(1603));
+            Check("auch an der Ausgabe erkannt", WingetErrors.SourceBroken(1, "0x8a150009 : Cannot write to index; it is a higher schema version")
+                && !WingetErrors.SourceBroken(1, "Installer failed with exit code: 1603"));
+            Check("Erklaerung fuer 0x8A150009", WingetErrors.Explanation(WingetErrors.IndexZuNeu, De)?.Contains("neueren winget-Fassung") == true);
+            Check("keine Erklaerung fuer unbekannte Werte", WingetErrors.Explanation(1603, De) is null);
 
             // That is how the output arrived: progress spinner and a line full of
             // spaces, overwritten by carriage returns.
             var roh = "   - \r   \\ \r   | \r   / \r" + new string(' ', 120) + "\r"
                       + "An unexpected error occurred while executing the command:\r\n"
                       + "0x8a150009 : Cannot write to index; it is a higher schema version\r\n";
-            var meldung = WingetFehler.LastMessage(roh);
+            var meldung = WingetErrors.LastMessage(roh);
             Check("Ausgabe: nur die Meldung, ohne Kreisel und Leerzeilen",
                 meldung == "An unexpected error occurred while executing the command: | 0x8a150009 : Cannot write to index; it is a higher schema version",
                 meldung);
             Check("Ausgabe: Fortschrittsbalken fallen weg",
-                WingetFehler.LastMessage("Gefunden Firefox [Mozilla.Firefox.de]\n  ██████████████▒▒▒▒▒▒  40.0 MB / 70.1 MB\nInstallation fehlgeschlagen mit Exitcode: 1603\n")
+                WingetErrors.LastMessage("Gefunden Firefox [Mozilla.Firefox.de]\n  ██████████████▒▒▒▒▒▒  40.0 MB / 70.1 MB\nInstallation fehlgeschlagen mit Exitcode: 1603\n")
                 == "Gefunden Firefox [Mozilla.Firefox.de] | Installation fehlgeschlagen mit Exitcode: 1603");
-            Check("Ausgabe: leer bleibt leer", WingetFehler.LastMessage("") == "" && WingetFehler.LastMessage(" \r - \r\n") == "");
+            Check("Ausgabe: leer bleibt leer", WingetErrors.LastMessage("") == "" && WingetErrors.LastMessage(" \r - \r\n") == "");
 
             var ordner = new[]
             {
@@ -1261,11 +1261,11 @@ internal static partial class Program
                 @"C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_1.26.430.0_x64__8wekyb3d8bbwe",
                 @"C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_1.21.10120.0_x64__8wekyb3d8bbwe",
             };
-            var sortiert = WingetFehler.NewestFirst(ordner);
+            var sortiert = WingetErrors.NewestFirst(ordner);
             Check("App-Installer: neueste Fassung zuerst (1.26 vor 1.21 vor 1.9)",
                 sortiert[0].Contains("_1.26.") && sortiert[1].Contains("_1.21.") && sortiert[2].Contains("_1.9."), string.Join(" ", sortiert.Select(Path.GetFileName)));
-            Check("App-Installer: Fassung aus dem Ordnernamen", WingetFehler.FolderVersion(ordner[1]) == new Version(1, 26, 430, 0)
-                && WingetFehler.FolderVersion(@"C:\x\Microsoft.DesktopAppInstaller_kaputt") is null);
+            Check("App-Installer: Fassung aus dem Ordnernamen", WingetErrors.FolderVersion(ordner[1]) == new Version(1, 26, 430, 0)
+                && WingetErrors.FolderVersion(@"C:\x\Microsoft.DesktopAppInstaller_kaputt") is null);
         }
 
         Console.WriteLine("\n== Desktop-Symbole: Systemsymbole einschalten ==");
@@ -1348,22 +1348,22 @@ internal static partial class Program
             WriteFileUnder(sicherungCh, Path.Combine("Profile 1", "History"), new string('h', 20000));
             WriteFileUnder(sicherungCh, Path.Combine("Crowd Deny", "1.0", "manifest.json"), "x");
             Check("Profile erkannt: Default und Profile 1 (nicht \"Crowd Deny\")",
-                ProfilAbgleich.Profiles(sicherungCh).SequenceEqual(new[] { "Default", "Profile 1" }),
-                string.Join(", ", ProfilAbgleich.Profiles(sicherungCh)));
+                ProfileComparison.Profiles(sicherungCh).SequenceEqual(new[] { "Default", "Profile 1" }),
+                string.Join(", ", ProfileComparison.Profiles(sicherungCh)));
 
             // Copied completely.
             var zielUd = Path.Combine(root, "abgleich", "User Data");
             foreach (var f in Directory.GetFiles(sicherungCh, "*", SearchOption.AllDirectories))
                 WriteFileUnder(zielUd, Path.GetRelativePath(sicherungCh, f), File.ReadAllText(f));
-            Check("vollstaendig: keine Abweichung", ProfilAbgleich.Differences(sicherungCh, zielUd).Count == 0,
-                string.Join(", ", ProfilAbgleich.Differences(sicherungCh, zielUd)));
+            Check("vollstaendig: keine Abweichung", ProfileComparison.Differences(sicherungCh, zielUd).Count == 0,
+                string.Join(", ", ProfileComparison.Differences(sicherungCh, zielUd)));
 
             // As on 2026-11-19: Chrome was running and, when it exited, wrote a fresh
             // "Local State" and "Preferences" over the restored profile.
             File.WriteAllText(Path.Combine(zielUd, "Local State"), "{\"profile\":{}}");
             File.WriteAllText(Path.Combine(zielUd, "Profile 1", "Preferences"), "{}");
             File.Delete(Path.Combine(zielUd, "Default", "Bookmarks"));
-            var abw = ProfilAbgleich.Differences(sicherungCh, zielUd);
+            var abw = ProfileComparison.Differences(sicherungCh, zielUd);
             Check("ueberschrieben: Local State, Preferences und fehlende Lesezeichen werden erkannt",
                 abw.Contains("Local State") && abw.Contains(Path.Combine("Profile 1", "Preferences"))
                 && abw.Contains(Path.Combine("Default", "Bookmarks")) && abw.Count == 3, string.Join(", ", abw));
@@ -1375,80 +1375,80 @@ internal static partial class Program
             WriteFileUnder(ff, Path.Combine("Profiles", "abcd.default-release", "prefs.js"), "user_pref(\"a\", 1);");
             WriteFileUnder(ff, Path.Combine("Profiles", "abcd.default-release", "places.sqlite"), new string('s', 3000));
             Check("Firefox: Profil unter Profiles erkannt",
-                ProfilAbgleich.Profiles(ff).SequenceEqual(new[] { Path.Combine("Profiles", "abcd.default-release") }));
+                ProfileComparison.Profiles(ff).SequenceEqual(new[] { Path.Combine("Profiles", "abcd.default-release") }));
             var ffZiel = Path.Combine(root, "abgleich", "Firefox");
             Check("Firefox: leeres Ziel - alle wichtigen Dateien fehlen",
-                ProfilAbgleich.Differences(ff, ffZiel).Count == 3, string.Join(", ", ProfilAbgleich.Differences(ff, ffZiel)));
-            Check("ohne Sicherung: nichts zu vergleichen", ProfilAbgleich.Differences(Path.Combine(root, "abgleich", "fehlt"), ffZiel).Count == 0);
+                ProfileComparison.Differences(ff, ffZiel).Count == 3, string.Join(", ", ProfileComparison.Differences(ff, ffZiel)));
+            Check("ohne Sicherung: nichts zu vergleichen", ProfileComparison.Differences(Path.Combine(root, "abgleich", "fehlt"), ffZiel).Count == 0);
         }
 
         Console.WriteLine("\n== Hintergrund: Volltonfarbe ==");
         {
-            Check("Farbe aus der Registry lesen", Hintergrund.ReadColor("0 99 177") == ((byte)0, (byte)99, (byte)177)
-                && Hintergrund.ReadColor("  255 255 255 ") == ((byte)255, (byte)255, (byte)255));
-            Check("ungueltige Farben werden abgelehnt", Hintergrund.ReadColor("256 0 0") is null && Hintergrund.ReadColor("0,99,177") is null
-                && Hintergrund.ReadColor("") is null && Hintergrund.ReadColor(null) is null && Hintergrund.ReadColor("1 2") is null);
+            Check("Farbe aus der Registry lesen", Wallpaper.ReadColor("0 99 177") == ((byte)0, (byte)99, (byte)177)
+                && Wallpaper.ReadColor("  255 255 255 ") == ((byte)255, (byte)255, (byte)255));
+            Check("ungueltige Farben werden abgelehnt", Wallpaper.ReadColor("256 0 0") is null && Wallpaper.ReadColor("0,99,177") is null
+                && Wallpaper.ReadColor("") is null && Wallpaper.ReadColor(null) is null && Wallpaper.ReadColor("1 2") is null);
             var blau = ((byte)0, (byte)99, (byte)177);
-            Check("Farbe zurueck in Registry-Form", Hintergrund.ColorText(blau) == "0 99 177");
-            Check("Farbe als Hex", Hintergrund.Hex(blau) == "#0063B1", Hintergrund.Hex(blau));
-            Check("COLORREF fuer SetSysColors (0x00BBGGRR)", Hintergrund.ColorRef(blau) == 0xB16300, Hintergrund.ColorRef(blau).ToString("X6"));
+            Check("Farbe zurueck in Registry-Form", Wallpaper.ColorText(blau) == "0 99 177");
+            Check("Farbe als Hex", Wallpaper.Hex(blau) == "#0063B1", Wallpaper.Hex(blau));
+            Check("COLORREF fuer SetSysColors (0x00BBGGRR)", Wallpaper.ColorRef(blau) == 0xB16300, Wallpaper.ColorRef(blau).ToString("X6"));
 
             // What is configured? (BackgroundType: 0 image, 1 solid color, 2 slideshow, 3 Spotlight)
             Check("Volltonfarbe laut Windows (BackgroundType 1)",
-                Hintergrund.Determine(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg", true, 1, "0 99 177") == HintergrundArt.Volltonfarbe);
+                Wallpaper.Determine(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg", true, 1, "0 99 177") == HintergrundArt.Volltonfarbe);
             Check("Volltonfarbe: kein Bildpfad, Farbe gesetzt (aelteres Windows ohne BackgroundType)",
-                Hintergrund.Determine("", false, null, "0 99 177") == HintergrundArt.Volltonfarbe);
-            Check("Bild", Hintergrund.Determine(@"C:\Users\A\Pictures\Urlaub.jpg", true, 0, "0 0 0") == HintergrundArt.Bild
-                && Hintergrund.Determine(@"C:\Users\A\Pictures\Urlaub.jpg", true, null, null) == HintergrundArt.Bild);
-            Check("Diashow/Blickpunkt ohne aktuelles Bild: wechselnd", Hintergrund.Determine("", false, 2, "0 0 0") == HintergrundArt.Wechselnd
-                && Hintergrund.Determine(null, false, 3, null) == HintergrundArt.Wechselnd);
-            Check("Diashow mit aktuellem Bild: das Bild", Hintergrund.Determine(@"C:\x\TranscodedWallpaper", true, 2, null) == HintergrundArt.Bild);
-            Check("Bildpfad ohne Datei: unbekannt", Hintergrund.Determine(@"C:\weg.jpg", false, 0, "0 0 0") == HintergrundArt.Unbekannt);
+                Wallpaper.Determine("", false, null, "0 99 177") == HintergrundArt.Volltonfarbe);
+            Check("Bild", Wallpaper.Determine(@"C:\Users\A\Pictures\Urlaub.jpg", true, 0, "0 0 0") == HintergrundArt.Bild
+                && Wallpaper.Determine(@"C:\Users\A\Pictures\Urlaub.jpg", true, null, null) == HintergrundArt.Bild);
+            Check("Diashow/Blickpunkt ohne aktuelles Bild: wechselnd", Wallpaper.Determine("", false, 2, "0 0 0") == HintergrundArt.Wechselnd
+                && Wallpaper.Determine(null, false, 3, null) == HintergrundArt.Wechselnd);
+            Check("Diashow mit aktuellem Bild: das Bild", Wallpaper.Determine(@"C:\x\TranscodedWallpaper", true, 2, null) == HintergrundArt.Bild);
+            Check("Bildpfad ohne Datei: unbekannt", Wallpaper.Determine(@"C:\weg.jpg", false, 0, "0 0 0") == HintergrundArt.Unbekannt);
 
             // Windows' cache is no place for the wallpaper.
             Check("Zwischenspeicher: TranscodedWallpaper und CachedFiles erkannt",
-                Hintergrund.IsWindowsCache(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper")
-                && Hintergrund.IsWindowsCache(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\CachedFiles\CachedImage_1920_1080_POS4.jpg")
-                && Hintergrund.IsWindowsCache(@"D:\DASI_PC_01_01_2026\Design\TranscodedWallpaper"));
+                Wallpaper.IsWindowsCache(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper")
+                && Wallpaper.IsWindowsCache(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\CachedFiles\CachedImage_1920_1080_POS4.jpg")
+                && Wallpaper.IsWindowsCache(@"D:\DASI_PC_01_01_2026\Design\TranscodedWallpaper"));
             Check("Zwischenspeicher: gewoehnliche Bilder und installierte Designs nicht",
-                !Hintergrund.IsWindowsCache(@"C:\Users\A\Pictures\Urlaub.jpg")
-                && !Hintergrund.IsWindowsCache(@"C:\Users\A\AppData\Local\Microsoft\Windows\Themes\Natur\DesktopBackground\img1.jpg")
-                && !Hintergrund.IsWindowsCache(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg")
-                && !Hintergrund.IsWindowsCache(null) && !Hintergrund.IsWindowsCache(""));
+                !Wallpaper.IsWindowsCache(@"C:\Users\A\Pictures\Urlaub.jpg")
+                && !Wallpaper.IsWindowsCache(@"C:\Users\A\AppData\Local\Microsoft\Windows\Themes\Natur\DesktopBackground\img1.jpg")
+                && !Wallpaper.IsWindowsCache(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg")
+                && !Wallpaper.IsWindowsCache(null) && !Wallpaper.IsWindowsCache(""));
             Check("Zwischenspeicher eines Profils",
-                Hintergrund.Cache(Path.Combine(root, "Anwender"))!.EndsWith(Path.Combine("Themes", "TranscodedWallpaper"))
-                && Hintergrund.Cache(null) is null);
+                Wallpaper.Cache(Path.Combine(root, "Anwender"))!.EndsWith(Path.Combine("Themes", "TranscodedWallpaper"))
+                && Wallpaper.Cache(null) is null);
             byte[] kJpg = { 0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10 }, kPng = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A },
                    kBmp = { 0x42, 0x4D, 1, 2 }, kGif = { 0x47, 0x49, 0x46, 0x38, 0x39, 0x61 },
                    kWebp = { 0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50 }, kSonst = { 1, 2, 3, 4 };
             Check("Bildart an den ersten Bytes",
-                Hintergrund.ImageExtension(kJpg) == ".jpg" && Hintergrund.ImageExtension(kPng) == ".png" && Hintergrund.ImageExtension(kBmp) == ".bmp"
-                && Hintergrund.ImageExtension(kGif) == ".gif" && Hintergrund.ImageExtension(kWebp) == ".webp"
-                && Hintergrund.ImageExtension(kSonst) is null && Hintergrund.ImageExtension(ReadOnlySpan<byte>.Empty) is null);
+                Wallpaper.ImageExtension(kJpg) == ".jpg" && Wallpaper.ImageExtension(kPng) == ".png" && Wallpaper.ImageExtension(kBmp) == ".bmp"
+                && Wallpaper.ImageExtension(kGif) == ".gif" && Wallpaper.ImageExtension(kWebp) == ".webp"
+                && Wallpaper.ImageExtension(kSonst) is null && Wallpaper.ImageExtension(ReadOnlySpan<byte>.Empty) is null);
             Check("Name: Zwischenspeicher wird zu Hintergrundbild.<Endung>",
-                Hintergrund.BackupName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", kJpg) == "Hintergrundbild.jpg"
-                && Hintergrund.BackupName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", kPng) == "Hintergrundbild.png"
-                && Hintergrund.BackupName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\CachedFiles\CachedImage_1920_1080_POS4.jpg", kJpg) == "Hintergrundbild.jpg"
-                && Hintergrund.BackupName(@"D:\DASI\Design\TranscodedWallpaper", kSonst) == "Hintergrundbild.jpg");
+                Wallpaper.BackupName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", kJpg) == "Hintergrundbild.jpg"
+                && Wallpaper.BackupName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper", kPng) == "Hintergrundbild.png"
+                && Wallpaper.BackupName(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\CachedFiles\CachedImage_1920_1080_POS4.jpg", kJpg) == "Hintergrundbild.jpg"
+                && Wallpaper.BackupName(@"D:\DASI\Design\TranscodedWallpaper", kSonst) == "Hintergrundbild.jpg");
             Check("Name: gewoehnliches Bild behaelt seinen Namen, ohne Endung bekommt es die passende",
-                Hintergrund.BackupName(@"C:\Users\A\Pictures\Urlaub.jpg", kJpg) == "Urlaub.jpg"
-                && Hintergrund.BackupName(@"C:\Users\A\Pictures\Urlaub.jpeg", kPng) == "Urlaub.jpeg"
-                && Hintergrund.BackupName(@"C:\x\Bild", kPng) == "Bild.png"
-                && Hintergrund.BackupName(@"C:\x\Bild", kSonst) == "Bild");
+                Wallpaper.BackupName(@"C:\Users\A\Pictures\Urlaub.jpg", kJpg) == "Urlaub.jpg"
+                && Wallpaper.BackupName(@"C:\Users\A\Pictures\Urlaub.jpeg", kPng) == "Urlaub.jpeg"
+                && Wallpaper.BackupName(@"C:\x\Bild", kPng) == "Bild.png"
+                && Wallpaper.BackupName(@"C:\x\Bild", kSonst) == "Bild");
 
             // Saved and read back.
             var hg = Path.Combine(root, "hintergrund", "Hintergrundbild");
             Directory.CreateDirectory(hg);
-            Hintergrund.Save(hg, new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "0 99 177" });
-            var gelesen = Hintergrund.Load(hg);
-            Check("Hintergrund.json: Volltonfarbe wieder gelesen", Hintergrund.IsSolidColor(gelesen) && gelesen!.Farbe == "0 99 177");
+            Wallpaper.Save(hg, new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "0 99 177" });
+            var gelesen = Wallpaper.Load(hg);
+            Check("Hintergrund.json: Volltonfarbe wieder gelesen", Wallpaper.IsSolidColor(gelesen) && gelesen!.Farbe == "0 99 177");
             Check("Bild-Einstellung ist keine Volltonfarbe",
-                !Hintergrund.IsSolidColor(new HintergrundEinstellung { Art = "Bild", Farbe = "0 0 0", Darstellung = "10" }));
-            Check("aeltere Sicherung ohne Hintergrund.json", Hintergrund.Load(Path.Combine(root, "hintergrund", "fehlt")) is null);
+                !Wallpaper.IsSolidColor(new HintergrundEinstellung { Art = "Bild", Farbe = "0 0 0", Darstellung = "10" }));
+            Check("aeltere Sicherung ohne Hintergrund.json", Wallpaper.Load(Path.Combine(root, "hintergrund", "fehlt")) is null);
             File.WriteAllText(Path.Combine(root, "hintergrund", "kaputt.json"), "{");
             Directory.CreateDirectory(Path.Combine(root, "hintergrund", "kaputt"));
             File.WriteAllText(Path.Combine(root, "hintergrund", "kaputt", HintergrundEinstellung.DateiName), "{ kaputt");
-            Check("kaputte Hintergrund.json: null statt Absturz", Hintergrund.Load(Path.Combine(root, "hintergrund", "kaputt")) is null);
+            Check("kaputte Hintergrund.json: null statt Absturz", Wallpaper.Load(Path.Combine(root, "hintergrund", "kaputt")) is null);
 
             // Availability: a backup that contains only the color.
             AppCatalog.HatWlanAdapter = () => true;
@@ -1472,52 +1472,52 @@ internal static partial class Program
                 + "[VisualStyles]\r\nPath=%ResourceDir%\\Themes\\Aero\\Aero.msstyles\r\nColorStyle=NormalColor\r\nAutoColorization=0\r\nColorizationColor=0XC40078D4\r\nSystemMode=Light\r\nAppMode=Light\r\n\r\n"
                 + "[Slideshow]\r\nInterval=1800000\r\nShuffle=1\r\n\r\n"
                 + "[Control Panel\\Colors]\r\nBackground=0 0 0\r\n";
-            var farbe = DesignDatei.ForColor(thema, ((byte)107, (byte)105, (byte)214));
-            Check("Volltonfarbe: Background in [Control Panel\\Colors] ersetzt", DesignDatei.Read(farbe, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214");
+            var farbe = ThemeFile.ForColor(thema, ((byte)107, (byte)105, (byte)214));
+            Check("Volltonfarbe: Background in [Control Panel\\Colors] ersetzt", ThemeFile.Read(farbe, ThemeFile.FarbenAbschnitt, "Background") == "107 105 214");
             Check("Volltonfarbe: Bild bleibt stehen (wie die Einstellungen-App), keine Diashow",
-                DesignDatei.Read(farbe, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"%SystemRoot%\web\wallpaper\Windows\img0.jpg"
+                ThemeFile.Read(farbe, ThemeFile.DesktopAbschnitt, "Wallpaper") == @"%SystemRoot%\web\wallpaper\Windows\img0.jpg"
                 && !farbe.Contains("[Slideshow]") && !farbe.Contains("Interval="));
             Check("Volltonfarbe: alles andere unveraendert, Zeilenenden CRLF",
                 farbe.Contains("DisplayName=Benutzerdefiniert\r\n") && farbe.Contains("ColorizationColor=0XC40078D4") && farbe.Contains("TileWallpaper=0")
                 && !farbe.Replace("\r\n", "").Contains('\n') && farbe.EndsWith("\r\n"));
-            var bild = DesignDatei.ForImage(thema, @"C:\Users\Anwender\Pictures\Urlaub.jpg",
+            var bild = ThemeFile.ForImage(thema, @"C:\Users\Anwender\Pictures\Urlaub.jpg",
                 new HintergrundEinstellung { Darstellung = "6", Kacheln = "0", Farbe = "0 99 177" });
             Check("Bild: Pfad, Darstellung und Randfarbe eingetragen",
-                DesignDatei.Read(bild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\Anwender\Pictures\Urlaub.jpg"
-                && DesignDatei.Read(bild, DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "6"
-                && DesignDatei.Read(bild, DesignDatei.FarbenAbschnitt, "Background") == "0 99 177" && !bild.Contains("[Slideshow]"));
+                ThemeFile.Read(bild, ThemeFile.DesktopAbschnitt, "Wallpaper") == @"C:\Users\Anwender\Pictures\Urlaub.jpg"
+                && ThemeFile.Read(bild, ThemeFile.DesktopAbschnitt, "WallpaperStyle") == "6"
+                && ThemeFile.Read(bild, ThemeFile.FarbenAbschnitt, "Background") == "0 99 177" && !bild.Contains("[Slideshow]"));
             Check("WallpaperStyle ist nicht Wallpaper (Schluessel genau verglichen)",
-                DesignDatei.Read(DesignDatei.Set(thema, DesignDatei.DesktopAbschnitt, "Wallpaper", "x"), DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "10");
-            var ohneFarben = DesignDatei.ForColor("[Theme]\nDisplayName=x\n", ((byte)1, (byte)2, (byte)3));
+                ThemeFile.Read(ThemeFile.Set(thema, ThemeFile.DesktopAbschnitt, "Wallpaper", "x"), ThemeFile.DesktopAbschnitt, "WallpaperStyle") == "10");
+            var ohneFarben = ThemeFile.ForColor("[Theme]\nDisplayName=x\n", ((byte)1, (byte)2, (byte)3));
             Check("fehlende Abschnitte werden angelegt (LF bleibt LF)",
-                DesignDatei.Read(ohneFarben, DesignDatei.FarbenAbschnitt, "Background") == "1 2 3" && ohneFarben.Contains("\n[Control Panel\\Colors]\nBackground=1 2 3\n") && !ohneFarben.Contains('\r'), ohneFarben);
-            var neuerSchluessel = DesignDatei.Set("[A]\r\nx=1\r\n\r\n[B]\r\ny=2\r\n", "A", "z", "3");
+                ThemeFile.Read(ohneFarben, ThemeFile.FarbenAbschnitt, "Background") == "1 2 3" && ohneFarben.Contains("\n[Control Panel\\Colors]\nBackground=1 2 3\n") && !ohneFarben.Contains('\r'), ohneFarben);
+            var neuerSchluessel = ThemeFile.Set("[A]\r\nx=1\r\n\r\n[B]\r\ny=2\r\n", "A", "z", "3");
             Check("neuer Schluessel ans Ende seines Abschnitts, vor die Leerzeile", neuerSchluessel == "[A]\r\nx=1\r\nz=3\r\n\r\n[B]\r\ny=2\r\n", neuerSchluessel);
-            var eigenes = DesignDatei.ForApplying("[Theme]\r\nDisplayName=@%SystemRoot%\\x.dll,-1\r\nThemeId={1234}\r\nSetLogonBackground=0\r\n\r\n[Control Panel\\Desktop]\r\nWallpaper=a.jpg\r\n", "Design aus der Sicherung (DaSi)");
+            var eigenes = ThemeFile.ForApplying("[Theme]\r\nDisplayName=@%SystemRoot%\\x.dll,-1\r\nThemeId={1234}\r\nSetLogonBackground=0\r\n\r\n[Control Panel\\Desktop]\r\nWallpaper=a.jpg\r\n", "Design aus der Sicherung (DaSi)");
             Check("zum Anwenden: eigener Name, ohne ThemeId, Rest bleibt",
-                DesignDatei.Read(eigenes, "Theme", "DisplayName") == "Design aus der Sicherung (DaSi)" && DesignDatei.Read(eigenes, "Theme", "ThemeId") is null
-                && eigenes.Contains("SetLogonBackground=0\r\n") && DesignDatei.Read(eigenes, DesignDatei.DesktopAbschnitt, "Wallpaper") == "a.jpg", eigenes);
+                ThemeFile.Read(eigenes, "Theme", "DisplayName") == "Design aus der Sicherung (DaSi)" && ThemeFile.Read(eigenes, "Theme", "ThemeId") is null
+                && eigenes.Contains("SetLogonBackground=0\r\n") && ThemeFile.Read(eigenes, ThemeFile.DesktopAbschnitt, "Wallpaper") == "a.jpg", eigenes);
             var lilaW = ((byte)107, (byte)105, (byte)214);
-            var ohneBild = DesignDatei.ForRestore(DesignDatei.Set(thema, DesignDatei.DesktopAbschnitt, "Wallpaper", ""), "x", lilaW, null, null, Array.Empty<DesignEintrag>());
-            var blick = DesignDatei.ForRestore(DesignDatei.Set(thema, DesignDatei.DesktopAbschnitt, "Wallpaper",
+            var ohneBild = ThemeFile.ForRestore(ThemeFile.Set(thema, ThemeFile.DesktopAbschnitt, "Wallpaper", ""), "x", lilaW, null, null, Array.Empty<DesignEintrag>());
+            var blick = ThemeFile.ForRestore(ThemeFile.Set(thema, ThemeFile.DesktopAbschnitt, "Wallpaper",
                 @"C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\DesktopSpotlight\Assets\Images\image_2.jpg"), "x", lilaW, null, null, Array.Empty<DesignEintrag>());
-            var mitBild = DesignDatei.ForRestore(thema, "x", lilaW, null, null, Array.Empty<DesignEintrag>());
+            var mitBild = ThemeFile.ForRestore(thema, "x", lilaW, null, null, Array.Empty<DesignEintrag>());
             Check("Wiederherstellung, Volltonfarbe: Farbe drin, leeres Bild und Blickpunkt-Bild durch img0 ersetzt, vorhandenes Bild bleibt",
-                DesignDatei.Read(ohneBild, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214"
-                && DesignDatei.Read(ohneBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == DesignDatei.Ersatzbild
-                && DesignDatei.Read(blick, DesignDatei.DesktopAbschnitt, "Wallpaper") == DesignDatei.Ersatzbild
-                && DesignDatei.Read(mitBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"%SystemRoot%\web\wallpaper\Windows\img0.jpg"
-                && DesignDatei.Read(mitBild, "Theme", "DisplayName") == "x" && !mitBild.Contains("[Slideshow]"));
-            var wiederBild = DesignDatei.ForRestore(thema, "x", null, @"C:\Users\A\Pictures\Urlaub.jpg", new HintergrundEinstellung { Darstellung = "6" },
+                ThemeFile.Read(ohneBild, ThemeFile.FarbenAbschnitt, "Background") == "107 105 214"
+                && ThemeFile.Read(ohneBild, ThemeFile.DesktopAbschnitt, "Wallpaper") == ThemeFile.Ersatzbild
+                && ThemeFile.Read(blick, ThemeFile.DesktopAbschnitt, "Wallpaper") == ThemeFile.Ersatzbild
+                && ThemeFile.Read(mitBild, ThemeFile.DesktopAbschnitt, "Wallpaper") == @"%SystemRoot%\web\wallpaper\Windows\img0.jpg"
+                && ThemeFile.Read(mitBild, "Theme", "DisplayName") == "x" && !mitBild.Contains("[Slideshow]"));
+            var wiederBild = ThemeFile.ForRestore(thema, "x", null, @"C:\Users\A\Pictures\Urlaub.jpg", new HintergrundEinstellung { Darstellung = "6" },
                 new[] { new DesignEintrag { Gruppe = "Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = "SystemUsesLightTheme", Typ = "DWord", Wert = "0" } });
             Check("Wiederherstellung, Bild: Pfad, Darstellung und Hell/Dunkel drin",
-                DesignDatei.Read(wiederBild, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\A\Pictures\Urlaub.jpg"
-                && DesignDatei.Read(wiederBild, DesignDatei.DesktopAbschnitt, "WallpaperStyle") == "6"
-                && DesignDatei.Read(wiederBild, DesignDatei.StilAbschnitt, "SystemMode") == "Dark");
+                ThemeFile.Read(wiederBild, ThemeFile.DesktopAbschnitt, "Wallpaper") == @"C:\Users\A\Pictures\Urlaub.jpg"
+                && ThemeFile.Read(wiederBild, ThemeFile.DesktopAbschnitt, "WallpaperStyle") == "6"
+                && ThemeFile.Read(wiederBild, ThemeFile.StilAbschnitt, "SystemMode") == "Dark");
             Check("Gross-/Kleinschreibung bei Abschnitt und Schluessel egal",
-                DesignDatei.Read("[control panel\\COLORS]\r\nbackground = 9 9 9\r\n", DesignDatei.FarbenAbschnitt, "Background") == "9 9 9");
+                ThemeFile.Read("[control panel\\COLORS]\r\nbackground = 9 9 9\r\n", ThemeFile.FarbenAbschnitt, "Background") == "9 9 9");
 
-            var design = DesignDatei.ForDesign(thema, new[]
+            var design = ThemeFile.ForDesign(thema, new[]
             {
                 new DesignEintrag { Gruppe = "Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = "SystemUsesLightTheme", Typ = "DWord", Wert = "0" },
                 new DesignEintrag { Gruppe = "Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = "AppsUseLightTheme", Typ = "DWord", Wert = "1" },
@@ -1528,14 +1528,14 @@ internal static partial class Program
                 new DesignEintrag { Gruppe = "Mauszeiger", Schluessel = @"Control Panel\Cursors", Name = "Hand", Typ = "String", Wert = @"C:\x.cur" },
             });
             Check("Design: Hell/Dunkel als SystemMode/AppMode",
-                DesignDatei.Read(design, DesignDatei.StilAbschnitt, "SystemMode") == "Dark" && DesignDatei.Read(design, DesignDatei.StilAbschnitt, "AppMode") == "Light");
+                ThemeFile.Read(design, ThemeFile.StilAbschnitt, "SystemMode") == "Dark" && ThemeFile.Read(design, ThemeFile.StilAbschnitt, "AppMode") == "Light");
             Check("Design: Akzentfarbe als 0X-Wert, automatisch uebernommen",
-                DesignDatei.Read(design, DesignDatei.StilAbschnitt, "ColorizationColor") == "0XC40078D4"
-                && DesignDatei.Read(design, DesignDatei.StilAbschnitt, "AutoColorization") == "1");
+                ThemeFile.Read(design, ThemeFile.StilAbschnitt, "ColorizationColor") == "0XC40078D4"
+                && ThemeFile.Read(design, ThemeFile.StilAbschnitt, "AutoColorization") == "1");
             Check("Design: Zeigerschema als DefaultValue, Zeiger ersetzt, unbekannte nicht angelegt",
-                DesignDatei.Read(design, DesignDatei.ZeigerAbschnitt, "DefaultValue") == "Windows-Voreinstellung (groß)"
-                && DesignDatei.Read(design, DesignDatei.ZeigerAbschnitt, "Arrow") == @"%SystemRoot%\cursors\aero_arrow_l.cur"
-                && DesignDatei.Read(design, DesignDatei.ZeigerAbschnitt, "Hand") is null);
+                ThemeFile.Read(design, ThemeFile.ZeigerAbschnitt, "DefaultValue") == "Windows-Voreinstellung (groß)"
+                && ThemeFile.Read(design, ThemeFile.ZeigerAbschnitt, "Arrow") == @"%SystemRoot%\cursors\aero_arrow_l.cur"
+                && ThemeFile.Read(design, ThemeFile.ZeigerAbschnitt, "Hand") is null);
 
             // The encoding is kept: UTF-16 with BOM, UTF-8 with BOM, ASCII; an umlaut in ASCII -> UTF-16.
             var dd = Path.Combine(root, "design-datei");
@@ -1548,27 +1548,27 @@ internal static partial class Program
                 var thDatei = Path.Combine(dd, name + ".theme");
                 var thStart = "[Control Panel\\Colors]\r\nBackground=0 0 0\r\n";
                 File.WriteAllBytes(thDatei, kod.GetPreamble().Concat(kod.GetBytes(thStart)).ToArray());
-                var (gelesen, erkannt) = DesignDatei.ReadFile(thDatei);
-                DesignDatei.WriteFile(thDatei, DesignDatei.ForColor(gelesen, ((byte)107, (byte)105, (byte)214)), erkannt);
+                var (gelesen, erkannt) = ThemeFile.ReadFile(thDatei);
+                ThemeFile.WriteFile(thDatei, ThemeFile.ForColor(gelesen, ((byte)107, (byte)105, (byte)214)), erkannt);
                 var thBytes = File.ReadAllBytes(thDatei);
                 var bomGleich = thBytes.Take(kod.GetPreamble().Length).SequenceEqual(kod.GetPreamble());
-                var (wieder, _) = DesignDatei.ReadFile(thDatei);
+                var (wieder, _) = ThemeFile.ReadFile(thDatei);
                 Check($"Kodierung {name}: erkannt, gleich zurueckgeschrieben, lesbar",
-                    gelesen == thStart && bomGleich && DesignDatei.Read(wieder, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214"
+                    gelesen == thStart && bomGleich && ThemeFile.Read(wieder, ThemeFile.FarbenAbschnitt, "Background") == "107 105 214"
                     && !File.Exists(thDatei + ".dasi-neu"));
             }
             var asciiDatei = Path.Combine(dd, "ascii.theme");
-            var (asciiText, asciiKod) = DesignDatei.ReadFile(asciiDatei);
-            DesignDatei.WriteFile(asciiDatei, DesignDatei.ForImage(asciiText, @"C:\Users\Jürgen\Bilder\Strand.jpg", null), asciiKod);
+            var (asciiText, asciiKod) = ThemeFile.ReadFile(asciiDatei);
+            ThemeFile.WriteFile(asciiDatei, ThemeFile.ForImage(asciiText, @"C:\Users\Jürgen\Bilder\Strand.jpg", null), asciiKod);
             var asciiBytes = File.ReadAllBytes(asciiDatei);
             Check("Umlaut in einer ASCII-Datei: als UTF-16 mit BOM geschrieben und wieder lesbar",
                 asciiBytes[0] == 0xFF && asciiBytes[1] == 0xFE
-                && DesignDatei.Read(DesignDatei.ReadFile(asciiDatei).Inhalt, DesignDatei.DesktopAbschnitt, "Wallpaper") == @"C:\Users\Jürgen\Bilder\Strand.jpg");
+                && ThemeFile.Read(ThemeFile.ReadFile(asciiDatei).Inhalt, ThemeFile.DesktopAbschnitt, "Wallpaper") == @"C:\Users\Jürgen\Bilder\Strand.jpg");
         }
 
         Console.WriteLine("\n== Design: Einstellungen von Windows ==");
         {
-            var designKat = DesignEinstellungen.Katalog;
+            var designKat = DesignSettings.Katalog;
             const string pers = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
             const string dwm = @"Software\Microsoft\Windows\DWM";
             const string adv = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
@@ -1601,31 +1601,31 @@ internal static partial class Program
                 [cur + "|Hand"] = ("ExpandString", @"C:\Users\Alt\Zeiger\eigene_hand.cur"),
                 [adv + "|TaskbarAl"] = ("DWord", "0"),
             };
-            var designWerte = DesignEinstellungen.ReadAll((s, n) => fakeReg.TryGetValue(s + "|" + n, out var v) ? v : null);
+            var designWerte = DesignSettings.ReadAll((s, n) => fakeReg.TryGetValue(s + "|" + n, out var v) ? v : null);
             Check("Auslesen: genau die vorhandenen Werte", designWerte.Count == fakeReg.Count, designWerte.Count.ToString());
-            Check("Auslesen: Gruppen", DesignEinstellungen.Groups(designWerte) == "Farben, Akzentfarbe, Mauszeiger, Taskleiste", DesignEinstellungen.Groups(designWerte));
+            Check("Auslesen: Gruppen", DesignSettings.Groups(designWerte) == "Farben, Akzentfarbe, Mauszeiger, Taskleiste", DesignSettings.Groups(designWerte));
             Check("Auslesen: ein Lesefehler bricht nicht ab",
-                DesignEinstellungen.ReadAll((s, n) => n == "AppsUseLightTheme" ? throw new UnauthorizedAccessException() : fakeReg.TryGetValue(s + "|" + n, out var v) ? v : null).Count == fakeReg.Count - 1);
-            var designKurz = DesignEinstellungen.Summary(designWerte, De);
+                DesignSettings.ReadAll((s, n) => n == "AppsUseLightTheme" ? throw new UnauthorizedAccessException() : fakeReg.TryGetValue(s + "|" + n, out var v) ? v : null).Count == fakeReg.Count - 1);
+            var designKurz = DesignSettings.Summary(designWerte, De);
             Check("Zusammenfassung fuers Protokoll",
                 designKurz == "Windows dunkel, Apps dunkel, Transparenz an, Akzentfarbe #0063B1, Mauszeiger \"Windows-Standard (groß)\", Taskleiste links", designKurz);
-            Check("Zusammenfassung englisch", DesignEinstellungen.Summary(designWerte, En).StartsWith("Windows dark, apps dark, transparency on"));
-            Check("Akzentfarbe aus DWM (0xAABBGGRR)", DesignEinstellungen.AccentHex(unchecked((int)0xFFB16300)) == "#0063B1");
+            Check("Zusammenfassung englisch", DesignSettings.Summary(designWerte, En).StartsWith("Windows dark, apps dark, transparency on"));
+            Check("Akzentfarbe aus DWM (0xAABBGGRR)", DesignSettings.AccentHex(unchecked((int)0xFFB16300)) == "#0063B1");
             var mitAuto = designWerte.Append(new DesignEintrag { Schluessel = @"Control Panel\Desktop", Name = "AutoColorization", Typ = "DWord", Wert = "1" }).ToList();
-            Check("Akzentfarbe automatisch statt fester Farbe", DesignEinstellungen.Summary(mitAuto, De).Contains("Akzentfarbe automatisch"));
+            Check("Akzentfarbe automatisch statt fester Farbe", DesignSettings.Summary(mitAuto, De).Contains("Akzentfarbe automatisch"));
 
             // Mouse pointer from a custom scheme whose file is missing here.
             bool PointerPresent(string pfad) => pfad.Contains("aero_arrow");
-            Check("Zeiger mit vorhandener Datei wird gesetzt", !DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "Arrow"), PointerPresent));
-            Check("Zeiger ohne Datei wird ausgelassen", DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "Hand"), PointerPresent));
+            Check("Zeiger mit vorhandener Datei wird gesetzt", !DesignSettings.PointerMissing(designWerte.First(e => e.Name == "Arrow"), PointerPresent));
+            Check("Zeiger ohne Datei wird ausgelassen", DesignSettings.PointerMissing(designWerte.First(e => e.Name == "Hand"), PointerPresent));
             Check("Schema-Name und andere Werte sind nie \"Zeiger ohne Datei\"",
-                !DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "" && e.Gruppe == "Mauszeiger"), PointerPresent)
-                && !DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "TaskbarAl"), PointerPresent));
+                !DesignSettings.PointerMissing(designWerte.First(e => e.Name == "" && e.Gruppe == "Mauszeiger"), PointerPresent)
+                && !DesignSettings.PointerMissing(designWerte.First(e => e.Name == "TaskbarAl"), PointerPresent));
 
             // Save and load.
             var designOrdner = Path.Combine(root, "design", "DASI");
-            DesignEinstellungen.Save(designOrdner, new DesignSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Werte = designWerte });
-            var designZurueck = DesignEinstellungen.Load(designOrdner);
+            DesignSettings.Save(designOrdner, new DesignSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Werte = designWerte });
+            var designZurueck = DesignSettings.Load(designOrdner);
             Check("Design.json: Werte wieder gelesen, gleich", designZurueck is not null && designZurueck.Werte.Count == designWerte.Count
                 && designZurueck.Werte.Select(w => w.Schluessel + w.Name + w.Typ + w.Wert).SequenceEqual(designWerte.Select(w => w.Schluessel + w.Name + w.Typ + w.Wert)));
             Check("Design.json: Umlaute bleiben", designZurueck!.Werte.Any(w => w.Wert == "Windows-Standard (groß)"));
@@ -1634,21 +1634,21 @@ internal static partial class Program
 
             // Wallpaper and settings in one file - image with its origin.
             var eins = Path.Combine(root, "design", "eins");
-            DesignEinstellungen.Save(eins, new DesignSicherung
+            DesignSettings.Save(eins, new DesignSicherung
             {
                 Rechner = "PC", Erstellt = new DateTime(2026, 11, 21),
                 Hintergrund = new HintergrundEinstellung { Art = "Bild", Bild = "Urlaub.jpg", BildPfad = @"C:\Users\Alt\Pictures\Urlaub.jpg",
                                                            Profil = @"C:\Users\Alt", Farbe = "0 0 0", Darstellung = "6", Kacheln = "0" },
                 Werte = designWerte,
             });
-            var einsZurueck = DesignEinstellungen.Load(eins);
+            var einsZurueck = DesignSettings.Load(eins);
             Check("eine Datei: Bild samt Herkunft und Darstellung wieder gelesen",
                 einsZurueck?.Hintergrund is { Art: "Bild", Bild: "Urlaub.jpg", Darstellung: "6" } hb && hb.BildPfad == @"C:\Users\Alt\Pictures\Urlaub.jpg"
                 && hb.Profil == @"C:\Users\Alt" && einsZurueck.Werte.Count == designWerte.Count && einsZurueck.Version == 2);
             var nurHg = Path.Combine(root, "design", "nur-hintergrund");
-            DesignEinstellungen.Save(nurHg, new DesignSicherung { Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "107 105 214" } });
+            DesignSettings.Save(nurHg, new DesignSicherung { Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "107 105 214" } });
             Check("eine Datei: nur der Hintergrund (Einstellungen nicht lesbar) genuegt",
-                DesignEinstellungen.Exists(nurHg) && Hintergrund.IsSolidColor(DesignEinstellungen.Load(nurHg)!.Hintergrund));
+                DesignSettings.Exists(nurHg) && Wallpaper.IsSolidColor(DesignSettings.Load(nurHg)!.Hintergrund));
             AppCatalog.HatWlanAdapter = () => true;
             Check("eine Datei: Punkt beim Wiederherstellen frei", AppCatalog.ForRestore(Punkt.Hintergrund, nurHg) is null);
 
@@ -1661,17 +1661,17 @@ internal static partial class Program
                 "{ \"Version\": 1, \"Rechner\": \"PC\", \"Werte\": [ { \"Gruppe\": \"Farben\", \"Schluessel\": \"" + pers.Replace("\\", "\\\\")
                 + "\", \"Name\": \"SystemUsesLightTheme\", \"Typ\": \"DWord\", \"Wert\": \"0\" } ] }");
             Directory.CreateDirectory(Path.Combine(zwischen, "Hintergrundbild"));
-            Hintergrund.Save(Path.Combine(zwischen, "Hintergrundbild"), new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "107 105 214" });
-            var zw = DesignEinstellungen.Load(zwischen);
+            Wallpaper.Save(Path.Combine(zwischen, "Hintergrundbild"), new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "107 105 214" });
+            var zw = DesignSettings.Load(zwischen);
             Check("Zwischenfassung: Einstellungen werden gelesen, Hintergrund kommt aus dem alten Ordner",
                 zw is { Werte.Count: 1, Hintergrund: null } && AppCatalog.HasWallpaper(zwischen)
-                && Hintergrund.IsSolidColor(Hintergrund.Load(Path.Combine(zwischen, "Hintergrundbild"))));
+                && Wallpaper.IsSolidColor(Wallpaper.Load(Path.Combine(zwischen, "Hintergrundbild"))));
             Check("Zwischenfassung: Punkt beim Wiederherstellen frei", AppCatalog.ForRestore(Punkt.Hintergrund, zwischen) is null);
 
             // If both files are there, Design.json counts.
-            DesignEinstellungen.Save(zwischen, new DesignSicherung { Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "1 2 3" } });
-            Check("Design.json hat Vorrang vor der Datei der Zwischenfassung", DesignEinstellungen.Load(zwischen)?.Hintergrund?.Farbe == "1 2 3");
-            Check("ohne Datei: nicht vorhanden", !DesignEinstellungen.Exists(Path.Combine(root, "design", "leer")));
+            DesignSettings.Save(zwischen, new DesignSicherung { Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "1 2 3" } });
+            Check("Design.json hat Vorrang vor der Datei der Zwischenfassung", DesignSettings.Load(zwischen)?.Hintergrund?.Farbe == "1 2 3");
+            Check("ohne Datei: nicht vorhanden", !DesignSettings.Exists(Path.Combine(root, "design", "leer")));
 
             // Availability: design settings alone (wallpaper slideshow) are enough.
             AppCatalog.HatWlanAdapter = () => true;
@@ -1687,32 +1687,32 @@ internal static partial class Program
         Console.WriteLine("\n== Taskleisten-Symbole ==");
         {
             var tlProfil = Path.Combine(root, "taskleiste", "Users", "Anwender");
-            var pin = Taskleiste.PinFolder(tlProfil);
+            var pin = Taskbar.PinFolder(tlProfil);
             Check("Ordner der angehefteten Verknuepfungen im Profil",
                 pin == Path.Combine(tlProfil, "AppData", "Roaming", "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar"), pin);
             Directory.CreateDirectory(pin);
             foreach (var n in new[] { "Microsoft Edge.lnk", "Datei-Explorer.lnk", "Firefox.lnk" }) File.WriteAllText(Path.Combine(pin, n), "lnk");
             File.WriteAllText(Path.Combine(pin, "desktop.ini"), "x");
-            var lnk = Taskleiste.Shortcuts(pin);
+            var lnk = Taskbar.Shortcuts(pin);
             Check("nur Verknuepfungen, nach Namen", lnk.SequenceEqual(new[] { "Datei-Explorer.lnk", "Firefox.lnk", "Microsoft Edge.lnk" }), string.Join(", ", lnk));
-            Check("Namen fuers Protokoll", Taskleiste.Names(lnk) == "Datei-Explorer, Firefox, Microsoft Edge");
-            Check("kein Ordner: keine Verknuepfungen", Taskleiste.Shortcuts(Path.Combine(root, "taskleiste", "fehlt")).Count == 0);
+            Check("Namen fuers Protokoll", Taskbar.Names(lnk) == "Datei-Explorer, Firefox, Microsoft Edge");
+            Check("kein Ordner: keine Verknuepfungen", Taskbar.Shortcuts(Path.Combine(root, "taskleiste", "fehlt")).Count == 0);
 
             var tlSich = Path.Combine(root, "taskleiste", "DASI");
             var band = new List<DesignEintrag>
             {
-                new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "Favorites", Typ = "Binary", Wert = Convert.ToBase64String(new byte[] { 0, 1, 2, 255 }) },
-                new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "FavoritesVersion", Typ = "DWord", Wert = "3" },
+                new() { Gruppe = "Taskleiste", Schluessel = Taskbar.TaskbandSchluessel, Name = "Favorites", Typ = "Binary", Wert = Convert.ToBase64String(new byte[] { 0, 1, 2, 255 }) },
+                new() { Gruppe = "Taskleiste", Schluessel = Taskbar.TaskbandSchluessel, Name = "FavoritesVersion", Typ = "DWord", Wert = "3" },
             };
-            Taskleiste.Save(tlSich, new TaskleistenSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Verknuepfungen = lnk, Taskband = band });
-            var tlZurueck = Taskleiste.Load(tlSich);
+            Taskbar.Save(tlSich, new TaskleistenSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Verknuepfungen = lnk, Taskband = band });
+            var tlZurueck = Taskbar.Load(tlSich);
             Check("Taskleiste.json: Verknuepfungen und Taskband wieder gelesen",
                 tlZurueck is not null && tlZurueck.Verknuepfungen.SequenceEqual(lnk)
                 && tlZurueck.Taskband.Select(b => b.Name + b.Typ + b.Wert).SequenceEqual(band.Select(b => b.Name + b.Typ + b.Wert)));
             Check("liegt unter Desktop-Symbole\\Taskleiste", File.Exists(Path.Combine(tlSich, "Desktop-Symbole", "Taskleiste", "Taskleiste.json")));
             var leerTl = Path.Combine(root, "taskleiste", "leer");
-            Taskleiste.Save(leerTl, new TaskleistenSicherung());
-            Check("leere Taskleiste gilt nicht als gesichert", !Taskleiste.Exists(leerTl) && Taskleiste.Load(Path.Combine(root, "taskleiste", "nichts")) is null);
+            Taskbar.Save(leerTl, new TaskleistenSicherung());
+            Check("leere Taskleiste gilt nicht als gesichert", !Taskbar.Exists(leerTl) && Taskbar.Load(Path.Combine(root, "taskleiste", "nichts")) is null);
 
             // Availability: only the taskbar, no icon positions.
             AppCatalog.HatWlanAdapter = () => true;
@@ -1850,8 +1850,8 @@ internal static partial class Program
 
             Console.WriteLine("\n== Design-Einstellungen echt (Registry) ==");
             {
-                var echt = DesignEinstellungen.ReadAll((s, n) => DesignRegistry.Read(Microsoft.Win32.Registry.CurrentUser, s, n));
-                Console.WriteLine($"         gelesen: {echt.Count} Werte ({DesignEinstellungen.Groups(echt)}) - {DesignEinstellungen.Summary(echt, De)}");
+                var echt = DesignSettings.ReadAll((s, n) => DesignRegistry.Read(Microsoft.Win32.Registry.CurrentUser, s, n));
+                Console.WriteLine($"         gelesen: {echt.Count} Werte ({DesignSettings.Groups(echt)}) - {DesignSettings.Summary(echt, De)}");
                 Check("echt: Design-Einstellungen lesbar (mindestens das Mauszeiger-Schema)", echt.Count > 0);
                 Check("echt: %SystemRoot% in Zeigerpfaden bleibt unaufgeloest",
                     !echt.Any(e => e.Typ == "ExpandString") || echt.Where(e => e.Typ == "ExpandString").Any(e => e.Wert.Contains('%')));
@@ -1885,13 +1885,13 @@ internal static partial class Program
             {
                 var farbeVorher = FarbeEcht.GetSysColor(1);
                 var farbeBlau = ((byte)0, (byte)99, (byte)177);
-                var farbeGesetzt = FarbeEcht.SetSysColors(1, new[] { 1 }, new[] { Hintergrund.ColorRef(farbeBlau) });
+                var farbeGesetzt = FarbeEcht.SetSysColors(1, new[] { 1 }, new[] { Wallpaper.ColorRef(farbeBlau) });
                 var farbeNachher = FarbeEcht.GetSysColor(1);
                 Console.WriteLine($"         farbeVorher 0x{farbeVorher:X6}, farbeGesetzt {farbeGesetzt}, farbeNachher 0x{farbeNachher:X6}");
                 Check("echt: Desktopfarbe laesst sich setzen", farbeGesetzt);
                 Check("echt: zurueckgelesen ist es dieselbe Farbe (Bytereihenfolge stimmt)",
-                    farbeNachher == (uint)Hintergrund.ColorRef(farbeBlau)
-                    && Hintergrund.Hex(((byte)(farbeNachher & 0xFF), (byte)((farbeNachher >> 8) & 0xFF), (byte)((farbeNachher >> 16) & 0xFF))) == "#0063B1",
+                    farbeNachher == (uint)Wallpaper.ColorRef(farbeBlau)
+                    && Wallpaper.Hex(((byte)(farbeNachher & 0xFF), (byte)((farbeNachher >> 8) & 0xFF), (byte)((farbeNachher >> 16) & 0xFF))) == "#0063B1",
                     $"0x{farbeNachher:X6}");
                 FarbeEcht.SetSysColors(1, new[] { 1 }, new[] { (int)farbeVorher });
             }
@@ -2331,22 +2331,22 @@ internal static partial class Program
         {
             Console.WriteLine("\n== Taskleiste echt: angeheftete Symbole lesen, Explorer neu starten ==");
             var echtBand = new List<string>();
-            using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(Taskleiste.TaskbandSchluessel))
+            using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(Taskbar.TaskbandSchluessel))
                 foreach (var name in k?.GetValueNames() ?? Array.Empty<string>())
-                    if (DesignRegistry.Read(Microsoft.Win32.Registry.CurrentUser, Taskleiste.TaskbandSchluessel, name) is { } v)
+                    if (DesignRegistry.Read(Microsoft.Win32.Registry.CurrentUser, Taskbar.TaskbandSchluessel, name) is { } v)
                         echtBand.Add($"{name} ({v.Typ})");
-            var echtPins = Taskleiste.Shortcuts(Taskleiste.PinFolder(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
+            var echtPins = Taskbar.Shortcuts(Taskbar.PinFolder(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
             Console.WriteLine($"         Taskband: {(echtBand.Count == 0 ? "leer" : string.Join(", ", echtBand))}");
-            Console.WriteLine($"         angeheftet: {(echtPins.Count == 0 ? "nichts" : Taskleiste.Names(echtPins))}");
+            Console.WriteLine($"         angeheftet: {(echtPins.Count == 0 ? "nichts" : Taskbar.Names(echtPins))}");
 
-            if (!ExplorerNeustart.TaskbarPresent())
+            if (!ExplorerRestart.TaskbarPresent())
             {
                 Console.WriteLine("         (keine Taskleiste auf diesem Laeufer - Neustart-Pruefung uebersprungen)");
             }
             else
             {
                 var uhrNeu = System.Diagnostics.Stopwatch.StartNew();
-                var (neuOk, vonSelbst) = ExplorerNeustart.Restart(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+                var (neuOk, vonSelbst) = ExplorerRestart.Restart(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
                 Console.WriteLine($"         Neustart: {(neuOk ? "Taskleiste wieder da" : "Taskleiste NICHT wieder da")}, "
                                   + $"{(vonSelbst ? "von Windows selbst" : "vom Tool gestartet")}, {uhrNeu.Elapsed.TotalSeconds:F1} s");
                 Check("echt: nach dem Neustart ist die Taskleiste wieder da", neuOk);
@@ -2377,7 +2377,7 @@ internal static partial class Program
     {
         Console.WriteLine("\n== Hintergrund echt: setzen, Explorer neu starten, Bildschirm pruefen ==");
         HintergrundEcht.WindowsVersion();
-        if (!ExplorerNeustart.TaskbarPresent())
+        if (!ExplorerRestart.TaskbarPresent())
         {
             Console.WriteLine("         (keine Taskleiste auf diesem Laeufer - uebersprungen)");
             return;
@@ -2385,8 +2385,8 @@ internal static partial class Program
         var hgNutzer = DesktopScreenshot.GetInteractiveUser();
         using var hgHku = hgNutzer?.Sid is { } hgSid ? Microsoft.Win32.Registry.Users.OpenSubKey(hgSid, true) : null;
         var hgWurzel = hgHku ?? Microsoft.Win32.Registry.CurrentUser;
-        bool hgEigen = DesktopHintergrund.IsProcessUser(hgNutzer?.Sid);
-        var hgVorher = DesktopHintergrund.Read(hgWurzel);
+        bool hgEigen = UserWallpaper.IsProcessUser(hgNutzer?.Sid);
+        var hgVorher = UserWallpaper.Read(hgWurzel);
         Console.WriteLine($"         Zweig: {(hgHku is null ? "HKCU" : @"HKU\" + hgNutzer!.Sid)}, Tool laeuft als dieser Benutzer: {hgEigen}");
         Console.WriteLine($"         vorher: Bild={hgVorher.Bild ?? "-"}, Farbe={hgVorher.Farbe}, Typ={hgVorher.Typ?.ToString() ?? "-"}, "
                           + $"Stil={hgVorher.Stil ?? "-"}, virtuelle Desktops mit eigenem Bild: {hgVorher.DesktopBilder.Count}");
@@ -2403,7 +2403,7 @@ internal static partial class Program
         var strecken = new HintergrundEinstellung { Darstellung = "2", Kacheln = "0" };
         void Restart(string wozu)
         {
-            var (ok, _) = ExplorerNeustart.Restart(TimeSpan.FromSeconds(25)).GetAwaiter().GetResult();
+            var (ok, _) = ExplorerRestart.Restart(TimeSpan.FromSeconds(25)).GetAwaiter().GetResult();
             Console.WriteLine($"         Explorer neu gestartet ({wozu}): {(ok ? "ok" : "Taskleiste NICHT wieder da")}");
         }
 
@@ -2416,7 +2416,7 @@ internal static partial class Program
         try
         {
             // 1. An image - as the tool sets it.
-            var r1 = DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken);
+            var r1 = UserWallpaper.SetImage(hgWurzel, hgEigen, rotBild, strecken);
             Console.WriteLine($"         Bild: eingetragen {r1.Eingetragen}, angezeigt {r1.Angezeigt}, virtuelle Desktops {r1.VirtuelleDesktops}");
             Check("echt: Bild beim angemeldeten Benutzer eingetragen", r1.Eingetragen);
             Check("echt: Windows zeigt das Bild sofort", r1.Angezeigt);
@@ -2430,7 +2430,7 @@ internal static partial class Program
             //    tool runs under ANOTHER account. An Explorer restart does not reload
             //    the wallpaper (it belongs to the session) - so the restart for the
             //    taskbar cannot lose it. Only sign-in reads the registry.
-            DesktopHintergrund.WriteImage(hgWurzel, gruenBild, strecken);
+            UserWallpaper.WriteImage(hgWurzel, gruenBild, strecken);
             Restart("nur eingetragen");
             System.Threading.Thread.Sleep(3000);
             var a3 = HintergrundEcht.Share(rot);
@@ -2442,12 +2442,12 @@ internal static partial class Program
             // it discarded as for another account.
             HintergrundEcht.AsAtSignIn();
             Console.WriteLine($"         wie beim Anmelden, alter Zwischenspeicher: {HintergrundEcht.Share(gruen):P0} gruen (Registry), {HintergrundEcht.Share(rot):P0} rot (alt)");
-            DesktopHintergrund.DiscardCache(hgWurzel, hgNutzer?.ProfilePath);
+            UserWallpaper.DiscardCache(hgWurzel, hgNutzer?.ProfilePath);
             HintergrundEcht.AsAtSignIn();
             Console.WriteLine($"         wie beim Anmelden, Zwischenspeicher verworfen: {HintergrundEcht.Share(gruen):P0} gruen (Registry), {HintergrundEcht.Share(rot):P0} rot (alt)");
 
             // 3. Solid color.
-            var r4 = DesktopHintergrund.SetColor(hgWurzel, hgEigen, lila);
+            var r4 = UserWallpaper.SetColor(hgWurzel, hgEigen, lila);
             Console.WriteLine($"         Volltonfarbe: eingetragen {r4.Eingetragen}, angezeigt {r4.Angezeigt}");
             Check("echt: Volltonfarbe eingetragen", r4.Eingetragen);
             var a4 = HintergrundEcht.IsVisible(lila);
@@ -2456,40 +2456,40 @@ internal static partial class Program
             if (r4.DesignDatei is { Datei: { } themaDatei } && File.Exists(themaDatei)
                 && themaDatei.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), StringComparison.OrdinalIgnoreCase))
             {
-                var themaText = DesignDatei.ReadFile(themaDatei).Inhalt;
+                var themaText = ThemeFile.ReadFile(themaDatei).Inhalt;
                 Check("echt: Volltonfarbe steht auch in der Design-Datei (Custom.theme)",
-                    DesignDatei.Read(themaText, DesignDatei.FarbenAbschnitt, "Background") == "107 105 214");
+                    ThemeFile.Read(themaText, ThemeFile.FarbenAbschnitt, "Background") == "107 105 214");
             }
             else
             {
                 Check("echt: Windows-Design ausserhalb des Profils bleibt unangetastet", r4.DesignDatei is { Geaendert: false });
             }
-            var standLila = DesktopHintergrund.Read(hgWurzel);
-            var k1 = DesktopHintergrund.Verify(standLila, German);
+            var standLila = UserWallpaper.Read(hgWurzel);
+            var k1 = UserWallpaper.Verify(standLila, German);
             Check("echt: Kontrolle bestaetigt die gesetzte Volltonfarbe", k1 is null, k1);
             var desktopFoto = DesktopScreenshot.CaptureDesktopWindow();
             Console.WriteLine($"         Desktop-Fenster (PrintWindow): {(desktopFoto is null ? "nicht abbildbar" : $"{DesktopScreenshot.ColorShare(desktopFoto, lila):P0} lila, meist {DesktopScreenshot.MostCommonColor(desktopFoto)}")}");
 
             // Verify notices when the desktop shows something else, and Retry fixes it.
-            DesktopHintergrund.SetColor(hgWurzel, hgEigen, tuerkis, hgNutzer?.ProfilePath);
+            UserWallpaper.SetColor(hgWurzel, hgEigen, tuerkis, hgNutzer?.ProfilePath);
             HintergrundEcht.IsVisible(tuerkis);
-            var k2 = DesktopHintergrund.Verify(standLila, German);
+            var k2 = UserWallpaper.Verify(standLila, German);
             Console.WriteLine($"         Kontrolle bei falscher Farbe: {k2 ?? "(nichts bemerkt)"}");
             Check("echt: Kontrolle bemerkt eine andere Farbe", k2 is not null);
             Check("echt: Unterschied in der Registry wird benannt",
-                DesktopHintergrund.Difference(standLila, DesktopHintergrund.Read(hgWurzel), German)?.Contains("Farbe") == true);
-            DesktopHintergrund.Retry(hgWurzel, hgEigen, standLila, hgNutzer?.ProfilePath);
+                UserWallpaper.Difference(standLila, UserWallpaper.Read(hgWurzel), German)?.Contains("Farbe") == true);
+            UserWallpaper.Retry(hgWurzel, hgEigen, standLila, hgNutzer?.ProfilePath);
             HintergrundEcht.IsVisible(lila);
-            var k3 = DesktopHintergrund.Verify(standLila, German);
+            var k3 = UserWallpaper.Verify(standLila, German);
             Check("echt: erneut gesetzt - Kontrolle wieder zufrieden", k3 is null, k3);
-            var einfluesse = string.Join("; ", DesktopHintergrund.Influences(hgWurzel, true, German));
+            var einfluesse = string.Join("; ", UserWallpaper.Influences(hgWurzel, true, German));
             Console.WriteLine($"         Einfluesse: {(einfluesse.Length > 0 ? einfluesse : "keine")}");
             Restart("Volltonfarbe");
             var a5 = HintergrundEcht.IsVisible(lila);
             Check("echt: nach dem Explorer-Neustart ist die Volltonfarbe noch da", a5 > 0.5, $"{a5:P0} lila");
 
             // 4. Only the registered color: the Explorer restart keeps the session's color.
-            DesktopHintergrund.WriteColor(hgWurzel, tuerkis);
+            UserWallpaper.WriteColor(hgWurzel, tuerkis);
             Restart("Farbe nur eingetragen");
             System.Threading.Thread.Sleep(3000);
             var a6 = HintergrundEcht.Share(lila);
@@ -2502,11 +2502,11 @@ internal static partial class Program
             //    (the user's 33), then the solid color #6B69D6, then the Explorer
             //    restart for the taskbar. Starting point: an image.
             Console.WriteLine("   -- Ablauf wie beim Anwender: Design-Werte, Volltonfarbe, Explorer-Neustart --");
-            DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
+            UserWallpaper.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
             HintergrundEcht.IsVisible(rot);
             var ue = DesignRegistry.Apply(hgWurzel, HintergrundEcht.UserTheme(), hgEigen);
             Console.WriteLine($"         Design-Werte: {ue.Gesetzt.Count} gesetzt, {ue.OhneDatei.Count} ohne Datei, {ue.NichtSchreibbar.Count} nicht schreibbar");
-            var r5 = DesktopHintergrund.SetColor(hgWurzel, hgEigen, lila, hgNutzer?.ProfilePath);
+            var r5 = UserWallpaper.SetColor(hgWurzel, hgEigen, lila, hgNutzer?.ProfilePath);
             Console.WriteLine($"         Volltonfarbe (Tool): eingetragen {r5.Eingetragen}, angezeigt {r5.Angezeigt}");
             HintergrundEcht.ShareOverTime("Volltonfarbe (Tool)", lila, 1, 3, 6);
             Restart("wie beim Anwender");
@@ -2517,17 +2517,17 @@ internal static partial class Program
             // 5b. Like 5, but every virtual desktop keeps an EMPTY wallpaper entry
             //     instead of none.
             Console.WriteLine("   -- wie 5, virtuelle Desktops mit leerem Wallpaper-Eintrag --");
-            DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
+            UserWallpaper.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
             HintergrundEcht.IsVisible(rot);
-            DesktopHintergrund.SetColor(hgWurzel, hgEigen, lila, hgNutzer?.ProfilePath);
-            using (var vd = hgWurzel.OpenSubKey(DesktopHintergrund.VirtuelleDesktopsSchluessel, true))
+            UserWallpaper.SetColor(hgWurzel, hgEigen, lila, hgNutzer?.ProfilePath);
+            using (var vd = hgWurzel.OpenSubKey(UserWallpaper.VirtuelleDesktopsSchluessel, true))
                 foreach (var n in vd?.GetSubKeyNames() ?? Array.Empty<string>())
                     using (var d = vd!.OpenSubKey(n, true)) d?.SetValue("Wallpaper", "");
             HintergrundEcht.ShareOverTime("Volltonfarbe, leerer Eintrag", lila, 1, 3);
             Restart("leerer Eintrag");
             HintergrundEcht.ShareOverTime("leerer Eintrag, nach dem Explorer-Neustart", lila, 1, 4, 8);
             HintergrundEcht.State("danach", hgWurzel, hgNutzer?.ProfilePath);
-            using (var vd = hgWurzel.OpenSubKey(DesktopHintergrund.VirtuelleDesktopsSchluessel, true))
+            using (var vd = hgWurzel.OpenSubKey(UserWallpaper.VirtuelleDesktopsSchluessel, true))
                 foreach (var n in vd?.GetSubKeyNames() ?? Array.Empty<string>())
                     using (var d = vd!.OpenSubKey(n, true)) d?.DeleteValue("Wallpaper", false);
 
@@ -2535,17 +2535,17 @@ internal static partial class Program
             //     explorer.exe), then the solid color or the image directly. For a
             //     color, an image stays in the theme - Windows 11 read an empty one
             //     as Spotlight.
-            var aktuellesDesign = DesktopHintergrund.ThemeFilePath(hgWurzel, hgNutzer?.ProfilePath);
+            var aktuellesDesign = UserWallpaper.ThemeFilePath(hgWurzel, hgNutzer?.ProfilePath);
             Console.WriteLine($"   -- Windows wendet das Design an (aktuell: {aktuellesDesign ?? "-"}) --");
             if (aktuellesDesign is not null && File.Exists(aktuellesDesign) && hgNutzer?.ProfilePath is { } profilWd)
             {
                 var themesWd = Path.Combine(profilWd, @"AppData\Local\Microsoft\Windows\Themes");
                 var dateiWd = "";
-                bool IsCurrent(string d) => string.Equals(DesktopHintergrund.ThemeFilePath(hgWurzel, profilWd), d, StringComparison.OrdinalIgnoreCase);
+                bool IsCurrent(string d) => string.Equals(UserWallpaper.ThemeFilePath(hgWurzel, profilWd), d, StringComparison.OrdinalIgnoreCase);
                 bool Apply(string inhalt, int art, Func<bool> da)
                 {
                     var uhr = System.Diagnostics.Stopwatch.StartNew();
-                    DesktopHintergrund.WriteStyle(hgWurzel, art);
+                    UserWallpaper.WriteStyle(hgWurzel, art);
                     var r = WindowsDesign.ApplyAndWait(themesWd, inhalt, hgNutzer.Name, d => IsCurrent(d) && da(), IsCurrent,
                         TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
                     dateiWd = r.Datei;
@@ -2554,28 +2554,28 @@ internal static partial class Program
                 }
 
                 var gruenFarbe = ((byte)16, (byte)124, (byte)16);
-                var vorlageWd = DesignDatei.ReadFile(aktuellesDesign).Inhalt;
-                var themaFarbe = DesignDatei.ForRestore(vorlageWd, "DaSi-Pruefung", gruenFarbe, null, null, HintergrundEcht.UserTheme());
+                var vorlageWd = ThemeFile.ReadFile(aktuellesDesign).Inhalt;
+                var themaFarbe = ThemeFile.ForRestore(vorlageWd, "DaSi-Pruefung", gruenFarbe, null, null, HintergrundEcht.UserTheme());
                 Check("echt: Windows wendet das Design mit der Volltonfarbe an (Farbe in der Registry)",
-                    Apply(themaFarbe, 1, () => Hintergrund.ReadColor(DesktopHintergrund.Read(hgWurzel).Farbe) == gruenFarbe));
-                var rWd = DesktopHintergrund.SetColor(hgWurzel, hgEigen, gruenFarbe, hgNutzer.ProfilePath);
+                    Apply(themaFarbe, 1, () => Wallpaper.ReadColor(UserWallpaper.Read(hgWurzel).Farbe) == gruenFarbe));
+                var rWd = UserWallpaper.SetColor(hgWurzel, hgEigen, gruenFarbe, hgNutzer.ProfilePath);
                 Console.WriteLine($"         danach Volltonfarbe direkt: eingetragen {rWd.Eingetragen}, Explorer {(rWd.ExplorerFehler ?? "ok")}");
                 HintergrundEcht.State("Design + Farbe", hgWurzel, hgNutzer.ProfilePath);
                 var v1Wd = HintergrundEcht.ShareOverTime("Design + Farbe", gruenFarbe, 1, 3);
                 Check("echt: Design + Farbe - der Desktop zeigt die Farbe (kein Blickpunkt)", v1Wd > 0.5, $"{v1Wd:P0}");
-                Check("echt: Design + Farbe - Blickpunkt bleibt aus", !DesktopHintergrund.Influences(hgWurzel, true, German).Any(e => e.Contains("Blickpunkt")));
+                Check("echt: Design + Farbe - Blickpunkt bleibt aus", !UserWallpaper.Influences(hgWurzel, true, German).Any(e => e.Contains("Blickpunkt")));
                 Check("echt: Design + Farbe - das Design ist jetzt das aktuelle",
-                    string.Equals(DesktopHintergrund.ThemeFilePath(hgWurzel, hgNutzer.ProfilePath), dateiWd, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(UserWallpaper.ThemeFilePath(hgWurzel, hgNutzer.ProfilePath), dateiWd, StringComparison.OrdinalIgnoreCase));
                 Restart("Design + Farbe");
                 var v2Wd = HintergrundEcht.ShareOverTime("Design + Farbe, nach dem Explorer-Neustart", gruenFarbe, 1, 4);
                 Check("echt: Design + Farbe - nach dem Explorer-Neustart noch da", v2Wd > 0.5, $"{v2Wd:P0}");
 
-                var themaBild = DesignDatei.ForRestore(DesignDatei.ReadFile(dateiWd).Inhalt, "DaSi-Pruefung", null, rotBild, strecken, Array.Empty<DesignEintrag>());
+                var themaBild = ThemeFile.ForRestore(ThemeFile.ReadFile(dateiWd).Inhalt, "DaSi-Pruefung", null, rotBild, strecken, Array.Empty<DesignEintrag>());
                 var ersteDatei = dateiWd;
                 Check("echt: Windows wendet das Design mit dem Bild an (ist das aktuelle)", Apply(themaBild, 0, () => true));
                 Check("echt: zweites Anwenden unter neuem Namen, das fruehere DaSi-Design ist weg",
                     dateiWd != ersteDatei && File.Exists(dateiWd) && !File.Exists(ersteDatei));
-                DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer.ProfilePath);
+                UserWallpaper.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer.ProfilePath);
                 var v3Wd = HintergrundEcht.ShareOverTime("Design + Bild", rot, 1, 3);
                 Check("echt: Design + Bild - der Desktop zeigt das Bild", v3Wd > 0.5, $"{v3Wd:P0}");
                 Restart("Design + Bild");
@@ -2588,16 +2588,16 @@ internal static partial class Program
             }
 
             // 6./7. The same through IDesktopWallpaper - the Settings app's interface.
-            Console.WriteLine($"   -- IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Snapshot() ?? "nicht erreichbar"} --");
+            Console.WriteLine($"   -- IDesktopWallpaper: {UserWallpaper.Schnittstelle.Snapshot() ?? "nicht erreichbar"} --");
             foreach (var abschalten in new[] { false, true })
             {
                 var was = abschalten ? "Farbe + Enable(false)" : "Farbe + SetWallpaper(\"\")";
-                DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
+                UserWallpaper.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
                 HintergrundEcht.IsVisible(rot);
                 try
                 {
-                    DesktopHintergrund.WriteColor(hgWurzel, tuerkis);
-                    DesktopHintergrund.Schnittstelle.SetColor(tuerkis, abschalten);
+                    UserWallpaper.WriteColor(hgWurzel, tuerkis);
+                    UserWallpaper.Schnittstelle.SetColor(tuerkis, abschalten);
                     HintergrundEcht.ShareOverTime($"IDesktopWallpaper {was}", tuerkis, 1, 3);
                     Restart(was);
                     HintergrundEcht.ShareOverTime($"IDesktopWallpaper {was}, nach dem Explorer-Neustart", tuerkis, 1, 4, 8);
@@ -2606,12 +2606,12 @@ internal static partial class Program
                 catch (Exception ex) { Console.WriteLine($"         IDesktopWallpaper {was}: {ex.GetType().Name}: {ex.Message}"); }
                 finally
                 {
-                    if (abschalten) try { DesktopHintergrund.Schnittstelle.Enable(); } catch { }
+                    if (abschalten) try { UserWallpaper.Schnittstelle.Enable(); } catch { }
                 }
             }
             try
             {
-                DesktopHintergrund.Schnittstelle.SetImage(gruenBild, strecken);
+                UserWallpaper.Schnittstelle.SetImage(gruenBild, strecken);
                 HintergrundEcht.ShareOverTime("IDesktopWallpaper Bild", gruen, 1, 3);
                 Restart("IDesktopWallpaper Bild");
                 HintergrundEcht.ShareOverTime("IDesktopWallpaper Bild, nach dem Explorer-Neustart", gruen, 1, 4, 8);
@@ -2624,10 +2624,10 @@ internal static partial class Program
             try
             {
                 if (hgVorher.Bild is { } altBild && File.Exists(altBild))
-                    DesktopHintergrund.SetImage(hgWurzel, hgEigen, altBild,
+                    UserWallpaper.SetImage(hgWurzel, hgEigen, altBild,
                         new HintergrundEinstellung { Darstellung = hgVorher.Stil, Kacheln = hgVorher.Kacheln });
-                else if (Hintergrund.ReadColor(hgVorher.Farbe) is { } altFarbe)
-                    DesktopHintergrund.SetColor(hgWurzel, hgEigen, altFarbe);
+                else if (Wallpaper.ReadColor(hgVorher.Farbe) is { } altFarbe)
+                    UserWallpaper.SetColor(hgWurzel, hgEigen, altFarbe);
             }
             catch { /* runner */ }
             DesktopScreenshot.RestoreWindows(hgWeg);
@@ -2904,15 +2904,15 @@ internal static class HintergrundEcht
     /// <summary>What Windows says about the wallpaper: registry, session, cache, Spotlight, theme file, IDesktopWallpaper.</summary>
     public static void State(string wann, Microsoft.Win32.RegistryKey wurzel, string? profil)
     {
-        var s = DesktopHintergrund.Read(wurzel);
+        var s = UserWallpaper.Read(wurzel);
         var c = FarbeEcht.GetSysColor(1);
         Console.WriteLine($"         [{wann}] Registry: Bild={s.Bild ?? "-"}, Farbe={s.Farbe}, Typ={s.Typ?.ToString() ?? "-"}, Stil={s.Stil ?? "-"}; "
                           + $"Sitzungsfarbe #{c & 0xFF:X2}{(c >> 8) & 0xFF:X2}{(c >> 16) & 0xFF:X2}");
         try
         {
-            var z = Hintergrund.Cache(profil);
+            var z = Wallpaper.Cache(profil);
             var fi = z is null ? null : new FileInfo(z);
-            using var d = wurzel.OpenSubKey(DesktopHintergrund.DesktopSchluessel);
+            using var d = wurzel.OpenSubKey(UserWallpaper.DesktopSchluessel);
             Console.WriteLine($"         [{wann}] TranscodedWallpaper: {(fi is { Exists: true } ? $"{fi.Length} Bytes, {fi.LastWriteTime:HH:mm:ss}" : "fehlt")}, "
                               + $"TranscodedImageCache: {(d?.GetValue("TranscodedImageCache") is byte[] tc ? $"{tc.Length} Bytes" : "fehlt")}");
         }
@@ -2931,10 +2931,10 @@ internal static class HintergrundEcht
             Console.WriteLine($"         [{wann}] Blickpunkt EnabledState={sp?.GetValue("EnabledState")?.ToString() ?? "-"}; Design-Datei {design ?? "-"}: {auszug}");
         }
         catch (Exception ex) { Console.WriteLine($"         [{wann}] Blickpunkt/Design: {ex.Message}"); }
-        Console.WriteLine($"         [{wann}] IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Snapshot() ?? "nicht erreichbar"}");
+        Console.WriteLine($"         [{wann}] IDesktopWallpaper: {UserWallpaper.Schnittstelle.Snapshot() ?? "nicht erreichbar"}");
         try
         {
-            using var vd = wurzel.OpenSubKey(DesktopHintergrund.VirtuelleDesktopsSchluessel);
+            using var vd = wurzel.OpenSubKey(UserWallpaper.VirtuelleDesktopsSchluessel);
             var namen = vd?.GetSubKeyNames() ?? Array.Empty<string>();
             Console.WriteLine($"         [{wann}] virtuelle Desktops: {(namen.Length == 0 ? "keine" : string.Join(", ", namen.Select(n =>
             {

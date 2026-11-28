@@ -22,7 +22,7 @@ Drucker, eigene Ordner unter `C:\` und das Design (Hintergrund, Hell/Dunkel, Akz
 Auch die Desktop-Symbole kommen wieder an ihre Stelle.
 
 <div align="center">
-<img src="docs/images/hauptfenster.png" alt="Hauptfenster des Windows DaSi Tool nach einer Sicherung" width="850">
+<img src="docs/images/main-window.png" alt="Hauptfenster des Windows DaSi Tool nach einer Sicherung" width="850">
 </div>
 
 ---
@@ -59,7 +59,7 @@ exportieren* wird *Programme installieren*, aus *Design & Desktop sichern* wird
 die neue Richtung sie zulässt (siehe nächster Abschnitt).
 
 <div align="center">
-<img src="docs/images/modus-umschalter.png" alt="Die Auswahl im Modus Sichern und im Modus Wiederherstellen, nicht verfügbare Punkte ausgegraut" width="640">
+<img src="docs/images/mode-switch.png" alt="Die Auswahl im Modus Sichern und im Modus Wiederherstellen, nicht verfügbare Punkte ausgegraut" width="640">
 </div>
 
 ### Nur wählbar, was es auch gibt
@@ -156,7 +156,7 @@ Hand übernehmen, was noch fehlt. Bei einer späteren Sicherung gilt eine solche
 ja nicht synchronisiert.
 
 <div align="center">
-<img src="docs/images/cloud-rueckfrage.png" alt="Rückfrage mit den erkannten Cloud-Anbietern" width="440">
+<img src="docs/images/cloud-prompt.png" alt="Rückfrage mit den erkannten Cloud-Anbietern" width="440">
 </div>
 
 ### Auf einen anderen Rechner, zu einem anderen Benutzer
@@ -216,7 +216,7 @@ verworfen.
   dort neuer als in der Sicherung, bleibt sie ebenfalls.
 
 <div align="center">
-<img src="docs/images/ordner-auswahl.png" alt="Auswahlliste der Ordner unter C:\ mit Größen, Windows-Standardordner ausgeblendet" width="460">
+<img src="docs/images/folder-selection.png" alt="Auswahlliste der Ordner unter C:\ mit Größen, Windows-Standardordner ausgeblendet" width="460">
 </div>
 
 ### Design & Desktop: Wo lag was?
@@ -347,7 +347,7 @@ weitere Aktionen an, lässt sich der winget-Schritt überspringen, ohne den Rest
 verlieren.
 
 <div align="center">
-<img src="docs/images/winget-pruefung.png" alt="Hinweis, dass winget nicht einsatzbereit ist, mit Lösungsweg" width="440">
+<img src="docs/images/winget-check.png" alt="Hinweis, dass winget nicht einsatzbereit ist, mit Lösungsweg" width="440">
 </div>
 
 Beim **Export** wird die Liste um Zusatz- und Laufzeitpakete bereinigt (etwa die
@@ -358,7 +358,7 @@ vorhandene Liste wird erst ersetzt, wenn die neue vollständig ist.
 Beim **Wiederherstellen** wird gezielt ausgewählt, was installiert werden soll:
 
 <div align="center">
-<img src="docs/images/winget-auswahl.png" alt="Auswahldialog für die Winget-Wiederherstellung" width="460">
+<img src="docs/images/winget-selection.png" alt="Auswahldialog für die Winget-Wiederherstellung" width="460">
 </div>
 
 ### Ein eigener Ordner je Sicherung
@@ -400,7 +400,7 @@ Sonne-/Mond-Symbol und das Sprach-Dropdown ändern. Das Farbschema gilt auch fü
 alle Dialoge, etwa Rückfragen und die Winget-Auswahl.
 
 <div align="center">
-<img src="docs/images/hell-englisch.png" alt="Hauptfenster im hellen Design auf Englisch, nach einer Wiederherstellung" width="850">
+<img src="docs/images/light-english.png" alt="Hauptfenster im hellen Design auf Englisch, nach einer Wiederherstellung" width="850">
 </div>
 
 ### Nachvollziehbares Protokoll und ehrliche Bilanz
@@ -466,7 +466,7 @@ EXE** eine abweichende Adresse hinterlegen — eine Zeile, vollständige
 > derselben Adresse. `raw.githubusercontent.com` kennt diese Grenze nicht.
 
 Wie eine neue Fassung veröffentlicht wird — im Browser, in GitHub Desktop oder
-auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTLICHEN.md)**.
+auf der Kommandozeile — steht in **[docs/RELEASING.md](docs/RELEASING.md)**.
 
 ---
 
@@ -515,7 +515,7 @@ auf der Kommandozeile — steht in **[docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTL
 | **Dateioperationen** | Robocopy mit Spiegelung, Ausschlusslisten und Multithreading |
 | **Prozess-Handling** | Browser und Thunderbird werden vor dem Backup automatisch geschlossen, um Dateikonflikte zu vermeiden |
 | **Fehlerbehandlung** | Unerwartete Fehler landen in `%USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log` |
-| **Prüfungen** | `tests/DaSiTests` prüft die Dienste: jede Aktion der Warteschlange an einem Testprofil, mit echtem robocopy, netsh und PrintBrm, dazu Design, Desktop-Foto, Symbole und Taskleiste am echten Desktop sowie das Austauschskript der Selbstaktualisierung. `tests/DaSiGuiTests` prüft die Oberfläche: das echte Hauptfenster ohne Bildschirm (Avalonia.Headless), bedient mit Mausklicks – Rückfragen, Warteschlange, Update-Streifen, Dialoge. winget ersetzt eine Attrappe (`tests/WingetAttrappe`), installiert wird nichts. Läuft bei jedem Push unter Windows; `tools/abdeckung.py` meldet jede Funktion, die keine Prüfung ausführt |
+| **Prüfungen** | `tests/DaSiTests` prüft die Dienste: jede Aktion der Warteschlange an einem Testprofil, mit echtem robocopy, netsh und PrintBrm, dazu Design, Desktop-Foto, Symbole und Taskleiste am echten Desktop sowie das Austauschskript der Selbstaktualisierung. `tests/DaSiGuiTests` prüft die Oberfläche: das echte Hauptfenster ohne Bildschirm (Avalonia.Headless), bedient mit Mausklicks – Rückfragen, Warteschlange, Update-Streifen, Dialoge. winget ersetzt eine Attrappe (`tests/WingetFake`), installiert wird nichts. Läuft bei jedem Push unter Windows; `tools/coverage.py` meldet jede Funktion, die keine Prüfung ausführt |
 
 ### Selbst bauen
 
@@ -568,8 +568,8 @@ dotnet tool restore
 dotnet build tests/DaSiGuiTests -c Release -p:DebugType=portable -p:DebugSymbols=true
 dotnet coverlet tests/DaSiGuiTests/bin/Release/net10.0-windows/DaSiGuiTests.dll `
   --target tests/DaSiGuiTests/bin/Release/net10.0-windows/DaSiGuiTests.exe `
-  --include "[WindowsDaSiTool]*" --format cobertura --output abdeckung/gui.xml
-python tools/abdeckung.py abdeckung/gui.xml
+  --include "[WindowsDaSiTool]*" --format cobertura --output coverage/gui.xml
+python tools/coverage.py coverage/gui.xml
 ```
 
 ---

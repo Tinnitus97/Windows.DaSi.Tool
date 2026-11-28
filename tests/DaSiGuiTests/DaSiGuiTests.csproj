@@ -18,17 +18,17 @@
   <ItemGroup>
     <ProjectReference Include="../../WindowsDaSiTool.csproj" />
     <PackageReference Include="Avalonia.Headless" Version="12.1.6" />
-    <Compile Include="../Gemeinsam/*.cs" />
+    <Compile Include="../Shared/*.cs" />
   </ItemGroup>
 
   <!-- The winget fake is built along - into its own folder. A project
        reference would copy its launcher winget.exe (without winget.dll)
        here, and Windows would then find "winget" here first, in the test
        program's folder, instead of in the search path. -->
-  <Target Name="WingetAttrappeBauen" BeforeTargets="Build">
+  <Target Name="BuildWingetFake" BeforeTargets="Build">
     <!-- Restore first (own properties = separate pass), then build. -->
-    <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Restore" Properties="Configuration=$(Configuration);DaSiRestore=true" />
-    <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
+    <MSBuild Projects="../WingetFake/WingetFake.csproj" Targets="Restore" Properties="Configuration=$(Configuration);DaSiRestore=true" />
+    <MSBuild Projects="../WingetFake/WingetFake.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
   </Target>
 
 </Project>

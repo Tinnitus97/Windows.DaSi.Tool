@@ -29,7 +29,7 @@ public sealed class TaskleistenSicherung
 ///
 /// No dependencies, so it can be tested.
 /// </summary>
-public static class Taskleiste
+public static class Taskbar
 {
     public const string Ordner = "Taskleiste";
     public const string DateiName = "Taskleiste.json";

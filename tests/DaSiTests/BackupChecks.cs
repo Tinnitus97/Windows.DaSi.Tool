@@ -237,8 +237,8 @@ internal static partial class Program
     private static void ProgramProfilesCheck(string root, string basis, string profil, CancellationTokenState c, ProcessRunner runner, Protokoll log)
     {
         Console.WriteLine("\n== Sicherungsdienst: Programmprofile (Browser, Opera) ==");
-        var attrappe = Attrappen.WingetFake();
-        var ordner = Attrappen.WingetScenario(root, Scenario(("install.DaSi.Kaputt.code", "1603"), ("install.Opera.OperaGX.code", "0")));
+        var attrappe = Fakes.WingetFake();
+        var ordner = Fakes.WingetScenario(root, Scenario(("install.DaSi.Kaputt.code", "1603"), ("install.Opera.OperaGX.code", "0")));
         var winget = new WingetService(runner, c, log.Write)
         {
             FesteKandidaten = attrappe is null ? Array.Empty<string>() : new[] { attrappe },
@@ -294,7 +294,7 @@ internal static partial class Program
             Environment.SetEnvironmentVariable("PATH", Path.GetDirectoryName(attrappe) + ";" + pfad);
             try
             {
-                Attrappen.WriteScenario(ordner, Scenario(("install.*.code", WingetFehler.SchonInstalliert.ToString())));
+                Fakes.WriteScenario(ordner, Scenario(("install.*.code", WingetErrors.SchonInstalliert.ToString())));
                 log.Clear();
                 new BackupService(runner, c, log.Write) { SourcePath = ziel, BackupPath = sicherung }.RestoreAppProfile(Kaputtpaket).Wait();
                 Check("winget aus dem Suchpfad: 'bereits installiert' erkannt", log.Has("Kaputtpaket ist bereits installiert"), log.Text);
@@ -312,7 +312,7 @@ internal static partial class Program
         MozillaServiceCheck(basis, Service, log, ordner);
 
         // Opera: all editions, installed, reinstalled or just restored depending on the situation.
-        Attrappen.WriteScenario(ordner, Scenario(("install.*.code", "0")));
+        Fakes.WriteScenario(ordner, Scenario(("install.*.code", "0")));
         log.Clear();
         Service(profil).BackupOpera().Wait();
         Check("Opera: alle Fassungen gefunden und gesichert", log.Has("Gefundene Opera-Fassungen: Opera, Opera Air, Opera GX")
@@ -334,7 +334,7 @@ internal static partial class Program
         Service(profil).BackupOpera().Wait();
         c.Reset();
         Check("Opera: Abbruch kopiert nichts mehr", !log.Has("Profil wiederhergestellt") && !log.Has("Profil gesichert"), log.Text);
-        Environment.SetEnvironmentVariable("DASI_WINGET_ATTRAPPE", null);
+        Environment.SetEnvironmentVariable("DASI_WINGET_FAKE", null);
     }
 
     private static void WifiAndPrintersCheck(string basis, CancellationTokenState c, ProcessRunner runner, Protokoll log)
@@ -408,7 +408,7 @@ internal static partial class Program
             Check("Symbolpositionen gesichert (4 Symbole)", log.Has("[ERFOLG] Positionen von 4 Desktop-Symbolen gesichert") && DesktopIcons.Exists(sicherung), log.Text);
             Check("automatisch anordnen: vermerkt", log.Has("automatisch anordnen\" ist an"), log.Text);
             // Carry on without the taskbar - restoring it restarts Explorer.
-            try { Directory.Delete(Taskleiste.BackupFolder(sicherung), true); } catch { }
+            try { Directory.Delete(Taskbar.BackupFolder(sicherung), true); } catch { }
             // What was on the desktop in the backup comes from the profile.
             WriteFile(Path.Combine(sicherung, "Benutzerprofil", "Desktop", "Rechnung.pdf"));
 
@@ -491,7 +491,7 @@ internal static partial class Program
         // Design: back up, set an image from an old backup, reset our own.
         log.Clear();
         d.ExportDesign().Wait();
-        Check("Design gesichert (Design.json)", DesignEinstellungen.Load(sicherung) is not null && log.Has("[ERFOLG] Design-Einstellungen gesichert"), log.Text);
+        Check("Design gesichert (Design.json)", DesignSettings.Load(sicherung) is not null && log.Has("[ERFOLG] Design-Einstellungen gesichert"), log.Text);
 
         var alt = Path.Combine(root, "echt", "AlteSicherung");
         var bildAlt = Path.Combine(alt, "Hintergrundbild", "Urlaub.png");
@@ -508,31 +508,31 @@ internal static partial class Program
 
         // A backup with a solid color instead of an image.
         var farbig = Path.Combine(root, "echt", "Volltonfarbe");
-        DesignEinstellungen.Save(farbig, new DesignSicherung
+        DesignSettings.Save(farbig, new DesignSicherung
         {
             Rechner = "ALT", Erstellt = DateTime.Now,
             Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "30 90 150" },
         });
         log.Clear();
         new BackupService(runner, c, log.Write) { SourcePath = profil, BackupPath = farbig }.ImportDesign().Wait();
-        Check("Volltonfarbe aus der Sicherung gesetzt", log.Has("Volltonfarbe RGB 30, 90, 150") && Hintergrund.ReadColor(DesktopHintergrund.Read(Microsoft.Win32.Registry.CurrentUser).Farbe) == (30, 90, 150), log.Text);
+        Check("Volltonfarbe aus der Sicherung gesetzt", log.Has("Volltonfarbe RGB 30, 90, 150") && Wallpaper.ReadColor(UserWallpaper.Read(Microsoft.Win32.Registry.CurrentUser).Farbe) == (30, 90, 150), log.Text);
 
         // If the tool runs under another account: only register it, Windows shows it after sign-in.
-        var fremd = DesktopHintergrund.SetColor(Microsoft.Win32.Registry.CurrentUser, eigenerBenutzer: false, (40, 40, 40), profil);
+        var fremd = UserWallpaper.SetColor(Microsoft.Win32.Registry.CurrentUser, eigenerBenutzer: false, (40, 40, 40), profil);
         Check("anderes Konto: eingetragen, ohne den Weg ueber den Explorer", fremd.Eingetragen && fremd.ExplorerFehler == "Tool läuft unter einem anderen Konto", fremd.ExplorerFehler);
 
         // Black desktop where an image was expected: Verify also looks at the screen.
-        DesktopHintergrund.SetColor(Microsoft.Win32.Registry.CurrentUser, eigenerBenutzer: true, (0, 0, 0), profil);
+        UserWallpaper.SetColor(Microsoft.Win32.Registry.CurrentUser, eigenerBenutzer: true, (0, 0, 0), profil);
         Thread.Sleep(1500);
-        var schwarz = DesktopHintergrund.Verify(new HintergrundStand(@"C:\Bilder\Urlaub.png", "0 0 0", 0, "10", "0", Array.Empty<string>()), German);
+        var schwarz = UserWallpaper.Verify(new HintergrundStand(@"C:\Bilder\Urlaub.png", "0 0 0", 0, "10", "0", Array.Empty<string>()), German);
         Console.WriteLine($"         Kontrolle bei schwarzem Desktop: {schwarz ?? "(Bildschirm nicht ueberwiegend schwarz)"}");
         Check("schwarzer Desktop statt Bild: erkannt (oder Bildschirm nicht schwarz)", schwarz is null || schwarz.Contains("schwarz statt des Bildes"), schwarz);
         var schirm = DesktopScreenshot.CaptureVirtualScreen();
         bool erwartet = DesktopScreenshot.ColorShare(schirm.Bgra, (0, 0, 0), 10) >= 0.5;
-        Check("Bildschirm ueberwiegend schwarz? - wie eine eigene Aufnahme", DesktopHintergrund.IsScreenBlack() == erwartet, erwartet.ToString());
+        Check("Bildschirm ueberwiegend schwarz? - wie eine eigene Aufnahme", UserWallpaper.IsScreenBlack() == erwartet, erwartet.ToString());
 
         // Apply a theme without a known user (directly through explorer.exe) - and with one that does not exist.
-        var aktuell = DesktopHintergrund.ThemeFilePath(Microsoft.Win32.Registry.CurrentUser, profil);
+        var aktuell = UserWallpaper.ThemeFilePath(Microsoft.Win32.Registry.CurrentUser, profil);
         if (aktuell is not null && File.Exists(aktuell))
         {
             var kopie = Path.Combine(Path.GetDirectoryName(aktuell)!, WindowsDesign.NewFileName());
@@ -598,8 +598,8 @@ internal static partial class Program
 
         // What the taskbar shows: an icon is missing although the program is
         // there - or the taskbar cannot be read.
-        if (Taskleiste.Load(d.BackupPath) is { Taskband.Count: > 0 } tl
-            && Taskleiste.Entries(Taskleiste.Favorites(tl.Taskband), tl.Verknuepfungen) is { Count: > 1 } eintraege
+        if (Taskbar.Load(d.BackupPath) is { Taskband.Count: > 0 } tl
+            && Taskbar.Entries(Taskbar.Favorites(tl.Taskband), tl.Verknuepfungen) is { Count: > 1 } eintraege
             && eintraege[0].Kennung is { } nurDiese)
         {
             d.TaskleistenKontrolle = TimeSpan.FromSeconds(1);
@@ -617,7 +617,7 @@ internal static partial class Program
 
         // Windows fills the taskbar by itself after the restart (as at one user's):
         // write once more, then an error instead of "success".
-        if (Taskleiste.Load(d.BackupPath) is { Taskband.Count: > 0 })
+        if (Taskbar.Load(d.BackupPath) is { Taskband.Count: > 0 })
         {
             log.Clear();
             d.TaskleistenKontrolle = TimeSpan.FromSeconds(1);

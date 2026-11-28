@@ -260,7 +260,7 @@ internal static partial class Program
     {
         Console.WriteLine("\n== Sicherungsdienst: Firefox-Profil einer anderen Installation ==");
         // "already installed" - otherwise every run would wait to see whether the installer starts the program.
-        Attrappen.WriteScenario(szenario, Scenario(("install.*.code", WingetFehler.SchonInstalliert.ToString())));
+        Fakes.WriteScenario(szenario, Scenario(("install.*.code", WingetErrors.SchonInstalliert.ToString())));
         var sicherung = dienst(basis).BackupPath;
         var gesichert = Path.Combine(sicherung, Testfuchs.BackupOrdner);
         MozillaData(gesichert, ProfilesIniAlt, ("neu0abcd.default", DateTime.UtcNow), ("alt0abcd.default", DateTime.UtcNow.AddYears(-3)));

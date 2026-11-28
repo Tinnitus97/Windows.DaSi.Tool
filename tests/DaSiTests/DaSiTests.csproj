@@ -32,20 +32,20 @@
     <DefineConstants>$(DefineConstants);MIT_UIA</DefineConstants>
   </PropertyGroup>
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
-    <Compile Include="TaskleistenVersuch.cs" />
+    <Compile Include="TaskbarTrial.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="Program.cs" />
-    <Compile Include="DienstPruefungen.cs" />
-    <Compile Include="WingetPruefungen.cs" />
-    <Compile Include="SicherungsPruefungen.cs" />
-    <Compile Include="MozillaPruefungen.cs" />
-    <Compile Include="VerknuepfungsPruefungen.cs" />
-    <Compile Include="ThunderbirdEcht.cs" />
-    <Compile Include="FirefoxUmzugEcht.cs" />
-    <Compile Include="LaufwerkPruefungen.cs" />
-    <Compile Include="../Gemeinsam/*.cs" />
+    <Compile Include="ServiceChecks.cs" />
+    <Compile Include="WingetChecks.cs" />
+    <Compile Include="BackupChecks.cs" />
+    <Compile Include="MozillaChecks.cs" />
+    <Compile Include="ShortcutChecks.cs" />
+    <Compile Include="ThunderbirdReal.cs" />
+    <Compile Include="FirefoxMigrationReal.cs" />
+    <Compile Include="DriveFolderChecks.cs" />
+    <Compile Include="../Shared/*.cs" />
     <Compile Include="../../Services/UpdateService.cs" />
     <Compile Include="../../Services/CloudProviders.cs" />
     <Compile Include="../../Services/ProfileExcludes.cs" />
@@ -57,21 +57,21 @@
     <Compile Include="../../Services/ProfilePaths.cs" />
     <Compile Include="../../Services/ProfileLinks.cs" />
     <Compile Include="../../Services/AppCatalog.cs" />
-    <Compile Include="../../Services/LaufwerksOrdner.cs" />
+    <Compile Include="../../Services/DriveFolders.cs" />
     <Compile Include="../../Services/DesktopIcons.cs" />
     <Compile Include="../../Services/WingetInstaller.cs" />
-    <Compile Include="../../Services/WingetFehler.cs" />
-    <Compile Include="../../Services/ProfilAbgleich.cs" />
+    <Compile Include="../../Services/WingetErrors.cs" />
+    <Compile Include="../../Services/ProfileComparison.cs" />
     <Compile Include="../../Services/MozillaProfile.cs" />
-    <Compile Include="../../Services/Hintergrund.cs" />
-    <Compile Include="../../Services/DesignEinstellungen.cs" />
+    <Compile Include="../../Services/Wallpaper.cs" />
+    <Compile Include="../../Services/DesignSettings.cs" />
     <Compile Include="../../Services/DesignRegistry.cs" />
-    <Compile Include="../../Services/Taskleiste.cs" />
-    <Compile Include="../../Services/Verknuepfung.cs" />
-    <Compile Include="../../Services/TaskleistenAnsicht.cs" />
-    <Compile Include="../../Services/ExplorerNeustart.cs" />
-    <Compile Include="../../Services/DesktopHintergrund.cs" />
-    <Compile Include="../../Services/DesignDatei.cs" />
+    <Compile Include="../../Services/Taskbar.cs" />
+    <Compile Include="../../Services/Shortcut.cs" />
+    <Compile Include="../../Services/TaskbarView.cs" />
+    <Compile Include="../../Services/ExplorerRestart.cs" />
+    <Compile Include="../../Services/UserWallpaper.cs" />
+    <Compile Include="../../Services/ThemeFile.cs" />
     <Compile Include="../../Services/WindowsDesign.cs" />
     <Compile Include="../../Services/Localizer.cs" />
     <Compile Include="../../Services/BackupService.cs" />
@@ -87,10 +87,10 @@
        reference would copy its launcher winget.exe (without winget.dll)
        here, and Windows would then find "winget" here first, in the test
        program's folder, instead of in the search path. -->
-  <Target Name="WingetAttrappeBauen" BeforeTargets="Build">
+  <Target Name="BuildWingetFake" BeforeTargets="Build">
     <!-- Restore first (own properties = separate pass), then build. -->
-    <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Restore" Properties="Configuration=$(Configuration);DaSiRestore=true" />
-    <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
+    <MSBuild Projects="../WingetFake/WingetFake.csproj" Targets="Restore" Properties="Configuration=$(Configuration);DaSiRestore=true" />
+    <MSBuild Projects="../WingetFake/WingetFake.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
   </Target>
 
 </Project>

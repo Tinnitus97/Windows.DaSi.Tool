@@ -56,7 +56,7 @@ public sealed record DesignDateiErgebnis(string? Datei, bool Geaendert, string? 
 /// again when switching or signing in - that one is aligned as well.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public static class DesktopHintergrund
+public static class UserWallpaper
 {
     public const string DesktopSchluessel = @"Control Panel\Desktop";
     public const string FarbenSchluessel = @"Control Panel\Colors";
@@ -93,12 +93,12 @@ public static class DesktopHintergrund
             farbe = k?.GetValue("Background") as string;
         }
         catch { /* then from the session */ }
-        if (Hintergrund.ReadColor(farbe) is null)
+        if (Wallpaper.ReadColor(farbe) is null)
         {
             try
             {
                 var c = GetSysColor(COLOR_DESKTOP);
-                farbe = Hintergrund.ColorText(((byte)(c & 0xFF), (byte)((c >> 8) & 0xFF), (byte)((c >> 16) & 0xFF)));
+                farbe = Wallpaper.ColorText(((byte)(c & 0xFF), (byte)((c >> 8) & 0xFF), (byte)((c >> 16) & 0xFF)));
             }
             catch { /* stays empty */ }
         }
@@ -127,7 +127,7 @@ public static class DesktopHintergrund
         // SystemParametersInfo.
         var explorer = eigenerBenutzer ? ViaExplorer(() => Schnittstelle.SetImage(pfad, e)) : "Tool läuft unter einem anderen Konto";
         bool angezeigt = explorer is null || SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, pfad, Flags(eigenerBenutzer));
-        if (Hintergrund.ReadColor(e?.Farbe) is { } rand) SessionColor(rand);
+        if (Wallpaper.ReadColor(e?.Farbe) is { } rand) SessionColor(rand);
 
         // With SPIF_UPDATEINIFILE, Windows writes the path once more itself -
         // what is there in the end is what counts.
@@ -137,7 +137,7 @@ public static class DesktopHintergrund
             WriteImage(wurzel, pfad, e);
             eingetragen = IsRegistered(wurzel, pfad);
         }
-        var datei = AlignThemeFile(wurzel, profil, t => DesignDatei.ForImage(t, pfad, e));
+        var datei = AlignThemeFile(wurzel, profil, t => ThemeFile.ForImage(t, pfad, e));
         return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei, explorer);
     }
 
@@ -153,12 +153,12 @@ public static class DesktopHintergrund
             if (!string.IsNullOrWhiteSpace(e?.Kacheln)) k.SetValue("TileWallpaper", e.Kacheln);
             k.SetValue("WallPaper", pfad);
         }
-        if (Hintergrund.ReadColor(e?.Farbe) is { } rand)
+        if (Wallpaper.ReadColor(e?.Farbe) is { } rand)
         {
             try
             {
                 using var c = wurzel.CreateSubKey(FarbenSchluessel);
-                c.SetValue("Background", Hintergrund.ColorText(rand));
+                c.SetValue("Background", Wallpaper.ColorText(rand));
             }
             catch { /* the edge color is a minor matter */ }
         }
@@ -185,7 +185,7 @@ public static class DesktopHintergrund
             WriteColor(wurzel, farbe);
             eingetragen = IsColorRegistered(wurzel, farbe);
         }
-        var datei = AlignThemeFile(wurzel, profil, t => DesignDatei.ForColor(t, farbe));
+        var datei = AlignThemeFile(wurzel, profil, t => ThemeFile.ForColor(t, farbe));
         return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei, explorer);
     }
 
@@ -217,10 +217,10 @@ public static class DesktopHintergrund
         if (!System.IO.File.Exists(pfad)) return new DesignDateiErgebnis(pfad, false, "Datei fehlt");
         try
         {
-            var (inhalt, kodierung) = DesignDatei.ReadFile(pfad);
+            var (inhalt, kodierung) = ThemeFile.ReadFile(pfad);
             var neu = anpassen(inhalt);
             if (neu == inhalt) return new DesignDateiErgebnis(pfad, false, null);
-            DesignDatei.WriteFile(pfad, neu, kodierung);
+            ThemeFile.WriteFile(pfad, neu, kodierung);
             return new DesignDateiErgebnis(pfad, true, null);
         }
         catch (Exception ex) { return new DesignDateiErgebnis(pfad, false, ex.Message); }
@@ -230,7 +230,7 @@ public static class DesktopHintergrund
     public static int WriteColor(RegistryKey wurzel, (byte R, byte G, byte B) farbe)
     {
         using (var c = wurzel.CreateSubKey(FarbenSchluessel))
-            c.SetValue("Background", Hintergrund.ColorText(farbe));
+            c.SetValue("Background", Wallpaper.ColorText(farbe));
         using (var k = wurzel.CreateSubKey(DesktopSchluessel))
             k.SetValue("WallPaper", "");
         WriteKind(wurzel, 1);
@@ -254,7 +254,7 @@ public static class DesktopHintergrund
         catch { /* then just the file */ }
         try
         {
-            if (Hintergrund.Cache(profil) is { } datei && System.IO.File.Exists(datei))
+            if (Wallpaper.Cache(profil) is { } datei && System.IO.File.Exists(datei))
                 System.IO.File.Delete(datei);
         }
         catch { /* locked - Windows compares the path anyway */ }
@@ -276,11 +276,11 @@ public static class DesktopHintergrund
         bool schwarz = DesktopScreenshot.IsBlank(bild);
         if (soll.Bild is null)
         {
-            if (Hintergrund.ReadColor(soll.Farbe) is not { } f) return null;
+            if (Wallpaper.ReadColor(soll.Farbe) is not { } f) return null;
             if (DesktopScreenshot.ColorShare(bild, f) >= 0.5) return null;
             if (schwarz && !IsScreenBlack()) return null;
-            return tr($"Der Desktop zeigt nicht die Farbe {Hintergrund.Hex(f)}, sondern meist {meist} ({anteil:P0})",
-                      $"The desktop does not show the color {Hintergrund.Hex(f)} but mostly {meist} ({anteil:P0})");
+            return tr($"Der Desktop zeigt nicht die Farbe {Wallpaper.Hex(f)}, sondern meist {meist} ({anteil:P0})",
+                      $"The desktop does not show the color {Wallpaper.Hex(f)} but mostly {meist} ({anteil:P0})");
         }
         return schwarz && IsScreenBlack()
             ? tr($"Der Desktop ist schwarz statt des Bildes {soll.Bild}", $"The desktop is black instead of the image {soll.Bild}")
@@ -300,7 +300,7 @@ public static class DesktopHintergrund
         if (!string.Equals(soll.Bild ?? "", jetzt.Bild ?? "", StringComparison.OrdinalIgnoreCase))
             return tr($"Windows hat das Bild geändert: {soll.Bild ?? "(keins)"} -> {jetzt.Bild ?? "(keins)"}",
                       $"Windows changed the image: {soll.Bild ?? "(none)"} -> {jetzt.Bild ?? "(none)"}");
-        if (soll.Bild is null && Hintergrund.ReadColor(soll.Farbe) != Hintergrund.ReadColor(jetzt.Farbe))
+        if (soll.Bild is null && Wallpaper.ReadColor(soll.Farbe) != Wallpaper.ReadColor(jetzt.Farbe))
             return tr($"Windows hat die Farbe geändert: {soll.Farbe} -> {jetzt.Farbe}", $"Windows changed the color: {soll.Farbe} -> {jetzt.Farbe}");
         if (soll.Typ is { } t && jetzt.Typ != t)
             return tr($"Windows hat die Art geändert: {t} -> {jetzt.Typ?.ToString() ?? "-"} (0 Bild, 1 Farbe, 2 Diashow, 3 Blickpunkt)",
@@ -312,7 +312,7 @@ public static class DesktopHintergrund
     public static HintergrundGesetzt Retry(RegistryKey wurzel, bool eigenerBenutzer, HintergrundStand soll, string? profil)
         => soll.Bild is { } b
             ? SetImage(wurzel, eigenerBenutzer, b, new HintergrundEinstellung { Darstellung = soll.Stil, Kacheln = soll.Kacheln }, profil)
-            : SetColor(wurzel, eigenerBenutzer, Hintergrund.ReadColor(soll.Farbe) ?? ((byte)0, (byte)0, (byte)0), profil);
+            : SetColor(wurzel, eigenerBenutzer, Wallpaper.ReadColor(soll.Farbe) ?? ((byte)0, (byte)0, (byte)0), profil);
 
     /// <summary>What can dictate or change the wallpaper from outside - policies, Spotlight, slideshow.</summary>
     /// <param name="mitWechsel">Also name Spotlight and slideshow (Windows normally turns those off itself when the wallpaper is set).</param>
@@ -378,7 +378,7 @@ public static class DesktopHintergrund
     private static bool IsColorRegistered(RegistryKey wurzel, (byte R, byte G, byte B) farbe)
     {
         var s = Read(wurzel);
-        return s.Bild is null && Hintergrund.ReadColor(s.Farbe) == farbe;
+        return s.Bild is null && Wallpaper.ReadColor(s.Farbe) == farbe;
     }
 
     private static uint Flags(bool eigenerBenutzer)
@@ -405,7 +405,7 @@ public static class DesktopHintergrund
     /// <summary>The color of the running session - takes effect at once, but only until sign-out.</summary>
     private static bool SessionColor((byte R, byte G, byte B) farbe)
     {
-        try { return SetSysColors(1, new[] { COLOR_DESKTOP }, new[] { Hintergrund.ColorRef(farbe) }); }
+        try { return SetSysColors(1, new[] { COLOR_DESKTOP }, new[] { Wallpaper.ColorRef(farbe) }); }
         catch { return false; }
     }
 
@@ -473,7 +473,7 @@ public static class DesktopHintergrund
                     string bild;
                     try { bild = dw.GetWallpaper(null) ?? ""; } catch (Exception ex) { bild = $"({ex.GetType().Name})"; }
                     var c = dw.GetBackgroundColor();
-                    var farbe = Hintergrund.Hex(((byte)(c & 0xFF), (byte)((c >> 8) & 0xFF), (byte)((c >> 16) & 0xFF)));
+                    var farbe = Wallpaper.Hex(((byte)(c & 0xFF), (byte)((c >> 8) & 0xFF), (byte)((c >> 16) & 0xFF)));
                     string status;
                     try { status = dw.GetStatus().ToString(System.Globalization.CultureInfo.InvariantCulture); } catch { status = "?"; }
                     return $"Bild={(bild.Length == 0 ? "-" : bild)}, Farbe={farbe}, Position={dw.GetPosition()}, Status={status}, Monitore={dw.GetMonitorDevicePathCount()}";
@@ -494,7 +494,7 @@ public static class DesktopHintergrund
             => OnSta(dw =>
             {
                 if (Position(e) is { } pos) dw.SetPosition(pos);
-                if (Hintergrund.ReadColor(e?.Farbe) is { } rand) dw.SetBackgroundColor((uint)Hintergrund.ColorRef(rand));
+                if (Wallpaper.ReadColor(e?.Farbe) is { } rand) dw.SetBackgroundColor((uint)Wallpaper.ColorRef(rand));
                 dw.SetWallpaper(null, pfad);
                 return true;
             });
@@ -503,7 +503,7 @@ public static class DesktopHintergrund
         public static void SetColor((byte R, byte G, byte B) farbe, bool abschalten)
             => OnSta(dw =>
             {
-                dw.SetBackgroundColor((uint)Hintergrund.ColorRef(farbe));
+                dw.SetBackgroundColor((uint)Wallpaper.ColorRef(farbe));
                 if (abschalten) dw.Enable(false);
                 else dw.SetWallpaper(null, "");
                 return true;

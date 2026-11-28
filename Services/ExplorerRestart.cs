@@ -15,7 +15,7 @@ namespace WindowsDaSiTool.Services;
 /// If it does not come back, the tool starts it itself.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public static class ExplorerNeustart
+public static class ExplorerRestart
 {
     /// <summary>Is the taskbar there?</summary>
     public static bool TaskbarPresent() => FindWindowW("Shell_TrayWnd", null) != IntPtr.Zero;

@@ -10,7 +10,7 @@ using Microsoft.Win32;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Reads and writes the values of <see cref="DesignEinstellungen"/> in the
+/// Reads and writes the values of <see cref="DesignSettings"/> in the
 /// registry - below a root key passed in, so it can be the key of the
 /// signed-in user (HKEY_USERS\&lt;SID&gt;) instead of the account the tool
 /// runs under.
@@ -55,7 +55,7 @@ public static class DesignRegistry
         var r = new Ergebnis(new List<DesignEintrag>(), new List<string>(), new List<string>());
         foreach (var e in werte)
         {
-            if (DesignEinstellungen.PointerMissing(e, p => File.Exists(Environment.ExpandEnvironmentVariables(p))))
+            if (DesignSettings.PointerMissing(e, p => File.Exists(Environment.ExpandEnvironmentVariables(p))))
             {
                 r.OhneDatei.Add(e.Name);
                 continue;

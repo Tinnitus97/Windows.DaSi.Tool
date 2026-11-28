@@ -16,7 +16,7 @@ namespace WindowsDaSiTool.Services;
 ///
 /// No dependencies, so the rules can be tested.
 /// </summary>
-public static class LaufwerksOrdner
+public static class DriveFolders
 {
     /// <summary>Subfolder in the backup - holding one folder per backed-up folder.</summary>
     public const string BackupOrdner = "C-Ordner";

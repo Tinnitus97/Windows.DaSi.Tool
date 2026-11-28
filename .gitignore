@@ -17,7 +17,7 @@ publish/
 *.log
 
 # Coverage reports of the tests (coverlet)
-abdeckung/
+coverage/
 
 # Python bytecode
 __pycache__/

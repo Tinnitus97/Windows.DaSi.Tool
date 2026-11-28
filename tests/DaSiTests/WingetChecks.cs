@@ -9,7 +9,7 @@ using WindowsDaSiTool.Services;
 namespace DaSiTests;
 
 /// <summary>
-/// WingetService against the winget fake (tests/WingetAttrappe): readiness,
+/// WingetService against the winget fake (tests/WingetFake): readiness,
 /// repair, export with filter and known list, import with every outcome.
 /// </summary>
 internal static partial class Program
@@ -23,10 +23,10 @@ internal static partial class Program
         // systems truncate exit codes to 8 bit.
         if (!OperatingSystem.IsWindows()) return;
         Console.WriteLine("\n== winget (Attrappe statt echtem winget) ==");
-        var attrappe = Attrappen.WingetFake();
+        var attrappe = Fakes.WingetFake();
         if (attrappe is null)
         {
-            Check("winget-Attrappe ist gebaut (dotnet build tests/WingetAttrappe)", false);
+            Check("winget-Attrappe ist gebaut (dotnet build tests/WingetFake)", false);
             return;
         }
 
@@ -37,16 +37,16 @@ internal static partial class Program
             => new(runner, c, log.Write) { FesteKandidaten = new[] { attrappe }, Nachinstallation = nach ?? (() => System.Threading.Tasks.Task.FromResult(false)) };
 
         // ---- Readiness ----
-        var ordner = Attrappen.WingetScenario(root, Scenario());
+        var ordner = Fakes.WingetScenario(root, Scenario());
         var w = NewService();
         var stand = w.CheckReadinessAsync().GetAwaiter().GetResult();
         Check("bereit: Version erkannt", stand.Ready && stand.Version == "v1.12.460", $"{stand.Problem} {log.Text}");
         Check("bereit: Startweg im Protokoll", log.Has("Verwende winget v1.12.460") && log.Has("Startmethode: Direct"), log.Text);
-        Check("bereit: Paketquelle gefragt", Attrappen.Calls(ordner).Any(a => a.StartsWith("source list")));
+        Check("bereit: Paketquelle gefragt", Fakes.Calls(ordner).Any(a => a.StartsWith("source list")));
 
         // winget does not start - registration (real) and reinstall (replaced) do not help.
         log.Clear();
-        ordner = Attrappen.WingetScenario(root, Scenario(("version.code", "1"), ("version", "kaputt")));
+        ordner = Fakes.WingetScenario(root, Scenario(("version.code", "1"), ("version", "kaputt")));
         int nachinstalliert = 0;
         w = NewService(() => { nachinstalliert++; return System.Threading.Tasks.Task.FromResult(false); });
         stand = w.CheckReadinessAsync().GetAwaiter().GetResult();
@@ -59,11 +59,11 @@ internal static partial class Program
 
         // Reinstalling repairs winget.
         log.Clear();
-        ordner = Attrappen.WingetScenario(root, Scenario(("version.code", "1")));
+        ordner = Fakes.WingetScenario(root, Scenario(("version.code", "1")));
         var ordnerFuerReparatur = ordner;
         w = NewService(() =>
         {
-            Attrappen.WriteScenario(ordnerFuerReparatur, Scenario());
+            Fakes.WriteScenario(ordnerFuerReparatur, Scenario());
             return System.Threading.Tasks.Task.FromResult(true);
         });
         stand = w.CheckReadinessAsync().GetAwaiter().GetResult();
@@ -71,25 +71,25 @@ internal static partial class Program
 
         // Package source missing - resetting does not help, reinstalling does.
         log.Clear();
-        ordner = Attrappen.WingetScenario(root, Scenario(("source list", "Name Argument\n---- --------\nmsstore https://storeedgefd.dsx.mp.microsoft.com")));
+        ordner = Fakes.WingetScenario(root, Scenario(("source list", "Name Argument\n---- --------\nmsstore https://storeedgefd.dsx.mp.microsoft.com")));
         var ordnerQuelle = ordner;
         w = NewService(() =>
         {
-            Attrappen.WriteScenario(ordnerQuelle, Scenario());
+            Fakes.WriteScenario(ordnerQuelle, Scenario());
             return System.Threading.Tasks.Task.FromResult(true);
         });
         stand = w.CheckReadinessAsync().GetAwaiter().GetResult();
-        var aufrufe = Attrappen.Calls(ordner);
+        var aufrufe = Fakes.Calls(ordner);
         Check("fehlende Quelle: zuruecksetzen und neu laden", aufrufe.Any(a => a.StartsWith("source reset")) && aufrufe.Any(a => a.StartsWith("source update")), string.Join(" | ", aufrufe));
         Check("fehlende Quelle: nach der Nachinstallation bereit", stand.Ready, $"{stand.Problem} {log.Text}");
 
         log.Clear();
-        Attrappen.WingetScenario(root, Scenario(("source list", "nur msstore")));
+        Fakes.WingetScenario(root, Scenario(("source list", "nur msstore")));
         stand = NewService().CheckReadinessAsync().GetAwaiter().GetResult();
         Check("fehlende Quelle bleibt: Hinweis auf 'winget source reset'", !stand.Ready && stand.Problem!.Contains("nicht eingerichtet") && stand.Hint!.Contains("source reset"), stand.Problem);
 
         log.Clear();
-        Attrappen.WingetScenario(root, Scenario(("source list.code", "5")));
+        Fakes.WingetScenario(root, Scenario(("source list.code", "5")));
         stand = NewService().CheckReadinessAsync().GetAwaiter().GetResult();
         Check("Quelle unlesbar: eigener Hinweis", !stand.Ready && stand.Problem!.Contains("Paketquellen nicht lesen"), stand.Problem);
 
@@ -101,7 +101,7 @@ internal static partial class Program
 
         // Cancel while winget reads its package sources.
         log.Clear();
-        Attrappen.WingetScenario(root, Scenario(("source list.warte", "8000")));
+        Fakes.WingetScenario(root, Scenario(("source list.warte", "8000")));
         var laeuft = NewService().CheckReadinessAsync();
         System.Threading.Thread.Sleep(2000);
         c.RequestCancel();
@@ -111,7 +111,7 @@ internal static partial class Program
 
         // Without the fake: look for this computer's winget (search path, alias, App Installer folder).
         log.Clear();
-        Environment.SetEnvironmentVariable("DASI_WINGET_ATTRAPPE", null);
+        Environment.SetEnvironmentVariable("DASI_WINGET_FAKE", null);
         var echt = new WingetService(runner, c, log.Write) { Nachinstallation = () => System.Threading.Tasks.Task.FromResult(false) };
         var echtStand = echt.CheckReadinessAsync().GetAwaiter().GetResult();
         Console.WriteLine($"         winget dieses Rechners: {(echtStand.Ready ? "bereit, " + echtStand.Version : echtStand.Problem)}");
@@ -140,7 +140,7 @@ internal static partial class Program
               "WinGetVersion": "1.12.460"
             }
             """);
-        ordner = Attrappen.WingetScenario(root, Scenario(
+        ordner = Fakes.WingetScenario(root, Scenario(
             ("export.datei", roh),
             ("export.ausgabe", "Installiertes Paket ist nicht verfügbar: Mozilla Firefox (x64 de)\nInstalled package is not available: Firmensoftware XY\nInstalled package is not available: Microsoft Visual C++ 2015 Redistributable\nInstalled package is not available: Mozilla Thunderbird (de)"),
             ("show.Mozilla.Firefox.de.code", "0")));
@@ -170,7 +170,7 @@ internal static partial class Program
         void ExportFails(string name, Dictionary<string, string> sz, string erwartet)
         {
             log.Clear();
-            Attrappen.WingetScenario(root, sz);
+            Fakes.WingetScenario(root, sz);
             NewService().ExportAsync(sicherung).GetAwaiter().GetResult();
             Check($"Export scheitert ({name}): Fehler gemeldet, alte Liste unangetastet",
                 log.Has(erwartet) && File.ReadAllText(exportDatei) == vorher && !File.Exists(exportDatei + ".neu"), log.Text);
@@ -190,7 +190,7 @@ internal static partial class Program
         ExportFails("leer (null)", Scenario(("export.datei", nullJson)), "Export.json ist leer");
 
         // Cancel after winget has been found - as in the middle of the queue.
-        Attrappen.WingetScenario(root, Scenario(("export.datei", roh)));
+        Fakes.WingetScenario(root, Scenario(("export.datei", roh)));
         var bereit = NewService();
         bereit.CheckReadinessAsync().GetAwaiter().GetResult();
         log.Clear();
@@ -202,16 +202,16 @@ internal static partial class Program
         // ---- Import ----
         Console.WriteLine("\n== winget-Import: jeder Ausgang ==");
         log.Clear();
-        Attrappen.WingetScenario(root, Scenario());
+        Fakes.WingetScenario(root, Scenario());
         NewService().ImportAsync(new List<WingetPackage>()).GetAwaiter().GetResult();
         Check("Import ohne Auswahl: nur ein Hinweis", log.Has("keine Programme ausgewählt"), log.Text);
 
         log.Clear();
-        ordner = Attrappen.WingetScenario(root, Scenario(
+        ordner = Fakes.WingetScenario(root, Scenario(
             ("install.Neu.Paket.code", "0"),
-            ("install.Schon.Aktuell.code", WingetFehler.SchonAktuell.ToString()),
-            ("install.Schon.Da.code", WingetFehler.SchonInstalliert.ToString()),
-            ("install.Gibt.Esnicht.code", WingetFehler.NichtGefunden.ToString()),
+            ("install.Schon.Aktuell.code", WingetErrors.SchonAktuell.ToString()),
+            ("install.Schon.Da.code", WingetErrors.SchonInstalliert.ToString()),
+            ("install.Gibt.Esnicht.code", WingetErrors.NichtGefunden.ToString()),
             ("install.Geht.Schief.code", "1603"),
             ("install.Geht.Schief.ausgabe", "Installer failed with exit code: 1603")));
         var auswahl = new[] { "Neu.Paket", "Schon.Aktuell", "Schon.Da", "Gibt.Esnicht", "Geht.Schief", "" }
@@ -220,10 +220,10 @@ internal static partial class Program
         Check("Import: 1 installiert, 2 uebersprungen, 2 fehlgeschlagen",
             log.Has("1 installiert, 2 übersprungen (bereits vorhanden), 2 fehlgeschlagen") && log.Has("[WARNUNG] Winget-Import abgeschlossen"), log.Text);
         Check("Import: fremder Fehler mit Code und letzter Meldung", log.Has("ExitCode 1603") && log.Has("Installer failed with exit code: 1603"), log.Text);
-        Check("Import: leere Kennung wird ausgelassen", Attrappen.Calls(ordner).Count(a => a.StartsWith("install")) == 5);
+        Check("Import: leere Kennung wird ausgelassen", Fakes.Calls(ordner).Count(a => a.StartsWith("install")) == 5);
 
         log.Clear();
-        Attrappen.WingetScenario(root, Scenario(("install.*.code", "0")));
+        Fakes.WingetScenario(root, Scenario(("install.*.code", "0")));
         NewService().ImportAsync(new[] { new WingetPackage { PackageIdentifier = "A.B" } }).GetAwaiter().GetResult();
         Check("Import ohne Fehler: Bilanz mit [ERFOLG]", log.Has("[ERFOLG] Winget-Import abgeschlossen: 1 installiert"), log.Text);
 
@@ -234,10 +234,10 @@ internal static partial class Program
         Check("Zielpaket: alles andere bleibt", WingetService.TargetPackage("Mozilla.Firefox.de") == "Mozilla.Firefox.de"
             && WingetService.TargetPackage("Mozilla.Thunderbird.de") == "Mozilla.Thunderbird.de" && WingetService.TargetPackage("Mozilla.Firefox.ESR.Beta") == "Mozilla.Firefox.ESR.Beta");
         log.Clear();
-        ordner = Attrappen.WingetScenario(root, Scenario(("install.*.code", "0")));
+        ordner = Fakes.WingetScenario(root, Scenario(("install.*.code", "0")));
         NewService().ImportAsync(new[] { "Mozilla.Firefox.ESR.de", "Mozilla.Firefox.de", "Anderes.Paket" }
             .Select(i => new WingetPackage { PackageIdentifier = i, Version = "115.18.0" }).ToList()).GetAwaiter().GetResult();
-        var installiert = Attrappen.Calls(ordner).Where(a => a.StartsWith("install")).ToList();
+        var installiert = Fakes.Calls(ordner).Where(a => a.StartsWith("install")).ToList();
         Check("Import: Firefox ESR wird als aktuelle Fassung installiert, nur einmal",
             installiert.Count == 2 && installiert.Any(a => a.Contains("Mozilla.Firefox.de")) && !installiert.Any(a => a.Contains("ESR"))
             && log.Has("[INFO] Mozilla.Firefox.ESR.de -> Mozilla.Firefox.de: Firefox kommt auf diesem PC in der aktuellen Fassung statt ESR"), string.Join(" | ", installiert) + " / " + log.Text);
@@ -245,18 +245,18 @@ internal static partial class Program
         // Package source broken (0x8A150009): repair, reinstall, then give up.
         log.Clear();
         var kaputtCode = unchecked((int)0x8A150009).ToString();
-        ordner = Attrappen.WingetScenario(root, Scenario(("install.*.code", kaputtCode)));
+        ordner = Fakes.WingetScenario(root, Scenario(("install.*.code", kaputtCode)));
         nachinstalliert = 0;
         w = NewService(() => { nachinstalliert++; return System.Threading.Tasks.Task.FromResult(true); });
         w.ImportAsync(new[] { "Eins.Paket", "Zwei.Paket", "Drei.Paket" }.Select(i => new WingetPackage { PackageIdentifier = i }).ToList()).GetAwaiter().GetResult();
-        aufrufe = Attrappen.Calls(ordner);
+        aufrufe = Fakes.Calls(ordner);
         Check("kaputte Quelle: zuruecksetzen und erneut versuchen", aufrufe.Count(a => a.StartsWith("source reset")) >= 1 && aufrufe.Count(a => a.StartsWith("install")) >= 3, string.Join(" | ", aufrufe));
         Check("kaputte Quelle: App-Installer einmal nachinstalliert", nachinstalliert == 1, nachinstalliert.ToString());
         Check("kaputte Quelle: die uebrigen Pakete werden nicht mehr versucht",
             log.Has("die übrigen 2 Programme werden nicht versucht") && !aufrufe.Any(a => a.Contains("Zwei.Paket")), log.Text);
         Check("kaputte Quelle: Abhilfe im Protokoll", log.Has("winget source reset --force"), log.Text);
 
-        ordner = Attrappen.WingetScenario(root, Scenario(("install.*.code", "0")));
+        ordner = Fakes.WingetScenario(root, Scenario(("install.*.code", "0")));
         bereit = NewService();
         bereit.CheckReadinessAsync().GetAwaiter().GetResult();
         log.Clear();
@@ -264,11 +264,11 @@ internal static partial class Program
         bereit.ImportAsync(new[] { new WingetPackage { PackageIdentifier = "A.B" } }).GetAwaiter().GetResult();
         c.Reset();
         Check("Import: Abbruch vor dem ersten Paket, nichts installiert",
-            log.Has("[ABBRUCH] Winget-Import") && !Attrappen.Calls(ordner).Any(a => a.StartsWith("install")), log.Text);
+            log.Has("[ABBRUCH] Winget-Import") && !Fakes.Calls(ordner).Any(a => a.StartsWith("install")), log.Text);
 
         // Without a startable winget: the import fails before the first package.
         log.Clear();
-        Attrappen.WingetScenario(root, Scenario(("version.code", "1")));
+        Fakes.WingetScenario(root, Scenario(("version.code", "1")));
         NewService().ImportAsync(new[] { new WingetPackage { PackageIdentifier = "A.B" } }).GetAwaiter().GetResult();
         Check("Import ohne winget: Fehler, keine Bilanz", log.Has("[FEHLER] winget konnte mit keiner Methode gestartet werden") && !log.Has("Winget-Import abgeschlossen"), log.Text);
         log.Clear();
@@ -290,7 +290,7 @@ internal static partial class Program
         WingetService.ReadExportedPackages(lesen, out status);
         Check("Liste lesen: nur leere Kennungen -> Empty", status == "Empty");
 
-        Environment.SetEnvironmentVariable("DASI_WINGET_ATTRAPPE", null);
+        Environment.SetEnvironmentVariable("DASI_WINGET_FAKE", null);
         _ = JsonSerializer.Serialize(new WingetExport());   // A model without content can be serialized
     }
 }

@@ -29,7 +29,7 @@ internal static partial class Program
         string? AppPath(string datei) => datei.Equals("EXCEL.EXE", StringComparison.OrdinalIgnoreCase)
             ? @"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE" : null;
         string? NewTarget(string ziel, string p = @"C:\Program Files", string p86 = @"C:\Program Files (x86)")
-            => Taskleiste.NewTarget(ziel, da.Contains, AppPath, p, p86);
+            => Taskbar.NewTarget(ziel, da.Contains, AppPath, p, p86);
 
         Check("32-Bit-Ziel, hier 64 Bit (Firefox)", NewTarget(@"C:\Program Files (x86)\Mozilla Firefox\firefox.exe") == @"C:\Program Files\Mozilla Firefox\firefox.exe");
         Check("64-Bit-Ziel, hier 32 Bit", NewTarget(@"C:\Program Files\Alt\alt.exe") == @"C:\Program Files (x86)\Alt\alt.exe");
@@ -51,23 +51,23 @@ internal static partial class Program
         var fav = Convert.FromBase64String(FavoritesServer);
         var namen = new[] { "File Explorer.lnk", "microsoft edge.LNK", "Firefox.lnk", "" };
         Check("Favorites: welche Verknuepfungen angeheftet sind (auch an ungerader Stelle, Gross/klein egal)",
-            Taskleiste.PinnedNames(fav, namen).SequenceEqual(new[] { "File Explorer.lnk", "microsoft edge.LNK" }), string.Join(", ", Taskleiste.PinnedNames(fav, namen)));
-        Check("Favorites: nichts gespeichert - keine Namen", Taskleiste.PinnedNames(null, namen).Count == 0 && Taskleiste.PinnedNames(new byte[] { 0 }, namen).Count == 0);
+            Taskbar.PinnedNames(fav, namen).SequenceEqual(new[] { "File Explorer.lnk", "microsoft edge.LNK" }), string.Join(", ", Taskbar.PinnedNames(fav, namen)));
+        Check("Favorites: nichts gespeichert - keine Namen", Taskbar.PinnedNames(null, namen).Count == 0 && Taskbar.PinnedNames(new byte[] { 0 }, namen).Count == 0);
         var band = new List<DesignEintrag>
         {
-            new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "FavoritesVersion", Typ = "DWord", Wert = "3" },
-            new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "Favorites", Typ = "Binary", Wert = FavoritesServer },
+            new() { Gruppe = "Taskleiste", Schluessel = Taskbar.TaskbandSchluessel, Name = "FavoritesVersion", Typ = "DWord", Wert = "3" },
+            new() { Gruppe = "Taskleiste", Schluessel = Taskbar.TaskbandSchluessel, Name = "Favorites", Typ = "Binary", Wert = FavoritesServer },
         };
-        Check("Favorites aus der Sicherung gelesen", Taskleiste.Favorites(band)?.Length == fav.Length);
-        var eintraege = Taskleiste.Entries(fav, new[] { "File Explorer.lnk", "Microsoft Edge.lnk" });
+        Check("Favorites aus der Sicherung gelesen", Taskbar.Favorites(band)?.Length == fav.Length);
+        var eintraege = Taskbar.Entries(fav, new[] { "File Explorer.lnk", "Microsoft Edge.lnk" });
         Check("Favorites: Eintraege mit Verknuepfung und App-Kennung",
-            eintraege.SequenceEqual(new[] { new Taskleiste.Eintrag("File Explorer.lnk", "Microsoft.Windows.Explorer"), new Taskleiste.Eintrag("Microsoft Edge.lnk", "MSEdge") }),
+            eintraege.SequenceEqual(new[] { new Taskbar.Eintrag("File Explorer.lnk", "Microsoft.Windows.Explorer"), new Taskbar.Eintrag("Microsoft Edge.lnk", "MSEdge") }),
             string.Join(", ", eintraege));
         Check("Favorites: Eintraege ohne bekannte Verknuepfung, abgeschnitten, leer",
-            Taskleiste.Entries(fav, Array.Empty<string>()).Select(e => e.Verknuepfung).All(v => v is null)
-            && Taskleiste.Entries(fav[..300], Array.Empty<string>()).Count == 0 && Taskleiste.Entries(null, Array.Empty<string>()).Count == 0);
-        Check("Favorites fehlt oder ist kaputt", Taskleiste.Favorites(band.Take(1)) is null
-            && Taskleiste.Favorites(new[] { new DesignEintrag { Name = "Favorites", Typ = "Binary", Wert = "kein base64!" } }) is null);
+            Taskbar.Entries(fav, Array.Empty<string>()).Select(e => e.Verknuepfung).All(v => v is null)
+            && Taskbar.Entries(fav[..300], Array.Empty<string>()).Count == 0 && Taskbar.Entries(null, Array.Empty<string>()).Count == 0);
+        Check("Favorites fehlt oder ist kaputt", Taskbar.Favorites(band.Take(1)) is null
+            && Taskbar.Favorites(new[] { new DesignEintrag { Name = "Favorites", Typ = "Binary", Wert = "kein base64!" } }) is null);
     }
 
     /// <summary>A Favorites value with one BEEF001D block (app ID) per ID - the way Windows writes it.</summary>
@@ -90,31 +90,31 @@ internal static partial class Program
     private static void AppIdsCheck()
     {
         Console.WriteLine("\n== Taskleiste: App-Kennungen in Taskband\\Favorites ==");
-        Check("Kennungen eines Windows Server 2025", Taskleiste.AppIds(Convert.FromBase64String(FavoritesServer))
-            .SequenceEqual(new[] { "Microsoft.Windows.Explorer", "MSEdge" }), string.Join(", ", Taskleiste.AppIds(Convert.FromBase64String(FavoritesServer))));
-        var fav = FavoritesWith("E7CF176E110C211B", Taskleiste.OrdnerProgramme86 + @"\Hersteller\app.exe");
+        Check("Kennungen eines Windows Server 2025", Taskbar.AppIds(Convert.FromBase64String(FavoritesServer))
+            .SequenceEqual(new[] { "Microsoft.Windows.Explorer", "MSEdge" }), string.Join(", ", Taskbar.AppIds(Convert.FromBase64String(FavoritesServer))));
+        var fav = FavoritesWith("E7CF176E110C211B", Taskbar.OrdnerProgramme86 + @"\Hersteller\app.exe");
         Check("Kennungen eines Windows-10-PCs (Firefox 32 Bit, Programm in x86)",
-            Taskleiste.AppIds(fav).SequenceEqual(new[] { "E7CF176E110C211B", Taskleiste.OrdnerProgramme86 + @"\Hersteller\app.exe" }));
-        Check("Kennungen: nichts gespeichert", Taskleiste.AppIds(null).Count == 0 && Taskleiste.AppIds(new byte[] { 0x20, 0, 0x1D, 0, 0xEF, 0xBE, 0, 0, 0, 0, 0, 0 }).Count == 0);
-        var ersetzt = Taskleiste.ReplaceAppId(fav, "E7CF176E110C211B", "308046B0AF4A39CB");
-        Check("Kennung ersetzt, Laenge gleich", ersetzt.Length == fav.Length && Taskleiste.AppIds(ersetzt)[0] == "308046B0AF4A39CB" && Taskleiste.AppIds(fav)[0] == "E7CF176E110C211B");
+            Taskbar.AppIds(fav).SequenceEqual(new[] { "E7CF176E110C211B", Taskbar.OrdnerProgramme86 + @"\Hersteller\app.exe" }));
+        Check("Kennungen: nichts gespeichert", Taskbar.AppIds(null).Count == 0 && Taskbar.AppIds(new byte[] { 0x20, 0, 0x1D, 0, 0xEF, 0xBE, 0, 0, 0, 0, 0, 0 }).Count == 0);
+        var ersetzt = Taskbar.ReplaceAppId(fav, "E7CF176E110C211B", "308046B0AF4A39CB");
+        Check("Kennung ersetzt, Laenge gleich", ersetzt.Length == fav.Length && Taskbar.AppIds(ersetzt)[0] == "308046B0AF4A39CB" && Taskbar.AppIds(fav)[0] == "E7CF176E110C211B");
         bool abgelehnt = false;
-        try { Taskleiste.ReplaceAppId(fav, "MSEdge", "Firefox"); } catch (ArgumentException) { abgelehnt = true; }
+        try { Taskbar.ReplaceAppId(fav, "MSEdge", "Firefox"); } catch (ArgumentException) { abgelehnt = true; }
         Check("Kennung anderer Laenge: abgelehnt", abgelehnt);
 
         var mozilla = new Dictionary<string, string> { ["E7CF176E110C211B"] = "308046B0AF4A39CB", ["ABC"] = "308046B0AF4A39CB", ["308046B0AF4A39CB"] = "308046B0AF4A39CB" };
         var ordner = new Dictionary<string, string>
         {
-            [Taskleiste.OrdnerProgramme86] = @"C:\Program Files (x86)",
-            [Taskleiste.OrdnerProgramme64] = @"C:\Program Files",
+            [Taskbar.OrdnerProgramme86] = @"C:\Program Files (x86)",
+            [Taskbar.OrdnerProgramme64] = @"C:\Program Files",
         };
         var da = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { @"C:\Program Files\Neu64\app.exe", @"C:\Program Files (x86)\Alt86\app.exe" };
-        string? NewId(string k) => Taskleiste.NewAppId(k, mozilla, ordner, p => da.Contains(p.Replace('/', '\\')));
+        string? NewId(string k) => Taskbar.NewAppId(k, mozilla, ordner, p => da.Contains(p.Replace('/', '\\')));
         Check("Firefox 32 -> 64 Bit", NewId("E7CF176E110C211B") == "308046B0AF4A39CB");
         Check("Firefox: gleiche Installation oder andere Laenge - bleibt", NewId("308046B0AF4A39CB") is null && NewId("ABC") is null);
-        Check("Programm aus x86, hier 64 Bit", NewId(Taskleiste.OrdnerProgramme86 + @"\Neu64\app.exe") == Taskleiste.OrdnerProgramme64 + @"\Neu64\app.exe");
-        Check("Programm liegt hier wie dort - bleibt", NewId(Taskleiste.OrdnerProgramme86 + @"\Alt86\app.exe") is null);
-        Check("Programm gibt es hier nicht - bleibt", NewId(Taskleiste.OrdnerProgramme86 + @"\Fehlt\app.exe") is null);
+        Check("Programm aus x86, hier 64 Bit", NewId(Taskbar.OrdnerProgramme86 + @"\Neu64\app.exe") == Taskbar.OrdnerProgramme64 + @"\Neu64\app.exe");
+        Check("Programm liegt hier wie dort - bleibt", NewId(Taskbar.OrdnerProgramme86 + @"\Alt86\app.exe") is null);
+        Check("Programm gibt es hier nicht - bleibt", NewId(Taskbar.OrdnerProgramme86 + @"\Fehlt\app.exe") is null);
         Check("eigene Kennung, unbekannter Ordner - bleibt", NewId("Hersteller.Programm.Client.1") is null
             && NewId("{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\SnippingTool.exe") is null && NewId("{kurz}\\x.exe") is null);
     }
@@ -139,17 +139,17 @@ internal static partial class Program
             Directory.CreateDirectory(ordner);
             var altesZiel = Path.Combine(altOrdner, "fuchs.exe");
             // Like Firefox: the app ID is the hash of the installation folder.
-            Verknuepfung.Create(Path.Combine(ordner, "Fuchs.lnk"), altesZiel, MozillaProfile.InstallHash(altOrdner));
-            Verknuepfung.Create(Path.Combine(ordner, "Weg.lnk"), @"C:\DaSiTest-gibt-es-nicht\weg.exe");
-            Verknuepfung.Create(Path.Combine(ordner, "Da.lnk"), Path.Combine(Environment.SystemDirectory, "cmd.exe"), "DaSi.Test.Da");
+            Shortcut.Create(Path.Combine(ordner, "Fuchs.lnk"), altesZiel, MozillaProfile.InstallHash(altOrdner));
+            Shortcut.Create(Path.Combine(ordner, "Weg.lnk"), @"C:\DaSiTest-gibt-es-nicht\weg.exe");
+            Shortcut.Create(Path.Combine(ordner, "Da.lnk"), Path.Combine(Environment.SystemDirectory, "cmd.exe"), "DaSi.Test.Da");
 
-            var gelesen = Verknuepfung.Read(Path.Combine(ordner, "Fuchs.lnk"));
+            var gelesen = Shortcut.Read(Path.Combine(ordner, "Fuchs.lnk"));
             Check("Verknuepfung lesen: Ziel, Ordner, Symbol, App-Kennung",
                 gelesen is not null && gelesen.Ziel.Equals(altesZiel, StringComparison.OrdinalIgnoreCase)
                 && gelesen.Arbeitsordner.Equals(altOrdner, StringComparison.OrdinalIgnoreCase)
                 && gelesen.AppId == MozillaProfile.InstallHash(altOrdner), $"{gelesen}");
-            Check("keine Verknuepfung: nichts zu lesen", Verknuepfung.Read(Path.Combine(ordner, "gibtsnicht.lnk")) is null);
-            Check("keine Verknuepfung: nichts umzustellen", !Verknuepfung.SetTarget(Path.Combine(ordner, "gibtsnicht.lnk"), exe));
+            Check("keine Verknuepfung: nichts zu lesen", Shortcut.Read(Path.Combine(ordner, "gibtsnicht.lnk")) is null);
+            Check("keine Verknuepfung: nichts umzustellen", !Shortcut.SetTarget(Path.Combine(ordner, "gibtsnicht.lnk"), exe));
 
             var c = new CancellationTokenState();
             var log = new Protokoll();
@@ -157,13 +157,13 @@ internal static partial class Program
             var ohneProgramm = d.CheckTaskbarTargets(ordner, new[] { "Da.lnk", "Fuchs.lnk", "Weg.lnk" });
             Check("fehlendes Programm zurueckgemeldet", ohneProgramm.SequenceEqual(new[] { "Weg.lnk" }), string.Join(", ", ohneProgramm));
 
-            var fuchs = Verknuepfung.Read(Path.Combine(ordner, "Fuchs.lnk"));
+            var fuchs = Shortcut.Read(Path.Combine(ordner, "Fuchs.lnk"));
             Check("Fuchs: auf den 64-Bit-Ordner umgestellt, samt Arbeitsordner und Symbol",
                 fuchs is not null && fuchs.Ziel.Equals(exe, StringComparison.OrdinalIgnoreCase)
                 && fuchs.Arbeitsordner.Equals(neuOrdner, StringComparison.OrdinalIgnoreCase)
                 && fuchs.Symbol.Equals(exe, StringComparison.OrdinalIgnoreCase), $"{fuchs}");
             Check("Fuchs: App-Kennung der neuen Installation", fuchs?.AppId == MozillaProfile.InstallHash(MozillaProfile.RealPath(neuOrdner)), fuchs?.AppId);
-            Check("Da: unveraendert", Verknuepfung.Read(Path.Combine(ordner, "Da.lnk"))?.AppId == "DaSi.Test.Da");
+            Check("Da: unveraendert", Shortcut.Read(Path.Combine(ordner, "Da.lnk"))?.AppId == "DaSi.Test.Da");
             Check("Protokoll: umgestellt und fehlend",
                 log.Has("[INFO] Taskleiste: Fuchs zeigte auf") && log.Has("die Verknüpfung ist umgestellt")
                 && log.Has("[WARNUNG] Taskleiste: Diese angehefteten Programme gibt es auf diesem PC (noch) nicht: Weg (C:\\DaSiTest-gibt-es-nicht\\weg.exe)")
@@ -171,31 +171,31 @@ internal static partial class Program
 
             // App IDs in Favorites: 32-bit Firefox -> the Firefox here, a program from
             // "Program Files (x86)" -> is in "Program Files" here.
-            var kennungFuchs = Taskleiste.OrdnerProgramme86 + @"\DaSiTest-Fuchs\fuchs.exe";
+            var kennungFuchs = Taskbar.OrdnerProgramme86 + @"\DaSiTest-Fuchs\fuchs.exe";
             var fav = FavoritesWith("E7CF176E110C211B", kennungFuchs, "Microsoft.Windows.Explorer", "Hersteller.Programm.Client.1");
             var band = new List<DesignEintrag>
             {
-                new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "Favorites", Typ = "Binary", Wert = Convert.ToBase64String(fav) },
-                new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "FavoritesResolve", Typ = "Binary", Wert = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes("x E7CF176E110C211B y")) },
-                new() { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = "FavoritesVersion", Typ = "DWord", Wert = "3" },
+                new() { Gruppe = "Taskleiste", Schluessel = Taskbar.TaskbandSchluessel, Name = "Favorites", Typ = "Binary", Wert = Convert.ToBase64String(fav) },
+                new() { Gruppe = "Taskleiste", Schluessel = Taskbar.TaskbandSchluessel, Name = "FavoritesResolve", Typ = "Binary", Wert = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes("x E7CF176E110C211B y")) },
+                new() { Gruppe = "Taskleiste", Schluessel = Taskbar.TaskbandSchluessel, Name = "FavoritesVersion", Typ = "DWord", Wert = "3" },
             };
             d.TestInstallationen = new List<string> { @"C:\Program Files\Mozilla Firefox" };
             log.Clear();
             var angepasst = d.AdjustAppIds(band);
-            var kennungen = Taskleiste.AppIds(Taskleiste.Favorites(angepasst));
+            var kennungen = Taskbar.AppIds(Taskbar.Favorites(angepasst));
             Check("Kennungen: Firefox und Programm an diesen PC angepasst, die anderen bleiben",
-                kennungen.SequenceEqual(new[] { "308046B0AF4A39CB", Taskleiste.OrdnerProgramme64 + @"\DaSiTest-Fuchs\fuchs.exe", "Microsoft.Windows.Explorer", "Hersteller.Programm.Client.1" }),
+                kennungen.SequenceEqual(new[] { "308046B0AF4A39CB", Taskbar.OrdnerProgramme64 + @"\DaSiTest-Fuchs\fuchs.exe", "Microsoft.Windows.Explorer", "Hersteller.Programm.Client.1" }),
                 string.Join(", ", kennungen));
             Check("Kennungen: auch in FavoritesResolve, die Sicherung selbst unveraendert",
                 System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(angepasst[1].Wert)).Contains("308046B0AF4A39CB")
-                && Taskleiste.AppIds(Taskleiste.Favorites(band))[0] == "E7CF176E110C211B" && angepasst[2].Wert == "3");
+                && Taskbar.AppIds(Taskbar.Favorites(band))[0] == "E7CF176E110C211B" && angepasst[2].Wert == "3");
             Check("Kennungen: im Protokoll", log.Has("[INFO] Taskleiste: Kennungen an die Programme dieses PCs angepasst") && log.Has("E7CF176E110C211B -> 308046B0AF4A39CB"), log.Text);
             log.Clear();
             var ohne = d.AdjustAppIds(band.Skip(2).ToList());
             Check("Kennungen: ohne Favorites nichts zu tun", ohne.Count == 1 && !log.Has("Kennungen"), log.Text);
             d.TestInstallationen = new List<string>();
             Check("Kennungen: kein Firefox hier - Firefox-Kennung bleibt",
-                Taskleiste.AppIds(Taskleiste.Favorites(d.AdjustAppIds(band)))[0] == "E7CF176E110C211B");
+                Taskbar.AppIds(Taskbar.Favorites(d.AdjustAppIds(band)))[0] == "E7CF176E110C211B");
         }
         finally
         {

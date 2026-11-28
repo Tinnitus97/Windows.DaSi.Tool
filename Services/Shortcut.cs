@@ -13,7 +13,7 @@ namespace WindowsDaSiTool.Services;
 /// (AppUserModelID) the taskbar files the program under.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public static class Verknuepfung
+public static class Shortcut
 {
     /// <summary>What the shortcut contains. Target is empty for shortcuts to shell objects (File Explorer).</summary>
     public sealed record Inhalt(string Ziel, string Arbeitsordner, string Symbol, int SymbolIndex, string? AppId);

@@ -16,7 +16,7 @@ namespace WindowsDaSiTool.Services;
 /// says whether Windows shows them.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public static class TaskleistenAnsicht
+public static class TaskbarView
 {
     /// <summary>
     /// The app IDs of the program buttons on the taskbar. null if the taskbar

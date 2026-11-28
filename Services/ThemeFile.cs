@@ -20,7 +20,7 @@ namespace WindowsDaSiTool.Services;
 ///
 /// No dependencies, so it can be tested.
 /// </summary>
-public static class DesignDatei
+public static class ThemeFile
 {
     public const string FarbenAbschnitt = @"Control Panel\Colors";
     public const string DesktopAbschnitt = @"Control Panel\Desktop";
@@ -37,7 +37,7 @@ public static class DesignDatei
     /// "Wallpaper=" as "Windows Spotlight" when applying the theme.
     /// </summary>
     public static string ForColor(string inhalt, (byte R, byte G, byte B) farbe)
-        => RemoveSection(Set(inhalt, FarbenAbschnitt, "Background", Hintergrund.ColorText(farbe)), DiashowAbschnitt);
+        => RemoveSection(Set(inhalt, FarbenAbschnitt, "Background", Wallpaper.ColorText(farbe)), DiashowAbschnitt);
 
     /// <summary>Image: record path, fit mode and edge color, no slideshow.</summary>
     public static string ForImage(string inhalt, string pfad, HintergrundEinstellung? e)
@@ -45,7 +45,7 @@ public static class DesignDatei
         var t = Set(inhalt, DesktopAbschnitt, "Wallpaper", pfad);
         if (!string.IsNullOrWhiteSpace(e?.Darstellung)) t = Set(t, DesktopAbschnitt, "WallpaperStyle", e.Darstellung);
         if (!string.IsNullOrWhiteSpace(e?.Kacheln)) t = Set(t, DesktopAbschnitt, "TileWallpaper", e.Kacheln);
-        if (Hintergrund.ReadColor(e?.Farbe) is { } rand) t = Set(t, FarbenAbschnitt, "Background", Hintergrund.ColorText(rand));
+        if (Wallpaper.ReadColor(e?.Farbe) is { } rand) t = Set(t, FarbenAbschnitt, "Background", Wallpaper.ColorText(rand));
         return RemoveSection(t, DiashowAbschnitt);
     }
 

@@ -149,8 +149,8 @@ public static class AppCatalog
         if (p == Punkt.Wlan) return HatWlanAdapter() ? null : KeinWlanSichern;
         // Folders under C:\ belong to the computer, not to the user.
         if (p == Punkt.Laufwerk)
-            return Directory.Exists(LaufwerksOrdner.Wurzel) ? null
-                : ($"Das Laufwerk {LaufwerksOrdner.Wurzel} gibt es hier nicht.", $"The drive {LaufwerksOrdner.Wurzel} does not exist here.");
+            return Directory.Exists(DriveFolders.Wurzel) ? null
+                : ($"Das Laufwerk {DriveFolders.Wurzel} gibt es hier nicht.", $"The drive {DriveFolders.Wurzel} does not exist here.");
 
         if (string.IsNullOrWhiteSpace(profil) || !Directory.Exists(profil)) return null;
 
@@ -235,7 +235,7 @@ public static class AppCatalog
             Punkt.Drucker => ("keine Drucker", "no printers"),
             Punkt.Hintergrund => ("kein Design (weder Hintergrund noch Design-Einstellungen)", "no design (neither wallpaper nor design settings)"),
             Punkt.DesktopShot => ("weder Desktop-Symbole noch Screenshot", "neither desktop icons nor a screenshot"),
-            Punkt.Laufwerk => ($"keine Ordner von {LaufwerksOrdner.Wurzel}", $"no folders from {LaufwerksOrdner.Wurzel}"),
+            Punkt.Laufwerk => ($"keine Ordner von {DriveFolders.Wurzel}", $"no folders from {DriveFolders.Wurzel}"),
             Punkt.Opera => ("kein Opera-Profil", "no Opera profile"),
             _ => ($"kein {p}-Profil", $"no {p} profile"),
         };
@@ -247,7 +247,7 @@ public static class AppCatalog
         => DesktopScreenshot.FindImages(Path.Combine(sicherung, DesktopScreenshot.FolderName)).Count > 0;
 
     /// <summary>Design &amp; Desktop, part Icons + taskbar: icon positions or taskbar in the backup?</summary>
-    public static bool HasDesktopIcons(string sicherung) => DesktopIcons.Exists(sicherung) || Taskleiste.Exists(sicherung);
+    public static bool HasDesktopIcons(string sicherung) => DesktopIcons.Exists(sicherung) || Taskbar.Exists(sicherung);
 
     /// <summary>Is there a wallpaper image in the backup?</summary>
     public static bool HasWallpaper(string sicherung)
@@ -267,9 +267,9 @@ public static class AppCatalog
                             || File.Exists(Path.Combine(sicherung, "Export.json")),
             Punkt.Wlan => HasFiles(Path.Combine(sicherung, "WLAN-Profile"), "*.xml"),
             Punkt.Drucker => File.Exists(Path.Combine(sicherung, "Drucker", "Drucker.printerExport")),
-            Punkt.Hintergrund => HasWallpaper(sicherung) || DesignEinstellungen.Exists(sicherung),
+            Punkt.Hintergrund => HasWallpaper(sicherung) || DesignSettings.Exists(sicherung),
             Punkt.DesktopShot => HasDesktopScreenshot(sicherung) || HasDesktopIcons(sicherung),
-            Punkt.Laufwerk => LaufwerksOrdner.Exists(sicherung),
+            Punkt.Laufwerk => DriveFolders.Exists(sicherung),
             _ => Programme.FirstOrDefault(a => a.Punkt == p) is { } app && Directory.Exists(Path.Combine(sicherung, app.BackupOrdner)),
         };
     }

@@ -37,7 +37,7 @@ jobs:
       # self-update's swap script is really run by cmd.exe (with umlauts in the
       # path), robocopy, netsh, PrintBrm, the Explorer desktop, the taskbar and
       # the wallpaper are used for real, winget is replaced by a fake
-      # (tests/WingetAttrappe).
+      # (tests/WingetFake).
       - name: Prüfungen der Dienste
         shell: pwsh
         run: |
@@ -45,7 +45,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $bin = 'tests/DaSiTests/bin/Release/net10.0-windows'
           dotnet coverlet "$bin/DaSiTests.dll" --target "$bin/DaSiTests.exe" `
-            --include-test-assembly --format cobertura --output abdeckung/dienste.xml
+            --include-test-assembly --format cobertura --output coverage/services.xml
 
       # The UI: the real main window without a screen (Avalonia.Headless),
       # operated with mouse clicks. Built with debug symbols - only for the
@@ -58,19 +58,19 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $bin = 'tests/DaSiGuiTests/bin/Release/net10.0-windows'
           dotnet coverlet "$bin/DaSiGuiTests.dll" --target "$bin/DaSiGuiTests.exe" `
-            --include "[WindowsDaSiTool]*" --format cobertura --output abdeckung/gui.xml
+            --include "[WindowsDaSiTool]*" --format cobertura --output coverage/gui.xml
 
       # Every function of the program must be executed by a test - exceptions
-      # only with a reason in tests/abdeckung-ausnahmen.txt.
+      # only with a reason in tests/coverage-exceptions.txt.
       - name: Jede Funktion geprüft?
         if: always()
-        run: python tools/abdeckung.py abdeckung/dienste.xml abdeckung/gui.xml --pflicht
+        run: python tools/coverage.py coverage/services.xml coverage/gui.xml --pflicht
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: Abdeckung
-          path: abdeckung/
+          name: Coverage
+          path: coverage/
           retention-days: 7
 
       # Deliberately WITHOUT --warnaserror: a new Avalonia version occasionally
@@ -143,7 +143,7 @@ jobs:
   # Migration with a real Thunderbird: the 32-bit version on the "old PC",
   # then uninstalled and the 64-bit version installed ("new PC"). In between
   # the tool backs up and restores - including an account with a mail folder
-  # outside the profile (tests/DaSiTests/ThunderbirdEcht.cs).
+  # outside the profile (tests/DaSiTests/ThunderbirdReal.cs).
   thunderbird-echt:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -183,7 +183,7 @@ jobs:
 
   # Migration with a real Firefox: Firefox ESR 32 bit on the "old PC", the
   # current 64-bit release on the "new" one (installed on the runner). ESR is
-  # uninstalled in between (tests/DaSiTests/FirefoxUmzugEcht.cs).
+  # uninstalled in between (tests/DaSiTests/FirefoxMigrationReal.cs).
   firefox-echt:
     runs-on: windows-latest
     timeout-minutes: 30

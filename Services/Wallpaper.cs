@@ -55,7 +55,7 @@ public sealed class HintergrundEinstellung
 /// dependencies, so it can be tested - the registry and Windows calls live
 /// in BackupService.
 /// </summary>
-public static class Hintergrund
+public static class Wallpaper
 {
     private static readonly Regex Rgb = new(@"^\s*(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})\s*$", RegexOptions.CultureInvariant);
 

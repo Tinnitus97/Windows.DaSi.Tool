@@ -95,7 +95,7 @@ public sealed class WingetService
             {
                 // Newest version first - by version number, not by text (otherwise "1.9"
                 // came before "1.26").
-                results.AddRange(WingetFehler.NewestFirst(
+                results.AddRange(WingetErrors.NewestFirst(
                     Directory.GetDirectories(root, "Microsoft.DesktopAppInstaller_*__8wekyb3d8bbwe")));
             }
         }
@@ -678,10 +678,10 @@ public sealed class WingetService
 
             switch (r.ExitCode)
             {
-                case WingetFehler.Ok:               ok++;   _log(Loc.Tr("    -> Erfolgreich installiert.", "    -> Installed successfully.")); break;
-                case WingetFehler.SchonAktuell:     skip++; _log(Loc.Tr("    -> Bereits installiert und aktuell.", "    -> Already installed and up to date.")); break;
-                case WingetFehler.SchonInstalliert: skip++; _log(Loc.Tr("    -> Bereits installiert.", "    -> Already installed.")); break;
-                case WingetFehler.NichtGefunden:    fail++; _log(Loc.Tr("    -> [FEHLER] Paket wurde im Winget-Katalog nicht gefunden.", "    -> [ERROR] Package was not found in the winget catalog.")); break;
+                case WingetErrors.Ok:               ok++;   _log(Loc.Tr("    -> Erfolgreich installiert.", "    -> Installed successfully.")); break;
+                case WingetErrors.SchonAktuell:     skip++; _log(Loc.Tr("    -> Bereits installiert und aktuell.", "    -> Already installed and up to date.")); break;
+                case WingetErrors.SchonInstalliert: skip++; _log(Loc.Tr("    -> Bereits installiert.", "    -> Already installed.")); break;
+                case WingetErrors.NichtGefunden:    fail++; _log(Loc.Tr("    -> [FEHLER] Paket wurde im Winget-Katalog nicht gefunden.", "    -> [ERROR] Package was not found in the winget catalog.")); break;
                 default:
                     fail++;
                     _log(Loc.Tr($"    -> [FEHLER] {DescribeResult(r)}", $"    -> [ERROR] {DescribeResult(r)}"));
@@ -691,7 +691,7 @@ public sealed class WingetService
             // If it still fails because of winget itself after the repair, every
             // further package fails the same way. The list used to run to the end
             // anyway - ten times the same message.
-            if (r.ExitCode != WingetFehler.Ok && WingetFehler.SourceBroken(r.ExitCode, r.Output))
+            if (r.ExitCode != WingetErrors.Ok && WingetErrors.SourceBroken(r.ExitCode, r.Output))
             {
                 var rest = selected.Skip(i).Count(p => !string.IsNullOrWhiteSpace(p.PackageIdentifier));
                 if (rest > 0)
@@ -730,10 +730,10 @@ public sealed class WingetService
         var r = await InstallOnce(id);
         if (!IsBroken(r) || _cancel.IsCancelled) return r;
 
-        var erklaerung = WingetFehler.Explanation(r.ExitCode, Loc.Tr);
-        _log(Loc.Tr($"[WARNUNG] winget meldet {WingetFehler.Hex(r.ExitCode)}{(erklaerung is null ? "" : ": " + erklaerung)} "
+        var erklaerung = WingetErrors.Explanation(r.ExitCode, Loc.Tr);
+        _log(Loc.Tr($"[WARNUNG] winget meldet {WingetErrors.Hex(r.ExitCode)}{(erklaerung is null ? "" : ": " + erklaerung)} "
                     + "Das betrifft jedes Paket - winget wird repariert, danach geht es weiter.",
-                    $"[WARNING] winget reports {WingetFehler.Hex(r.ExitCode)}{(erklaerung is null ? "" : ": " + erklaerung)} "
+                    $"[WARNING] winget reports {WingetErrors.Hex(r.ExitCode)}{(erklaerung is null ? "" : ": " + erklaerung)} "
                     + "This affects every package - winget is being repaired, then it continues."));
 
         if (!_quellenZurueckgesetzt)
@@ -762,15 +762,15 @@ public sealed class WingetService
     private Task<ProcessResult> InstallOnce(string id) => InvokeWinget(
         $"install --exact --id {Quote(id)} --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity");
 
-    private static bool IsBroken(ProcessResult r) => r.Started && r.ExitCode != 0 && WingetFehler.SourceBroken(r.ExitCode, r.Output);
+    private static bool IsBroken(ProcessResult r) => r.Started && r.ExitCode != 0 && WingetErrors.SourceBroken(r.ExitCode, r.Output);
 
     /// <summary>"ExitCode -1978335223 (0x8A150009): explanation - last message from winget".</summary>
     public static string DescribeResult(ProcessResult r)
     {
-        var text = $"ExitCode {r.ExitCode} ({WingetFehler.Hex(r.ExitCode)})";
-        var erklaerung = WingetFehler.Explanation(r.ExitCode, Loc.Tr);
+        var text = $"ExitCode {r.ExitCode} ({WingetErrors.Hex(r.ExitCode)})";
+        var erklaerung = WingetErrors.Explanation(r.ExitCode, Loc.Tr);
         if (erklaerung is not null) text += ": " + erklaerung;
-        var meldung = WingetFehler.LastMessage(r.Output);
+        var meldung = WingetErrors.LastMessage(r.Output);
         if (meldung.Length > 0) text += (erklaerung is null ? ": " : " - ") + meldung;
         return text;
     }

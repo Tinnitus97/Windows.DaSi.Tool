@@ -427,11 +427,11 @@ public partial class MainWindowViewModel : ObservableObject
     // backup or restore only runs with "Ausgewählte Aktionen starten" (Start
     // selected actions). The button in the item shows the count and changes
     // the choice.
-    private List<LaufwerksOrdner.Eintrag> _laufwerkGewaehlt = new();
+    private List<DriveFolders.Eintrag> _laufwerkGewaehlt = new();
     private bool _laufwerkWaehltGerade;
 
     /// <summary>The pre-selected folders.</summary>
-    public IReadOnlyList<LaufwerksOrdner.Eintrag> LaufwerkGewaehlt => _laufwerkGewaehlt;
+    public IReadOnlyList<DriveFolders.Eintrag> LaufwerkGewaehlt => _laufwerkGewaehlt;
     public string LaufwerkKnopf => Tr($"{_laufwerkGewaehlt.Count} Ordner …", $"{_laufwerkGewaehlt.Count} {(_laufwerkGewaehlt.Count == 1 ? "folder" : "folders")} …");
     public bool LaufwerkKnopfSichtbar => SelLaufwerk && _laufwerkGewaehlt.Count > 0;
 
@@ -467,12 +467,12 @@ public partial class MainWindowViewModel : ObservableObject
         _laufwerkWaehltGerade = true;
         try
         {
-            var eintraege = IsRestoreMode ? LaufwerksOrdner.InBackup(BackupPath)
-                                          : LaufwerksOrdner.ListFolders(LaufwerksOrdner.Wurzel, BackupPath);
+            var eintraege = IsRestoreMode ? DriveFolders.InBackup(BackupPath)
+                                          : DriveFolders.ListFolders(DriveFolders.Wurzel, BackupPath);
             var vorher = _laufwerkGewaehlt.Select(e => e.Name).ToList();
-            List<LaufwerksOrdner.Eintrag>? wahl = null;
+            List<DriveFolders.Eintrag>? wahl = null;
             if (LaufwerkAuswahl is not null) wahl = await LaufwerkAuswahl(eintraege, IsRestoreMode, vorher);
-            else if (GetMainWindow() is { } win) wahl = await OrdnerAuswahlDialog.Show(win, eintraege, IsRestoreMode, vorher);
+            else if (GetMainWindow() is { } win) wahl = await FolderSelectionDialog.Show(win, eintraege, IsRestoreMode, vorher);
             if (wahl is null)
             {
                 if (_laufwerkGewaehlt.Count == 0) SelLaufwerk = false;
@@ -483,10 +483,10 @@ public partial class MainWindowViewModel : ObservableObject
             SelLaufwerk = true;
             var namen = string.Join(", ", wahl.Select(e => e.Name));
             Log(IsRestoreMode
-                ? Tr($"[INFO] Vorgemerkt - Ordner nach {LaufwerksOrdner.Wurzel}: {namen}. Zurückgeschrieben wird mit \"Ausgewählte Aktionen starten\".",
-                     $"[INFO] Selected - folders to {LaufwerksOrdner.Wurzel}: {namen}. They are written back with \"Start selected actions\".")
-                : Tr($"[INFO] Vorgemerkt - Ordner unter {LaufwerksOrdner.Wurzel}: {namen}. Gesichert wird mit \"Ausgewählte Aktionen starten\".",
-                     $"[INFO] Selected - folders under {LaufwerksOrdner.Wurzel}: {namen}. They are backed up with \"Start selected actions\"."));
+                ? Tr($"[INFO] Vorgemerkt - Ordner nach {DriveFolders.Wurzel}: {namen}. Zurückgeschrieben wird mit \"Ausgewählte Aktionen starten\".",
+                     $"[INFO] Selected - folders to {DriveFolders.Wurzel}: {namen}. They are written back with \"Start selected actions\".")
+                : Tr($"[INFO] Vorgemerkt - Ordner unter {DriveFolders.Wurzel}: {namen}. Gesichert wird mit \"Ausgewählte Aktionen starten\".",
+                     $"[INFO] Selected - folders under {DriveFolders.Wurzel}: {namen}. They are backed up with \"Start selected actions\"."));
         }
         finally
         {
@@ -554,10 +554,10 @@ public partial class MainWindowViewModel : ObservableObject
             ? Tr($"Vorgemerkt: {string.Join(", ", _laufwerkGewaehlt.Select(e => e.Name))}. Ändern über den Knopf rechts.",
                  $"Selected: {string.Join(", ", _laufwerkGewaehlt.Select(e => e.Name))}. Change with the button on the right.")
             : IsRestoreMode
-            ? Tr($"Beim Anhaken erscheint die Liste der gesicherten Ordner zum Vormerken. Zurückgeschrieben nach {LaufwerksOrdner.Wurzel} wird mit \"Ausgewählte Aktionen starten\"; was dort schon liegt, wird ergänzt.",
-                 $"When ticked, the list of the backed-up folders appears for selection. They are written back to {LaufwerksOrdner.Wurzel} with \"Start selected actions\"; anything already there is added to.")
-            : Tr($"Beim Anhaken erscheint die Liste der Ordner unter {LaufwerksOrdner.Wurzel} (etwa Daten, Scans) zum Vormerken. Gesichert wird mit \"Ausgewählte Aktionen starten\". Die Windows-Ordner (Windows, Programme, Benutzer …) sind in der Liste ausgeblendet.",
-                 $"When ticked, the list of the folders under {LaufwerksOrdner.Wurzel} (such as data or scans) appears for selection. They are backed up with \"Start selected actions\". The Windows folders (Windows, Program Files, Users …) are hidden in the list."));
+            ? Tr($"Beim Anhaken erscheint die Liste der gesicherten Ordner zum Vormerken. Zurückgeschrieben nach {DriveFolders.Wurzel} wird mit \"Ausgewählte Aktionen starten\"; was dort schon liegt, wird ergänzt.",
+                 $"When ticked, the list of the backed-up folders appears for selection. They are written back to {DriveFolders.Wurzel} with \"Start selected actions\"; anything already there is added to.")
+            : Tr($"Beim Anhaken erscheint die Liste der Ordner unter {DriveFolders.Wurzel} (etwa Daten, Scans) zum Vormerken. Gesichert wird mit \"Ausgewählte Aktionen starten\". Die Windows-Ordner (Windows, Programme, Benutzer …) sind in der Liste ausgeblendet.",
+                 $"When ticked, the list of the folders under {DriveFolders.Wurzel} (such as data or scans) appears for selection. They are backed up with \"Start selected actions\". The Windows folders (Windows, Program Files, Users …) are hidden in the list."));
     // Also when available: everything that belongs to it.
     public string? TipDesignDesktop => !IsAvailable(Punkt.Hintergrund) && !IsAvailable(Punkt.DesktopShot)
         ? Tr("Die gewählte Sicherung enthält weder Design noch Desktop-Symbole oder Screenshot.", "The selected backup contains neither design nor desktop icons or a screenshot.")
@@ -666,8 +666,8 @@ public partial class MainWindowViewModel : ObservableObject
         ? Tr("Drucker & Treiber wiederherstellen", "Restore printers & drivers")
         : Tr("Drucker & Treiber sichern", "Back up printers & drivers");
     public string TgLaufwerk => IsRestoreMode
-        ? Tr($"Ordner unter {LaufwerksOrdner.Wurzel} wiederherstellen", $"Restore folders under {LaufwerksOrdner.Wurzel}")
-        : Tr($"Ordner unter {LaufwerksOrdner.Wurzel} sichern", $"Back up folders under {LaufwerksOrdner.Wurzel}");
+        ? Tr($"Ordner unter {DriveFolders.Wurzel} wiederherstellen", $"Restore folders under {DriveFolders.Wurzel}")
+        : Tr($"Ordner unter {DriveFolders.Wurzel} sichern", $"Back up folders under {DriveFolders.Wurzel}");
     public string TgDesignDesktop => IsRestoreMode
         ? Tr("Design & Desktop wiederherstellen", "Restore design & desktop")
         : Tr("Design & Desktop sichern", "Back up design & desktop");
@@ -762,7 +762,7 @@ public partial class MainWindowViewModel : ObservableObject
     // ---- Hooks for the tests (tests/DaSiGuiTests) ----
 
     /// <summary>Replaces the selection of folders under C:\ - null: the selection window.</summary>
-    internal Func<IReadOnlyList<LaufwerksOrdner.Eintrag>, bool, IReadOnlyCollection<string>, Task<List<LaufwerksOrdner.Eintrag>?>>? LaufwerkAuswahl { get; set; }
+    internal Func<IReadOnlyList<DriveFolders.Eintrag>, bool, IReadOnlyCollection<string>, Task<List<DriveFolders.Eintrag>?>>? LaufwerkAuswahl { get; set; }
 
     /// <summary>Replaces the system's folder dialog - null: the real one.</summary>
     internal Func<string, Task<string?>>? OrdnerDialog { get; set; }
@@ -912,7 +912,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (SelThunderbird) list.Add("Thunderbird-Profil");
         if (SelWlan)        list.Add("WLAN-Profile");
         if (SelPrinter)     list.Add("Drucker");
-        if (SelDesignDesktop && TeilDesign) { list.Add("Hintergrundbild"); list.Add(DesignEinstellungen.Ordner); }
+        if (SelDesignDesktop && TeilDesign) { list.Add("Hintergrundbild"); list.Add(DesignSettings.Ordner); }
         // The winget list is just a small text file; negligible.
         return list;
     }
@@ -1429,13 +1429,13 @@ public partial class MainWindowViewModel : ObservableObject
             if (_laufwerkGewaehlt.Count == 0) await ChooseDriveFolders();
             if (_laufwerkGewaehlt.Count == 0)
             {
-                Log(Tr($"[INFO] Start abgebrochen - keine Ordner unter {LaufwerksOrdner.Wurzel} gewählt.",
-                       $"[INFO] Start cancelled - no folders under {LaufwerksOrdner.Wurzel} selected."));
+                Log(Tr($"[INFO] Start abgebrochen - keine Ordner unter {DriveFolders.Wurzel} gewählt.",
+                       $"[INFO] Start cancelled - no folders under {DriveFolders.Wurzel} selected."));
                 return;
             }
             _laufwerkAuswahl = _laufwerkGewaehlt.ToList();
-            Log(Tr($"[INFO] Ordner unter {LaufwerksOrdner.Wurzel}: {string.Join(", ", _laufwerkAuswahl.Select(e => e.Name))}",
-                   $"[INFO] Folders under {LaufwerksOrdner.Wurzel}: {string.Join(", ", _laufwerkAuswahl.Select(e => e.Name))}"));
+            Log(Tr($"[INFO] Ordner unter {DriveFolders.Wurzel}: {string.Join(", ", _laufwerkAuswahl.Select(e => e.Name))}",
+                   $"[INFO] Folders under {DriveFolders.Wurzel}: {string.Join(", ", _laufwerkAuswahl.Select(e => e.Name))}"));
         }
 
         _cancel.Reset();
@@ -1581,7 +1581,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>The folders under C:\ chosen for this run.</summary>
-    private List<LaufwerksOrdner.Eintrag>? _laufwerkAuswahl;
+    private List<DriveFolders.Eintrag>? _laufwerkAuswahl;
 
     private async Task RunQueue(List<string> tasks, List<WingetPackage>? wingetSelection)
     {
@@ -1767,7 +1767,7 @@ public partial class MainWindowViewModel : ObservableObject
             "Export-Design" or "Import-Design"            => Tr("Design (Hintergrund, Farben, Mauszeiger, Taskleiste)", "Design (wallpaper, colors, pointer, taskbar)"),
             "Capture-DesktopShot" or "Show-DesktopShot"   => Tr("Desktop-Screenshot", "Desktop screenshot"),
             "Backup-DesktopIcons" or "Restore-DesktopIcons" => Tr("Desktop-Symbole und Taskleiste", "Desktop icons and taskbar"),
-            "Backup-Laufwerk" or "Restore-Laufwerk"       => Tr($"Ordner unter {LaufwerksOrdner.Wurzel}", $"Folders under {LaufwerksOrdner.Wurzel}"),
+            "Backup-Laufwerk" or "Restore-Laufwerk"       => Tr($"Ordner unter {DriveFolders.Wurzel}", $"Folders under {DriveFolders.Wurzel}"),
             _ => choice
         };
     }

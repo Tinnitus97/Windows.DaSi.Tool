@@ -18,7 +18,7 @@ namespace WindowsDaSiTool.Services;
 ///
 /// No dependencies, so it can be tested.
 /// </summary>
-public static class ProfilAbgleich
+public static class ProfileComparison
 {
     /// <summary>Files directly in the data folder: Chromium ("Local State"), Firefox/Thunderbird ("profiles.ini").</summary>
     private static readonly string[] Oben = { "Local State", "profiles.ini", "installs.ini" };

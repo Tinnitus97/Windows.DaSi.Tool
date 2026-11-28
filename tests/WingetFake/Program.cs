@@ -16,11 +16,11 @@ using System.Linq;
 //   show.<Id>.code          (1 = unknown)
 //   install.<Id>.code / install.<Id>.ausgabe                 (0)
 //   install.*.code          for every other Id
-var ordner = Environment.GetEnvironmentVariable("DASI_WINGET_ATTRAPPE");
-if (string.IsNullOrEmpty(ordner)) { Console.Error.WriteLine("DASI_WINGET_ATTRAPPE fehlt"); return 99; }
+var ordner = Environment.GetEnvironmentVariable("DASI_WINGET_FAKE");
+if (string.IsNullOrEmpty(ordner)) { Console.Error.WriteLine("DASI_WINGET_FAKE fehlt"); return 99; }
 
 var szenario = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-var datei = Path.Combine(ordner, "szenario.txt");
+var datei = Path.Combine(ordner, "scenario.txt");
 if (File.Exists(datei))
     foreach (var zeile in File.ReadAllLines(datei))
     {
@@ -28,7 +28,7 @@ if (File.Exists(datei))
         if (i > 0) szenario[zeile[..i].Trim()] = zeile[(i + 1)..].Replace("\\n", "\n");
     }
 
-try { File.AppendAllText(Path.Combine(ordner, "aufrufe.txt"), string.Join(" ", args) + Environment.NewLine); } catch { }
+try { File.AppendAllText(Path.Combine(ordner, "calls.txt"), string.Join(" ", args) + Environment.NewLine); } catch { }
 
 string Value(string k, string vorgabe) => szenario.TryGetValue(k, out var v) ? v : vorgabe;
 int Code(string k, int vorgabe) => szenario.TryGetValue(k, out var v) && int.TryParse(v, out var c) ? c : vorgabe;

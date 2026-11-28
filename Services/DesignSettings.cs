@@ -50,7 +50,7 @@ public sealed class DesignSicherung
 /// No dependencies: reading and writing the registry are passed in, so
 /// everything can be tested without Windows.
 /// </summary>
-public static class DesignEinstellungen
+public static class DesignSettings
 {
     public const string Ordner = "Design";
     public const string DateiName = "Design.json";

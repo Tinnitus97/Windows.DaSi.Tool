@@ -21,16 +21,16 @@ namespace WindowsDaSiTool.Views;
 /// window.
 /// Returns the chosen folders, or null when cancelled.
 /// </summary>
-public static class OrdnerAuswahlDialog
+public static class FolderSelectionDialog
 {
     /// <param name="vorgewaehlt">The folders already pre-selected (names) - empty: the default.</param>
-    public static async Task<List<LaufwerksOrdner.Eintrag>?> Show(Window owner, IReadOnlyList<LaufwerksOrdner.Eintrag> eintraege, bool wiederherstellen,
+    public static async Task<List<DriveFolders.Eintrag>?> Show(Window owner, IReadOnlyList<DriveFolders.Eintrag> eintraege, bool wiederherstellen,
                                                                   IReadOnlyCollection<string>? vorgewaehlt = null)
     {
         var vorher = new HashSet<string>(vorgewaehlt ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
-        var tcs = new TaskCompletionSource<List<LaufwerksOrdner.Eintrag>?>();
+        var tcs = new TaskCompletionSource<List<DriveFolders.Eintrag>?>();
         var stop = new CancellationTokenSource();
-        var wurzel = LaufwerksOrdner.Wurzel;
+        var wurzel = DriveFolders.Wurzel;
 
         var zeilen = new List<Zeile>();
         var stack = new StackPanel { Spacing = 3 };
@@ -90,7 +90,7 @@ public static class OrdnerAuswahlDialog
             Classes = { "dialogItem" },
             Margin = new Avalonia.Thickness(0, 0, 0, 8),
         };
-        ToolTip.SetTip(ausblenden, string.Join(", ", LaufwerksOrdner.WindowsOrdner.OrderBy(n => n)) + Loc.Tr(" und alles mit $ am Anfang", " and everything starting with $"));
+        ToolTip.SetTip(ausblenden, string.Join(", ", DriveFolders.WindowsOrdner.OrderBy(n => n)) + Loc.Tr(" und alles mit $ am Anfang", " and everything starting with $"));
 
         var summe = new TextBlock { Classes = { "dialogText" }, FontSize = 11, Opacity = 0.8, VerticalAlignment = VerticalAlignment.Center, Margin = new Avalonia.Thickness(10, 0, 0, 0) };
 
@@ -121,7 +121,7 @@ public static class OrdnerAuswahlDialog
                 z.Gestartet = true;
                 z.Anzeige.Text = "…";
                 var zeile = z;
-                _ = Task.Run(() => LaufwerksOrdner.SizeOf(zeile.E.Pfad, stop.Token)).ContinueWith(t =>
+                _ = Task.Run(() => DriveFolders.SizeOf(zeile.E.Pfad, stop.Token)).ContinueWith(t =>
                 {
                     if (stop.IsCancellationRequested || t.Result < 0) return;
                     Dispatcher.UIThread.Post(() =>
@@ -214,10 +214,10 @@ public static class OrdnerAuswahlDialog
         return await tcs.Task;
     }
 
-    private sealed class Zeile(CheckBox cb, LaufwerksOrdner.Eintrag e, TextBlock anzeige)
+    private sealed class Zeile(CheckBox cb, DriveFolders.Eintrag e, TextBlock anzeige)
     {
         public CheckBox Cb { get; } = cb;
-        public LaufwerksOrdner.Eintrag E { get; } = e;
+        public DriveFolders.Eintrag E { get; } = e;
         public TextBlock Anzeige { get; } = anzeige;
         public bool Gestartet { get; set; }
         /// <summary>-1 as long as the size is not known yet.</summary>

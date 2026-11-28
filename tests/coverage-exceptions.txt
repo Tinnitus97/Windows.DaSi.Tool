@@ -1,6 +1,6 @@
 # Functions no test can execute - each one with a reason.
 #
 # Format: "<file>: <class>.<function> | <reason>" - exactly the way
-# tools/abdeckung.py names the function. If something listed here is
+# tools/coverage.py names the function. If something listed here is
 # tested by now, CI reports that as well: the list stays as short as
 # possible.

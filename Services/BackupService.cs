@@ -875,7 +875,7 @@ public sealed class BackupService
         }
 
         // Are the files the profile depends on exactly as backed up?
-        var abweichend = ProfilAbgleich.Differences(quelle, ziel);
+        var abweichend = ProfileComparison.Differences(quelle, ziel);
         if (abweichend.Count > 0)
         {
             _log(Loc.Tr($"[FEHLER] {name}: Das Profil steht nicht vollständig im Ziel - abweichend: {string.Join(", ", abweichend.Take(8))}{(abweichend.Count > 8 ? ", ..." : "")}. "
@@ -885,7 +885,7 @@ public sealed class BackupService
             return false;
         }
 
-        var profile = ProfilAbgleich.Profiles(ziel);
+        var profile = ProfileComparison.Profiles(ziel);
         _log(profile.Count > 0
             ? Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt ({string.Join(", ", profile)}).", $"[SUCCESS] {name} profile restored ({string.Join(", ", profile)}).")
             : Loc.Tr($"[ERFOLG] {name} Profil wiederhergestellt.", $"[SUCCESS] {name} profile restored."));
@@ -907,7 +907,7 @@ public sealed class BackupService
             _log(Loc.Tr("[INFO] Keine Ordner gewählt - nichts zu sichern.", "[INFO] No folders selected - nothing to back up."));
             return;
         }
-        var ziel = Path.Combine(BackupPath, LaufwerksOrdner.BackupOrdner);
+        var ziel = Path.Combine(BackupPath, DriveFolders.BackupOrdner);
         Directory.CreateDirectory(ziel);
         int fehler = 0;
         foreach (var quelle in ordner)
@@ -921,7 +921,7 @@ public sealed class BackupService
             }
             var args = new List<string> { Quote(quelle), Quote(Path.Combine(ziel, name)), "/MIR", "/XJ", "/R:1", "/W:1", "/MT:32" };
             if (_cancel.FastMode) args.AddRange(new[] { "/NP", "/NDL" });
-            if (LaufwerksOrdner.Contains(quelle, BackupPath)) { args.Add("/XD"); args.Add(Quote(BackupPath)); }
+            if (DriveFolders.Contains(quelle, BackupPath)) { args.Add("/XD"); args.Add(Quote(BackupPath)); }
 
             _log(Loc.Tr($"[INFO] Sichere {quelle} ...", $"[INFO] Backing up {quelle} ..."));
             var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
@@ -930,7 +930,7 @@ public sealed class BackupService
             else { fehler++; _log(Loc.Tr($"[FEHLER] {quelle}: ExitCode {code}", $"[ERROR] {quelle}: ExitCode {code}")); }
         }
         if (fehler == 0 && ordner.Count > 1)
-            _log(Loc.Tr($"[ERFOLG] {ordner.Count} Ordner von {LaufwerksOrdner.Wurzel} gesichert.", $"[SUCCESS] {ordner.Count} folders from {LaufwerksOrdner.Wurzel} backed up."));
+            _log(Loc.Tr($"[ERFOLG] {ordner.Count} Ordner von {DriveFolders.Wurzel} gesichert.", $"[SUCCESS] {ordner.Count} folders from {DriveFolders.Wurzel} backed up."));
     }
 
     /// <summary>
@@ -940,10 +940,10 @@ public sealed class BackupService
     /// </summary>
     public async Task RestoreDriveFolders(IReadOnlyList<string> namen)
     {
-        var quelle = Path.Combine(BackupPath, LaufwerksOrdner.BackupOrdner);
+        var quelle = Path.Combine(BackupPath, DriveFolders.BackupOrdner);
         if (!Directory.Exists(quelle))
         {
-            _log(Loc.Tr($"[FEHLER] Keine Ordner von {LaufwerksOrdner.Wurzel} in der Sicherung gefunden.", $"[ERROR] No folders from {LaufwerksOrdner.Wurzel} found in the backup."));
+            _log(Loc.Tr($"[FEHLER] Keine Ordner von {DriveFolders.Wurzel} in der Sicherung gefunden.", $"[ERROR] No folders from {DriveFolders.Wurzel} found in the backup."));
             return;
         }
         if (namen.Count == 0)
@@ -955,7 +955,7 @@ public sealed class BackupService
         {
             if (_cancel.IsCancelled) return;
             var von = Path.Combine(quelle, name);
-            var nach = Path.Combine(LaufwerksOrdner.Wurzel, name);
+            var nach = Path.Combine(DriveFolders.Wurzel, name);
             if (!Directory.Exists(von))
             {
                 _log(Loc.Tr($"[WARNUNG] {name} liegt nicht in der Sicherung - übersprungen.", $"[WARNING] {name} is not in the backup - skipped."));
@@ -1214,15 +1214,15 @@ public sealed class BackupService
     /// </summary>
     private async Task<HintergrundEinstellung?> BackupWallpaper(string ordner, DesignZiel ziel)
     {
-        var stand = DesktopHintergrund.Read(ziel.Wurzel);
+        var stand = UserWallpaper.Read(ziel.Wurzel);
         var src = stand.Bild;
         string? farbeText = stand.Farbe, stil = stand.Stil, kacheln = stand.Kacheln;
-        var art = Hintergrund.Determine(src, src is not null && File.Exists(src), stand.Typ, farbeText);
+        var art = Wallpaper.Determine(src, src is not null && File.Exists(src), stand.Typ, farbeText);
 
         // The registered image was deleted, but Windows still shows it - from its
         // cache. Then back that up.
         if (art == HintergrundArt.Unbekannt && src is not null && !File.Exists(src)
-            && Hintergrund.Cache(SourcePath) is { } zwischen && File.Exists(zwischen))
+            && Wallpaper.Cache(SourcePath) is { } zwischen && File.Exists(zwischen))
         {
             _log(Loc.Tr($"[INFO] Das eingetragene Hintergrundbild gibt es nicht mehr ({src}) - gesichert wird das Bild, das Windows gerade zeigt.",
                         $"[INFO] The configured wallpaper no longer exists ({src}) - the image Windows currently shows is backed up."));
@@ -1231,11 +1231,11 @@ public sealed class BackupService
         }
 
         // Solid color: there is no image - the color is backed up.
-        if (art == HintergrundArt.Volltonfarbe && Hintergrund.ReadColor(farbeText) is { } farbe)
+        if (art == HintergrundArt.Volltonfarbe && Wallpaper.ReadColor(farbeText) is { } farbe)
         {
-            _log(Loc.Tr($"[ERFOLG] Volltonfarbe als Hintergrund gesichert: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)}).",
-                        $"[SUCCESS] Solid color background backed up: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})."));
-            return new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = Hintergrund.ColorText(farbe) };
+            _log(Loc.Tr($"[ERFOLG] Volltonfarbe als Hintergrund gesichert: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Wallpaper.Hex(farbe)}).",
+                        $"[SUCCESS] Solid color background backed up: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Wallpaper.Hex(farbe)})."));
+            return new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = Wallpaper.ColorText(farbe) };
         }
         if (art == HintergrundArt.Wechselnd)
         {
@@ -1256,12 +1256,12 @@ public sealed class BackupService
 
         // The image under its original name next to Design.json - Windows' cache
         // ("TranscodedWallpaper", without extension) as "Hintergrundbild.jpg".
-        var fileName = Hintergrund.BackupName(src, ReadHeader(src));
-        if (Hintergrund.IsWindowsCache(src))
+        var fileName = Wallpaper.BackupName(src, ReadHeader(src));
+        if (Wallpaper.IsWindowsCache(src))
             _log(Loc.Tr($"[INFO] Der Hintergrund liegt nur in Windows' Zwischenspeicher ({src}) - gesichert als {fileName}.",
                         $"[INFO] The wallpaper only exists in Windows' cache ({src}) - backed up as {fileName}."));
-        if (string.Equals(fileName, DesignEinstellungen.DateiName, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(fileName, DesignEinstellungen.AlterDateiName, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(fileName, DesignSettings.DateiName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fileName, DesignSettings.AlterDateiName, StringComparison.OrdinalIgnoreCase))
             fileName = "Hintergrund-" + fileName;
         try
         {
@@ -1277,7 +1277,7 @@ public sealed class BackupService
                 Bild = fileName,
                 BildPfad = src,
                 Profil = SourcePath,
-                Farbe = Hintergrund.ReadColor(farbeText) is { } rand ? Hintergrund.ColorText(rand) : null,
+                Farbe = Wallpaper.ReadColor(farbeText) is { } rand ? Wallpaper.ColorText(rand) : null,
                 Darstellung = stil,
                 Kacheln = kacheln,
             };
@@ -1311,8 +1311,8 @@ public sealed class BackupService
         }
 
         // Solid color instead of an image?
-        var einstellung = Hintergrund.Load(srcDir);
-        if (Hintergrund.IsSolidColor(einstellung)) return (einstellung, null);
+        var einstellung = Wallpaper.Load(srcDir);
+        if (Wallpaper.IsSolidColor(einstellung)) return (einstellung, null);
 
         // Read the original path and the backed-up profile (if present).
         string? originalPath = null, originalProfile = null;
@@ -1364,7 +1364,7 @@ public sealed class BackupService
     {
         try
         {
-            var r = DesktopHintergrund.SetImage(ziel.Wurzel, ziel.EigenerBenutzer, pfad, einstellung, SourcePath);
+            var r = UserWallpaper.SetImage(ziel.Wurzel, ziel.EigenerBenutzer, pfad, einstellung, SourcePath);
             WallpaperResult(ziel, r, Loc.Tr("Hintergrundbild", "Wallpaper"));
         }
         catch (Exception ex)
@@ -1393,7 +1393,7 @@ public sealed class BackupService
         // wallpaper, it overwrites or deletes them, and after the next restart the
         // desktop is black.
         string targetPath;
-        bool zwischenspeicher = Hintergrund.IsWindowsCache(originalPath);
+        bool zwischenspeicher = Wallpaper.IsWindowsCache(originalPath);
         var imZielprofil = zwischenspeicher ? null : ProfilePaths.MapIntoProfile(originalPath, originalProfile, SourcePath);
         if (imZielprofil is not null)
         {
@@ -1408,7 +1408,7 @@ public sealed class BackupService
         }
         else
         {
-            targetPath = Path.Combine(SourcePath, "Pictures", Hintergrund.BackupName(backupImage, ReadHeader(backupImage)));
+            targetPath = Path.Combine(SourcePath, "Pictures", Wallpaper.BackupName(backupImage, ReadHeader(backupImage)));
         }
         if (!string.IsNullOrWhiteSpace(originalPath)
             && !string.Equals(originalPath, targetPath, StringComparison.OrdinalIgnoreCase))
@@ -1454,9 +1454,9 @@ public sealed class BackupService
     {
         try
         {
-            var r = DesktopHintergrund.SetColor(ziel.Wurzel, ziel.EigenerBenutzer, farbe, SourcePath);
-            WallpaperResult(ziel, r, Loc.Tr($"Volltonfarbe RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})",
-                                                $"Solid color RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)})"));
+            var r = UserWallpaper.SetColor(ziel.Wurzel, ziel.EigenerBenutzer, farbe, SourcePath);
+            WallpaperResult(ziel, r, Loc.Tr($"Volltonfarbe RGB {farbe.R}, {farbe.G}, {farbe.B} ({Wallpaper.Hex(farbe)})",
+                                                $"Solid color RGB {farbe.R}, {farbe.G}, {farbe.B} ({Wallpaper.Hex(farbe)})"));
         }
         catch (Exception ex)
         {
@@ -1523,7 +1523,7 @@ public sealed class BackupService
     /// </summary>
     public async Task ExportDesign()
     {
-        var ordner = Path.Combine(BackupPath, DesignEinstellungen.Ordner);
+        var ordner = Path.Combine(BackupPath, DesignSettings.Ordner);
         using var ziel = DesignKey(schreiben: false);
         if (ziel is null) return;
         var hintergrund = await BackupWallpaper(ordner, ziel);
@@ -1532,7 +1532,7 @@ public sealed class BackupService
         if (hintergrund is null && (werte is null || werte.Count == 0)) return;
         try
         {
-            DesignEinstellungen.Save(BackupPath, new DesignSicherung
+            DesignSettings.Save(BackupPath, new DesignSicherung
             {
                 Rechner = Environment.MachineName,
                 Erstellt = DateTime.Now,
@@ -1543,8 +1543,8 @@ public sealed class BackupService
         }
         catch (Exception ex)
         {
-            _log(Loc.Tr($"[FEHLER] {DesignEinstellungen.DateiName} konnte nicht geschrieben werden: {ex.Message}",
-                        $"[ERROR] {DesignEinstellungen.DateiName} could not be written: {ex.Message}"));
+            _log(Loc.Tr($"[FEHLER] {DesignSettings.DateiName} konnte nicht geschrieben werden: {ex.Message}",
+                        $"[ERROR] {DesignSettings.DateiName} could not be written: {ex.Message}"));
         }
     }
 
@@ -1560,7 +1560,7 @@ public sealed class BackupService
             foreach (var f in Directory.EnumerateFiles(ordner))
             {
                 var name = Path.GetFileName(f);
-                if (string.Equals(name, DesignEinstellungen.DateiName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.Equals(name, DesignSettings.DateiName, StringComparison.OrdinalIgnoreCase)) continue;
                 if (bild is not null && string.Equals(name, bild, StringComparison.OrdinalIgnoreCase)) continue;
                 File.Delete(f);
             }
@@ -1576,24 +1576,24 @@ public sealed class BackupService
     /// </summary>
     public async Task ImportDesign()
     {
-        var design = DesignEinstellungen.Load(BackupPath);
+        var design = DesignSettings.Load(BackupPath);
         using var ziel = DesignKey(schreiben: true);
         if (ziel is null) return;
         if (_cancel.IsCancelled) return;
 
         // If a policy dictates the wallpaper, the policy wins - say so up front.
         if (OperatingSystem.IsWindows())
-            foreach (var e in DesktopHintergrund.Influences(ziel.Wurzel, mitWechsel: false, Loc.Tr))
+            foreach (var e in UserWallpaper.Influences(ziel.Wurzel, mitWechsel: false, Loc.Tr))
                 _log("[WARNUNG] " + e + ".");
 
         // 1. Prepare the wallpaper: a color or an image (copied into the profile) -
         //    from Design.json or from a backup in the old format
         //    (folder "Hintergrundbild", up to version 1.2.6).
         var h = design?.Hintergrund;
-        string? gesichert = h?.Bild is null ? null : Path.Combine(BackupPath, DesignEinstellungen.Ordner, h.Bild);
+        string? gesichert = h?.Bild is null ? null : Path.Combine(BackupPath, DesignSettings.Ordner, h.Bild);
         if (h is null && AppCatalog.HasWallpaper(BackupPath))
             (h, gesichert) = await ReadLegacyBackup();
-        (byte R, byte G, byte B)? farbe = Hintergrund.IsSolidColor(h) ? Hintergrund.ReadColor(h!.Farbe) : null;
+        (byte R, byte G, byte B)? farbe = Wallpaper.IsSolidColor(h) ? Wallpaper.ReadColor(h!.Farbe) : null;
         string? bild = null;
         if (h is not null && farbe is null)
         {
@@ -1645,7 +1645,7 @@ public sealed class BackupService
 
         // Check a few seconds later whether Windows keeps it.
         if (gesetzt && OperatingSystem.IsWindows() && !_cancel.IsCancelled)
-            await VerifyWallpaper(ziel, DesktopHintergrund.Read(ziel.Wurzel),
+            await VerifyWallpaper(ziel, UserWallpaper.Read(ziel.Wurzel),
                                            Loc.Tr("Kontrolle nach dem Setzen", "Check after setting"));
     }
 
@@ -1664,8 +1664,8 @@ public sealed class BackupService
         string? vorlage = null;
         try
         {
-            if (DesktopHintergrund.ThemeFilePath(ziel.Wurzel, SourcePath) is { } aktuell && File.Exists(aktuell))
-                vorlage = DesignDatei.ReadFile(aktuell).Inhalt;
+            if (UserWallpaper.ThemeFilePath(ziel.Wurzel, SourcePath) is { } aktuell && File.Exists(aktuell))
+                vorlage = ThemeFile.ReadFile(aktuell).Inhalt;
         }
         catch { /* then without it */ }
         if (vorlage is null)
@@ -1675,7 +1675,7 @@ public sealed class BackupService
             return;
         }
 
-        var inhalt = DesignDatei.ForRestore(vorlage, Loc.Tr("Design aus der Sicherung (DaSi)", "Theme from the backup (DaSi)"),
+        var inhalt = ThemeFile.ForRestore(vorlage, Loc.Tr("Design aus der Sicherung (DaSi)", "Theme from the backup (DaSi)"),
                                                        farbe, bild, h, werte);
         _log(Loc.Tr("[INFO] Windows wendet das Design aus der Sicherung an - wie ein Doppelklick auf die Design-Datei ...",
                     "[INFO] Windows applies the theme from the backup - like double-clicking the theme file ..."));
@@ -1705,15 +1705,15 @@ public sealed class BackupService
         if (!OperatingSystem.IsWindows()) return null;
         var ordner = Path.Combine(SourcePath, @"AppData\Local\Microsoft\Windows\Themes");
         bool IsCurrent(string datei)
-            => string.Equals(DesktopHintergrund.ThemeFilePath(ziel.Wurzel, SourcePath), datei, StringComparison.OrdinalIgnoreCase);
+            => string.Equals(UserWallpaper.ThemeFilePath(ziel.Wurzel, SourcePath), datei, StringComparison.OrdinalIgnoreCase);
         bool IsApplied(string datei)
-            => IsCurrent(datei) && (farbe is not { } c || Hintergrund.ReadColor(DesktopHintergrund.Read(ziel.Wurzel).Farbe) == c);
+            => IsCurrent(datei) && (farbe is not { } c || Wallpaper.ReadColor(UserWallpaper.Read(ziel.Wurzel).Farbe) == c);
         try
         {
             // The kind first: if it says "solid color", Windows takes only the color
             // from the theme, not the image.
-            if (farbe is not null) DesktopHintergrund.WriteStyle(ziel.Wurzel, 1);
-            else if (bild is not null) DesktopHintergrund.WriteStyle(ziel.Wurzel, 0);
+            if (farbe is not null) UserWallpaper.WriteStyle(ziel.Wurzel, 1);
+            else if (bild is not null) UserWallpaper.WriteStyle(ziel.Wurzel, 0);
             var r = await WindowsDesign.ApplyAndWait(ordner, inhalt, DesktopScreenshot.GetInteractiveUser()?.Name, IsApplied, IsCurrent,
                                                           TimeSpan.FromSeconds(20));
             if (!r.Gestartet)
@@ -1737,15 +1737,15 @@ public sealed class BackupService
     {
         if (!OperatingSystem.IsWindows()) return;
         await Task.Delay(4000);
-        var problem = DesktopHintergrund.Difference(soll, DesktopHintergrund.Read(ziel.Wurzel), Loc.Tr)
-                      ?? DesktopHintergrund.Verify(soll, Loc.Tr);
+        var problem = UserWallpaper.Difference(soll, UserWallpaper.Read(ziel.Wurzel), Loc.Tr)
+                      ?? UserWallpaper.Verify(soll, Loc.Tr);
         if (problem is null)
         {
             _log(Loc.Tr($"[INFO] {wann}: Der Desktop zeigt den gesetzten Hintergrund.", $"[INFO] {wann}: The desktop shows the background that was set."));
             return;
         }
         _log(Loc.Tr($"[WARNUNG] {wann}: {problem}. Der Hintergrund wird erneut gesetzt.", $"[WARNING] {wann}: {problem}. Setting the background again."));
-        foreach (var e in DesktopHintergrund.Influences(ziel.Wurzel, mitWechsel: true, Loc.Tr))
+        foreach (var e in UserWallpaper.Influences(ziel.Wurzel, mitWechsel: true, Loc.Tr))
             _log(Loc.Tr($"[INFO] Möglicher Grund: {e}.", $"[INFO] Possible reason: {e}."));
         try
         {
@@ -1753,13 +1753,13 @@ public sealed class BackupService
             // the current one with the target wallpaper - then directly (for a solid
             // color the theme still shows its image). Without the theme, Explorer
             // would keep its old state and write it back at the next restart.
-            var farbeSoll = soll.Bild is null ? Hintergrund.ReadColor(soll.Farbe) : null;
+            var farbeSoll = soll.Bild is null ? Wallpaper.ReadColor(soll.Farbe) : null;
             var inhalt = _angewandtesDesign;
-            if (inhalt is null && DesktopHintergrund.ThemeFilePath(ziel.Wurzel, SourcePath) is { } aktuell && File.Exists(aktuell))
-                inhalt = DesignDatei.ReadFile(aktuell).Inhalt;
+            if (inhalt is null && UserWallpaper.ThemeFilePath(ziel.Wurzel, SourcePath) is { } aktuell && File.Exists(aktuell))
+                inhalt = ThemeFile.ReadFile(aktuell).Inhalt;
             if (inhalt is not null)
             {
-                inhalt = DesignDatei.ForRestore(inhalt, Loc.Tr("Design aus der Sicherung (DaSi)", "Theme from the backup (DaSi)"),
+                inhalt = ThemeFile.ForRestore(inhalt, Loc.Tr("Design aus der Sicherung (DaSi)", "Theme from the backup (DaSi)"),
                                                            farbeSoll, soll.Bild,
                                                            new HintergrundEinstellung { Darstellung = soll.Stil, Kacheln = soll.Kacheln },
                                                            Array.Empty<DesignEintrag>());
@@ -1767,7 +1767,7 @@ public sealed class BackupService
             }
             if (inhalt is not null)
                 await ApplyDesignAndWait(ziel, inhalt, farbeSoll, soll.Bild);
-            DesktopHintergrund.Retry(ziel.Wurzel, ziel.EigenerBenutzer, soll, SourcePath);
+            UserWallpaper.Retry(ziel.Wurzel, ziel.EigenerBenutzer, soll, SourcePath);
         }
         catch (Exception ex)
         {
@@ -1775,8 +1775,8 @@ public sealed class BackupService
             return;
         }
         await Task.Delay(3000);
-        var nochmal = DesktopHintergrund.Difference(soll, DesktopHintergrund.Read(ziel.Wurzel), Loc.Tr)
-                      ?? DesktopHintergrund.Verify(soll, Loc.Tr);
+        var nochmal = UserWallpaper.Difference(soll, UserWallpaper.Read(ziel.Wurzel), Loc.Tr)
+                      ?? UserWallpaper.Verify(soll, Loc.Tr);
         _log(nochmal is null
             ? Loc.Tr("[ERFOLG] Hintergrund erneut gesetzt - jetzt zeigt der Desktop ihn.", "[SUCCESS] Background set again - the desktop now shows it.")
             : Loc.Tr($"[WARNUNG] Windows ändert den Hintergrund weiterhin: {nochmal}. Bitte unter Einstellungen > Personalisierung > Hintergrund nachsehen.",
@@ -1813,7 +1813,7 @@ public sealed class BackupService
             return null;
         }
         var (wurzel, eigen) = UserKey(schreiben);
-        bool eigenerBenutzer = !eigen || DesktopHintergrund.IsProcessUser(angemeldet?.Sid);
+        bool eigenerBenutzer = !eigen || UserWallpaper.IsProcessUser(angemeldet?.Sid);
         if (!eigenerBenutzer && angemeldet is not null)
             _log(Loc.Tr($"[INFO] Das Tool läuft unter dem Konto {Environment.UserName}, angemeldet ist {angemeldet.Name} - Hintergrund und Design werden bei {angemeldet.Name} gelesen bzw. eingetragen.",
                         $"[INFO] The tool runs under the account {Environment.UserName}, {angemeldet.Name} is signed in - background and design are read from / written to {angemeldet.Name}."));
@@ -1843,15 +1843,15 @@ public sealed class BackupService
     {
         try
         {
-            var werte = DesignEinstellungen.ReadAll((s, n) => DesignRegistry.Read(ziel.Wurzel, s, n));
+            var werte = DesignSettings.ReadAll((s, n) => DesignRegistry.Read(ziel.Wurzel, s, n));
             if (werte.Count == 0)
             {
                 _log(Loc.Tr("[WARNUNG] Es wurden keine Design-Einstellungen gefunden.", "[WARNING] No design settings were found."));
                 return werte;
             }
-            var kurz = DesignEinstellungen.Summary(werte, Loc.Tr);
-            _log(Loc.Tr($"[ERFOLG] Design-Einstellungen gesichert ({werte.Count} Werte: {DesignEinstellungen.Groups(werte)}){(kurz.Length > 0 ? " - " + kurz : "")}.",
-                        $"[SUCCESS] Design settings backed up ({werte.Count} values: {DesignEinstellungen.Groups(werte)}){(kurz.Length > 0 ? " - " + kurz : "")}."));
+            var kurz = DesignSettings.Summary(werte, Loc.Tr);
+            _log(Loc.Tr($"[ERFOLG] Design-Einstellungen gesichert ({werte.Count} Werte: {DesignSettings.Groups(werte)}){(kurz.Length > 0 ? " - " + kurz : "")}.",
+                        $"[SUCCESS] Design settings backed up ({werte.Count} values: {DesignSettings.Groups(werte)}){(kurz.Length > 0 ? " - " + kurz : "")}."));
             return werte;
         }
         catch (Exception ex)
@@ -1875,11 +1875,11 @@ public sealed class BackupService
             // Light/dark, accent color and pointers also go into the theme file -
             // Windows reads it at sign-in.
             if (OperatingSystem.IsWindows())
-                LogThemeFile(DesktopHintergrund.AlignThemeFile(ziel.Wurzel, SourcePath, t => DesignDatei.ForDesign(t, gesetzt)));
+                LogThemeFile(UserWallpaper.AlignThemeFile(ziel.Wurzel, SourcePath, t => ThemeFile.ForDesign(t, gesetzt)));
 
-            var kurz = DesignEinstellungen.Summary(gesetzt, Loc.Tr);
-            _log(Loc.Tr($"[ERFOLG] Design-Einstellungen übernommen ({gesetzt.Count} Werte: {DesignEinstellungen.Groups(gesetzt)}){(kurz.Length > 0 ? " - " + kurz : "")}.",
-                        $"[SUCCESS] Design settings applied ({gesetzt.Count} values: {DesignEinstellungen.Groups(gesetzt)}){(kurz.Length > 0 ? " - " + kurz : "")}."));
+            var kurz = DesignSettings.Summary(gesetzt, Loc.Tr);
+            _log(Loc.Tr($"[ERFOLG] Design-Einstellungen übernommen ({gesetzt.Count} Werte: {DesignSettings.Groups(gesetzt)}){(kurz.Length > 0 ? " - " + kurz : "")}.",
+                        $"[SUCCESS] Design settings applied ({gesetzt.Count} values: {DesignSettings.Groups(gesetzt)}){(kurz.Length > 0 ? " - " + kurz : "")}."));
             if (ohneDatei.Count > 0)
                 _log(Loc.Tr($"[INFO] {ohneDatei.Count} Mauszeiger aus einem eigenen Schema gibt es auf diesem Rechner nicht - dort bleibt der Standardzeiger: {string.Join(", ", ohneDatei)}.",
                             $"[INFO] {ohneDatei.Count} pointers from a custom scheme do not exist on this machine - the default pointer remains: {string.Join(", ", ohneDatei)}."));
@@ -2092,18 +2092,18 @@ public sealed class BackupService
     /// </summary>
     private void BackupTaskbar()
     {
-        var pinOrdner = Taskleiste.PinFolder(SourcePath);
-        var verknuepfungen = Taskleiste.Shortcuts(pinOrdner);
+        var pinOrdner = Taskbar.PinFolder(SourcePath);
+        var verknuepfungen = Taskbar.Shortcuts(pinOrdner);
         var taskband = new List<DesignEintrag>();
         if (OperatingSystem.IsWindows())
         {
             var (wurzel, eigen) = UserKey(schreiben: false);
             try
             {
-                using var k = wurzel.OpenSubKey(Taskleiste.TaskbandSchluessel);
+                using var k = wurzel.OpenSubKey(Taskbar.TaskbandSchluessel);
                 foreach (var name in k?.GetValueNames() ?? Array.Empty<string>())
-                    if (DesignRegistry.Read(wurzel, Taskleiste.TaskbandSchluessel, name) is { } v)
-                        taskband.Add(new DesignEintrag { Gruppe = "Taskleiste", Schluessel = Taskleiste.TaskbandSchluessel, Name = name, Typ = v.Typ, Wert = v.Wert });
+                    if (DesignRegistry.Read(wurzel, Taskbar.TaskbandSchluessel, name) is { } v)
+                        taskband.Add(new DesignEintrag { Gruppe = "Taskleiste", Schluessel = Taskbar.TaskbandSchluessel, Name = name, Typ = v.Typ, Wert = v.Wert });
             }
             catch (Exception ex)
             {
@@ -2121,12 +2121,12 @@ public sealed class BackupService
 
         try
         {
-            var ziel = Taskleiste.BackupFolder(BackupPath);
+            var ziel = Taskbar.BackupFolder(BackupPath);
             Directory.CreateDirectory(ziel);
             // Backed up into the same folder again: earlier shortcuts are removed.
             foreach (var alt in Directory.GetFiles(ziel, "*.lnk")) File.Delete(alt);
             foreach (var n in verknuepfungen) File.Copy(Path.Combine(pinOrdner, n), Path.Combine(ziel, n), overwrite: true);
-            Taskleiste.Save(BackupPath, new TaskleistenSicherung
+            Taskbar.Save(BackupPath, new TaskleistenSicherung
             {
                 Rechner = Environment.MachineName,
                 Erstellt = DateTime.Now,
@@ -2134,8 +2134,8 @@ public sealed class BackupService
                 Taskband = taskband,
             });
             _log(verknuepfungen.Count > 0
-                ? Loc.Tr($"[ERFOLG] Taskleiste gesichert: {verknuepfungen.Count} angeheftete Verknüpfungen ({Taskleiste.Names(verknuepfungen)}) samt Reihenfolge und angehefteten Apps.",
-                         $"[SUCCESS] Taskbar backed up: {verknuepfungen.Count} pinned shortcuts ({Taskleiste.Names(verknuepfungen)}) including order and pinned apps.")
+                ? Loc.Tr($"[ERFOLG] Taskleiste gesichert: {verknuepfungen.Count} angeheftete Verknüpfungen ({Taskbar.Names(verknuepfungen)}) samt Reihenfolge und angehefteten Apps.",
+                         $"[SUCCESS] Taskbar backed up: {verknuepfungen.Count} pinned shortcuts ({Taskbar.Names(verknuepfungen)}) including order and pinned apps.")
                 : Loc.Tr("[ERFOLG] Taskleiste gesichert: Reihenfolge und angeheftete Apps.",
                          "[SUCCESS] Taskbar backed up: order and pinned apps."));
         }
@@ -2153,8 +2153,8 @@ public sealed class BackupService
     /// <returns>true if Explorer was restarted for it.</returns>
     private async Task<bool> RestoreTaskbar(TaskleistenSicherung s)
     {
-        var quelle = Taskleiste.BackupFolder(BackupPath);
-        var ziel = Taskleiste.PinFolder(SourcePath);
+        var quelle = Taskbar.BackupFolder(BackupPath);
+        var ziel = Taskbar.PinFolder(SourcePath);
         var zurueck = new List<string>();
         var fehlend = new List<string>();
         try
@@ -2177,8 +2177,8 @@ public sealed class BackupService
 
         if (!OperatingSystem.IsWindows() || s.Taskband.Count == 0)
         {
-            _log(Loc.Tr($"[WARNUNG] Die Sicherung enthält nur die Verknüpfungen der Taskleiste, nicht ihre Reihenfolge - angeheftet werden sie dadurch nicht: {Taskleiste.Names(zurueck)}",
-                        $"[WARNING] The backup only contains the taskbar shortcuts, not their order - this does not pin them: {Taskleiste.Names(zurueck)}"));
+            _log(Loc.Tr($"[WARNUNG] Die Sicherung enthält nur die Verknüpfungen der Taskleiste, nicht ihre Reihenfolge - angeheftet werden sie dadurch nicht: {Taskbar.Names(zurueck)}",
+                        $"[WARNING] The backup only contains the taskbar shortcuts, not their order - this does not pin them: {Taskbar.Names(zurueck)}"));
             return false;
         }
 
@@ -2189,7 +2189,7 @@ public sealed class BackupService
         var taskband = OperatingSystem.IsWindows() ? AdjustAppIds(s.Taskband) : s.Taskband;
         // Windows only shows icons of programs that do not exist here yet once
         // the program is installed - they do not count in the check.
-        var erwartet = Taskleiste.PinnedNames(Taskleiste.Favorites(taskband), zurueck.Except(ohneProgramm));
+        var erwartet = Taskbar.PinnedNames(Taskbar.Favorites(taskband), zurueck.Except(ohneProgramm));
         List<string> nichtUebernommen = new();
         for (int versuch = 1; versuch <= 2; versuch++)
         {
@@ -2209,7 +2209,7 @@ public sealed class BackupService
             if (versuch == 1)
                 _log(Loc.Tr("[INFO] Der Explorer startet kurz neu, damit die Taskleiste die gesicherten Symbole übernimmt - offene Explorer-Fenster schließen sich dabei.",
                             "[INFO] Explorer restarts briefly so the taskbar picks up the saved icons - open Explorer windows close in the process."));
-            var (ok, vonSelbst) = await ExplorerNeustart.Restart(TimeSpan.FromSeconds(20));
+            var (ok, vonSelbst) = await ExplorerRestart.Restart(TimeSpan.FromSeconds(20));
             if (!ok)
             {
                 _log(Loc.Tr("[WARNUNG] Der Explorer kam nicht zurück. Die Taskleiste zeigt die Symbole nach dem nächsten Anmelden. Notfalls im Task-Manager \"Neuen Task ausführen\" > explorer.exe.",
@@ -2222,18 +2222,18 @@ public sealed class BackupService
 
             await Task.Delay(TaskleistenKontrolle);
             var jetzt = FavoritesNachlesen is { } nachlesen ? nachlesen() : ReadFavorites();
-            nichtUebernommen = erwartet.Except(Taskleiste.PinnedNames(jetzt, erwartet), StringComparer.OrdinalIgnoreCase).ToList();
+            nichtUebernommen = erwartet.Except(Taskbar.PinnedNames(jetzt, erwartet), StringComparer.OrdinalIgnoreCase).ToList();
             if (nichtUebernommen.Count == 0 || _cancel.IsCancelled) break;
             if (versuch == 1)
-                _log(Loc.Tr($"[WARNUNG] Windows hat die Taskleiste nach dem Neustart selbst neu belegt - nicht übernommen: {Taskleiste.Names(nichtUebernommen)}. Das Tool schreibt sie noch einmal.",
-                            $"[WARNING] Windows re-populated the taskbar by itself after the restart - not taken over: {Taskleiste.Names(nichtUebernommen)}. The tool writes them once more."));
+                _log(Loc.Tr($"[WARNUNG] Windows hat die Taskleiste nach dem Neustart selbst neu belegt - nicht übernommen: {Taskbar.Names(nichtUebernommen)}. Das Tool schreibt sie noch einmal.",
+                            $"[WARNING] Windows re-populated the taskbar by itself after the restart - not taken over: {Taskbar.Names(nichtUebernommen)}. The tool writes them once more."));
         }
         if (nichtUebernommen.Count > 0)
         {
-            _log(Loc.Tr($"[FEHLER] Windows übernimmt die gesicherten Taskleisten-Symbole nicht: {Taskleiste.Names(nichtUebernommen)}. "
+            _log(Loc.Tr($"[FEHLER] Windows übernimmt die gesicherten Taskleisten-Symbole nicht: {Taskbar.Names(nichtUebernommen)}. "
                         + "Die Verknüpfungen liegen im Ordner \"User Pinned\\TaskBar\" des Profils. Abhilfe: abmelden, wieder anmelden und \"Design & Desktop wiederherstellen\" (Symbole + Taskleiste) erneut ausführen - "
                         + "oder die Programme von Hand anheften.",
-                        $"[ERROR] Windows does not take over the saved taskbar icons: {Taskleiste.Names(nichtUebernommen)}. "
+                        $"[ERROR] Windows does not take over the saved taskbar icons: {Taskbar.Names(nichtUebernommen)}. "
                         + "The shortcuts are in the profile's \"User Pinned\\TaskBar\" folder. Remedy: sign out, sign in again and run \"Restore design & desktop\" (icons + taskbar) again - "
                         + "or pin the programs by hand."));
             return true;
@@ -2241,12 +2241,12 @@ public sealed class BackupService
 
         // Does Windows actually show the entries? No registry value says so - the
         // check looks at the taskbar itself, via the app IDs.
-        if (!CheckTaskbarVisible(Taskleiste.Entries(Taskleiste.Favorites(taskband), zurueck), ohneProgramm)) return true;
-        _log(Loc.Tr($"[ERFOLG] Taskleiste wiederhergestellt: {(zurueck.Count > 0 ? $"{zurueck.Count} Verknüpfungen ({Taskleiste.Names(zurueck)}) und " : "")}die angehefteten Apps in der gesicherten Reihenfolge.",
-                    $"[SUCCESS] Taskbar restored: {(zurueck.Count > 0 ? $"{zurueck.Count} shortcuts ({Taskleiste.Names(zurueck)}) and " : "")}the pinned apps in the saved order."));
+        if (!CheckTaskbarVisible(Taskbar.Entries(Taskbar.Favorites(taskband), zurueck), ohneProgramm)) return true;
+        _log(Loc.Tr($"[ERFOLG] Taskleiste wiederhergestellt: {(zurueck.Count > 0 ? $"{zurueck.Count} Verknüpfungen ({Taskbar.Names(zurueck)}) und " : "")}die angehefteten Apps in der gesicherten Reihenfolge.",
+                    $"[SUCCESS] Taskbar restored: {(zurueck.Count > 0 ? $"{zurueck.Count} shortcuts ({Taskbar.Names(zurueck)}) and " : "")}the pinned apps in the saved order."));
         if (fehlend.Count > 0)
-            _log(Loc.Tr($"[WARNUNG] {fehlend.Count} Verknüpfungen fehlen in der Sicherung: {Taskleiste.Names(fehlend)}",
-                        $"[WARNING] {fehlend.Count} shortcuts are missing from the backup: {Taskleiste.Names(fehlend)}"));
+            _log(Loc.Tr($"[WARNUNG] {fehlend.Count} Verknüpfungen fehlen in der Sicherung: {Taskbar.Names(fehlend)}",
+                        $"[WARNING] {fehlend.Count} shortcuts are missing from the backup: {Taskbar.Names(fehlend)}"));
         return true;
     }
 
@@ -2259,9 +2259,9 @@ public sealed class BackupService
     /// itself is still missing, a hint.
     /// </summary>
     /// <returns>false if an error was reported.</returns>
-    private bool CheckTaskbarVisible(List<Taskleiste.Eintrag> eintraege, List<string> ohneProgramm)
+    private bool CheckTaskbarVisible(List<Taskbar.Eintrag> eintraege, List<string> ohneProgramm)
     {
-        var sichtbar = TaskleistenSicht is { } sicht ? sicht() : OperatingSystem.IsWindows() ? TaskleistenAnsicht.AppIds() : null;
+        var sichtbar = TaskleistenSicht is { } sicht ? sicht() : OperatingSystem.IsWindows() ? TaskbarView.AppIds() : null;
         var mitKennung = eintraege.Where(e => e.Kennung is not null).ToList();
         if (mitKennung.Count == 0) return true;
         if (sichtbar is null)
@@ -2270,7 +2270,7 @@ public sealed class BackupService
                         "[INFO] Whether the taskbar shows the icons could not be checked - please have a look."));
             return true;
         }
-        static string Name(Taskleiste.Eintrag e) => e.Verknuepfung is { } v ? Path.GetFileNameWithoutExtension(v) : e.Kennung!;
+        static string Name(Taskbar.Eintrag e) => e.Verknuepfung is { } v ? Path.GetFileNameWithoutExtension(v) : e.Kennung!;
         var unsichtbar = mitKennung.Where(e => !sichtbar.Contains(e.Kennung!)).ToList();
         var fehltProgramm = unsichtbar.Where(e => e.Verknuepfung is null || ohneProgramm.Contains(e.Verknuepfung, StringComparer.OrdinalIgnoreCase)).ToList();
         var trotzdem = unsichtbar.Except(fehltProgramm).ToList();
@@ -2302,7 +2302,7 @@ public sealed class BackupService
         var (wurzel, eigen) = UserKey(schreiben: false);
         try
         {
-            var v = DesignRegistry.Read(wurzel, Taskleiste.TaskbandSchluessel, "Favorites");
+            var v = DesignRegistry.Read(wurzel, Taskbar.TaskbandSchluessel, "Favorites");
             return v is { Typ: "Binary" } b ? Convert.FromBase64String(b.Wert) : null;
         }
         catch { return null; }
@@ -2326,12 +2326,12 @@ public sealed class BackupService
         foreach (var n in verknuepfungen)
         {
             var lnk = Path.Combine(ordner, n);
-            var inhalt = Verknuepfung.Read(lnk);
+            var inhalt = Shortcut.Read(lnk);
             // Shell objects (File Explorer) and targets that exist: nothing to do.
             if (inhalt is null || inhalt.Ziel.Length == 0 || File.Exists(inhalt.Ziel) || Directory.Exists(inhalt.Ziel)) continue;
             var name = Path.GetFileNameWithoutExtension(n);
-            var neu = Taskleiste.NewTarget(inhalt.Ziel, File.Exists, LookUpAppPath, programme, programme86);
-            if (neu is not null && Verknuepfung.SetTarget(lnk, neu))
+            var neu = Taskbar.NewTarget(inhalt.Ziel, File.Exists, LookUpAppPath, programme, programme86);
+            if (neu is not null && Shortcut.SetTarget(lnk, neu))
                 _log(Loc.Tr($"[INFO] Taskleiste: {name} zeigte auf {inhalt.Ziel} - hier liegt das Programm unter {neu}, die Verknüpfung ist umgestellt.",
                             $"[INFO] Taskbar: {name} pointed to {inhalt.Ziel} - here the program is at {neu}, the shortcut has been updated."));
             else
@@ -2359,7 +2359,7 @@ public sealed class BackupService
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     internal List<DesignEintrag> AdjustAppIds(List<DesignEintrag> taskband)
     {
-        var kennungen = Taskleiste.AppIds(Taskleiste.Favorites(taskband)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var kennungen = Taskbar.AppIds(Taskbar.Favorites(taskband)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (kennungen.Count == 0) return taskband;
 
         // Firefox/Thunderbird: ID = hash of the installation folder.
@@ -2379,19 +2379,19 @@ public sealed class BackupService
         // Programs without an ID of their own: path from the Program Files folder on.
         var ordner = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            [Taskleiste.OrdnerProgramme86] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-            [Taskleiste.OrdnerProgramme64] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            [Taskleiste.OrdnerProgramme] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            [Taskbar.OrdnerProgramme86] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            [Taskbar.OrdnerProgramme64] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            [Taskbar.OrdnerProgramme] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
         };
 
         var ergebnis = taskband.Select(e => new DesignEintrag { Gruppe = e.Gruppe, Schluessel = e.Schluessel, Name = e.Name, Typ = e.Typ, Wert = e.Wert }).ToList();
         var ersetzt = new List<string>();
         foreach (var k in kennungen)
         {
-            if (Taskleiste.NewAppId(k, mozilla, ordner, File.Exists) is not { } neu) continue;
+            if (Taskbar.NewAppId(k, mozilla, ordner, File.Exists) is not { } neu) continue;
             foreach (var e in ergebnis.Where(e => e.Typ == "Binary" && e.Name.StartsWith("Favorites", StringComparison.Ordinal)))
             {
-                try { e.Wert = Convert.ToBase64String(Taskleiste.ReplaceAppId(Convert.FromBase64String(e.Wert), k, neu)); }
+                try { e.Wert = Convert.ToBase64String(Taskbar.ReplaceAppId(Convert.FromBase64String(e.Wert), k, neu)); }
                 catch { /* unreadable value - stays */ }
             }
             ersetzt.Add($"{k} -> {neu}");
@@ -2499,7 +2499,7 @@ public sealed class BackupService
     {
         var datei = DesktopIcons.FilePath(BackupPath);
         var layout = DesktopIcons.Load(datei);
-        var taskleiste = Taskleiste.Load(BackupPath);
+        var taskleiste = Taskbar.Load(BackupPath);
         if (layout is null && taskleiste is null)
         {
             _log(Loc.Tr($"[FEHLER] In der Sicherung liegen weder Symbolpositionen noch Taskleisten-Symbole: {datei}",
@@ -2514,7 +2514,7 @@ public sealed class BackupService
         if (taskleiste is not null && OperatingSystem.IsWindows())
         {
             var (w, e) = UserKey(schreiben: false);
-            try { hgVorher = DesktopHintergrund.Read(w); } finally { if (e) w.Dispose(); }
+            try { hgVorher = UserWallpaper.Read(w); } finally { if (e) w.Dispose(); }
         }
         var neuGestartet = taskleiste is not null && await RestoreTaskbar(taskleiste);
         if (_cancel.IsCancelled) return;
@@ -2525,7 +2525,7 @@ public sealed class BackupService
         {
             var angemeldet = DesktopScreenshot.GetInteractiveUser();
             var (w, e) = UserKey(schreiben: true);
-            using var ziel = new DesignZiel(w, e, !e || DesktopHintergrund.IsProcessUser(angemeldet?.Sid), angemeldet?.Name);
+            using var ziel = new DesignZiel(w, e, !e || UserWallpaper.IsProcessUser(angemeldet?.Sid), angemeldet?.Name);
             await VerifyWallpaper(ziel, hgVorher, Loc.Tr("Hintergrund nach dem Explorer-Neustart", "Background after the Explorer restart"));
         }
         if (layout is null)
@@ -2754,7 +2754,7 @@ public sealed class BackupService
         if (!r.Started)
             _log(Loc.Tr($"[WARNUNG] winget konnte nicht gestartet werden ({r.StartError}). {appName} bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
                         $"[WARNING] winget could not be started ({r.StartError}). Please install {appName} manually - the profile is restored anyway."));
-        else if (r.ExitCode is WingetFehler.SchonInstalliert or WingetFehler.SchonAktuell)
+        else if (r.ExitCode is WingetErrors.SchonInstalliert or WingetErrors.SchonAktuell)
             _log(Loc.Tr($"[INFO] {appName} ist bereits installiert.", $"[INFO] {appName} is already installed."));
         else if (r.ExitCode != 0)
             _log(Loc.Tr($"[WARNUNG] {appName} ließ sich per winget nicht installieren ({WingetService.DescribeResult(r)}). Bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
