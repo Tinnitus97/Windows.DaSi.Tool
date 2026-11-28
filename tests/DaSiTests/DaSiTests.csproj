@@ -1,21 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Prueft die Dienste ohne Oberflaeche.
+    Tests the services without the UI.
 
-    Bewusst KEIN Testframework und KEIN Avalonia: Die geprueften Dateien
-    kommen ohne Oberflaeche aus (die Oberflaeche prueft tests/DaSiGuiTests).
-    Das Programm laeuft nur unter Windows, die Pruefung deshalb ebenfalls -
-    in der CI auf einem Windows-Laeufer.
+    Deliberately NO test framework and NO Avalonia: the files under test do
+    not need the UI (tests/DaSiGuiTests tests the UI). The program only runs
+    on Windows, so the tests do as well - in CI on a Windows runner.
 
-    Die Quelldateien werden eingebunden statt referenziert - das Hauptprojekt
-    zielt auf Windows und liesse sich sonst nicht daneben uebersetzen.
+    The source files are included instead of referenced - the main project
+    targets Windows and could not be compiled next to it otherwise.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <!-- Jede Warnung haelt die Pruefung an - so bleiben die Hinweise des
-         Compilers (z. B. CA1416) nicht unbemerkt im Protokoll stehen. -->
+    <!-- Every warning stops the tests - so compiler hints (e.g. CA1416) do
+         not go unnoticed in the log. -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
@@ -25,9 +24,9 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
-  <!-- Unter Windows zusaetzlich UI Automation (aus WPF): Damit liest der
-       Taskleisten-Versuch die sichtbaren Knoepfe der Taskleiste. Nur dort -
-       unter Linux bleibt die Pruefung ohne Windows-Desktop-Laufzeit startbar. -->
+  <!-- On Windows additionally UI Automation (from WPF): the taskbar trial
+       uses it to read the visible buttons of the taskbar. Only there - on
+       Linux the tests stay startable without the Windows desktop runtime. -->
   <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
     <UseWPF>true</UseWPF>
     <DefineConstants>$(DefineConstants);MIT_UIA</DefineConstants>
@@ -84,12 +83,12 @@
     <Compile Include="../../Services/CancellationTokenState.cs" />
   </ItemGroup>
 
-  <!-- Die winget-Attrappe wird mitgebaut - in ihren eigenen Ordner. Ein
-       Projektverweis kopierte ihre Startdatei winget.exe (ohne winget.dll)
-       hierher, und Windows faende "winget" dann zuerst hier, im Ordner des
-       Pruefprogramms, statt im Suchpfad. -->
+  <!-- The winget fake is built along - into its own folder. A project
+       reference would copy its launcher winget.exe (without winget.dll)
+       here, and Windows would then find "winget" here first, in the test
+       program's folder, instead of in the search path. -->
   <Target Name="WingetAttrappeBauen" BeforeTargets="Build">
-    <!-- Erst Restore (eigene Eigenschaften = eigener Durchlauf), dann bauen. -->
+    <!-- Restore first (own properties = separate pass), then build. -->
     <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Restore" Properties="Configuration=$(Configuration);DaSiRestore=true" />
     <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
   </Target>

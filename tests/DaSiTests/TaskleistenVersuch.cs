@@ -13,15 +13,15 @@ using WindowsDaSiTool.Services;
 namespace DaSiTests;
 
 /// <summary>
-/// Versuch am echten Windows: Was macht der Explorer mit zurueckgeschriebenen
-/// Taskleisten-Symbolen? Anlass: Nach einer Wiederherstellung (Sicherung von
-/// einem anderen PC) war die Taskleiste leer, obwohl Verknuepfungen und
-/// Taskband-Werte zurueckgeschrieben waren und das Protokoll "Erfolg" meldete.
+/// Trial on real Windows: what does Explorer do with restored taskbar
+/// icons? Reason: after a restore (backup from another PC) the taskbar was
+/// empty, although shortcuts and Taskband values had been restored and the
+/// log reported "success".
 ///
-/// Gibt den Zustand aus (Taskband-Werte, Verknuepfungen samt Ziel, sichtbare
-/// Knoepfe der Taskleiste) und spielt durch: sichern, leeren, wiederherstellen
-/// - einmal unveraendert, einmal mit einer Verknuepfung, deren Ziel es nicht
-/// gibt. Am Ende kommt der Ausgangszustand zurueck.
+/// Prints the state (Taskband values, shortcuts with their targets, visible
+/// taskbar buttons) and plays through: back up, clear, restore - once
+/// unchanged, once with a shortcut whose target does not exist. At the end
+/// the original state comes back.
 /// </summary>
 internal static partial class Program
 {
@@ -49,13 +49,13 @@ internal static partial class Program
         {
             var knoepfeVorher = DumpTaskbar("Ausgangslage", pinOrdner, mitInhalt: true);
 
-            // 1. Sichern ueber den Dienst.
+            // 1. Back up through the service.
             var c = new CancellationTokenState();
             var log = new Protokoll();
             var sicherung = Path.Combine(root, "tl-sicherung");
             new BackupService(new ProcessRunner(c), c, log.Write) { SourcePath = profil, BackupPath = sicherung }.BackupDesktopIcons().Wait();
             foreach (var z in log.Zeilen.Where(z => z.Contains("Taskleiste", StringComparison.OrdinalIgnoreCase))) Console.WriteLine("         Dienst: " + z.Trim());
-            // Fuer einen anderen Laeufer ablegen: Wiederherstellen auf einem anderen PC.
+            // Keep it for another runner: restore on another PC.
             if (Environment.GetEnvironmentVariable("DASI_TASKLEISTE_ABLAGE") is { Length: > 0 } ablage && Directory.Exists(sicherung))
             {
                 foreach (var datei in Directory.GetFiles(sicherung, "*", SearchOption.AllDirectories))
@@ -67,11 +67,11 @@ internal static partial class Program
                 Console.WriteLine($"         Sicherung abgelegt: {ablage}");
             }
 
-            // 2. Leeren und den Explorer neu starten.
+            // 2. Clear and restart Explorer.
             ClearTaskbar(pinOrdner);
             DumpTaskbar("geleert", pinOrdner, mitInhalt: false);
 
-            // 3. Wiederherstellen ueber den Dienst.
+            // 3. Restore through the service.
             log.Clear();
             new BackupService(new ProcessRunner(c), c, log.Write) { SourcePath = profil, BackupPath = sicherung }.RestoreDesktopIcons().Wait();
             foreach (var z in log.Zeilen.Where(z => z.Contains("Taskleiste", StringComparison.OrdinalIgnoreCase) || z.Contains("Explorer"))) Console.WriteLine("         Dienst: " + z.Trim());
@@ -83,8 +83,8 @@ internal static partial class Program
             DumpTaskbar("10 s spaeter", pinOrdner, mitInhalt: false);
             Console.WriteLine($"         Knoepfe wie vorher: {(knoepfeVorher.SequenceEqual(knoepfeDanach) ? "ja" : "NEIN")}");
 
-            // 4. Eine Verknuepfung, deren Ziel es hier nicht gibt (wie Firefox
-            //    aus "Program Files (x86)" auf einem PC mit 64-Bit-Firefox).
+            // 4. A shortcut whose target does not exist here (like Firefox from
+            //    "Program Files (x86)" on a PC with 64-bit Firefox).
             var tlSicherung = Taskleiste.BackupFolder(sicherung);
             var tlJson = Taskleiste.Load(sicherung);
             if (Directory.Exists(tlSicherung) && tlJson is not null)
@@ -108,7 +108,7 @@ internal static partial class Program
                 Console.WriteLine($"         Favorites 10 s spaeter: {(SameValue(geschrieben2, ReadTaskband(), "Favorites") ? "unveraendert" : "VOM EXPLORER GEAENDERT")}");
                 DumpTaskbar("mit fehlendem Ziel, 10 s spaeter", pinOrdner, mitInhalt: false);
 
-                // 4b. Die Verknuepfung selbst fehlt (Taskband verweist ins Leere).
+                // 4b. The shortcut itself is missing (Taskband points to nothing).
                 if (umgebogen is not null)
                 {
                     File.Delete(Path.Combine(tlSicherung, umgebogen));
@@ -125,9 +125,9 @@ internal static partial class Program
                 }
             }
 
-            // 6. Ordnet die Taskleiste ueber die App-Kennung (AppUserModelID) in
-            //    Favorites zu? Edge-Eintrag auf eine unbekannte Kennung umbiegen
-            //    (gleiche Laenge), dann ein Programm mit dieser Kennung nachreichen.
+            // 6. Does the taskbar match by the app ID (AppUserModelID) in Favorites?
+            //    Bend the Edge entry to an unknown ID (same length), then add a
+            //    program with that ID.
             var tlJson2 = Taskleiste.Load(sicherung);
             if (tlJson2 is not null && tlJson2.Taskband.Any(e => e.Name == "Favorites"))
             {
@@ -151,7 +151,7 @@ internal static partial class Program
                     Console.WriteLine($"         {e.Name}: MSEdge -> DaSiXY ({n2}x)");
                 }
                 Taskleiste.Save(unbekannt, umgebaut);
-                // Die Edge-Verknuepfung selbst fehlt seit Schritt 4b - Edge haengt nur noch an der Kennung.
+                // The Edge shortcut itself is missing since step 4b - Edge hangs on the ID alone.
                 ClearTaskbar(pinOrdner);
                 log.Clear();
                 new BackupService(new ProcessRunner(c), c, log.Write) { SourcePath = profil, BackupPath = unbekannt }.RestoreDesktopIcons().Wait();
@@ -165,7 +165,7 @@ internal static partial class Program
                     + $"nennt DaSiXY: {(fav6 is not null && System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(fav6.Wert)).Contains("DaSiXY"))}");
                 DumpTaskbar("App-Kennung unbekannt, 10 s spaeter", pinOrdner, mitInhalt: true);
 
-                // Ein Programm mit dieser Kennung im Startmenue.
+                // A program with that ID in the Start menu.
                 var start = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "DaSi Probe.lnk");
                 var edge = new[] { @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", @"C:\Program Files\Microsoft\Edge\Application\msedge.exe" }.FirstOrDefault(File.Exists);
                 if (edge is not null)
@@ -181,8 +181,8 @@ internal static partial class Program
                 }
             }
 
-            // 7. Eintraege im Format eines alten Windows 10 (Wurzel ohne
-            //    Erweiterungsblock, 20 statt 58 Bytes) - nimmt Windows sie?
+            // 7. Entries in the format of an old Windows 10 (root without the
+            //    extension block, 20 instead of 58 bytes) - does Windows take them?
             if (Taskleiste.Load(sicherung) is { } tl7 && Taskleiste.Favorites(tl7.Taskband) is { } fav7)
             {
                 var alt7 = new List<byte> { };
@@ -222,7 +222,7 @@ internal static partial class Program
                 DumpTaskbar("altes Format", pinOrdner, mitInhalt: false);
             }
 
-            // 5. Die Sicherung eines anderen PCs (anderer Laeufer, anderes Windows).
+            // 5. The backup of another PC (another runner, another Windows).
             if (Environment.GetEnvironmentVariable("DASI_TASKLEISTE_FREMD") is { Length: > 0 } fremd && Directory.Exists(fremd))
             {
                 Console.WriteLine($"   == Sicherung eines anderen PCs: {fremd} ==");
@@ -248,7 +248,7 @@ internal static partial class Program
         }
         finally
         {
-            // Ausgangszustand zurueck.
+            // Back to the original state.
             try
             {
                 foreach (var alt in Directory.GetFiles(pinOrdner, "*.lnk")) File.Delete(alt);
@@ -288,7 +288,7 @@ internal static partial class Program
         System.Threading.Thread.Sleep(3000);
     }
 
-    /// <summary>Gibt den Zustand aus und liefert die Namen der sichtbaren App-Knoepfe.</summary>
+    /// <summary>Prints the state and returns the names of the visible app buttons.</summary>
     [SupportedOSPlatform("windows")]
     private static List<string> DumpTaskbar(string wann, string pinOrdner, bool mitInhalt)
     {
@@ -333,7 +333,7 @@ internal static partial class Program
         return knoepfe;
     }
 
-    /// <summary>Fotografiert die Taskleiste und gibt das Bild als PNG (Base64) in einer Zeile aus.</summary>
+    /// <summary>Takes a picture of the taskbar and prints it as PNG (Base64) on one line.</summary>
     [SupportedOSPlatform("windows")]
     private static void TaskbarScreenshot(string name)
     {

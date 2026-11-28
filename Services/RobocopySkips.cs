@@ -8,83 +8,80 @@ using System.Text.RegularExpressions;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Fasst die Fehlermeldungen von robocopy fuer einen Ordner zusammen - gedacht
-/// fuer AppData.
+/// Summarizes robocopy's error messages for one folder - meant for AppData.
 ///
-/// Dort sind gesperrte und verschwundene Dateien normal: Discord, Teams,
-/// Browser und Co. schreiben staendig in ihre Ordner. robocopy meldet JEDE
-/// solche Datei mit drei Zeilen:
+/// Locked and vanished files are normal there: Discord, Teams, browsers and
+/// the like write to their folders all the time. robocopy reports EVERY
+/// such file with three lines:
 ///
-///   2026/11/10 20:15:31 FEHLER 2 (0x00000002) Datei wird kopiert C:\...\012884.log
-///   Das System kann die angegebene Datei nicht finden.
-///   FEHLER: Die maximale Anzahl von Wiederholungsversuchen wurde ueberschritten.
+///   2026/11/10 20:15:31 ERROR 2 (0x00000002) Copying File C:\...\012884.log
+///   The system cannot find the file specified.
+///   ERROR: RETRY LIMIT EXCEEDED.
 ///
-/// Die letzte Zeile erscheint auch mit /R:0 - dann heisst sie nur: der eine
-/// Versuch ist gescheitert. Bei tausenden Dateien ging das Protokoll darin
-/// unter. Stattdessen werden diese Bloecke hier geschluckt und gezaehlt; am
-/// Ende steht eine Zeile je Fehlerart im Protokoll und die vollstaendige Liste
-/// in einer Datei neben der Sicherung. Meldungen zu Dateien AUSSERHALB des
-/// Ordners bleiben unveraendert im Protokoll.
+/// The last line appears with /R:0 as well - it then only means: the one
+/// attempt failed. With thousands of files, the log drowned in these
+/// blocks. Instead, they are swallowed and counted here; at the end the log
+/// gets one line per error kind and a file next to the backup gets the full
+/// list. Messages about files OUTSIDE the folder stay in the log unchanged.
 ///
-/// Ohne Abhaengigkeiten, damit sich die Erkennung pruefen laesst.
+/// No dependencies, so the detection can be tested.
 /// </summary>
 public sealed class RobocopySkips
 {
-    /// <summary>Name der Liste, die neben der Sicherung abgelegt wird.</summary>
+    /// <summary>Name of the list placed next to the backup.</summary>
     public const string ListFileName = "AppData-nicht-gesichert.txt";
 
-    /// <summary>Name der Liste nach dem Zurueckschreiben - ebenfalls neben der Sicherung.</summary>
+    /// <summary>Name of the list after a restore - also next to the backup.</summary>
     public const string RestoreListFileName = "AppData-nicht-wiederhergestellt.txt";
 
-    /// <summary>Hoechstens so viele Pfade werden gemerkt; die Anzahl stimmt immer.</summary>
+    /// <summary>At most this many paths are kept; the count is always right.</summary>
     public const int MaxPaths = 100_000;
 
     /// <summary>
-    /// Fehlerarten, die bei AppData dazugehoeren: waehrend der Sicherung
-    /// geloescht oder umbenannt (2, 3), von einem laufenden Programm gesperrt
-    /// (32, 33) oder von ihm in den Speicher eingeblendet (1224 - "Datei mit
-    /// einem geoeffneten Bereich, der einem Benutzer zugeordnet ist", etwa die
-    /// Programmdatei oder Datenbank eines laufenden Programms), vom System
-    /// nicht lesbar - etwa die App-Aliase in "WindowsApps" (1920). Alles andere
-    /// - Zugriff verweigert, Platte voll - bleibt ein Fehler.
+    /// Error kinds that come with AppData: deleted or renamed during the backup
+    /// (2, 3), locked by a running program (32, 33) or mapped into its memory
+    /// (1224 - "a file with a user-mapped section open", e.g. the executable or
+    /// database of a running program), not readable by the system - e.g. the
+    /// app aliases in "WindowsApps" (1920). Everything else - access denied,
+    /// disk full - stays an error.
     /// </summary>
     public static readonly IReadOnlySet<int> Expected = new HashSet<int> { 2, 3, 32, 33, 1224, 1920 };
 
-    // Kopfzeile eines Fehlers, in jeder Sprache gleich gebaut:
-    // "<Datum> <Zeit> <FEHLER|ERROR|...> <Nummer> (0x<Nummer hexadezimal>) <Vorgang> <Pfad>".
-    // Erkannt am Paar aus Nummer und derselben Nummer in hex - nicht am Wort.
+    // Header line of an error, built the same way in every language:
+    // "<date> <time> <ERROR|FEHLER|...> <number> (0x<number in hex>) <operation> <path>".
+    // Recognized by the number followed by the same number in hex - not by the word.
     private static readonly Regex Kopf =
         new(@"\s(\d{1,10}) \(0x([0-9A-Fa-f]{8})\)\s+(.*)$", RegexOptions.CultureInvariant);
 
-    // Der Pfad am Ende der Kopfzeile. robocopy schreibt Windows-Pfade
-    // (Laufwerk oder UNC); "/..." nur, damit es in der Pruefumgebung genauso geht.
+    // The path at the end of the header line. robocopy writes Windows paths
+    // (drive or UNC); "/..." only so it works the same in the test environment.
     private static readonly Regex PfadAmEnde =
         new(@"(?:[A-Za-z]:\\|\\\\|/).*$", RegexOptions.CultureInvariant);
 
-    // "ERROR: RETRY LIMIT EXCEEDED." bzw.
+    // "ERROR: RETRY LIMIT EXCEEDED." or
     // "FEHLER: Die maximale Anzahl von Wiederholungsversuchen wurde ueberschritten."
     private static readonly Regex Abschluss =
         new(@"^\s*(?:ERROR|FEHLER)\s*:", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
-    // Mit /R:1 und mehr kuendigt robocopy statt des Abschlusses den naechsten
-    // Versuch an: "Waiting 1 seconds... Retrying..." - in jeder Sprache mit
-    // der Wartezeit als Zahl und Auslassungspunkten. Danach folgt fuer dieselbe
-    // Datei ein neuer Block - oder sie wird beim zweiten Versuch kopiert.
+    // With /R:1 and more, robocopy announces the next attempt instead of the
+    // final line: "Waiting 1 seconds... Retrying..." - in every language with
+    // the wait time as a number and an ellipsis. Then either a new block for
+    // the same file follows - or the file is copied on the second attempt.
     private static readonly Regex Wiederholung =
         new(@"\d.*\.\.\.\s*$", RegexOptions.CultureInvariant);
 
-    /// <summary>Eine Meldung, deren Grund oder Abschluss noch aussteht.</summary>
+    /// <summary>A message whose reason or final line is still pending.</summary>
     private sealed class Offen
     {
-        /// <summary>Die Datei liegt im Ordner - die Zeilen der Meldung werden geschluckt.</summary>
+        /// <summary>The file is inside the folder - the message's lines are swallowed.</summary>
         public bool Innen;
         public int Code;
-        /// <summary>Mit dieser Meldung erstmals gezaehlt (sonst null).</summary>
+        /// <summary>Counted for the first time with this message (otherwise null).</summary>
         public string? Gezaehlt;
         public bool HatGrund;
     }
 
-    /// <summary>So viele Meldungen werden hoechstens gleichzeitig offen gehalten.</summary>
+    /// <summary>At most this many messages are kept open at the same time.</summary>
     private const int MaxOffen = 64;
 
     private readonly string _rootAnzeige;
@@ -94,19 +91,18 @@ public sealed class RobocopySkips
     private readonly Dictionary<int, string> _grund = new();
     private readonly List<(int Code, string Path)> _pfade = new();
     private readonly HashSet<string> _gesehen = new(StringComparer.OrdinalIgnoreCase);
-    // Meldungen in der Reihenfolge ihrer Kopfzeilen. Mit /MT:32 kopieren 32
-    // Threads gleichzeitig, und ihre Meldungen koennen sich verschraenken:
-    // Kopf A, Kopf B, Grund A, Grund B ... Grund- und Abschlusszeilen werden
-    // deshalb der aeltesten Meldung zugeordnet, die noch darauf wartet.
+    // Messages in the order of their header lines. With /MT:32, 32 threads
+    // copy at once, and their messages can interleave: header A, header B,
+    // reason A, reason B ... So reason and final lines are assigned to the
+    // oldest message still waiting for one.
     private readonly List<Offen> _offen = new();
 
-    /// <param name="root">Der Ordner, dessen Meldungen zusammengefasst werden, z. B. "C:\Users\Max\AppData".</param>
+    /// <param name="root">The folder whose messages are summarized, e.g. "C:\Users\Max\AppData".</param>
     /// <param name="zurueck">
-    /// true beim Zurueckschreiben ins Profil. robocopy nennt auch dann den
-    /// Pfad in der QUELLE - <paramref name="root"/> ist also der AppData-Ordner
-    /// in der Sicherung. Gesperrt ist in dem Fall die Datei am Ziel: Ein
-    /// laufendes Programm haelt sie offen, und dort bleibt die vorhandene
-    /// Fassung stehen.
+    /// true when restoring into the profile. robocopy names the path in the
+    /// SOURCE then as well - so <paramref name="root"/> is the AppData folder in
+    /// the backup. What is locked in that case is the file at the target: a
+    /// running program holds it open, and the existing version stays there.
     /// </param>
     public RobocopySkips(string root, bool zurueck = false)
     {
@@ -115,26 +111,26 @@ public sealed class RobocopySkips
         _zurueck = zurueck;
     }
 
-    /// <summary>true beim Zurueckschreiben ins Profil.</summary>
+    /// <summary>true when restoring into the profile.</summary>
     public bool Zurueck => _zurueck;
 
-    /// <summary>Uebersprungene Dateien im Ordner.</summary>
+    /// <summary>Skipped files in the folder.</summary>
     public int Count { get; private set; }
 
-    /// <summary>Fehlermeldungen zu Dateien ausserhalb des Ordners (bleiben im Protokoll).</summary>
+    /// <summary>Error messages about files outside the folder (they stay in the log).</summary>
     public int OtherErrors { get; private set; }
 
     public IReadOnlyDictionary<int, int> CountByCode => _anzahl;
     public IReadOnlyDictionary<int, string> ReasonByCode => _grund;
     public IReadOnlyList<(int Code, string Path)> Paths => _pfade;
 
-    /// <summary>true, wenn jede uebersprungene Datei nur gesperrt oder verschwunden war.</summary>
+    /// <summary>true if every skipped file was only locked or gone.</summary>
     public bool AllExpected => _anzahl.Keys.All(Expected.Contains);
 
     /// <summary>
-    /// Nimmt eine Ausgabezeile von robocopy entgegen. true heisst: Sie gehoert
-    /// zu einer Meldung ueber eine Datei im Ordner und kommt NICHT ins Protokoll.
-    /// Erwartet die Zeilen in der Reihenfolge, in der robocopy sie schreibt.
+    /// Takes one output line of robocopy. true means: it belongs to a message
+    /// about a file inside the folder and does NOT go to the log. Expects the
+    /// lines in the order robocopy writes them.
     /// </summary>
     public bool Swallow(string? line)
     {
@@ -145,7 +141,7 @@ public sealed class RobocopySkips
             var meldung = new Offen { Innen = pfad is not null && IsUnder(pfad, _root), Code = code };
             if (meldung.Innen)
             {
-                // Jede Datei nur einmal - auch wenn robocopy sie mehrfach meldet.
+                // Each file only once - even if robocopy reports it several times.
                 if (_gesehen.Add(pfad!))
                 {
                     Count++;
@@ -165,11 +161,11 @@ public sealed class RobocopySkips
 
         if (_offen.Count == 0) return false;
 
-        // Dateizeilen anderer Kopier-Threads (/MT) sind eingerueckt und koennen
-        // dazwischenrutschen - sie gehoeren nicht zur Meldung.
+        // File lines of other copy threads (/MT) are indented and can slip in
+        // between - they do not belong to the message.
         if (line[0] == ' ' || line[0] == '\t') return false;
 
-        // Die Trennlinie vor der Bilanz: Danach kommt nichts mehr dazu.
+        // The separator line before the summary: nothing more is added after it.
         if (line.StartsWith("---", StringComparison.Ordinal))
         {
             _offen.Clear();
@@ -181,9 +177,9 @@ public sealed class RobocopySkips
         {
             var fertig = _offen.FirstOrDefault(o => o.HatGrund) ?? _offen[0];
             _offen.Remove(fertig);
-            // Mit /R:1 und mehr: noch nicht aufgegeben - Zaehlung zuruecknehmen.
-            // Scheitert auch der naechste Versuch, kommt eine neue Meldung;
-            // klappt er, wurde die Datei kopiert und gehoert nicht in die Liste.
+            // With /R:1 and more: not given up yet - undo the count. If the next
+            // attempt fails as well, a new message follows; if it succeeds, the file
+            // was copied and does not belong in the list.
             if (!abschluss && fertig.Innen) Undo(fertig);
             return fertig.Innen;
         }
@@ -191,7 +187,8 @@ public sealed class RobocopySkips
         var ohneGrund = _offen.FirstOrDefault(o => !o.HatGrund);
         if (ohneGrund is null)
         {
-            // Statt des Abschlusses kam etwas anderes - das gehoert nicht mehr dazu.
+            // Something else came instead of the final line - it no longer belongs to
+            // the message.
             _offen.Clear();
             return false;
         }
@@ -215,7 +212,7 @@ public sealed class RobocopySkips
         }
     }
 
-    /// <summary>Erkennt die Kopfzeile einer robocopy-Fehlermeldung.</summary>
+    /// <summary>Recognizes the header line of a robocopy error message.</summary>
     public static bool TryParseHeader(string line, out int code, out string? path)
     {
         code = 0;
@@ -232,11 +229,11 @@ public sealed class RobocopySkips
     }
 
     /// <summary>
-    /// Kurzfassung fuers Protokoll: eine Zeile je Fehlerart, haeufigste zuerst.
+    /// Short version for the log: one line per error kind, most frequent first.
     /// </summary>
-    /// <param name="was">Wie der Ordner im Text heisst, z. B. "AppData".</param>
-    /// <param name="listPath">Wo die vollstaendige Liste liegt (oder null).</param>
-    /// <param name="tr">Uebersetzung (deutsch, englisch) - im Programm Loc.Tr.</param>
+    /// <param name="was">What the folder is called in the text, e.g. "AppData".</param>
+    /// <param name="listPath">Where the full list is (or null).</param>
+    /// <param name="tr">Translation (German, English) - Loc.Tr in the program.</param>
     public string Summary(string was, string? listPath, Func<string, string, string> tr)
     {
         var sb = new StringBuilder();
@@ -271,7 +268,7 @@ public sealed class RobocopySkips
         return sb.ToString();
     }
 
-    /// <summary>Inhalt der Liste neben der Sicherung: alle Pfade, nach Fehlerart.</summary>
+    /// <summary>Content of the list next to the backup: all paths, by error kind.</summary>
     public string ListText(string was, DateTime when, Func<string, string, string> tr)
     {
         var sb = new StringBuilder();
@@ -323,7 +320,7 @@ public sealed class RobocopySkips
         return sb.ToString();
     }
 
-    /// <summary>"1.234" bzw. "1,234" - ohne Kulturdaten des Systems.</summary>
+    /// <summary>"1.234" or "1,234" - without the system's culture data.</summary>
     private static string FormatCount(int n, Func<string, string, string> tr)
     {
         var nf = (NumberFormatInfo)NumberFormatInfo.InvariantInfo.Clone();
@@ -333,7 +330,7 @@ public sealed class RobocopySkips
 
     private static string Normal(string p) => (p ?? "").Replace('/', '\\').TrimEnd('\\');
 
-    /// <summary>Liegt der Pfad im Ordner? "AppDataAlt" liegt nicht in "AppData".</summary>
+    /// <summary>Is the path inside the folder? "AppDataAlt" is not inside "AppData".</summary>
     private static bool IsUnder(string pfad, string root)
     {
         if (root.Length == 0) return false;

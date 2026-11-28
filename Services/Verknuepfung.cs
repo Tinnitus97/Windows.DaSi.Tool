@@ -8,14 +8,14 @@ using System.Text;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Liest und aendert eine Verknuepfung (.lnk) ueber die Schnittstelle von
-/// Windows (IShellLink): Ziel, Arbeitsordner, Symbol und die App-Kennung
-/// (AppUserModelID), unter der die Taskleiste das Programm fuehrt.
+/// Reads and changes a shortcut (.lnk) through Windows' interface
+/// (IShellLink): target, working folder, icon and the app ID
+/// (AppUserModelID) the taskbar files the program under.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static class Verknuepfung
 {
-    /// <summary>Was in der Verknuepfung steht. Ziel ist leer bei Verknuepfungen auf Shell-Objekte (Datei-Explorer).</summary>
+    /// <summary>What the shortcut contains. Target is empty for shortcuts to shell objects (File Explorer).</summary>
     public sealed record Inhalt(string Ziel, string Arbeitsordner, string Symbol, int SymbolIndex, string? AppId);
 
     public static Inhalt? Read(string lnk)
@@ -40,10 +40,10 @@ public static class Verknuepfung
     }
 
     /// <summary>
-    /// Setzt ein neues Ziel. Arbeitsordner und Symbol ziehen mit, wenn sie auf
-    /// den alten Ort zeigten; ebenso die App-Kennung, wenn sie die alte
-    /// Installation meinte (Firefox und Thunderbird fuehren den Schluessel ihres
-    /// Installationsordners als Kennung).
+    /// Sets a new target. Working folder and icon move along if they pointed to
+    /// the old place; so does the app ID if it referred to the old installation
+    /// (Firefox and Thunderbird use the hash of their installation folder as
+    /// the ID).
     /// </summary>
     public static bool SetTarget(string lnk, string neuesZiel)
     {
@@ -81,7 +81,7 @@ public static class Verknuepfung
         catch { return false; }
     }
 
-    // ------------------------------------------------------------ App-Kennung (System.AppUserModel.ID)
+    // ------------------------------------------------------------ App ID (System.AppUserModel.ID)
 
     private static PROPERTYKEY AppIdSchluessel = new() { fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), pid = 5 };
     private const ushort VT_LPWSTR = 31;
@@ -109,7 +109,7 @@ public static class Verknuepfung
         finally { PropVariantClear(ref wert); }
     }
 
-    /// <summary>Nur fuer die Pruefung: eine Verknuepfung anlegen.</summary>
+    /// <summary>Tests only: create a shortcut.</summary>
     internal static void Create(string lnk, string ziel, string? appId = null)
     {
         var link = (IShellLinkW)new CShellLink();
@@ -131,9 +131,9 @@ public static class Verknuepfung
     private struct PROPERTYKEY { public Guid fmtid; public uint pid; }
 
     /// <summary>
-    /// PROPVARIANT: Typ, drei reservierte Worte, dann der Wert. Unter 64 Bit
-    /// 24 Bytes gross (der groesste Wert ist ein Zaehler samt Zeiger) - mit nur
-    /// 16 Bytes schrieb Windows ueber das Ende hinaus.
+    /// PROPVARIANT: type, three reserved words, then the value. 24 bytes on 64
+    /// bit (the largest value is a count plus a pointer) - with just 16 bytes,
+    /// Windows wrote past the end.
     /// </summary>
     [StructLayout(LayoutKind.Explicit, Size = 24)]
     private struct PROPVARIANT

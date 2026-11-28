@@ -10,10 +10,10 @@ using System.Threading.Tasks;
 namespace DaSiPruefung;
 
 /// <summary>
-/// Ein winziger Webserver auf 127.0.0.1 fuer die Pruefungen: liefert, was
-/// unter einem Pfad hinterlegt ist (sonst 404). Damit laufen Update-Abfrage,
-/// Download und das Nachinstallieren von winget echt ueber HTTP - ohne
-/// Internet und ohne fremde Server.
+/// A tiny web server on 127.0.0.1 for the tests: serves whatever is stored
+/// under a path (otherwise 404). This way the update check, the download and
+/// installing winget really run over HTTP - without internet and without
+/// third-party servers.
 /// </summary>
 internal sealed class MiniHttp : IDisposable
 {
@@ -21,7 +21,7 @@ internal sealed class MiniHttp : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly ConcurrentDictionary<string, (int Status, byte[] Inhalt)> _seiten = new(StringComparer.Ordinal);
 
-    /// <summary>Wie oft jeder Pfad abgerufen wurde.</summary>
+    /// <summary>How often each path was requested.</summary>
     public ConcurrentDictionary<string, int> Abrufe { get; } = new(StringComparer.Ordinal);
 
     public string Basis { get; }
@@ -57,7 +57,7 @@ internal sealed class MiniHttp : IDisposable
                 var leser = new StreamReader(strom, Encoding.ASCII, false, 1024, leaveOpen: true);
                 var anfrage = await leser.ReadLineAsync() ?? "";
                 string? zeile;
-                while (!string.IsNullOrEmpty(zeile = await leser.ReadLineAsync())) { /* Kopfzeilen ueberlesen */ }
+                while (!string.IsNullOrEmpty(zeile = await leser.ReadLineAsync())) { /* skip the header lines */ }
                 var teile = anfrage.Split(' ');
                 var pfad = teile.Length > 1 ? Uri.UnescapeDataString(teile[1].TrimStart('/')) : "";
                 Abrufe.AddOrUpdate(pfad, 1, (_, n) => n + 1);
@@ -69,7 +69,7 @@ internal sealed class MiniHttp : IDisposable
                 await strom.WriteAsync(inhalt);
                 await strom.FlushAsync();
             }
-            catch { /* Verbindung abgebrochen - egal */ }
+            catch { /* connection dropped - does not matter */ }
         }
     }
 

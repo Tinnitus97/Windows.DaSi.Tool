@@ -6,22 +6,21 @@ using System.Runtime.Versioning;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Was die Taskleiste gerade zeigt - ueber UI Automation, wie ein
-/// Bildschirmleser. Jeder Knopf eines angehefteten oder laufenden Programms
-/// traegt als AutomationId "Appid: &lt;Kennung&gt;" (sprachunabhaengig, anders als
-/// sein Name "Microsoft Edge pinned" / "... angeheftet").
+/// What the taskbar shows right now - through UI Automation, like a screen
+/// reader. Every button of a pinned or running program carries the
+/// AutomationId "Appid: &lt;ID&gt;" (language independent, unlike its name
+/// "Microsoft Edge pinned" / "... angeheftet").
 ///
-/// Anlass: Nach einer Wiederherstellung war die Taskleiste leer, das Protokoll
-/// meldete Erfolg - Windows hatte die zurueckgeschriebenen Eintraege nicht
-/// angezeigt. Ob Windows sie zeigt, steht in keinem Registry-Wert.
+/// Reason: after a restore the taskbar was empty while the log reported
+/// success - Windows had not shown the restored entries. No registry value
+/// says whether Windows shows them.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static class TaskleistenAnsicht
 {
     /// <summary>
-    /// Die App-Kennungen der Programmknoepfe auf der Taskleiste. null, wenn
-    /// sich die Taskleiste nicht lesen laesst (keine Taskleiste, Sperrbildschirm
-    /// davor, keine Knoepfe gefunden).
+    /// The app IDs of the program buttons on the taskbar. null if the taskbar
+    /// cannot be read (no taskbar, lock screen in front, no buttons found).
     /// </summary>
     public static HashSet<string>? AppIds()
     {
@@ -54,8 +53,8 @@ public static class TaskleistenAnsicht
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr FindWindowW(string? lpClassName, string? lpWindowName);
 
-    // UI Automation (UIAutomationClient.h). Die Reihenfolge der Methoden ist die
-    // der Schnittstelle - nicht benutzte stehen nur als Platzhalter da.
+    // UI Automation (UIAutomationClient.h). The methods are in the interface's
+    // order - unused ones are only placeholders.
 
     [ComImport, Guid("FF48DBA4-60EF-4201-AA87-54103EEF594E")]
     private class CUIAutomation { }

@@ -9,17 +9,17 @@ using System.Threading.Tasks;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Portierung der Export-/Import-Logik aus dem PowerShell-Skript:
-/// - robustes Aufloesen eines lauffaehigen winget-Startwegs
-/// - Selbstregistrierung des App-Installer-Pakets, falls winget fuer den
-///   aktuellen Benutzer nicht registriert ist
-/// - fehlt winget ganz (oder ist es zu alt), wird der App-Installer von
-///   GitHub nachinstalliert; antworten die Paketquellen nicht, werden sie
-///   zurueckgesetzt
-/// - nativer "winget export" mit Filterung von Zusatz-/Laufzeitpaketen
-/// - Rettung bekannter Programme (Firefox de, Office ...) ueber eine
-///   verifizierte Bekannt-Liste
-/// - Import: jedes Paket einzeln per "winget install --exact --id"
+/// Export and import of the installed programs through winget:
+/// - robustly resolves a working way to start winget
+/// - registers the App Installer package itself if winget is not
+///   registered for the current user
+/// - if winget is missing altogether (or too old), App Installer is
+///   installed from GitHub; if the package sources do not respond, they are
+///   reset
+/// - native "winget export" with add-on and runtime packages filtered out
+/// - rescues known programs (Firefox de, Office ...) through a verified
+///   list of known packages
+/// - import: each package on its own with "winget install --exact --id"
 /// </summary>
 public sealed class WingetService
 {
@@ -29,10 +29,10 @@ public sealed class WingetService
 
     private (string Exe, string Mode)? _launcher;
 
-    /// <summary>Nachinstallation von GitHub nur einmal je Programmlauf versuchen.</summary>
+    /// <summary>Try installing from GitHub only once per program run.</summary>
     private bool _githubVersucht;
 
-    /// <summary>Paketquellen nach einem Quellenfehler nur einmal je Programmlauf zuruecksetzen.</summary>
+    /// <summary>Reset the package sources after a source error only once per program run.</summary>
     private bool _quellenZurueckgesetzt;
 
     public WingetService(ProcessRunner runner, CancellationTokenState cancel, Action<string> log)
@@ -43,15 +43,15 @@ public sealed class WingetService
     }
 
     /// <summary>
-    /// Fuer die Pruefungen: nur diese Programme als winget versuchen - eine
-    /// Attrappe, die antwortet wie winget. So laeuft jeder Weg dieses Dienstes,
-    /// ohne dass auf dem Pruefrechner etwas installiert wird.
+    /// For the tests: only try these programs as winget - a fake that answers
+    /// like winget. That way every path of this service runs without installing
+    /// anything on the test machine.
     /// </summary>
     internal IReadOnlyList<string>? FesteKandidaten { get; set; }
 
     /// <summary>
-    /// Fuer die Pruefungen: ersetzt das Nachinstallieren des App-Installers von
-    /// GitHub (rund 300 MB).
+    /// For the tests: replaces installing App Installer from GitHub (about
+    /// 300 MB).
     /// </summary>
     internal Func<Task<bool>>? Nachinstallation { get; set; }
 
@@ -70,11 +70,11 @@ public sealed class WingetService
             if (File.Exists(p)) list.Add(p);
         }
 
-        // 2) App-Execution-Alias (bewusst ohne File.Exists: Reparse-Point)
+        // 2) App execution alias (deliberately without File.Exists: reparse point)
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         list.Add(Path.Combine(local, @"Microsoft\WindowsApps\winget.exe"));
 
-        // 3) Installationsordner des App-Installer-Pakets
+        // 3) Installation folder of the App Installer package
         foreach (var loc in GetDesktopAppInstallerLocations())
         {
             var exe = Path.Combine(loc, "winget.exe");
@@ -93,13 +93,13 @@ public sealed class WingetService
             var root = Path.Combine(progFiles, "WindowsApps");
             if (Directory.Exists(root))
             {
-                // Neueste Fassung zuerst - nach der Versionsnummer, nicht nach
-                // dem Text (sonst stand "1.9" vor "1.26").
+                // Newest version first - by version number, not by text (otherwise "1.9"
+                // came before "1.26").
                 results.AddRange(WingetFehler.NewestFirst(
                     Directory.GetDirectories(root, "Microsoft.DesktopAppInstaller_*__8wekyb3d8bbwe")));
             }
         }
-        catch { /* Zugriff auf WindowsApps evtl. eingeschraenkt */ }
+        catch { /* access to WindowsApps may be restricted */ }
         return results;
     }
 
@@ -137,8 +137,8 @@ public sealed class WingetService
     {
         _log(Loc.Tr("[INFO] winget scheint für diesen Benutzer nicht registriert zu sein. Versuche Registrierung des App-Installer-Pakets...", "[INFO] winget does not appear to be registered for this user. Attempting to register the App Installer package..."));
 
-        // Add-AppxPackage steht nur ueber Windows PowerShell (powershell.exe)
-        // zuverlaessig zur Verfuegung -> ueber den Prozess-Runner aufrufen.
+        // Add-AppxPackage is only reliably available in Windows PowerShell
+        // (powershell.exe) -> call it through the process runner.
         async Task<bool> RunPs(string psCommand)
         {
             var args = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"{psCommand.Replace("\"", "\\\"")}\"";
@@ -146,7 +146,7 @@ public sealed class WingetService
             return r.Started && r.ExitCode == 0;
         }
 
-        // Variante 1: RegisterByFamilyName (neuere Windows-Builds)
+        // Option 1: RegisterByFamilyName (newer Windows builds)
         try
         {
             if (await RunPs("Add-AppxPackage -RegisterByFamilyName -MainPackage 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe' -ErrorAction Stop"))
@@ -160,7 +160,7 @@ public sealed class WingetService
             if (!_cancel.FastMode) _log(Loc.Tr($"[INFO] Registrierung per Paketfamilie nicht möglich: {ex.Message}", $"[INFO] Registration by package family not possible: {ex.Message}"));
         }
 
-        // Variante 2: klassisch ueber das AppxManifest im Paketordner
+        // Option 2: the classic way through the AppxManifest in the package folder
         foreach (var loc in GetDesktopAppInstallerLocations())
         {
             var manifest = Path.Combine(loc, "AppxManifest.xml");
@@ -198,7 +198,7 @@ public sealed class WingetService
         }
         if (_cancel.IsCancelled) return null;
 
-        // Nicht registrierbar: Der App-Installer fehlt ganz. Dann von GitHub.
+        // Cannot be registered: App Installer is missing altogether. Then from GitHub.
         if (await InstallFromGitHub())
         {
             await Task.Delay(3000);
@@ -219,9 +219,9 @@ public sealed class WingetService
     }
 
     /// <summary>
-    /// App-Installer von GitHub installieren - hoechstens einmal je Lauf, denn
-    /// es sind rund 300 MB, und scheitert es einmal (kein Internet, per
-    /// Richtlinie gesperrt), scheitert es gleich wieder.
+    /// Install App Installer from GitHub - at most once per run, because it is
+    /// about 300 MB, and if it fails once (no internet, blocked by policy), it
+    /// fails again right away.
     /// </summary>
     private async Task<bool> InstallFromGitHub()
     {
@@ -234,7 +234,7 @@ public sealed class WingetService
             : await WingetInstaller.InstallAsync(_log, () => _cancel.IsCancelled);
     }
 
-    /// <summary>Paketquellen zuruecksetzen und neu laden (braucht Adminrechte - die hat das Tool).</summary>
+    /// <summary>Reset and reload the package sources (needs admin rights - the tool has them).</summary>
     private async Task RepairSources()
     {
         _log(Loc.Tr("[INFO] Die Paketquellen von winget antworten nicht wie erwartet - setze sie zurück ('winget source reset --force') ...",
@@ -247,7 +247,7 @@ public sealed class WingetService
             _log(Loc.Tr($"    source update: ExitCode {update.ExitCode}", $"    source update: exit code {update.ExitCode}"));
     }
 
-    /// <summary>Antwortet die Paketquelle "winget"? null = ja, sonst was fehlt.</summary>
+    /// <summary>Does the "winget" package source respond? null = yes, otherwise what is missing.</summary>
     private async Task<WingetReadiness?> CheckSources()
     {
         var quellen = await InvokeWinget("source list --disable-interactivity", 60000);
@@ -290,12 +290,12 @@ public sealed class WingetService
         return await RunWingetRaw(launcher.Value.Exe, launcher.Value.Mode, args, timeoutMs);
     }
 
-    // ------------------------------------------------------- Bereitschaft
+    // ------------------------------------------------------- Readiness
 
     /// <summary>
-    /// Ergebnis der Bereitschaftspruefung. <paramref name="Problem"/> und
-    /// <paramref name="Hint"/> sind nur gesetzt, wenn es nicht geht - der Text
-    /// ist dann fuer den Benutzer gedacht, nicht fuers Protokoll.
+    /// Result of the readiness check. <paramref name="Problem"/> and
+    /// <paramref name="Hint"/> are only set if it does not work - the text is
+    /// meant for the user then, not for the log.
     /// </summary>
     public sealed record WingetReadiness(bool Ready, string? Version, string? Problem, string? Hint)
     {
@@ -304,23 +304,22 @@ public sealed class WingetService
     }
 
     /// <summary>
-    /// Prueft, ob winget vorhanden, fuer diesen Benutzer registriert UND
-    /// benutzbar ist - BEVOR ein Export oder Import startet.
+    /// Checks whether winget is present, registered for this user AND usable -
+    /// BEFORE an export or import starts.
     ///
-    /// Warum nicht einfach loslaufen: Ohne Pruefung bricht erst der eigentliche
-    /// Vorgang ab, und zwar mitten in einer Warteschlange, in der davor schon
-    /// Profile kopiert wurden. Der Benutzer sieht dann einen Fehler an einer
-    /// Stelle, an der er nichts mehr tun kann. Hier faellt es vorher auf.
+    /// Why not just start: without the check, only the actual operation fails,
+    /// in the middle of a queue that has already copied profiles. The user then
+    /// sees an error at a point where nothing can be done any more. Here it
+    /// shows up beforehand.
     ///
-    /// Geprueft wird in zwei Stufen, weil "vorhanden" und "funktionsfaehig"
-    /// zweierlei sind:
-    ///   1. Laesst sich winget ueberhaupt starten ("--version")? Schlaegt das
-    ///      fehl, versucht <see cref="ResolveLauncher"/> zuvor noch, das
-    ///      App-Installer-Paket fuer diesen Benutzer zu registrieren.
-    ///   2. Antwortet die Paketquelle ("source list")? winget kann startbar
-    ///      sein, waehrend die Quelle fehlt oder die Nutzungsbedingungen nie
-    ///      bestaetigt wurden - dann liefert ein Export eine leere Liste,
-    ///      ohne dass irgendwo ein Fehler steht.
+    /// The check has two stages, because "present" and "working" are two
+    /// different things:
+    ///   1. Can winget be started at all ("--version")? If that fails,
+    ///      <see cref="ResolveLauncher"/> first tries to register the App
+    ///      Installer package for this user.
+    ///   2. Does the package source respond ("source list")? winget can start
+    ///      while the source is missing or its terms were never accepted -
+    ///      then an export returns an empty list without any error anywhere.
     /// </summary>
     public async Task<WingetReadiness> CheckReadinessAsync()
     {
@@ -347,9 +346,9 @@ public sealed class WingetService
                        + "Install the 'App Installer' from the Microsoft Store or the MSIX package from GitHub "
                        + "manually and restart the tool. The attempted paths are listed in detail in the log."));
 
-        // Stufe 2: Antwortet die Paketquelle? Wenn nicht: zuruecksetzen, und
-        // hilft das nicht, ist winget meist zu alt fuer die heutigen Quellen -
-        // dann den App-Installer von GitHub aktualisieren.
+        // Stage 2: does the package source respond? If not: reset it, and if that
+        // does not help, winget is usually too old for today's sources - then
+        // update App Installer from GitHub.
         var problem = await CheckSources();
         if (problem is not null && !_cancel.IsCancelled)
         {
@@ -446,13 +445,13 @@ public sealed class WingetService
         var exportFile = Path.Combine(wingetDir, "Export.json");
         var unresolvedFile = Path.Combine(wingetDir, "Nicht-zugeordnete-Programme.txt");
 
-        // winget schreibt in eine Zwischendatei. Die bisherige Export.json wird
-        // erst ersetzt, wenn die neue vollstaendig und brauchbar ist.
+        // winget writes to a temporary file. The existing Export.json is only
+        // replaced once the new one is complete and usable.
         //
-        // Frueher wurde die alte Liste hier als Erstes GELOESCHT - noch bevor
-        // feststand, ob winget ueberhaupt startet. Brach der Export ab, war
-        // die alte Liste weg und keine neue da. Genau an dieser Datei haengt
-        // aber die spaetere Neuinstallation aller Programme.
+        // The old list used to be DELETED here first - before it was even clear
+        // whether winget would start. If the export failed, the old list was gone
+        // and there was no new one. But the later reinstall of all programs
+        // depends on exactly this file.
         var neuFile = exportFile + ".neu";
         SafeDelete(neuFile);
         try
@@ -475,7 +474,7 @@ public sealed class WingetService
         if (_cancel.IsCancelled) { _log(Loc.Tr("[ABBRUCH] Winget-Export durch Benutzer abgebrochen.", "[CANCELLED] Winget export cancelled by user.")); return; }
         if (!result.Started) { _log(Loc.Tr($"[FEHLER] winget konnte nicht gestartet werden: {result.StartError}", $"[ERROR] winget could not be started: {result.StartError}")); return; }
 
-        // Nicht zuordenbare Programme aus der Ausgabe einsammeln (mit Ignorier-Liste)
+        // Collect programs from the output that could not be matched (with an ignore list)
         var unresolvedNames = new List<string>();
         foreach (var line in result.Output.Split('\n'))
         {
@@ -519,7 +518,7 @@ public sealed class WingetService
             return;
         }
 
-        // Filter: nur echte Hersteller.Produkt-IDs, keine Zusatz-/Laufzeitpakete
+        // Filter: only real Vendor.Product IDs, no add-on or runtime packages
         int keptTotal = 0;
         var skipped = new List<string>();
         foreach (var src in json.Sources)
@@ -542,7 +541,7 @@ public sealed class WingetService
         if (skipped.Count > 0 && !_cancel.FastMode)
             foreach (var id in skipped) _log(Loc.Tr($"[INFO] Übersprungen (Zusatz-/Laufzeitpaket): {id}", $"[INFO] Skipped (companion/runtime package): {id}"));
 
-        // Bekannt-Liste: nicht zugeordnete, aber bekannte Programme retten
+        // Known list: rescue programs that were not matched but are known
         if (json.Sources.Count == 0) json.Sources.Add(new WingetSource());
         var primary = json.Sources[0];
         var existing = new HashSet<string>(
@@ -579,21 +578,21 @@ public sealed class WingetService
         }
 
         json.CreationDate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-        // Lesbar fuer Menschen: Ohne den Encoder stuende "Notepad++" als
-        // "Notepad\u002B\u002B" in der Datei. Gueltig waere beides - aber wer
-        // die Liste vor einer Neuinstallation durchsieht, soll sie lesen koennen.
+        // Human-readable: without the encoder, "Notepad++" would be in the file as
+        // "Notepad++". Both would be valid - but whoever looks through
+        // the list before a reinstall should be able to read it.
         var opts = new JsonSerializerOptions
         {
             WriteIndented = true,
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
-        // Fertige Liste zuerst vollstaendig in die Zwischendatei, dann in einem
-        // Schritt an die Stelle der alten. Schlaegt schon das Schreiben fehl
-        // (Platte voll), bleibt die alte Export.json unangetastet.
+        // Write the finished list completely to the temporary file first, then
+        // move it over the old one in one step. If writing already fails (disk
+        // full), the old Export.json stays untouched.
         await File.WriteAllTextAsync(neuFile, JsonSerializer.Serialize(json, opts));
         File.Move(neuFile, exportFile, overwrite: true);
-        SafeDelete(unresolvedFile);   // gehoert zum alten Stand
+        SafeDelete(unresolvedFile);   // belongs to the old state
         _log(Loc.Tr($"[ERFOLG] {keptTotal} Programme exportiert nach: {exportFile} ({skipped.Count} Zusatzpakete herausgefiltert)", $"[SUCCESS] {keptTotal} programs exported to: {exportFile} ({skipped.Count} companion packages filtered out)"));
 
         if (stillUnresolved.Count > 0)
@@ -604,7 +603,7 @@ public sealed class WingetService
         }
     }
 
-    /// <summary>Liest die exportierten Pakete fuer die Auswahl beim Import.</summary>
+    /// <summary>Reads the exported packages for the selection during import.</summary>
     public static List<WingetPackage> ReadExportedPackages(string backupPath, out string status)
     {
         var file = Path.Combine(backupPath, "Winget", "Export.json");
@@ -627,11 +626,11 @@ public sealed class WingetService
     // ---------------------------------------------------------------- Import
 
     /// <summary>
-    /// Das Paket, das auf dem neuen PC installiert wird: Firefox ESR kommt dort
-    /// in der aktuellen Fassung ("Mozilla.Firefox.ESR.de" -> "Mozilla.Firefox.de").
-    /// Neue PCs bekommen die aktuelle Fassung - eine zusaetzliche ESR neben ihr
-    /// (oder an ihrer Stelle) hiesse zwei Firefox mit zwei Profilen. Das Profil
-    /// aus ESR uebernimmt die aktuelle Fassung beim Zurueckschreiben.
+    /// The package that gets installed on the new PC: Firefox ESR comes there as
+    /// the current release ("Mozilla.Firefox.ESR.de" -> "Mozilla.Firefox.de").
+    /// New PCs get the current release - an extra ESR next to it (or instead of
+    /// it) would mean two Firefox installations with two profiles. The current
+    /// release takes over the ESR profile on restore.
     /// </summary>
     public static string TargetPackage(string id)
     {
@@ -648,7 +647,7 @@ public sealed class WingetService
         }
         if (await ResolveLauncher() is null) return;
 
-        // ESR -> aktuelle Fassung; doppelte (ESR und aktuelle in der Liste) nur einmal.
+        // ESR -> current release; duplicates (ESR and current in the list) only once.
         var liste = new List<WingetPackage>();
         foreach (var p in selected)
         {
@@ -689,9 +688,9 @@ public sealed class WingetService
                     break;
             }
 
-            // Scheitert es auch nach der Reparatur an winget selbst, scheitert
-            // jedes weitere Paket genauso. Frueher lief die Liste trotzdem bis
-            // zum Ende durch - zehnmal dieselbe Meldung.
+            // If it still fails because of winget itself after the repair, every
+            // further package fails the same way. The list used to run to the end
+            // anyway - ten times the same message.
             if (r.ExitCode != WingetFehler.Ok && WingetFehler.SourceBroken(r.ExitCode, r.Output))
             {
                 var rest = selected.Skip(i).Count(p => !string.IsNullOrWhiteSpace(p.PackageIdentifier));
@@ -711,21 +710,20 @@ public sealed class WingetService
             }
         }
 
-        // Die Bilanzzeile traegt nur dann [ERFOLG], wenn wirklich nichts
-        // fehlgeschlagen ist. Frueher stand dort immer [ERFOLG] - auch bei
-        // "0 installiert, 5 fehlgeschlagen".
+        // The summary line only says [ERFOLG] if nothing really failed. It used to
+        // always say [ERFOLG] - even for "0 installed, 5 failed".
         var kennung = fail > 0 ? Loc.Tr("[WARNUNG]", "[WARNING]") : Loc.Tr("[ERFOLG]", "[SUCCESS]");
         _log(Loc.Tr($"{kennung} Winget-Import abgeschlossen: {ok} installiert, {skip} übersprungen (bereits vorhanden), {fail} fehlgeschlagen.", $"{kennung} Winget import finished: {ok} installed, {skip} skipped (already present), {fail} failed."));
     }
 
     /// <summary>
-    /// Installiert ein Paket aus der Quelle "winget".
+    /// Installs a package from the "winget" source.
     ///
-    /// Scheitert es nicht am Paket, sondern an winget selbst - Paketquelle
-    /// oder deren Datenbank kaputt oder von einer neueren winget-Fassung
-    /// (0x8A150009) -, wird winget repariert und das Paket noch einmal
-    /// versucht: erst die Quellen zuruecksetzen, dann den App-Installer von
-    /// GitHub aktualisieren. Jede Stufe hoechstens einmal je Lauf.
+    /// If it fails not because of the package but because of winget itself -
+    /// package source or its database broken or from a newer winget version
+    /// (0x8A150009) -, winget is repaired and the package tried once more:
+    /// first reset the sources, then update App Installer from GitHub. Each
+    /// stage at most once per run.
     /// </summary>
     public async Task<ProcessResult> InstallAsync(string id)
     {
@@ -747,8 +745,8 @@ public sealed class WingetService
             if (!IsBroken(r) || _cancel.IsCancelled) return r;
         }
 
-        // Hilft das Zuruecksetzen nicht, ist winget zu alt fuer seine Daten -
-        // die neueste Fassung kommt mit jeder Datenbank zurecht.
+        // If resetting does not help, winget is too old for its data - the latest
+        // version copes with every database.
         if (await InstallFromGitHub())
         {
             _launcher = null;
@@ -766,7 +764,7 @@ public sealed class WingetService
 
     private static bool IsBroken(ProcessResult r) => r.Started && r.ExitCode != 0 && WingetFehler.SourceBroken(r.ExitCode, r.Output);
 
-    /// <summary>"ExitCode -1978335223 (0x8A150009): Erklaerung - letzte Meldung von winget".</summary>
+    /// <summary>"ExitCode -1978335223 (0x8A150009): explanation - last message from winget".</summary>
     public static string DescribeResult(ProcessResult r)
     {
         var text = $"ExitCode {r.ExitCode} ({WingetFehler.Hex(r.ExitCode)})";

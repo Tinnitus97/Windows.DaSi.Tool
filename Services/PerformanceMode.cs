@@ -5,14 +5,14 @@ using System.Runtime.InteropServices;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Fordert temporaer einen "Leistungsmodus" an: verhindert, dass der Rechner
-/// waehrend eines laufenden Backups in den Standby geht (bzw. der Bildschirm
-/// schlafen legt), und hebt die Prozessprioritaet an.
+/// Temporarily requests a "performance mode": keeps the computer from going
+/// to standby (or the display from sleeping) while a backup is running, and
+/// raises the process priority.
 ///
-/// WICHTIG: Alle Aenderungen werden ueber Dispose() vollstaendig zurueckgesetzt.
-/// Der Standby-Schutz gilt technisch nur solange der Prozess laeuft - beendet
-/// sich das Programm, hebt Windows die Blockade ohnehin automatisch auf.
-/// Nichts an den globalen Energieplan-Einstellungen des Nutzers wird veraendert.
+/// IMPORTANT: Dispose() fully undoes every change. Technically, the standby
+/// block only lasts as long as the process runs - when the program exits,
+/// Windows lifts it automatically anyway. Nothing in the user's global power
+/// plan settings is changed.
 /// </summary>
 public sealed class PerformanceMode : IDisposable
 {
@@ -39,10 +39,10 @@ public sealed class PerformanceMode : IDisposable
         _originalPriority = Process.GetCurrentProcess().PriorityClass;
     }
 
-    /// <summary>Aktiviert Standby-Schutz und hoehere Prozessprioritaet.</summary>
+    /// <summary>Enables the standby block and a higher process priority.</summary>
     public void Enable()
     {
-        // 1) Standby-/Bildschirm-Schlaf verhindern (nur fuer diesen Prozess).
+        // 1) Prevent standby/display sleep (for this process only).
         try
         {
             var res = SetThreadExecutionState(
@@ -54,32 +54,32 @@ public sealed class PerformanceMode : IDisposable
                 _log(Loc.Tr("[INFO] Leistungsmodus aktiv: Standby während des Backups unterdrückt.",
                             "[INFO] Performance mode on: standby suppressed during the backup."));
         }
-        catch { /* nicht kritisch */ }
+        catch { /* not critical */ }
 
-        // 2) Prozessprioritaet anheben (AboveNormal - bewusst nicht High/RealTime,
-        //    um die Systembedienung nicht zu beeintraechtigen).
+        // 2) Raise the process priority (AboveNormal - deliberately not
+        //    High/RealTime, so the system stays responsive).
         try
         {
             Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.AboveNormal;
             _priorityChanged = true;
         }
-        catch { /* z.B. fehlende Rechte - nicht kritisch */ }
+        catch { /* e.g. missing rights - not critical */ }
     }
 
-    /// <summary>Setzt alle Aenderungen vollstaendig zurueck.</summary>
+    /// <summary>Fully undoes all changes.</summary>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
 
-        // Prioritaet auf den urspruenglichen Wert zuruecksetzen.
+        // Reset the priority to its original value.
         if (_priorityChanged)
         {
             try { Process.GetCurrentProcess().PriorityClass = _originalPriority; }
             catch { /* ignore */ }
         }
 
-        // Standby-Schutz aufheben: zurueck auf ES_CONTINUOUS ohne weitere Flags.
+        // Lift the standby block: back to ES_CONTINUOUS without further flags.
         if (_executionStateSet)
         {
             try { SetThreadExecutionState(ExecutionState.ES_CONTINUOUS); }

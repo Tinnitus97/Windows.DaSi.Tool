@@ -6,47 +6,47 @@ using System.Text.RegularExpressions;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Der eigene Sicherungsordner: Wer als Ziel nur "G:\" angibt, bekommt
-/// darunter einen Ordner je Rechner und Tag - "G:\DASI_DESKTOP-7K4Q2M_10_11_2026".
+/// The tool's own backup folder: whoever picks just "G:\" as the target gets
+/// one folder per computer and day below it - "G:\DASI_DESKTOP-7K4Q2M_10_11_2026".
 ///
-/// So liegen mehrere Rechner und mehrere Staende sauber nebeneinander, statt
-/// sich im Wurzelverzeichnis gegenseitig zu ueberschreiben: Das Profil wird
-/// mit /MIR gespiegelt, eine zweite Sicherung in denselben Ordner loeschte
-/// alles, was der erste Rechner dort hinterlassen hat.
+/// That way several computers and several snapshots sit cleanly side by side
+/// instead of overwriting each other in the root: the profile is mirrored
+/// with /MIR, so a second backup into the same folder would delete
+/// everything the first computer left there.
 ///
-/// Ist das gewaehlte Ziel selbst schon eine Sicherung, wird sie aktualisiert -
-/// es entsteht kein weiterer Ordner. Ebenso bei einer zweiten Sicherung am
-/// selben Tag: Der Ordnername ist derselbe.
+/// If the chosen target already is a backup, it is updated - no further
+/// folder is created. The same goes for a second backup on the same day:
+/// the folder name is identical.
 ///
-/// Ohne Abhaengigkeiten an die Oberflaeche, damit sich die Regel pruefen laesst.
+/// No dependencies on the UI, so the rule can be tested.
 /// </summary>
 public static class BackupTarget
 {
-    /// <summary>Anfang jedes Ordners, den das Tool selbst anlegt.</summary>
+    /// <summary>Prefix of every folder the tool creates itself.</summary>
     public const string Prefix = "DASI_";
 
     /// <summary>
-    /// "DASI_&lt;Rechnername&gt;_TT_MM_JJJJ". Zeichen, die in einem
-    /// Ordnernamen nicht erlaubt sind, werden zu "_".
+    /// "DASI_&lt;computer name&gt;_DD_MM_YYYY". Characters that are not allowed
+    /// in a folder name become "_".
     /// </summary>
     public static string FolderName(string machineName, DateTime when)
         => Prefix + SafeMachineName(machineName) + "_" + when.ToString("dd_MM_yyyy", CultureInfo.InvariantCulture);
 
-    /// <summary>Der Rechnername, wie er im Ordnernamen steht.</summary>
+    /// <summary>The computer name as it appears in the folder name.</summary>
     public static string SafeMachineName(string machineName)
     {
         var pc = string.IsNullOrWhiteSpace(machineName) ? "PC" : machineName.Trim();
         foreach (var ch in Path.GetInvalidFileNameChars()) pc = pc.Replace(ch, '_');
-        // Zusaetzlich die unter Windows verbotenen Zeichen - Path liefert unter
-        // Linux nur '/' und '\0', die Regel soll aber ueberall gleich wirken.
+        // Also the characters Windows forbids - on Linux, Path only reports '/'
+        // and '\0', but the rule should behave the same everywhere.
         foreach (var ch in "\\/:*?\"<>|") pc = pc.Replace(ch, '_');
         return pc;
     }
 
     /// <summary>
-    /// Der Rechner, von dem ein DASI-Ordner stammt: "DASI_ALTPC_01_10_2026" -> "ALTPC".
-    /// Auch fuer Ordner aelterer Fassungen mit Uhrzeit ("..._2026_18_45").
-    /// null, wenn der Name nicht diesem Muster folgt.
+    /// The computer a DASI folder comes from: "DASI_ALTPC_01_10_2026" -> "ALTPC".
+    /// Also works for folders of older versions with a time ("..._2026_18_45").
+    /// null if the name does not follow this pattern.
     /// </summary>
     public static string? MachineOf(string path)
     {
@@ -54,7 +54,7 @@ public static class BackupTarget
         return m.Success ? m.Groups[1].Value : null;
     }
 
-    /// <summary>true, wenn der Ordner selbst schon ein DASI-Ordner ist.</summary>
+    /// <summary>true if the folder itself already is a DASI folder.</summary>
     public static bool IsOwnFolder(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return false;
@@ -62,22 +62,22 @@ public static class BackupTarget
     }
 
     /// <summary>
-    /// Ist der Ordner schon eine Sicherung - am Namen (DASI_...) oder am Inhalt
-    /// (Benutzerprofil, Browserprofile, Programmliste ... oder ein Protokoll)?
+    /// Is the folder already a backup - by its name (DASI_...) or by its content
+    /// (user profile, browser profiles, program list ... or a log)?
     /// </summary>
     public static bool IsBackupFolder(string path)
         => IsOwnFolder(path) || AppCatalog.IsBackup(path);
 
     /// <summary>
-    /// Das tatsaechliche Ziel einer Sicherung.
+    /// The actual target of a backup.
     ///
-    /// Ist das Gewaehlte schon eine Sicherung, geht die neue Sicherung genau
-    /// dort hinein und aktualisiert sie - kein neuer Ordner darin und keiner
-    /// daneben. Sonst entsteht darunter "DASI_&lt;Rechner&gt;_&lt;Datum&gt;"; gibt es
-    /// den von heute schon, wird er ebenso aktualisiert.
+    /// If the selection already is a backup, the new backup goes right into it
+    /// and updates it - no new folder inside it and none next to it. Otherwise
+    /// "DASI_&lt;computer&gt;_&lt;date&gt;" is created below it; if today's one
+    /// already exists, it is updated the same way.
     /// </summary>
-    /// <param name="basePath">Was der Benutzer gewaehlt hat, z. B. "G:\".</param>
-    /// <param name="enabled">Schalter "Eigener Ordner".</param>
+    /// <param name="basePath">What the user picked, e.g. "G:\".</param>
+    /// <param name="enabled">The "own folder" switch.</param>
     public static string Resolve(string basePath, bool enabled, string machineName, DateTime when)
     {
         if (!enabled || string.IsNullOrWhiteSpace(basePath)) return basePath;

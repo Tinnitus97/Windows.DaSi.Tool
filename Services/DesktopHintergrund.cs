@@ -8,54 +8,52 @@ using Microsoft.Win32;
 
 namespace WindowsDaSiTool.Services;
 
-/// <summary>Was in der Registry eines Benutzers zum Desktop-Hintergrund steht.</summary>
-/// <param name="Bild">Control Panel\Desktop\WallPaper - leer bei einer Volltonfarbe.</param>
-/// <param name="Farbe">Control Panel\Colors\Background ("R G B"), sonst die Farbe der laufenden Sitzung.</param>
-/// <param name="Typ">Explorer\Wallpapers\BackgroundType: 0 Bild, 1 Volltonfarbe, 2 Diashow, 3 Blickpunkt.</param>
-/// <param name="Stil">WallpaperStyle ("10" Füllen, "6" Anpassen ...).</param>
+/// <summary>What a user's registry says about the desktop wallpaper.</summary>
+/// <param name="Bild">Control Panel\Desktop\WallPaper - empty for a solid color.</param>
+/// <param name="Farbe">Control Panel\Colors\Background ("R G B"), otherwise the color of the running session.</param>
+/// <param name="Typ">Explorer\Wallpapers\BackgroundType: 0 image, 1 solid color, 2 slideshow, 3 Spotlight.</param>
+/// <param name="Stil">WallpaperStyle ("10" Fill, "6" Fit ...).</param>
 /// <param name="Kacheln">TileWallpaper.</param>
-/// <param name="DesktopBilder">Eigene Hintergruende der virtuellen Desktops (Windows 11).</param>
+/// <param name="DesktopBilder">Wallpapers of the individual virtual desktops (Windows 11).</param>
 public sealed record HintergrundStand(string? Bild, string? Farbe, int? Typ, string? Stil, string? Kacheln,
                                       IReadOnlyList<string> DesktopBilder);
 
-/// <param name="Eingetragen">Steht der Hintergrund danach in der Registry des Benutzers?</param>
-/// <param name="Angezeigt">Hat Windows ihn fuer die laufende Sitzung uebernommen?</param>
-/// <param name="VirtuelleDesktops">So viele virtuelle Desktops hatten einen eigenen Hintergrund - angeglichen.</param>
-/// <param name="DesignDatei">Was mit der Design-Datei von Windows (Custom.theme) geschah.</param>
-/// <param name="ExplorerFehler">null: ueber den Explorer (IDesktopWallpaper) gesetzt; sonst warum nicht - dann ueber SystemParametersInfo.</param>
+/// <param name="Eingetragen">Is the wallpaper in the user's registry afterwards?</param>
+/// <param name="Angezeigt">Did Windows take it over for the running session?</param>
+/// <param name="VirtuelleDesktops">This many virtual desktops had a wallpaper of their own - aligned.</param>
+/// <param name="DesignDatei">What happened to Windows' theme file (Custom.theme).</param>
+/// <param name="ExplorerFehler">null: set through Explorer (IDesktopWallpaper); otherwise why not - then through SystemParametersInfo.</param>
 public sealed record HintergrundGesetzt(bool Eingetragen, bool Angezeigt, int VirtuelleDesktops, DesignDateiErgebnis? DesignDatei = null,
                                         string? ExplorerFehler = null);
 
-/// <param name="Datei">Die aktuelle Design-Datei, falls bekannt.</param>
-/// <param name="Geaendert">Wurde sie angepasst?</param>
-/// <param name="Grund">Warum nicht - null, wenn sie schon passte oder angepasst wurde.</param>
+/// <param name="Datei">The current theme file, if known.</param>
+/// <param name="Geaendert">Was it adjusted?</param>
+/// <param name="Grund">Why not - null if it already matched or was adjusted.</param>
 public sealed record DesignDateiErgebnis(string? Datei, bool Geaendert, string? Grund);
 
 /// <summary>
-/// Liest und setzt den Desktop-Hintergrund eines Benutzers.
+/// Reads and sets a user's desktop wallpaper.
 ///
-/// Warum nicht einfach SystemParametersInfo mit SPIF_UPDATEINIFILE: Das
-/// schreibt in HKEY_CURRENT_USER des PROZESSES. Das Tool laeuft mit
-/// Adminrechten - gibt beim UAC-Dialog jemand die Daten eines anderen Kontos
-/// ein, ist das dessen Registry. Zu sehen ist der Hintergrund dann sofort,
-/// eingetragen aber beim falschen Benutzer: Nach dem naechsten Neustart des
-/// Explorers oder von Windows ist er wieder weg (schwarz bzw. der alte).
+/// Why not simply SystemParametersInfo with SPIF_UPDATEINIFILE: it writes
+/// to the PROCESS's HKEY_CURRENT_USER. The tool runs with admin rights - if
+/// someone enters another account's credentials in the UAC dialog, that is
+/// the other account's registry. The wallpaper then shows right away, but
+/// is registered for the wrong user: after the next restart of Explorer or
+/// Windows it is gone again (black or the old one).
 ///
-/// Deshalb: Registry-Werte selbst in den Zweig des angemeldeten Benutzers
-/// (HKEY_USERS\&lt;SID&gt;) schreiben und SystemParametersInfo nur fuer die
-/// laufende Sitzung rufen - mit SPIF_UPDATEINIFILE nur, wenn das Tool unter
-/// genau diesem Benutzer laeuft. Sonst wird zusaetzlich Windows'
-/// Zwischenspeicher des Benutzers verworfen (TranscodedWallpaper), damit
-/// Windows das Bild bei der naechsten Anmeldung neu einliest, statt den
-/// alten Stand zu zeigen.
+/// So: write the registry values ourselves into the key of the signed-in
+/// user (HKEY_USERS\&lt;SID&gt;) and call SystemParametersInfo only for the
+/// running session - with SPIF_UPDATEINIFILE only if the tool runs as
+/// exactly this user. Otherwise Windows' cache of the user's wallpaper
+/// (TranscodedWallpaper) is discarded as well, so Windows reads the image
+/// anew at the next sign-in instead of showing the old state.
 ///
-/// Ein Neustart des Explorers liest den Hintergrund uebrigens NICHT neu
-/// ein - der gehoert zur Sitzung (unter Windows geprueft). Massgeblich ist,
-/// was bei der naechsten Anmeldung in der Registry steht.
+/// By the way, an Explorer restart does NOT reload the wallpaper - it
+/// belongs to the session (verified on Windows). What counts is what the
+/// registry says at the next sign-in.
 ///
-/// Windows 11 kann sich ausserdem je virtuellem Desktop einen eigenen
-/// Hintergrund merken und setzt ihn beim Wechsel bzw. Anmelden wieder - auch
-/// der wird angeglichen.
+/// Windows 11 can also remember a wallpaper per virtual desktop and sets it
+/// again when switching or signing in - that one is aligned as well.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static class DesktopHintergrund
@@ -65,7 +63,7 @@ public static class DesktopHintergrund
     public const string WallpapersSchluessel = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers";
     public const string VirtuelleDesktopsSchluessel = @"Software\Microsoft\Windows\CurrentVersion\Explorer\VirtualDesktops\Desktops";
 
-    /// <summary>Laeuft das Tool unter dem Benutzer mit dieser SID? (null: unbekannt - dann gilt der Prozess.)</summary>
+    /// <summary>Does the tool run as the user with this SID? (null: unknown - then the process counts.)</summary>
     public static bool IsProcessUser(string? sid)
     {
         if (string.IsNullOrEmpty(sid)) return true;
@@ -88,13 +86,13 @@ public static class DesktopHintergrund
             stil = k?.GetValue("WallpaperStyle") as string;
             kacheln = k?.GetValue("TileWallpaper") as string;
         }
-        catch { /* bleibt leer */ }
+        catch { /* stays empty */ }
         try
         {
             using var k = wurzel.OpenSubKey(FarbenSchluessel);
             farbe = k?.GetValue("Background") as string;
         }
-        catch { /* dann aus der Sitzung */ }
+        catch { /* then from the session */ }
         if (Hintergrund.ReadColor(farbe) is null)
         {
             try
@@ -102,37 +100,37 @@ public static class DesktopHintergrund
                 var c = GetSysColor(COLOR_DESKTOP);
                 farbe = Hintergrund.ColorText(((byte)(c & 0xFF), (byte)((c >> 8) & 0xFF), (byte)((c >> 16) & 0xFF)));
             }
-            catch { /* bleibt leer */ }
+            catch { /* stays empty */ }
         }
         try
         {
             using var k = wurzel.OpenSubKey(WallpapersSchluessel);
             if (k?.GetValue("BackgroundType") is int t) typ = t;
         }
-        catch { /* aelteres Windows */ }
+        catch { /* older Windows */ }
         return new HintergrundStand(string.IsNullOrWhiteSpace(bild) ? null : bild, farbe, typ, stil, kacheln,
                                     ReadDesktopImages(wurzel));
     }
 
     /// <summary>
-    /// Ein Bild als Hintergrund: dauerhaft beim Benutzer eintragen und in der
-    /// laufenden Sitzung zeigen.
+    /// An image as the wallpaper: register it permanently for the user and
+    /// show it in the running session.
     /// </summary>
-    /// <param name="eigenerBenutzer">Laeuft das Tool unter dem Benutzer, dem <paramref name="wurzel"/> gehoert?</param>
-    /// <param name="profil">Profilordner des Benutzers - fuer seinen Zwischenspeicher.</param>
+    /// <param name="eigenerBenutzer">Does the tool run as the user who owns <paramref name="wurzel"/>?</param>
+    /// <param name="profil">The user's profile folder - for the user's cache.</param>
     public static HintergrundGesetzt SetImage(RegistryKey wurzel, bool eigenerBenutzer, string pfad, HintergrundEinstellung? e, string? profil = null)
     {
         int vd = WriteImage(wurzel, pfad, e);
         if (!eigenerBenutzer) DiscardCache(wurzel, profil);
-        // Wie die Einstellungen-App ueber den Explorer (IDesktopWallpaper) -
-        // dann merkt er es sich auch selbst. Sonst bzw. wenn das nicht geht:
+        // Like the Settings app, through Explorer (IDesktopWallpaper) - then it
+        // remembers the change itself. Otherwise, or if that does not work:
         // SystemParametersInfo.
         var explorer = eigenerBenutzer ? ViaExplorer(() => Schnittstelle.SetImage(pfad, e)) : "Tool läuft unter einem anderen Konto";
         bool angezeigt = explorer is null || SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, pfad, Flags(eigenerBenutzer));
         if (Hintergrund.ReadColor(e?.Farbe) is { } rand) SessionColor(rand);
 
-        // Mit SPIF_UPDATEINIFILE schreibt Windows den Pfad selbst noch einmal -
-        // was am Ende dasteht, zaehlt.
+        // With SPIF_UPDATEINIFILE, Windows writes the path once more itself -
+        // what is there in the end is what counts.
         bool eingetragen = IsRegistered(wurzel, pfad);
         if (!eingetragen)
         {
@@ -144,9 +142,9 @@ public static class DesktopHintergrund
     }
 
     /// <summary>
-    /// Nur die Registry - so, wie sie der Explorer beim naechsten Start liest.
+    /// Only the registry - the way Explorer reads it at its next start.
     /// </summary>
-    /// <returns>Wie viele virtuelle Desktops einen eigenen Hintergrund hatten.</returns>
+    /// <returns>How many virtual desktops had a wallpaper of their own.</returns>
     public static int WriteImage(RegistryKey wurzel, string pfad, HintergrundEinstellung? e)
     {
         using (var k = wurzel.CreateSubKey(DesktopSchluessel))
@@ -162,21 +160,21 @@ public static class DesktopHintergrund
                 using var c = wurzel.CreateSubKey(FarbenSchluessel);
                 c.SetValue("Background", Hintergrund.ColorText(rand));
             }
-            catch { /* Randfarbe ist Nebensache */ }
+            catch { /* the edge color is a minor matter */ }
         }
         WriteKind(wurzel, 0);
         return AlignDesktopImages(wurzel, pfad);
     }
 
-    /// <summary>Eine Volltonfarbe als Hintergrund - wie unter Einstellungen > Personalisierung > Hintergrund.</summary>
+    /// <summary>A solid color as the wallpaper - like Settings > Personalization > Background.</summary>
     public static HintergrundGesetzt SetColor(RegistryKey wurzel, bool eigenerBenutzer, (byte R, byte G, byte B) farbe, string? profil = null)
     {
         int vd = WriteColor(wurzel, farbe);
         if (!eigenerBenutzer) DiscardCache(wurzel, profil);
-        // Wie die Einstellungen-App ueber den Explorer (IDesktopWallpaper):
-        // Unter Windows 11 merkt er sich die Farbe auch selbst und schrieb beim
-        // Neustart sonst die alte zurueck. Sonst bzw. wenn das nicht geht:
-        // ohne Bild zeigt der Desktop die Farbe der Sitzung.
+        // Like the Settings app, through Explorer (IDesktopWallpaper): on
+        // Windows 11 it remembers the color itself and would otherwise write the
+        // old one back at restart. Otherwise, or if that does not work: without
+        // an image the desktop shows the session's color.
         var explorer = eigenerBenutzer ? ViaExplorer(() => Schnittstelle.SetColor(farbe, abschalten: false)) : "Tool läuft unter einem anderen Konto";
         if (explorer is not null) SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, "", Flags(eigenerBenutzer));
         bool angezeigt = SessionColor(farbe);
@@ -191,7 +189,7 @@ public static class DesktopHintergrund
         return new HintergrundGesetzt(eingetragen, angezeigt, vd, datei, explorer);
     }
 
-    /// <summary>null, wenn der Aufruf ueber IDesktopWallpaper geklappt hat - sonst der Grund.</summary>
+    /// <summary>null if the call through IDesktopWallpaper worked - otherwise the reason.</summary>
     private static string? ViaExplorer(Action tun)
     {
         try { tun(); return null; }
@@ -199,14 +197,13 @@ public static class DesktopHintergrund
     }
 
     /// <summary>
-    /// Traegt eine Aenderung auch in die aktuelle Design-Datei des Benutzers ein
-    /// (CurrentTheme, meist ...\Themes\Custom.theme). Windows uebernimmt beim
-    /// Anmelden Werte daraus wieder in die Registry - ohne diesen Schritt war
-    /// eine Volltonfarbe nach dem Neustart wieder die alte. Angefasst wird nur
-    /// eine Datei im Profil des Benutzers, nie ein Windows-Design unter
-    /// C:\Windows.
+    /// Also records a change in the user's current theme file (CurrentTheme,
+    /// usually ...\Themes\Custom.theme). At sign-in, Windows copies values from
+    /// it back into the registry - without this step a solid color was the old
+    /// one again after a restart. Only a file inside the user's profile is
+    /// touched, never a Windows theme under C:\Windows.
     /// </summary>
-    /// <param name="profil">Profilordner des Benutzers; null: der des Prozesses.</param>
+    /// <param name="profil">The user's profile folder; null: the process's.</param>
     public static DesignDateiErgebnis AlignThemeFile(RegistryKey wurzel, string? profil, Func<string, string> anpassen)
     {
         profil ??= Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -229,7 +226,7 @@ public static class DesktopHintergrund
         catch (Exception ex) { return new DesignDateiErgebnis(pfad, false, ex.Message); }
     }
 
-    /// <summary>Nur die Registry: Farbe, kein Bild, Art "Volltonfarbe".</summary>
+    /// <summary>Only the registry: color, no image, kind "solid color".</summary>
     public static int WriteColor(RegistryKey wurzel, (byte R, byte G, byte B) farbe)
     {
         using (var c = wurzel.CreateSubKey(FarbenSchluessel))
@@ -241,12 +238,11 @@ public static class DesktopHintergrund
     }
 
     /// <summary>
-    /// Windows' Kopie des bisherigen Hintergrunds verwerfen - die Datei
-    /// TranscodedWallpaper und den Verweis darauf (TranscodedImageCache). Bei
-    /// der naechsten Anmeldung liest Windows den Hintergrund dann aus der
-    /// Registry neu ein, wie bei einem frischen Profil. Nur noetig, wenn das
-    /// Tool unter einem anderen Konto laeuft: Sonst erneuert Windows die Kopie
-    /// beim Setzen selbst.
+    /// Discards Windows' copy of the previous wallpaper - the file
+    /// TranscodedWallpaper and the reference to it (TranscodedImageCache). At
+    /// the next sign-in Windows then reads the wallpaper from the registry
+    /// anew, as for a fresh profile. Only needed if the tool runs under another
+    /// account: otherwise Windows renews the copy itself when setting it.
     /// </summary>
     public static void DiscardCache(RegistryKey wurzel, string? profil)
     {
@@ -255,29 +251,28 @@ public static class DesktopHintergrund
             using var k = wurzel.OpenSubKey(DesktopSchluessel, writable: true);
             k?.DeleteValue("TranscodedImageCache", throwOnMissingValue: false);
         }
-        catch { /* dann eben nur die Datei */ }
+        catch { /* then just the file */ }
         try
         {
             if (Hintergrund.Cache(profil) is { } datei && System.IO.File.Exists(datei))
                 System.IO.File.Delete(datei);
         }
-        catch { /* gesperrt - Windows vergleicht ohnehin den Pfad */ }
+        catch { /* locked - Windows compares the path anyway */ }
     }
 
     /// <summary>
-    /// Zeigt der Desktop, was <paramref name="soll"/> sagt? Dafuer wird das
-    /// Desktop-Fenster selbst abgebildet (auch unter anderen Fenstern).
-    /// Volltonfarbe: Ueberwiegt die Farbe? Bild: Ist der Desktop nicht schwarz?
+    /// Does the desktop show what <paramref name="soll"/> says? For this the
+    /// desktop window itself is captured (even beneath other windows).
+    /// Solid color: does the color dominate? Image: is the desktop not black?
     /// </summary>
-    /// <returns>null, wenn ja oder wenn es sich nicht pruefen laesst - sonst, was nicht stimmt.</returns>
+    /// <returns>null if so or if it cannot be checked - otherwise what is wrong.</returns>
     public static string? Verify(HintergrundStand soll, Func<string, string, string> tr)
     {
         var bild = DesktopScreenshot.CaptureDesktopWindow();
         if (bild is null) return null;
         var (meist, anteil) = DesktopScreenshot.MostCommonColor(bild);
-        // Bleibt das Abbild des Desktop-Fensters schwarz, kann das auch an
-        // PrintWindow liegen - dann zaehlt es nur, wenn auch der Bildschirm
-        // ueberwiegend schwarz ist.
+        // If the capture of the desktop window stays black, PrintWindow may be the
+        // cause - then it only counts if the screen is mostly black as well.
         bool schwarz = DesktopScreenshot.IsBlank(bild);
         if (soll.Bild is null)
         {
@@ -292,14 +287,14 @@ public static class DesktopHintergrund
             : null;
     }
 
-    /// <summary>Ist der ganze Bildschirm ueberwiegend schwarz (nicht nur das Abbild des Desktop-Fensters)?</summary>
+    /// <summary>Is the whole screen mostly black (not just the capture of the desktop window)?</summary>
     internal static bool IsScreenBlack()
     {
         try { return DesktopScreenshot.ColorShare(DesktopScreenshot.CaptureVirtualScreen().Bgra, (0, 0, 0), 10) >= 0.5; }
         catch { return false; }
     }
 
-    /// <summary>Was sich in der Registry gegenueber <paramref name="soll"/> geaendert hat - null, wenn nichts.</summary>
+    /// <summary>What changed in the registry compared to <paramref name="soll"/> - null if nothing.</summary>
     public static string? Difference(HintergrundStand soll, HintergrundStand jetzt, Func<string, string, string> tr)
     {
         if (!string.Equals(soll.Bild ?? "", jetzt.Bild ?? "", StringComparison.OrdinalIgnoreCase))
@@ -313,14 +308,14 @@ public static class DesktopHintergrund
         return null;
     }
 
-    /// <summary>Den Stand <paramref name="soll"/> noch einmal setzen.</summary>
+    /// <summary>Set the state <paramref name="soll"/> once more.</summary>
     public static HintergrundGesetzt Retry(RegistryKey wurzel, bool eigenerBenutzer, HintergrundStand soll, string? profil)
         => soll.Bild is { } b
             ? SetImage(wurzel, eigenerBenutzer, b, new HintergrundEinstellung { Darstellung = soll.Stil, Kacheln = soll.Kacheln }, profil)
             : SetColor(wurzel, eigenerBenutzer, Hintergrund.ReadColor(soll.Farbe) ?? ((byte)0, (byte)0, (byte)0), profil);
 
-    /// <summary>Was den Hintergrund von aussen festlegen oder wechseln kann - Richtlinien, Blickpunkt, Diashow.</summary>
-    /// <param name="mitWechsel">Auch Blickpunkt und Diashow nennen (die schaltet Windows beim Setzen normalerweise selbst ab).</param>
+    /// <summary>What can dictate or change the wallpaper from outside - policies, Spotlight, slideshow.</summary>
+    /// <param name="mitWechsel">Also name Spotlight and slideshow (Windows normally turns those off itself when the wallpaper is set).</param>
     public static List<string> Influences(RegistryKey wurzel, bool mitWechsel, Func<string, string, string> tr)
     {
         var l = new List<string>();
@@ -331,21 +326,21 @@ public static class DesktopHintergrund
                 l.Add(tr($"Eine Gruppenrichtlinie legt den Hintergrund fest: \"{w}\" - sie gewinnt bei jeder Anmeldung",
                          $"A group policy sets the background: \"{w}\" - it wins at every sign-in"));
         }
-        catch { /* weiter */ }
+        catch { /* carry on */ }
         try
         {
             using var k = wurzel.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\ActiveDesktop");
             if (k?.GetValue("NoChangingWallPaper") is int n && n != 0)
                 l.Add(tr("Eine Richtlinie verbietet das Ändern des Hintergrunds", "A policy prevents changing the background"));
         }
-        catch { /* weiter */ }
+        catch { /* carry on */ }
         try
         {
             using var k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP");
             if ((k?.GetValue("DesktopImagePath") ?? k?.GetValue("DesktopImageUrl")) is string p)
                 l.Add(tr($"Die Geräteverwaltung (Intune/MDM) legt das Desktopbild fest: {p}", $"Device management (Intune/MDM) sets the desktop image: {p}"));
         }
-        catch { /* weiter */ }
+        catch { /* carry on */ }
         if (!mitWechsel) return l;
         try
         {
@@ -353,16 +348,16 @@ public static class DesktopHintergrund
             if (k?.GetValue("EnabledState") is int e && e != 0)
                 l.Add(tr("Windows-Blickpunkt für den Desktop ist noch eingeschaltet", "Windows Spotlight for the desktop is still on"));
         }
-        catch { /* weiter */ }
+        catch { /* carry on */ }
         if (Schnittstelle.Slideshow() == true)
             l.Add(tr("Eine Diashow wechselt den Hintergrund", "A slideshow changes the background"));
         return l;
     }
 
     /// <summary>
-    /// Die aktuelle Design-Datei des Benutzers (CurrentTheme), ausgeschrieben -
-    /// %LOCALAPPDATA% &amp; Co. bezogen auf SEIN Profil, nicht das des Prozesses.
-    /// null, wenn keine eingetragen ist.
+    /// The user's current theme file (CurrentTheme), expanded -
+    /// %LOCALAPPDATA% etc. relative to THE USER's profile, not the process's.
+    /// null if none is registered.
     /// </summary>
     public static string? ThemeFilePath(RegistryKey wurzel, string? profil)
     {
@@ -390,10 +385,10 @@ public static class DesktopHintergrund
         => eigenerBenutzer ? SPIF_UPDATEINIFILE | SPIF_SENDCHANGE : SPIF_SENDCHANGE;
 
     /// <summary>
-    /// BackgroundType, damit Windows und die Einstellungen-App die richtige Art
-    /// kennen: 0 Bild, 1 Volltonfarbe. Auch vor dem Anwenden einer
-    /// Design-Datei: Steht "Volltonfarbe" darin, uebernimmt Windows aus der
-    /// Datei nur die Farbe, nicht das Bild (unter Windows 11 geprueft).
+    /// BackgroundType, so Windows and the Settings app know the right kind:
+    /// 0 image, 1 solid color. Also before applying a theme file: if it says
+    /// "solid color", Windows takes only the color from the file, not the image
+    /// (verified on Windows 11).
     /// </summary>
     public static void WriteStyle(RegistryKey wurzel, int typ) => WriteKind(wurzel, typ);
 
@@ -404,10 +399,10 @@ public static class DesktopHintergrund
             using var k = wurzel.CreateSubKey(WallpapersSchluessel);
             k.SetValue("BackgroundType", typ, RegistryValueKind.DWord);
         }
-        catch { /* aelteres Windows */ }
+        catch { /* older Windows */ }
     }
 
-    /// <summary>Die Farbe der laufenden Sitzung - gilt sofort, aber nur bis zur Abmeldung.</summary>
+    /// <summary>The color of the running session - takes effect at once, but only until sign-out.</summary>
     private static bool SessionColor((byte R, byte G, byte B) farbe)
     {
         try { return SetSysColors(1, new[] { COLOR_DESKTOP }, new[] { Hintergrund.ColorRef(farbe) }); }
@@ -427,14 +422,14 @@ public static class DesktopHintergrund
                 if (d?.GetValue("Wallpaper") is string b) bilder.Add(b);
             }
         }
-        catch { /* ohne virtuelle Desktops */ }
+        catch { /* no virtual desktops */ }
         return bilder;
     }
 
     /// <summary>
-    /// Virtuelle Desktops mit eigenem Hintergrund bekommen den neuen - bei
-    /// einer Volltonfarbe (bild null) faellt ihr eigener weg, sie zeigen dann
-    /// den allgemeinen.
+    /// Virtual desktops with a wallpaper of their own get the new one - for a
+    /// solid color (image null) their own one is removed, so they show the
+    /// general one.
     /// </summary>
     private static int AlignDesktopImages(RegistryKey wurzel, string? bild)
     {
@@ -453,23 +448,22 @@ public static class DesktopHintergrund
                     else d.SetValue("Wallpaper", bild);
                     n++;
                 }
-                catch { /* naechster */ }
+                catch { /* next one */ }
             }
         }
-        catch { /* ohne virtuelle Desktops */ }
+        catch { /* no virtual desktops */ }
         return n;
     }
 
     // ------------------------------------------------------------ IDesktopWallpaper
 
     /// <summary>
-    /// Die Schnittstelle, ueber die auch die Einstellungen-App den Hintergrund
-    /// setzt (Explorer). Wirkt fuer die laufende Sitzung und den Benutzer,
-    /// unter dem das Tool laeuft.
+    /// The interface the Settings app uses to set the wallpaper as well
+    /// (Explorer). Affects the running session and the user the tool runs as.
     /// </summary>
     public static class Schnittstelle
     {
-        /// <summary>Zustand laut Explorer, als Text - fuer Protokoll und Pruefung; null, wenn nicht erreichbar.</summary>
+        /// <summary>State according to Explorer, as text - for the log and the tests; null if not reachable.</summary>
         public static string? Snapshot()
         {
             try
@@ -488,14 +482,14 @@ public static class DesktopHintergrund
             catch { return null; }
         }
 
-        /// <summary>Laeuft eine Diashow? null, wenn nicht erreichbar.</summary>
+        /// <summary>Is a slideshow running? null if not reachable.</summary>
         public static bool? Slideshow()
         {
             try { return OnSta(dw => (dw.GetStatus() & 2) != 0); }   // DSS_SLIDESHOW
             catch { return null; }
         }
 
-        /// <summary>Ein Bild fuer alle Monitore, samt Darstellung.</summary>
+        /// <summary>One image for all monitors, including fit mode.</summary>
         public static void SetImage(string pfad, HintergrundEinstellung? e)
             => OnSta(dw =>
             {
@@ -505,7 +499,7 @@ public static class DesktopHintergrund
                 return true;
             });
 
-        /// <summary>Volltonfarbe: Farbe setzen, Bild leeren (wie die Einstellungen-App).</summary>
+        /// <summary>Solid color: set the color, clear the image (like the Settings app).</summary>
         public static void SetColor((byte R, byte G, byte B) farbe, bool abschalten)
             => OnSta(dw =>
             {
@@ -515,20 +509,20 @@ public static class DesktopHintergrund
                 return true;
             });
 
-        /// <summary>Hintergrundbild wieder einschalten (nach <see cref="SetColor"/> mit abschalten).</summary>
+        /// <summary>Turns the wallpaper image back on (after <see cref="SetColor"/> turned it off).</summary>
         public static void Enable() => OnSta(dw => { dw.Enable(true); return true; });
 
         /// <summary>WallpaperStyle/TileWallpaper -> DESKTOP_WALLPAPER_POSITION.</summary>
         public static int? Position(HintergrundEinstellung? e)
         {
-            if (e?.Kacheln == "1") return 1;               // Kacheln
+            if (e?.Kacheln == "1") return 1;               // Tile
             return e?.Darstellung switch
             {
-                "0" => 0,   // Zentriert
-                "2" => 2,   // Strecken
-                "6" => 3,   // Anpassen
-                "10" => 4,  // Fuellen
-                "22" => 5,  // Strecken ueber Bildschirme
+                "0" => 0,   // Center
+                "2" => 2,   // Stretch
+                "6" => 3,   // Fit
+                "10" => 4,  // Fill
+                "22" => 5,  // Span across monitors
                 _ => null,
             };
         }

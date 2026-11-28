@@ -8,11 +8,11 @@ using WindowsDaSiTool.Services;
 namespace DaSiTests;
 
 /// <summary>
-/// Angeheftete Verknuepfungen vom alten PC, deren Programm hier woanders liegt
-/// oder fehlt. Anlass: Auf dem alten PC zeigte Firefox.lnk auf
-/// "C:\Program Files (x86)\Mozilla Firefox", winget installierte auf dem neuen
-/// das 64-Bit-Firefox nach "C:\Program Files\Mozilla Firefox"; dazu Programme,
-/// die erst spaeter von Hand installiert werden.
+/// Pinned shortcuts from the old PC whose program is somewhere else here or
+/// missing. Reason: on the old PC, Firefox.lnk pointed to
+/// "C:\Program Files (x86)\Mozilla Firefox", on the new one winget installed
+/// the 64-bit Firefox to "C:\Program Files\Mozilla Firefox"; plus programs
+/// that only get installed by hand later.
 /// </summary>
 internal static partial class Program
 {
@@ -41,7 +41,7 @@ internal static partial class Program
         Check("leeres Ziel (Shell-Objekt)", NewTarget("") is null);
     }
 
-    /// <summary>Taskband\Favorites eines Windows Server 2025 (CI-Laeufer): Datei-Explorer und Edge angeheftet.</summary>
+    /// <summary>Taskband\Favorites of a Windows Server 2025 (CI runner): File Explorer and Edge pinned.</summary>
     private const string FavoritesServer =
         "AKQBAAA6AB+AyCc0HxBcEEKqAy7kUofWaCYAAQAmAO++EgAAAPFMLqUPfd0BP+Hwqw993QFYu/KrD33dARQAVgAxAAAAAAB5XXKYEQBUYXNrQmFyAEAACQAEAO++eV1ymHldcpguAAAAy3oEAAAABAAAAAAAAAAAAAAAAAAAABNmVABUAGEAcwBrAEIAYQByAAAAFgASATIAlwEAAIFYDjggAEZJTEVFWH4xLkxOSwAAfAAJAAQA7755XXKYeV1ymC4AAADMegQAAAAEAAAAAAAAAAAAUgAAAAAAwB/6AEYAaQBsAGUAIABFAHgAcABsAG8AcgBlAHIALgBsAG4AawAAAEAAcwBoAGUAbABsADMAMgAuAGQAbABsACwALQAyADIAMAA2ADcAAAAcABIAAAArAO++CG3/qw993QEcAEIAAAAdAO++AgBNAGkAYwByAG8AcwBvAGYAdAAuAFcAaQBuAGQAbwB3AHMALgBFAHgAcABsAG8AcgBlAHIAAAAcACYAAAAeAO++AgBTAHkAcwB0AGUAbQBQAGkAbgBuAGUAZAAAABwAAAAAVgEAADoAH4DIJzQfEFwQQqoDLuRSh9ZoJgABACYA774SAAAA8UwupQ993QE/4fCrD33dAVi78qsPfd0BFABWADEAAAAAAHldcpgRAFRhc2tCYXIAQAAJAAQA7755XXKYeV1ymC4AAADLegQAAAAEAAAAAAAAAAAAAAAAAAAAX0hKAFQAYQBzAGsAQgBhAHIAAAAWAMQAMgDZCQAAcV3PAiAATUlDUk9TfjEuTE5LAABWAAkABADvvnldcph5XXKYLgAAANF6BAAAAAQAAAAAAAAAAAAAAAAAAABm6AcBTQBpAGMAcgBvAHMAbwBmAHQAIABFAGQAZwBlAC4AbABuAGsAAAAcABIAAAArAO++/QELrA993QEcABoAAAAdAO++AgBNAFMARQBkAGcAZQAAABwAJgAAAB4A774CAFMAeQBzAHQAZQBtAFAAaQBuAG4AZQBkAAAAHAAAAP8=";
 
@@ -70,7 +70,7 @@ internal static partial class Program
             && Taskleiste.Favorites(new[] { new DesignEintrag { Name = "Favorites", Typ = "Binary", Wert = "kein base64!" } }) is null);
     }
 
-    /// <summary>Ein Favorites-Wert mit je einem Block BEEF001D (App-Kennung) pro Kennung - wie Windows ihn schreibt.</summary>
+    /// <summary>A Favorites value with one BEEF001D block (app ID) per ID - the way Windows writes it.</summary>
     private static byte[] FavoritesWith(params string[] kennungen)
     {
         var b = new List<byte> { 0x00 };
@@ -119,7 +119,7 @@ internal static partial class Program
             && NewId("{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\SnippingTool.exe") is null && NewId("{kurz}\\x.exe") is null);
     }
 
-    /// <summary>Mit echten Verknuepfungen - nur unter Windows (IShellLink).</summary>
+    /// <summary>With real shortcuts - Windows only (IShellLink).</summary>
     [SupportedOSPlatform("windows")]
     private static void ShortcutsRealCheck(string root)
     {
@@ -138,7 +138,7 @@ internal static partial class Program
             var ordner = Path.Combine(root, "verknuepfungen");
             Directory.CreateDirectory(ordner);
             var altesZiel = Path.Combine(altOrdner, "fuchs.exe");
-            // Wie Firefox: die App-Kennung ist der Schluessel des Installationsordners.
+            // Like Firefox: the app ID is the hash of the installation folder.
             Verknuepfung.Create(Path.Combine(ordner, "Fuchs.lnk"), altesZiel, MozillaProfile.InstallHash(altOrdner));
             Verknuepfung.Create(Path.Combine(ordner, "Weg.lnk"), @"C:\DaSiTest-gibt-es-nicht\weg.exe");
             Verknuepfung.Create(Path.Combine(ordner, "Da.lnk"), Path.Combine(Environment.SystemDirectory, "cmd.exe"), "DaSi.Test.Da");
@@ -169,8 +169,8 @@ internal static partial class Program
                 && log.Has("[WARNUNG] Taskleiste: Diese angehefteten Programme gibt es auf diesem PC (noch) nicht: Weg (C:\\DaSiTest-gibt-es-nicht\\weg.exe)")
                 && !log.Has("Da ("), log.Text);
 
-            // App-Kennungen in Favorites: 32-Bit-Firefox -> das Firefox hier,
-            // Programm aus "Program Files (x86)" -> liegt hier in "Program Files".
+            // App IDs in Favorites: 32-bit Firefox -> the Firefox here, a program from
+            // "Program Files (x86)" -> is in "Program Files" here.
             var kennungFuchs = Taskleiste.OrdnerProgramme86 + @"\DaSiTest-Fuchs\fuchs.exe";
             var fav = FavoritesWith("E7CF176E110C211B", kennungFuchs, "Microsoft.Windows.Explorer", "Hersteller.Programm.Client.1");
             var band = new List<DesignEintrag>

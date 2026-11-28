@@ -9,54 +9,52 @@ using System.Threading.Tasks;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Laesst Windows selbst ein Design anwenden - wie ein Doppelklick auf die
-/// .theme-Datei.
+/// Lets Windows apply a theme itself - like double-clicking the .theme file.
 ///
-/// Warum nicht nur Registry, Custom.theme und SystemParametersInfo bzw.
-/// IDesktopWallpaper: Der Designdienst von Windows haelt das aktuelle Design
-/// im Speicher und schreibt es beim Neustart des Explorers und beim Abmelden
-/// zurueck - in die Registry und in Custom.theme. Ein Anwender sah die
-/// wiederhergestellte Volltonfarbe danach jedes Mal wieder schwarz, obwohl
-/// das Tool genau dieselben Werte geschrieben hatte wie die Einstellungen-App
-/// (per Vergleich der Registry vorher/nachher belegt). Die Einstellungen-App
-/// aendert das Design im Dienst, das Tool nur die Dateien. Dasselbe hat
-/// CLInstall im Betrieb gelernt: Dauerhaft wirkt ein Design nur, wenn Windows
-/// es selbst anwendet.
+/// Why not just the registry, Custom.theme and SystemParametersInfo or
+/// IDesktopWallpaper: Windows' theme service keeps the current theme in
+/// memory and writes it back when Explorer restarts and at sign-out - into
+/// the registry and into Custom.theme. One user saw the restored solid
+/// color turn black again every time, although the tool had written exactly
+/// the same values as the Settings app (proven by comparing the registry
+/// before and after). The Settings app changes the theme inside the
+/// service; the tool only changed the files. CLInstall learned the same in
+/// practice: a theme only sticks if Windows applies it itself.
 ///
-/// Und zwar ALS das Konto am Bildschirm: Das Tool laeuft erhoeht, womoeglich
-/// unter einem anderen Konto (Administratorschutz von Windows 11:
-/// "ADMIN_Anwender", oder fremde Anmeldedaten bei der UAC-Abfrage). Wie in
-/// CLInstall startet deshalb eine kurzlebige geplante Aufgabe fuer den
-/// angemeldeten Benutzer explorer.exe mit der Design-Datei - ohne Kennwort,
-/// weil er angemeldet ist, und ohne Erhoehung.
+/// And it has to happen AS the account at the screen: the tool runs
+/// elevated, possibly under another account (Windows 11 administrator
+/// protection: "ADMIN_Anwender", or other credentials in the UAC prompt).
+/// As in CLInstall, a short-lived scheduled task for the signed-in user
+/// therefore starts explorer.exe with the theme file - without a password,
+/// because the user is signed in, and without elevation.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static class WindowsDesign
 {
-    /// <summary>So beginnen die Dateien unter ...\Themes im Profil.</summary>
+    /// <summary>The names of the files under ...\Themes in the profile start like this.</summary>
     public const string DateiPraefix = "DaSi-Wiederherstellung";
 
     /// <summary>
-    /// Ein neuer Name fuer jedes Anwenden: Eine Design-Datei, die schon die
-    /// aktuelle ist, wendet Windows nicht noch einmal an (unter Windows 11
-    /// geprueft) - ein zweites Wiederherstellen haette sonst nichts bewirkt.
+    /// A new name for every apply: Windows does not apply a theme file again
+    /// that already is the current one (verified on Windows 11) - a second
+    /// restore would otherwise have had no effect.
     /// </summary>
     public static string NewFileName() => $"{DateiPraefix}-{DateTime.Now:yyyyMMdd-HHmmss-fff}.theme";
 
-    /// <summary>Was <see cref="ApplyAndWait"/> ergab.</summary>
-    /// <param name="Gestartet">Liess sich das Anwenden starten?</param>
-    /// <param name="Uebernommen">Hat Windows es innerhalb der Wartezeit uebernommen?</param>
+    /// <summary>What <see cref="ApplyAndWait"/> resulted in.</summary>
+    /// <param name="Gestartet">Could applying be started?</param>
+    /// <param name="Uebernommen">Did Windows take it over within the waiting time?</param>
     public sealed record Ergebnis(bool Gestartet, bool Uebernommen, string Datei, string? Fehler);
 
     /// <summary>
-    /// Schreibt <paramref name="inhalt"/> als neue Design-Datei in
-    /// <paramref name="ordner"/>, laesst Windows sie anwenden und wartet, bis
-    /// <paramref name="uebernommen"/> (bekommt den Pfad der neuen Datei) zutrifft
-    /// (hoechstens <paramref name="hoechstens"/>).
-    /// Schliesst das dabei geoeffnete Einstellungen-Fenster. Ist die neue Datei
-    /// danach das aktuelle Design (<paramref name="istAktuell"/>), werden
-    /// fruehere DaSi-Designs geloescht; sonst die neue Datei. Das aktuelle
-    /// Design wird nie geloescht.
+    /// Writes <paramref name="inhalt"/> as a new theme file into
+    /// <paramref name="ordner"/>, lets Windows apply it and waits until
+    /// <paramref name="uebernommen"/> (given the new file's path) is true (at
+    /// most <paramref name="hoechstens"/>).
+    /// Closes the Settings window that opens along the way. If the new file is
+    /// the current theme afterwards (<paramref name="istAktuell"/>), earlier
+    /// DaSi themes are deleted; otherwise the new file is. The current theme is
+    /// never deleted.
     /// </summary>
     public static async Task<Ergebnis> ApplyAndWait(string ordner, string inhalt, string? benutzer,
                                                          Func<string, bool> uebernommen, Func<string, bool> istAktuell,
@@ -80,7 +78,7 @@ public static class WindowsDesign
         return new Ergebnis(ok, da, datei, fehler);
     }
 
-    /// <summary>Fruehere DaSi-Designs loeschen - ausser <paramref name="behalten"/>; <paramref name="verwerfen"/> in jedem Fall.</summary>
+    /// <summary>Delete earlier DaSi themes - except <paramref name="behalten"/>; <paramref name="verwerfen"/> in any case.</summary>
     private static void CleanUp(string ordner, string? behalten, string? verwerfen)
     {
         try
@@ -89,17 +87,17 @@ public static class WindowsDesign
             {
                 bool weg = string.Equals(f, verwerfen, StringComparison.OrdinalIgnoreCase)
                            || (behalten is not null && !string.Equals(f, behalten, StringComparison.OrdinalIgnoreCase));
-                if (weg) try { File.Delete(f); } catch { /* naechste */ }
+                if (weg) try { File.Delete(f); } catch { /* next one */ }
             }
         }
-        catch { /* bleibt eben liegen */ }
+        catch { /* then it stays */ }
     }
 
     /// <summary>
-    /// Wendet die Design-Datei an. Mit bekanntem Benutzer ("DOMAENE\Name")
-    /// ueber eine geplante Aufgabe in seiner Sitzung, sonst direkt.
+    /// Applies the theme file. With a known user ("DOMAIN\name") through a
+    /// scheduled task in that user's session, otherwise directly.
     /// </summary>
-    /// <returns>Ob es sich starten liess, und was dabei schiefging.</returns>
+    /// <returns>Whether it could be started, and what went wrong.</returns>
     public static async Task<(bool Ok, string? Fehler)> Apply(string datei, string? benutzer, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(benutzer))
@@ -146,7 +144,7 @@ public static class WindowsDesign
             try { await p.WaitForExitAsync(zeit.Token); }
             catch (OperationCanceledException)
             {
-                try { p.Kill(true); } catch { /* weg */ }
+                try { p.Kill(true); } catch { /* gone */ }
                 return (false, "Zeitlimit überschritten");
             }
             var text = (await aus) + (await err);
@@ -158,23 +156,22 @@ public static class WindowsDesign
     }
 
     /// <summary>
-    /// Ein Doppelklick auf eine Design-Datei oeffnet ausserdem die
-    /// Einstellungen - das Fenster, wenn es seit <paramref name="seit"/>
-    /// aufging, wieder schliessen.
+    /// Double-clicking a theme file also opens Settings - close that window
+    /// again if it opened since <paramref name="seit"/>.
     /// </summary>
     public static void CloseSettings(DateTime seit)
     {
         foreach (var p in Process.GetProcessesByName("SystemSettings"))
         {
             try { if (p.StartTime >= seit.AddSeconds(-1)) p.Kill(); }
-            catch { /* naechster */ }
+            catch { /* next one */ }
             finally { p.Dispose(); }
         }
     }
 
     private static string Quote(string s) => "\"" + s + "\"";
 
-    /// <summary>PowerShell-Zeichenkette in einfachen Anfuehrungszeichen.</summary>
+    /// <summary>A PowerShell string in single quotes.</summary>
     private static string PsLiteral(string s) => "'" + s.Replace("'", "''") + "'";
 
     private static string? FirstLine(string text)

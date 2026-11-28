@@ -1,25 +1,25 @@
 name: Bauen und prüfen
 
-# Läuft bei jedem Push und jedem Pull Request.
-# Zweck: Übersetzt der Quelltext noch, und laufen die Prüfungen durch?
-# Veröffentlicht wird hier NICHTS - das macht release.yml beim Setzen eines
-# Etiketts oder per Knopfdruck.
+# Runs on every push and every pull request.
+# Purpose: does the source still compile, and do the tests pass?
+# NOTHING is published here - release.yml does that when a tag is pushed
+# or at the push of a button.
 
 on:
   push:
-    # update.json schreibt der Veröffentlichungs-Workflow selbst fort - dafür
-    # muss hier nicht erneut gebaut werden.
+    # The release workflow updates update.json itself - no need to build again
+    # for that.
     paths-ignore: [ 'update.json', 'docs/**', '**/*.md' ]
   pull_request:
   workflow_dispatch:
 
-# Zeitlimits: Ohne Angabe darf ein Job bis zu 6 Stunden laufen. Bleibt ein
-# Läufer hängen (schon vorgekommen: der Schritt stand, selbst der Abbruch kam
-# nicht an), blockiert er sonst einen halben Tag lang den Status des Zweigs.
-# Die Grenzen liegen weit über der üblichen Dauer, damit ein langsamer
-# Paketabruf nicht schon als Fehler gilt.
+# Time limits: without one, a job may run for up to 6 hours. If a runner
+# hangs (it has happened: the step stood still, not even the cancel got
+# through), it would otherwise block the branch status for half a day.
+# The limits are far above the usual duration, so a slow package download
+# does not count as an error yet.
 
-# Das Programm läuft nur unter Windows - deshalb wird auch nur dort geprüft.
+# The program only runs on Windows - so it is only tested there.
 jobs:
   uebersetzen:
     runs-on: windows-latest
@@ -29,15 +29,15 @@ jobs:
 
       - uses: ./.github/actions/dotnet-lts
 
-      # coverlet misst, welche Zeilen die Pruefungen ausfuehren (dotnet-tools.json).
+      # coverlet measures which lines the tests execute (dotnet-tools.json).
       - name: Werkzeuge holen
         run: dotnet tool restore
 
-      # Alle Prüfungen der Dienste - auch die, die echtes Windows brauchen:
-      # Das Austauschskript der Selbstaktualisierung wird wirklich von cmd.exe
-      # ausgeführt (mit Umlauten im Pfad), robocopy, netsh, PrintBrm,
-      # Explorer-Desktop, Taskleiste und Hintergrund werden echt angesprochen,
-      # winget durch eine Attrappe ersetzt (tests/WingetAttrappe).
+      # All service tests - including those that need real Windows: the
+      # self-update's swap script is really run by cmd.exe (with umlauts in the
+      # path), robocopy, netsh, PrintBrm, the Explorer desktop, the taskbar and
+      # the wallpaper are used for real, winget is replaced by a fake
+      # (tests/WingetAttrappe).
       - name: Prüfungen der Dienste
         shell: pwsh
         run: |
@@ -47,9 +47,9 @@ jobs:
           dotnet coverlet "$bin/DaSiTests.dll" --target "$bin/DaSiTests.exe" `
             --include-test-assembly --format cobertura --output abdeckung/dienste.xml
 
-      # Die Oberflaeche: das echte Hauptfenster ohne Bildschirm (Avalonia.Headless),
-      # bedient mit Mausklicks. Mit Debug-Symbolen gebaut - nur fuer die Messung,
-      # die ausgelieferte EXE (release.yml) bleibt ohne.
+      # The UI: the real main window without a screen (Avalonia.Headless),
+      # operated with mouse clicks. Built with debug symbols - only for the
+      # measurement; the shipped EXE (release.yml) stays without them.
       - name: Prüfungen der Oberfläche
         if: success() || failure()
         shell: pwsh
@@ -60,8 +60,8 @@ jobs:
           dotnet coverlet "$bin/DaSiGuiTests.dll" --target "$bin/DaSiGuiTests.exe" `
             --include "[WindowsDaSiTool]*" --format cobertura --output abdeckung/gui.xml
 
-      # Jede Funktion des Programms muss von einer Pruefung ausgefuehrt werden -
-      # Ausnahmen nur mit Begruendung in tests/abdeckung-ausnahmen.txt.
+      # Every function of the program must be executed by a test - exceptions
+      # only with a reason in tests/abdeckung-ausnahmen.txt.
       - name: Jede Funktion geprüft?
         if: always()
         run: python tools/abdeckung.py abdeckung/dienste.xml abdeckung/gui.xml --pflicht
@@ -73,9 +73,9 @@ jobs:
           path: abdeckung/
           retention-days: 7
 
-      # Bewusst OHNE --warnaserror: Eine neue Avalonia-Fassung bringt gelegentlich
-      # eine zusätzliche Warnung mit. Das soll auffallen, aber nicht den Zweig
-      # blockieren. Warnungen stehen im Protokoll dieses Schrittes.
+      # Deliberately WITHOUT --warnaserror: a new Avalonia version occasionally
+      # brings an extra warning. That should be noticed, but not block the
+      # branch. Warnings are in the log of this step.
       - name: Kompilieren
         shell: pwsh
         run: |
@@ -83,8 +83,8 @@ jobs:
           if (-not $csproj) { throw 'WindowsDaSiTool.csproj nicht gefunden.' }
           dotnet build $csproj.FullName -c Release
 
-      # Nur zum Ausprobieren eines Zwischenstandes - die ausgelieferte EXE
-      # entsteht in release.yml.
+      # Only for trying out an interim state - the shipped EXE is built in
+      # release.yml.
       - name: Probeweise veröffentlichen
         shell: pwsh
         run: |
@@ -102,12 +102,12 @@ jobs:
           path: publish/WindowsDaSiTool.exe
           retention-days: 3
 
-  # Der Hintergrund verhaelt sich unter Windows 11 anders als unter Windows
-  # Server (windows-latest): Dort ueberlebt eine Volltonfarbe den Neustart des
-  # Explorers, bei einem Anwender unter Windows 11 nicht. Deshalb dieselbe
-  # echte Pruefung auf einem Windows-11-Laeufer (ARM64, fuer oeffentliche
-  # Repositories frei) - nur der Hintergrund-Teil (DASI_NUR=hintergrund).
-  # Vorerst zur Auskunft: Ein Fehlschlag hier haelt den Zweig nicht auf.
+  # The wallpaper behaves differently on Windows 11 than on Windows Server
+  # (windows-latest): there a solid color survives the Explorer restart, for
+  # one user on Windows 11 it did not. So the same real test runs on a
+  # Windows 11 runner (ARM64, free for public repositories) - only the
+  # wallpaper part (DASI_NUR=hintergrund).
+  # For information for now: a failure here does not block the branch.
   hintergrund-windows11:
     runs-on: windows-11-arm
     timeout-minutes: 20
@@ -122,10 +122,10 @@ jobs:
           DASI_NUR: hintergrund
         run: dotnet run --project tests/DaSiTests -c Release
 
-  # Versuch: Was macht der Explorer mit zurueckgeschriebenen Taskleisten-
-  # Symbolen? Auf dem Server-Laeufer ist etwas angeheftet und die Taskleiste
-  # zu sehen (auf dem Windows-11-Laeufer liegt der Sperrbildschirm davor).
-  # Zur Auskunft, haelt den Zweig nicht auf.
+  # Trial: what does Explorer do with restored taskbar icons? On the server
+  # runner something is pinned and the taskbar is visible (on the Windows 11
+  # runner the lock screen is in front of it).
+  # For information; does not block the branch.
   taskleiste-server:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -140,10 +140,10 @@ jobs:
           DASI_NUR: taskleiste
         run: dotnet run --project tests/DaSiTests -c Release
 
-  # Umzug mit echtem Thunderbird: auf dem "alten PC" die 32-Bit-Fassung,
-  # dann deinstalliert und die 64-Bit-Fassung installiert ("neuer PC").
-  # Dazwischen sichert bzw. stellt das Tool wieder her - samt Konto mit
-  # Mailordner ausserhalb des Profils (tests/DaSiTests/ThunderbirdEcht.cs).
+  # Migration with a real Thunderbird: the 32-bit version on the "old PC",
+  # then uninstalled and the 64-bit version installed ("new PC"). In between
+  # the tool backs up and restores - including an account with a mail folder
+  # outside the profile (tests/DaSiTests/ThunderbirdEcht.cs).
   thunderbird-echt:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -181,9 +181,9 @@ jobs:
           DASI_SICHERUNG: ${{ runner.temp }}\tb-sicherung
         run: dotnet run --project tests/DaSiTests -c Release
 
-  # Umzug mit echtem Firefox: auf dem "alten PC" Firefox ESR 32 Bit, auf dem
-  # "neuen" die aktuelle 64-Bit-Fassung (auf dem Laeufer installiert). ESR wird
-  # dazwischen deinstalliert (tests/DaSiTests/FirefoxUmzugEcht.cs).
+  # Migration with a real Firefox: Firefox ESR 32 bit on the "old PC", the
+  # current 64-bit release on the "new" one (installed on the runner). ESR is
+  # uninstalled in between (tests/DaSiTests/FirefoxUmzugEcht.cs).
   firefox-echt:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -194,8 +194,8 @@ jobs:
 
       - name: Alter PC - Firefox ESR 32 Bit installieren
         shell: pwsh
-        # Auf dem Laeufer ist Firefox 64 Bit schon installiert. Ohne Zielangabe legt
-        # der ESR-Installer sich nicht nach "Program Files (x86)" - daher die INI.
+        # Firefox 64 bit is already installed on the runner. Without a target, the
+        # ESR installer does not install into "Program Files (x86)" - hence the INI.
         run: |
           $ziel = 'C:\Program Files (x86)\Mozilla Firefox'
           $exe = "$env:RUNNER_TEMP\fxesr32.exe"

@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Eine Attrappe von winget fuer die Pruefungen: antwortet wie winget, so wie
-    es die Datei szenario.txt im Ordner aus DASI_WINGET_ATTRAPPE vorgibt, und
-    schreibt jeden Aufruf nach aufrufe.txt. Damit laeuft jeder Weg von
-    WingetService (Export, Import, Reparatur, Nachinstallation), ohne dass auf
-    dem Pruefrechner etwas installiert wird.
+    A fake winget for the tests: answers like winget, as dictated by the file
+    szenario.txt in the folder from DASI_WINGET_ATTRAPPE, and writes every
+    call to aufrufe.txt. That way every path of WingetService (export,
+    import, repair, reinstall) runs without installing anything on the test
+    machine.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

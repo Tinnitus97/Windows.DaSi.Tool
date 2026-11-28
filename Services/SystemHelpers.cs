@@ -14,10 +14,10 @@ public static class SystemHelpers
     private static System.Text.Encoding? _consoleEncoding;
 
     /// <summary>
-    /// Liefert die Kodierung, in der Windows-Konsolenprogramme (robocopy,
-    /// PrintBrm) ihre Ausgabe schreiben. Das ist die OEM-Codepage des Systems -
-    /// auf deutschem Windows 850, kann aber je nach Region abweichen (z.B. 437,
-    /// 852, 866). Wird dynamisch ermittelt, mit 850 als Rueckfallwert.
+    /// Returns the encoding Windows console programs (robocopy, PrintBrm) write
+    /// their output in. That is the system's OEM code page - 850 on German
+    /// Windows, but it can differ by region (e.g. 437, 852, 866). Determined at
+    /// runtime, with 850 as the fallback.
     /// </summary>
     public static System.Text.Encoding ConsoleEncoding
     {
@@ -39,13 +39,13 @@ public static class SystemHelpers
     }
 
     /// <summary>
-    /// Verzeichnis, in dem die EXE liegt. Dorthin gehoert eine abweichende
-    /// Update-Adresse (Update-Url.txt), und dort wird die EXE beim
-    /// Selbstaustausch ersetzt.
+    /// Folder that holds the EXE. A custom update address (Update-Url.txt)
+    /// belongs there, and that is where the EXE is replaced during a
+    /// self-update.
     ///
-    /// Funktioniert auch bei einer SingleFile-EXE: Dort zeigt BaseDirectory in
-    /// das Entpackverzeichnis unter %TEMP%, ProcessPath dagegen auf die EXE
-    /// selbst.
+    /// Works for a single-file EXE as well: there BaseDirectory points to the
+    /// extraction folder under %TEMP%, whereas ProcessPath points to the EXE
+    /// itself.
     /// </summary>
     public static string GetApplicationDirectory()
     {
@@ -58,21 +58,21 @@ public static class SystemHelpers
                 if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) return dir;
             }
         }
-        catch { /* Rueckfall unten */ }
+        catch { /* fallback below */ }
 
         try
         {
             var baseDir = AppContext.BaseDirectory?.TrimEnd(Path.DirectorySeparatorChar);
             if (!string.IsNullOrEmpty(baseDir) && Directory.Exists(baseDir)) return baseDir;
         }
-        catch { /* Rueckfall unten */ }
+        catch { /* fallback below */ }
 
         return Directory.GetCurrentDirectory();
     }
 
     /// <summary>
-    /// Liest aus der Registry, ob Windows im hellen Modus laeuft.
-    /// true = heller Modus, false = dunkler Modus (Fallback bei Unklarheit: dunkel).
+    /// Reads from the registry whether Windows runs in light mode.
+    /// true = light mode, false = dark mode (fallback when unclear: dark).
     /// </summary>
     public static bool IsWindowsLightTheme()
     {
@@ -80,16 +80,16 @@ public static class SystemHelpers
         {
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
                 @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-            // AppsUseLightTheme: 1 = hell, 0 = dunkel
+            // AppsUseLightTheme: 1 = light, 0 = dark
             if (key?.GetValue("AppsUseLightTheme") is int v) return v != 0;
         }
-        catch { /* Registry nicht lesbar */ }
-        return false; // Fallback: dunkel
+        catch { /* registry not readable */ }
+        return false; // Fallback: dark
     }
 
     /// <summary>
-    /// Ermittelt die Windows-Anzeigesprache. Gibt "de" oder "en" zurueck;
-    /// bei allem anderen oder Fehlern Fallback "de".
+    /// Determines the Windows display language. Returns "de" or "en"; "de" for
+    /// anything else or on errors.
     /// </summary>
     public static string GetWindowsLanguage()
     {
@@ -101,19 +101,19 @@ public static class SystemHelpers
             if (two == "de") return "de";
         }
         catch { /* ignore */ }
-        return "de"; // Fallback: Deutsch
+        return "de"; // Fallback: German
     }
 
     /// <summary>
-    /// Listet die echten Benutzerprofile unter C:\Users auf (ohne System-
-    /// und Dienstprofile). Rueckgabe sind vollstaendige Pfade, alphabetisch.
+    /// Lists the real user profiles under C:\Users (without system and service
+    /// profiles). Returns full paths, sorted alphabetically.
     /// </summary>
     public static List<string> GetUserProfiles()
     {
         var result = new List<string>();
         try
         {
-            // Basisverzeichnis der Profile ermitteln (i.d.R. C:\Users)
+            // Determine the profiles' base folder (usually C:\Users)
             var current = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             var usersRoot = Path.GetDirectoryName(current);
             if (string.IsNullOrEmpty(usersRoot) || !Directory.Exists(usersRoot))
@@ -131,21 +131,21 @@ public static class SystemHelpers
                 var name = Path.GetFileName(dir);
                 if (systemProfiles.Contains(name)) continue;
                 if (name.StartsWith(".")) continue;
-                // Nur echte Profile: muessen ein NTUSER.DAT enthalten
+                // Only real profiles: they must contain an NTUSER.DAT
                 try { if (!File.Exists(Path.Combine(dir, "NTUSER.DAT"))) continue; } catch { continue; }
                 result.Add(dir);
             }
         }
-        catch { /* Zugriff verweigert o.ae. */ }
+        catch { /* access denied or the like */ }
         return result.OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private struct SYSTEM_POWER_STATUS
     {
-        public byte ACLineStatus;        // 0 = Akku, 1 = Netz, 255 = unbekannt
-        public byte BatteryFlag;         // 128 = kein Systemakku (Desktop)
-        public byte BatteryLifePercent;  // 0-100, 255 = unbekannt
+        public byte ACLineStatus;        // 0 = battery, 1 = mains, 255 = unknown
+        public byte BatteryFlag;         // 128 = no system battery (desktop)
+        public byte BatteryLifePercent;  // 0-100, 255 = unknown
         public byte SystemStatusFlag;
         public int  BatteryLifeTime;
         public int  BatteryFullLifeTime;
@@ -156,12 +156,12 @@ public static class SystemHelpers
     private static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS lpSystemPowerStatus);
 
     /// <summary>
-    /// Prueft, ob das Geraet gerade im Akkubetrieb laeuft (Notebook ohne
-    /// angeschlossenes Ladegeraet). Rueckgabe:
-    ///   true  = laeuft auf Akku, Netzteil sollte angeschlossen werden
-    ///   false = am Netz ODER Desktop-PC ohne Akku ODER Status unbekannt
-    /// Der aktuelle Ladestand (0-100, oder -1 wenn unbekannt) kommt ueber
-    /// den out-Parameter zurueck.
+    /// Checks whether the device is running on battery right now (notebook
+    /// without a charger connected). Returns:
+    ///   true  = running on battery, the charger should be connected
+    ///   false = on mains power OR desktop PC without battery OR status unknown
+    /// The current charge level (0-100, or -1 if unknown) comes back through
+    /// the out parameter.
     /// </summary>
     public static bool IsOnBattery(out int batteryPercent)
     {
@@ -171,25 +171,25 @@ public static class SystemHelpers
             if (!GetSystemPowerStatus(out var status))
                 return false;
 
-            // BatteryFlag 128 = kein Systemakku vorhanden (Desktop) -> nicht warnen.
+            // BatteryFlag 128 = no system battery (desktop) -> no warning.
             if (status.BatteryFlag == 128)
                 return false;
 
             if (status.BatteryLifePercent <= 100)
                 batteryPercent = status.BatteryLifePercent;
 
-            // ACLineStatus 0 = kein Netzteil -> Akkubetrieb.
+            // ACLineStatus 0 = no power supply -> running on battery.
             return status.ACLineStatus == 0;
         }
         catch
         {
-            return false; // im Zweifel nicht warnen
+            return false; // when in doubt, do not warn
         }
     }
 
     /// <summary>
-    /// Liefert den freien Speicherplatz (in Bytes) auf dem Laufwerk des
-    /// angegebenen Pfads. -1 bei Fehler (z.B. Netzwerkpfad nicht erreichbar).
+    /// Returns the free space (in bytes) on the drive of the given path. -1 on
+    /// error (e.g. network path not reachable).
     /// </summary>
     public static long GetFreeSpace(string path)
     {
@@ -204,11 +204,10 @@ public static class SystemHelpers
     }
 
     /// <summary>
-    /// Berechnet die Groesse eines Ordners (rekursiv, in Bytes). Ordner in der
-    /// Ausschlussliste (voll qualifizierte Pfade) werden uebersprungen - so
-    /// entspricht die Schaetzung dem, was tatsaechlich gesichert wird. Nicht
-    /// zugaengliche Unterordner werden stillschweigend ausgelassen. Reagiert
-    /// auf Abbruch ueber das CancellationToken.
+    /// Calculates the size of a folder (recursively, in bytes). Folders in the
+    /// exclude list (fully qualified paths) are skipped - so the estimate
+    /// matches what is actually backed up. Inaccessible subfolders are skipped
+    /// silently. Honors cancellation through the CancellationToken.
     /// </summary>
     public static long GetDirectorySize(string path, IEnumerable<string>? excludeDirs = null,
                                         System.Threading.CancellationToken ct = default)
@@ -232,23 +231,23 @@ public static class SystemHelpers
             var norm = dir.TrimEnd('\\').ToLowerInvariant();
             if (excludeSet.Contains(norm)) continue;
 
-            // Dateien dieses Ordners aufsummieren.
+            // Sum up the files of this folder.
             try
             {
                 foreach (var f in Directory.EnumerateFiles(dir))
                 {
                     ct.ThrowIfCancellationRequested();
-                    try { total += new FileInfo(f).Length; } catch { /* Datei nicht lesbar */ }
+                    try { total += new FileInfo(f).Length; } catch { /* file not readable */ }
                 }
             }
-            catch { /* Ordner nicht lesbar */ }
+            catch { /* folder not readable */ }
 
-            // Unterordner einreihen.
+            // Queue the subfolders.
             try
             {
                 foreach (var sub in Directory.EnumerateDirectories(dir))
                 {
-                    // Symlinks/Reparse-Punkte auslassen (verhindert Endlosschleifen).
+                    // Skip symlinks/reparse points (prevents endless loops).
                     try
                     {
                         var attr = File.GetAttributes(sub);
@@ -258,12 +257,12 @@ public static class SystemHelpers
                     stack.Push(sub);
                 }
             }
-            catch { /* Ordner nicht lesbar */ }
+            catch { /* folder not readable */ }
         }
         return total;
     }
 
-    /// <summary>Formatiert eine Byte-Zahl menschenlesbar (z.B. "12,3 GB").</summary>
+    /// <summary>Formats a byte count for humans (e.g. "12,3 GB").</summary>
     public static string FormatBytes(long bytes)
     {
         if (bytes < 0) return "?";
@@ -275,8 +274,8 @@ public static class SystemHelpers
     }
 
     /// <summary>
-    /// Oeffnet eine Adresse oder Datei mit dem zustaendigen Programm (Browser,
-    /// Bildanzeige). false, wenn das nicht ging - der Aufrufer bleibt stehen.
+    /// Opens an address or a file with the associated program (browser, image
+    /// viewer). false if that did not work - the caller keeps running.
     /// </summary>
     public static bool Open(string ziel)
     {

@@ -15,8 +15,8 @@ public sealed record ProcessResult(int ExitCode, string Output, string? StartErr
 }
 
 /// <summary>
-/// Zentraler Prozess-Starter. Kapselt das Muster aus dem PowerShell-Skript
-/// (ProcessStartInfo, Ausgabe abfangen, ActiveProcesses-Tracking, Cancel).
+/// Central process launcher: starts programs, captures their output and
+/// tracks them so Cancel can end them.
 /// </summary>
 public sealed class ProcessRunner
 {
@@ -25,7 +25,7 @@ public sealed class ProcessRunner
     public ProcessRunner(CancellationTokenState cancel) => _cancel = cancel;
 
     /// <summary>
-    /// Fuehrt eine EXE aus und faengt stdout+stderr ab.
+    /// Runs an EXE and captures stdout and stderr.
     /// </summary>
     public async Task<ProcessResult> RunAsync(
         string fileName, string arguments,
@@ -96,9 +96,9 @@ public sealed class ProcessRunner
     }
 
     /// <summary>
-    /// Startet einen Befehl ueber "cmd /c ... > tempfile 2>&1" und liest die
-    /// Ausgabe aus der Temp-Datei. Noetig, wo der Direktstart des winget-
-    /// App-Execution-Alias mit "Zugriff verweigert" scheitert.
+    /// Runs a command through "cmd /c ... > tempfile 2>&1" and reads the output
+    /// from the temp file. Needed where starting winget's app execution alias
+    /// directly fails with "Access denied".
     /// </summary>
     public async Task<ProcessResult> RunViaCmdAsync(string exe, string arguments, int timeoutMs = 0)
     {
@@ -158,18 +158,18 @@ public sealed class ProcessRunner
     }
 
     /// <summary>
-    /// Erkennt eine von Robocopy ausgegebene Datei-Zeile (fuer den Zaehler).
-    /// Datei-Zeilen sind mit Tab/Whitespace eingerueckt und enthalten einen
-    /// Pfad. Kopf-, Options- und Zusammenfassungszeilen werden ausgeschlossen.
+    /// Recognizes a file line printed by robocopy (for the counter). File lines
+    /// are indented with tabs/whitespace and contain a path. Header, option and
+    /// summary lines are excluded.
     /// </summary>
     private static bool IsRobocopyFileLine(string line)
     {
         if (string.IsNullOrWhiteSpace(line)) return false;
-        // Muss eingerueckt sein (Robocopy rueckt Datei-/Ordnerzeilen ein).
+        // Must be indented (robocopy indents file and folder lines).
         if (line[0] != '\t' && line[0] != ' ') return false;
         var t = line.Trim();
         if (t.Length == 0) return false;
-        // Zusammenfassungs-/Kopfzeilen ausschliessen.
+        // Exclude summary and header lines.
         if (t.StartsWith("Insgesamt") || t.StartsWith("Total") ||
             t.StartsWith("Kopiert") || t.StartsWith("Copied") ||
             t.StartsWith("Verzeich") || t.StartsWith("Dirs") ||
@@ -186,12 +186,12 @@ public sealed class ProcessRunner
     }
 
     /// <summary>
-    /// Robocopy-Lauf mit fortlaufender Ausgabe ins Log.
-    /// Rueckgabe ist der Robocopy-ExitCode (>=8 = Fehler).
+    /// A robocopy run with continuous output to the log.
+    /// Returns robocopy's exit code (>= 8 = error).
     /// </summary>
     /// <param name="skips">
-    /// Optional: Fehlermeldungen zu Dateien in diesem Ordner werden nicht ins
-    /// Log geschrieben, sondern dort gesammelt (siehe <see cref="RobocopySkips"/>).
+    /// Optional: error messages about files in this folder are not written to
+    /// the log but collected there (see <see cref="RobocopySkips"/>).
     /// </param>
     public async Task<int> RunRobocopyAsync(string arguments, Action<string> onLine, Action<int>? onFileCounted = null,
                                             RobocopySkips? skips = null)
@@ -209,8 +209,8 @@ public sealed class ProcessRunner
             StandardOutputEncoding = SystemHelpers.ConsoleEncoding
         };
 
-        // Im FastMode werden Dateizeilen nur gezaehlt (fuer den Fortschritt),
-        // aber NICHT ins Log geschrieben - das Log bleibt aufgeraeumt.
+        // In fast mode, file lines are only counted (for the progress) but NOT
+        // written to the log - the log stays tidy.
         bool countOnly = _cancel.FastMode && onFileCounted != null;
         int fileCount = 0;
 
@@ -219,12 +219,12 @@ public sealed class ProcessRunner
         proc.OutputDataReceived += (_, e) =>
         {
             if (string.IsNullOrWhiteSpace(e.Data)) return;
-            // Die Zeilen kommen der Reihe nach (ein Ereignis nach dem anderen),
-            // wie es RobocopySkips fuer seine dreizeiligen Meldungen braucht.
+            // The lines arrive in order (one event after another), as RobocopySkips
+            // needs for its three-line messages.
             if (skips != null && skips.Swallow(e.Data)) return;
             if (countOnly && IsRobocopyFileLine(e.Data))
             {
-                // Nur zaehlen, nicht ins Log. Anzeige gedrosselt (alle 25 Dateien).
+                // Count only, no log. Display throttled (every 25 files).
                 int c = System.Threading.Interlocked.Increment(ref fileCount);
                 if (c % 25 == 0) onFileCounted!(c);
                 return;
@@ -241,12 +241,12 @@ public sealed class ProcessRunner
             return 999;
         }
 
-        // Robocopy-Prozess hoeher priorisieren. Das ist der Prozess, der die
-        // eigentliche Kopierarbeit macht - anders als die App selbst. Bringt
-        // vor allem etwas, wenn die CPU (nicht die Platte) der Engpass ist,
-        // z.B. bei sehr vielen kleinen Dateien. Fehler hier sind unkritisch.
+        // Give the robocopy process a higher priority. It is the process doing the
+        // actual copying - unlike the app itself. This mainly helps when the CPU
+        // (not the disk) is the bottleneck, e.g. with very many small files.
+        // Errors here are not critical.
         try { proc.PriorityClass = ProcessPriorityClass.AboveNormal; }
-        catch { /* fehlende Rechte o.ae. - ignorieren */ }
+        catch { /* missing rights or the like - ignore */ }
 
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
@@ -272,7 +272,7 @@ public sealed class ProcessRunner
             var rest = new StringBuilder();
             while (queue.TryDequeue(out var line)) rest.AppendLine(line);
             if (rest.Length > 0) onLine(rest.ToString().TrimEnd());
-            // Endstand des Zaehlers melden.
+            // Report the final count.
             if (countOnly && fileCount > 0) onFileCounted!(fileCount);
         }
         finally

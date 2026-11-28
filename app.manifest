@@ -2,7 +2,7 @@
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
   <assemblyIdentity version="1.2.8.0" name="WindowsDaSiTool.app"/>
 
-  <!-- Erzwingt UAC-Erhoehung beim Start (Ersatz fuer #Requires -RunAsAdministrator) -->
+  <!-- Forces UAC elevation at startup (the program needs administrator rights) -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v2">
@@ -11,7 +11,7 @@
     </security>
   </trustInfo>
 
-  <!-- DPI-Awareness und unterstuetzte Windows-Versionen -->
+  <!-- DPI awareness and supported Windows versions -->
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" /> <!-- Windows 10/11 -->

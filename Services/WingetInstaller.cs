@@ -13,19 +13,18 @@ using System.Threading.Tasks;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Installiert winget nach, wenn es fehlt: den App-Installer als MSIX-Bundle
-/// und seine Abhaengigkeiten (VCLibs, Windows App Runtime) aus dem neuesten
-/// Release von github.com/microsoft/winget-cli - derselbe Weg, den Microsoft
-/// fuer Rechner ohne Store beschreibt.
+/// Installs winget when it is missing: App Installer as an MSIX bundle and
+/// its dependencies (VCLibs, Windows App Runtime) from the latest release of
+/// github.com/microsoft/winget-cli - the same way Microsoft describes for
+/// computers without the Store.
 ///
-/// Typische Faelle: frisch installiertes Windows, dessen App-Installer noch
-/// nicht da oder zu alt ist; LTSC- und Server-Ausgaben ohne Store; ein
-/// App-Installer, dessen winget mit den heutigen Paketquellen nicht mehr
-/// zurechtkommt.
+/// Typical cases: a freshly installed Windows whose App Installer is not
+/// there yet or too old; LTSC and Server editions without the Store; an App
+/// Installer whose winget no longer copes with today's package sources.
 /// </summary>
 public static class WingetInstaller
 {
-    /// <summary>"latest/download" leitet immer auf die neueste Fassung um.</summary>
+    /// <summary>"latest/download" always redirects to the latest version.</summary>
     public const string ReleaseBase = "https://github.com/microsoft/winget-cli/releases/latest/download/";
     public const string BundleFile = "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle";
     public const string DependenciesFile = "DesktopAppInstaller_Dependencies.zip";
@@ -33,7 +32,7 @@ public static class WingetInstaller
     private static readonly TimeSpan DownloadZeitgrenze = TimeSpan.FromMinutes(20);
     private static readonly TimeSpan InstallZeitgrenze = TimeSpan.FromMinutes(10);
 
-    /// <summary>Ordner im Abhaengigkeits-Paket fuer diese Windows-Architektur.</summary>
+    /// <summary>Folder in the dependency package for this Windows architecture.</summary>
     public static string ArchFolder(Architecture arch) => arch switch
     {
         Architecture.Arm64 => "arm64",
@@ -42,9 +41,9 @@ public static class WingetInstaller
     };
 
     /// <summary>
-    /// Die Abhaengigkeiten fuer die Architektur aus dem entpackten Paket
-    /// ("x64\Microsoft.VCLibs...appx" ...), nach Namen sortiert - die VCLibs
-    /// vor der Windows App Runtime.
+    /// The dependencies for the architecture from the extracted package
+    /// ("x64\Microsoft.VCLibs...appx" ...), sorted by name - the VCLibs before
+    /// the Windows App Runtime.
     /// </summary>
     public static List<string> Dependencies(string entpackt, string arch)
     {
@@ -62,12 +61,13 @@ public static class WingetInstaller
         catch { return new List<string>(); }
     }
 
-    /// <summary>Text in einfachen Anfuehrungszeichen fuer PowerShell ("O'Brien" -> 'O''Brien').</summary>
+    /// <summary>Text in single quotes for PowerShell ("O'Brien" -> 'O''Brien').</summary>
     public static string PsQuote(string s) => "'" + s.Replace("'", "''") + "'";
 
     /// <summary>
-    /// Das PowerShell-Skript: erst jede Abhaengigkeit einzeln - ist eine schon
-    /// in neuerer Fassung da, ist das kein Fehler -, dann der App-Installer.
+    /// The PowerShell script: first each dependency on its own - if one is
+    /// already there in a newer version, that is not an error -, then App
+    /// Installer.
     /// </summary>
     public static string InstallScript(string bundle, IReadOnlyList<string> abhaengigkeiten)
     {
@@ -79,15 +79,14 @@ public static class WingetInstaller
             $"try {{ Add-AppxPackage -Path {PsQuote(bundle)} -ForceApplicationShutdown; Write-Output 'INSTALLIERT' }} catch {{ Write-Output ('FEHLER: ' + $_.Exception.Message); exit 1 }}");
     }
 
-    /// <summary>Fuer "powershell -EncodedCommand": UTF-16LE, Base64 - ganz ohne Anfuehrungszeichen-Probleme.</summary>
+    /// <summary>For "powershell -EncodedCommand": UTF-16LE, Base64 - no quoting problems at all.</summary>
     public static string Encode(string skript) => Convert.ToBase64String(Encoding.Unicode.GetBytes(skript));
 
     /// <summary>
-    /// Laedt App-Installer und Abhaengigkeiten herunter und installiert sie
-    /// fuer den Benutzer, unter dem das Tool laeuft. true, wenn die
-    /// Installation geklappt hat.
+    /// Downloads App Installer and its dependencies and installs them for the
+    /// user the tool runs as. true if the installation worked.
     /// </summary>
-    /// <param name="quelle">Wo die Dateien liegen - Vorgabe ist <see cref="ReleaseBase"/>; die Pruefungen geben einen eigenen Server an.</param>
+    /// <param name="quelle">Where the files are - default is <see cref="ReleaseBase"/>; the tests pass their own server.</param>
     public static async Task<bool> InstallAsync(Action<string> log, Func<bool> abgebrochen, CancellationToken ct = default, string quelle = ReleaseBase)
     {
         if (!OperatingSystem.IsWindows()) return false;
@@ -137,7 +136,7 @@ public static class WingetInstaller
         }
         finally
         {
-            try { Directory.Delete(ordner, true); } catch { /* Temp - egal */ }
+            try { Directory.Delete(ordner, true); } catch { /* temp - does not matter */ }
         }
     }
 
@@ -168,7 +167,7 @@ public static class WingetInstaller
         return true;
     }
 
-    /// <summary>Windows PowerShell 5.1 - dort ist Add-AppxPackage verlaesslich vorhanden (anders als in pwsh 7).</summary>
+    /// <summary>Windows PowerShell 5.1 - Add-AppxPackage is reliably available there (unlike in pwsh 7).</summary>
     private static async Task<(int Code, string Ausgabe)> PowerShell(string skript, CancellationToken ct)
     {
         var psi = new ProcessStartInfo("powershell.exe",

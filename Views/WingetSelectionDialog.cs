@@ -8,10 +8,9 @@ using WindowsDaSiTool.Services;
 namespace WindowsDaSiTool.Views;
 
 /// <summary>
-/// Auswahlfenster fuer den Winget-Import (entspricht Show-WingetImportSelection).
-/// Liefert die vom Benutzer ausgewaehlten Pakete zurueck, oder null bei Abbruch.
-/// Die Farben kommen aus den Theme-Stilen (App.axaml, "dialog") und folgen
-/// damit dem hellen bzw. dunklen Modus.
+/// Selection window for the winget import. Returns the packages the user
+/// selected, or null when cancelled. The colors come from the theme styles
+/// (App.axaml, "dialog") and so follow light and dark mode.
 /// </summary>
 public static class WingetSelectionDialog
 {
@@ -126,7 +125,7 @@ public static class WingetSelectionDialog
         return await tcs.Task;
     }
 
-    /// <param name="art">"yes", "cancel" oder nichts (neutral) - siehe Button.dialog in App.axaml.</param>
+    /// <param name="art">"yes", "cancel" or nothing (neutral) - see Button.dialog in App.axaml.</param>
     private static Button MakeSmall(string content, string? art = null)
     {
         var b = new Button { Content = content, Width = 70, Height = 30, CornerRadius = new Avalonia.CornerRadius(4), Classes = { "dialog" } };

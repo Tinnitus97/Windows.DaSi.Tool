@@ -9,18 +9,18 @@ using WindowsDaSiTool.Services;
 namespace DaSiTests;
 
 /// <summary>
-/// Der Umzug mit echtem Firefox, wie er beim Kunden laeuft: auf dem alten PC
-/// Firefox ESR 32 Bit, auf dem neuen die aktuelle Fassung 64 Bit. In der CI in
-/// zwei Schritten, dazwischen deinstalliert der Workflow Firefox ESR; die
-/// aktuelle 64-Bit-Fassung ist auf dem Windows-Laeufer installiert:
+/// The migration with a real Firefox, as it happens in practice: Firefox ESR
+/// 32 bit on the old PC, the current 64-bit release on the new one. In CI
+/// in two steps; in between, the workflow uninstalls Firefox ESR; the
+/// current 64-bit release is installed on the Windows runner:
 ///
-///  DASI_NUR=firefox-alt: Firefox ESR (32 Bit) legt sein Profil an, dazu eine
-///    Einstellung als Erkennungszeichen. Dann sichert das Tool.
-///  DASI_NUR=firefox-neu: Datenordner weg (neuer PC). Gegenprobe zur Auskunft:
-///    die Sicherung nur zurueckkopiert - welches Profil oeffnet Firefox? Dann
-///    mit dem Tool: Firefox (64 Bit) oeffnet das Profil vom alten PC.
+///  DASI_NUR=firefox-alt: Firefox ESR (32 bit) creates its profile, plus a
+///    setting as a marker. Then the tool backs it up.
+///  DASI_NUR=firefox-neu: data folder gone (new PC). Cross-check for
+///    information: the backup only copied back - which profile does Firefox
+///    open? Then with the tool: Firefox (64 bit) opens the old PC's profile.
 ///
-/// Die Sicherung liegt in DASI_SICHERUNG.
+/// The backup lives in DASI_SICHERUNG.
 /// </summary>
 internal static partial class Program
 {
@@ -42,7 +42,7 @@ internal static partial class Program
         return File.Exists(datei) ? MozillaProfile.Ini.Read(File.ReadAllText(datei)).Value("Compatibility", schluessel) ?? "" : "";
     }
 
-    /// <summary>Die Profile, die Firefox 64 Bit geoeffnet hat (64-Bit-Kennung in compatibility.ini).</summary>
+    /// <summary>The profiles Firefox 64 bit has opened (64-bit ID in compatibility.ini).</summary>
     private static List<string> Fx64Used()
         => FxProfiles().Where(p => FxCompat(p, "LastOSABI").Contains("x86_64", StringComparison.OrdinalIgnoreCase)).ToList();
 
@@ -60,7 +60,7 @@ internal static partial class Program
         Console.WriteLine($"         {ordner}\\firefox.exe ({MozillaProfile.InstalledVersion(ordner)?.Version}): {uhr.Elapsed.TotalSeconds:F0} s");
     }
 
-    // ------------------------------------------------------------ alter PC
+    // ------------------------------------------------------------ old PC
 
     [SupportedOSPlatform("windows")]
     private static void FirefoxOldPc()
@@ -72,7 +72,7 @@ internal static partial class Program
         if (!File.Exists(Path.Combine(FxEsr32, "firefox.exe"))) return;
         DeleteFolder(FxDaten);
 
-        // Erster Start: Firefox ESR legt sein Profil an ("default-esr").
+        // First start: Firefox ESR creates its profile ("default-esr").
         StartFirefoxForMigration(FxEsr32, () => TbProfileOf(FxDaten, FxEsr32) is { } p && FxCompat(p, "LastVersion").Length > 0);
         Dump("profiles.ini (ESR 32 Bit)", Path.Combine(FxDaten, "profiles.ini"));
         var benutzt = TbProfileOf(FxDaten, FxEsr32);
@@ -93,7 +93,7 @@ internal static partial class Program
         Check("alter PC: Profil gesichert", log.Has("[ERFOLG] Firefox Profil gesichert"), log.Text);
     }
 
-    // ------------------------------------------------------------ neuer PC
+    // ------------------------------------------------------------ new PC
 
     [SupportedOSPlatform("windows")]
     private static void FirefoxNewPc()
@@ -119,7 +119,7 @@ internal static partial class Program
                 DeleteFolder(alt);
         }
 
-        // 1. Gegenprobe (zur Auskunft): die Sicherung nur zurueckkopiert.
+        // 1. Cross-check (for information): the backup only copied back.
         NewPc();
         CopyFolder(gesichert, FxDaten);
         StartFirefoxForMigration(FxAktuell64, () => Fx64Used().Count > 0 || FxProfiles().Count > anzahl);
@@ -131,7 +131,7 @@ internal static partial class Program
         Check("Gegenprobe: ohne Anpassung nimmt Firefox nicht das Profil vom alten PC (der Fehler beim Kunden)",
             !gegenprobe.Contains(altesProfil), $"geoeffnet: {string.Join(", ", gegenprobe)}; Profile: {string.Join(", ", FxProfiles())}");
 
-        // 2. Mit dem Tool.
+        // 2. With the tool.
         NewPc();
         var c = new CancellationTokenState();
         var log = new Protokoll();
@@ -144,7 +144,7 @@ internal static partial class Program
         Check("Tool: Profil zurueck, Standard fuer Firefox 64 Bit, alter Ort erkannt",
             log.Has("[ERFOLG] Firefox Profil wiederhergestellt") && log.Has($"ist jetzt Standard für {FxAktuell64}") && log.Has($"lief Firefox aus {FxEsr32}"), log.Text);
         Check("Tool: keine Meldung zur Fassung (ESR ist aelter als die aktuelle)", !log.Has("lief zuletzt mit"), log.Text);
-        // Das Deinstallieren von ESR nimmt den gemeinsamen "App Paths"-Eintrag mit.
+        // Uninstalling ESR removes the shared "App Paths" entry.
         Check("Tool: Firefox 64 Bit als installiert erkannt - kein winget", log.Has("[INFO] Firefox ist bereits installiert.") && !log.Has("via Winget"), log.Text);
         Dump("profiles.ini nach dem Zurueckschreiben", Path.Combine(FxDaten, "profiles.ini"));
 

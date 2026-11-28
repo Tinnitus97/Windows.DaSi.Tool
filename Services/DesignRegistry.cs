@@ -10,15 +10,15 @@ using Microsoft.Win32;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Liest und schreibt die Werte von <see cref="DesignEinstellungen"/> in der
-/// Registry - unter einem hereingereichten Wurzelschluessel, damit es der
-/// Zweig des angemeldeten Benutzers sein kann (HKEY_USERS\&lt;SID&gt;) statt
-/// des Kontos, unter dem das Tool laeuft.
+/// Reads and writes the values of <see cref="DesignEinstellungen"/> in the
+/// registry - below a root key passed in, so it can be the key of the
+/// signed-in user (HKEY_USERS\&lt;SID&gt;) instead of the account the tool
+/// runs under.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static class DesignRegistry
 {
-    /// <summary>(Typ, Wert) oder null, wenn es den Wert nicht gibt oder sein Typ nicht vorgesehen ist.</summary>
+    /// <summary>(type, value) or null if the value does not exist or its type is not supported.</summary>
     public static (string Typ, string Wert)? Read(RegistryKey wurzel, string schluessel, string name)
     {
         using var k = wurzel.OpenSubKey(schluessel);
@@ -26,7 +26,7 @@ public static class DesignRegistry
         RegistryValueKind art;
         try { art = k.GetValueKind(name); }
         catch { return null; }
-        // %SystemRoot% & Co. bleiben stehen - aufgeloest wird erst beim Benutzen.
+        // %SystemRoot% etc. are kept as they are - they are expanded only when used.
         var v = k.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
         return (art, v) switch
         {
@@ -38,18 +38,18 @@ public static class DesignRegistry
         };
     }
 
-    /// <summary>Was beim Uebernehmen herauskam.</summary>
+    /// <summary>What applying the values resulted in.</summary>
     public sealed record Ergebnis(List<DesignEintrag> Gesetzt, List<string> OhneDatei, List<string> NichtSchreibbar)
     {
         public bool Zeiger => Gesetzt.Any(e => e.Gruppe == "Mauszeiger");
     }
 
     /// <summary>
-    /// Schreibt die gesicherten Werte und gibt Windows und den laufenden
-    /// Programmen Bescheid. Zeiger, deren Datei es hier nicht gibt, bleiben aus.
+    /// Writes the backed-up values and notifies Windows and the running
+    /// programs. Pointers whose file does not exist here are skipped.
     /// </summary>
-    /// <param name="eigenerBenutzer">Laeuft das Tool unter dem Benutzer von <paramref name="wurzel"/>?
-    /// Die Mauszeiger laedt Windows aus der Registry des PROZESSES - sonst erst ab der naechsten Anmeldung.</param>
+    /// <param name="eigenerBenutzer">Does the tool run as the user of <paramref name="wurzel"/>?
+    /// Windows loads the mouse pointers from the PROCESS's registry - otherwise only from the next sign-in on.</param>
     public static Ergebnis Apply(RegistryKey wurzel, IEnumerable<DesignEintrag> werte, bool eigenerBenutzer)
     {
         var r = new Ergebnis(new List<DesignEintrag>(), new List<string>(), new List<string>());
@@ -82,7 +82,7 @@ public static class DesignRegistry
     private static extern IntPtr SendMessageTimeoutW(IntPtr hWnd, uint msg, UIntPtr wParam, string lParam,
                                                      uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 
-    /// <summary>Schreibt einen gesicherten Wert zurueck. Wirft, wenn es nicht geht.</summary>
+    /// <summary>Writes one backed-up value back. Throws if that is not possible.</summary>
     public static void Write(RegistryKey wurzel, DesignEintrag e)
     {
         using var k = wurzel.CreateSubKey(e.Schluessel, writable: true)

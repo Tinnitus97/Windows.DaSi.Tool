@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Prueft die Oberflaeche: das echte Hauptfenster samt ViewModel, ohne
-    Bildschirm (Avalonia.Headless). Bewusst kein Testframework - wie
-    tests/DaSiTests ein eigenes Programm mit "[OK]"/"[FAIL]"-Zeilen.
+    Tests the UI: the real main window with its ViewModel, without a screen
+    (Avalonia.Headless). Deliberately no test framework - like
+    tests/DaSiTests, a program of its own with "[OK]"/"[FAIL]" lines.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -21,12 +21,12 @@
     <Compile Include="../Gemeinsam/*.cs" />
   </ItemGroup>
 
-  <!-- Die winget-Attrappe wird mitgebaut - in ihren eigenen Ordner. Ein
-       Projektverweis kopierte ihre Startdatei winget.exe (ohne winget.dll)
-       hierher, und Windows faende "winget" dann zuerst hier, im Ordner des
-       Pruefprogramms, statt im Suchpfad. -->
+  <!-- The winget fake is built along - into its own folder. A project
+       reference would copy its launcher winget.exe (without winget.dll)
+       here, and Windows would then find "winget" here first, in the test
+       program's folder, instead of in the search path. -->
   <Target Name="WingetAttrappeBauen" BeforeTargets="Build">
-    <!-- Erst Restore (eigene Eigenschaften = eigener Durchlauf), dann bauen. -->
+    <!-- Restore first (own properties = separate pass), then build. -->
     <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Restore" Properties="Configuration=$(Configuration);DaSiRestore=true" />
     <MSBuild Projects="../WingetAttrappe/WingetAttrappe.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
   </Target>

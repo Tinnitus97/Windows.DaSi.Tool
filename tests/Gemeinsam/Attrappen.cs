@@ -5,10 +5,10 @@ using System.Linq;
 
 namespace DaSiPruefung;
 
-/// <summary>Gemeinsame Hilfen beider Pruefprojekte.</summary>
+/// <summary>Shared helpers of both test projects.</summary>
 internal static class Attrappen
 {
-    /// <summary>Der Ordner des Repositories (dort liegt WindowsDaSiTool.csproj).</summary>
+    /// <summary>The repository folder (where WindowsDaSiTool.csproj lives).</summary>
     public static string Repository()
     {
         var d = new DirectoryInfo(AppContext.BaseDirectory);
@@ -16,7 +16,7 @@ internal static class Attrappen
         return d?.FullName ?? throw new InvalidOperationException("Repository nicht gefunden.");
     }
 
-    /// <summary>Die gebaute winget-Attrappe (tests/WingetAttrappe) - null, wenn sie nicht gebaut ist.</summary>
+    /// <summary>The built winget fake (tests/WingetAttrappe) - null if it is not built.</summary>
     public static string? WingetFake()
     {
         var basis = Path.Combine(Repository(), "tests", "WingetAttrappe", "bin");
@@ -30,8 +30,8 @@ internal static class Attrappen
     }
 
     /// <summary>
-    /// Richtet ein Szenario fuer die Attrappe ein: neuer Ordner, szenario.txt,
-    /// Umgebungsvariable fuer die gestarteten Prozesse.
+    /// Sets up a scenario for the fake: a new folder, szenario.txt, an
+    /// environment variable for the started processes.
     /// </summary>
     public static string WingetScenario(string wurzel, IDictionary<string, string> werte)
     {
@@ -46,7 +46,7 @@ internal static class Attrappen
         => File.WriteAllLines(Path.Combine(ordner, "szenario.txt"),
                               werte.Select(kv => kv.Key + "=" + kv.Value.Replace("\n", "\\n")));
 
-    /// <summary>Was die Attrappe bisher gefragt wurde - je Aufruf eine Zeile.</summary>
+    /// <summary>What the fake has been asked so far - one line per call.</summary>
     public static List<string> Calls(string ordner)
     {
         var p = Path.Combine(ordner, "aufrufe.txt");

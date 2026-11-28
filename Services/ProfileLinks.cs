@@ -6,33 +6,33 @@ using System.Linq;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Findet Ordner im Profil, die in Wahrheit Verknuepfungen sind (Junctions,
-/// symbolische Links) und AUS dem Profil hinauszeigen.
+/// Finds folders in the profile that are actually links (junctions,
+/// symbolic links) and point OUT of the profile.
 ///
-/// Die Profilsicherung folgt Verknuepfungen bewusst nicht (/XJ): Die alten
-/// Verweise wie "Eigene Bilder" in Dokumente zeigen zurueck ins Profil, robocopy
-/// liefe sonst im Kreis oder saeh dieselben Dateien doppelt. Zeigt eine
-/// Verknuepfung aber nach draussen - "Dokumente\Spiele" auf "D:\Spiele" -, fehlt
-/// ihr Inhalt in der Sicherung. Das darf nicht unbemerkt bleiben.
+/// The profile backup deliberately does not follow links (/XJ): the old
+/// references like "My Pictures" in Documents point back into the profile,
+/// and robocopy would run in circles or see the same files twice. But if a
+/// link points outside - "Dokumente\Spiele" to "D:\Spiele" -, its content
+/// is missing from the backup. That must not go unnoticed.
 ///
-/// Ohne Abhaengigkeiten, damit sich die Suche pruefen laesst.
+/// No dependencies, so the search can be tested.
 /// </summary>
 public static class ProfileLinks
 {
-    /// <summary>Eine Verknuepfung im Profil und wohin sie zeigt.</summary>
+    /// <summary>A link in the profile and where it points.</summary>
     public sealed record Link(string Path, string Target);
 
-    /// <summary>Hoechstens so viele Ordner werden angesehen - ein riesiges Profil soll die Sicherung nicht aufhalten.</summary>
+    /// <summary>At most this many folders are inspected - a huge profile should not hold up the backup.</summary>
     public const int MaxFolders = 200_000;
 
     /// <summary>
-    /// Alle Verknuepfungen im Profil, die NICHT ins Profil selbst zeigen.
-    /// AppData und die ausgeschlossenen Ordner werden nicht durchsucht, in
-    /// Verknuepfungen wird nicht hineingegangen.
+    /// All links in the profile that do NOT point into the profile itself.
+    /// AppData and the excluded folders are not searched, and links are not
+    /// entered.
     /// </summary>
-    /// <param name="userDir">Das zu sichernde Profil.</param>
-    /// <param name="skip">Ordner, die die Sicherung ohnehin auslaesst (vollstaendige Pfade).</param>
-    /// <param name="truncated">true, wenn die Suche bei <see cref="MaxFolders"/> abgebrochen wurde.</param>
+    /// <param name="userDir">The profile to back up.</param>
+    /// <param name="skip">Folders the backup leaves out anyway (full paths).</param>
+    /// <param name="truncated">true if the search stopped at <see cref="MaxFolders"/>.</param>
     public static List<Link> FindOutsideLinks(string userDir, IEnumerable<string> skip, out bool truncated)
     {
         truncated = false;
@@ -53,7 +53,7 @@ public static class ProfileLinks
             var ordner = offen.Pop();
             IEnumerable<string> unter;
             try { unter = Directory.EnumerateDirectories(ordner); }
-            catch { continue; }   // nicht lesbar - meldet robocopy selbst
+            catch { continue; }   // not readable - robocopy reports that itself
 
             foreach (var u in unter)
             {
@@ -77,12 +77,12 @@ public static class ProfileLinks
                     if (!string.IsNullOrEmpty(t))
                         ziel = Path.IsPathRooted(t) ? t : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(u) ?? "", t));
                 }
-                catch { /* Ziel nicht lesbar */ }
+                catch { /* target not readable */ }
 
-                // Ohne Ziel ist es keine Verknuepfung, sondern ein anderer
-                // Analysepunkt (etwa ein Cloud-Platzhalter) - nicht melden.
+                // Without a target it is not a link but another kind of reparse point
+                // (e.g. a cloud placeholder) - do not report it.
                 if (ziel is null) continue;
-                // Zeigt sie ins Profil, ist ihr Inhalt ohnehin in der Sicherung.
+                // If it points into the profile, its content is in the backup anyway.
                 if (IsInside(Normal(ziel), profil)) continue;
                 gefunden.Add(new Link(u, ziel));
             }
@@ -92,7 +92,7 @@ public static class ProfileLinks
 
     private static string Normal(string p)
     {
-        try { p = Path.GetFullPath(p); } catch { /* so lassen */ }
+        try { p = Path.GetFullPath(p); } catch { /* leave it */ }
         return p.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 

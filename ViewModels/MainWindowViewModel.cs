@@ -17,7 +17,7 @@ namespace WindowsDaSiTool.ViewModels;
 
 public partial class MainWindowViewModel : ObservableObject
 {
-    // ---- Konstanten (entsprechen den $script:-Variablen) ----
+    // ---- Constants ----
     private const string VersionString = "1.2.8";
 
     private readonly CancellationTokenState _cancel = new();
@@ -27,13 +27,13 @@ public partial class MainWindowViewModel : ObservableObject
 
     private readonly object _logLock = new();
     private readonly System.Text.StringBuilder _logBuffer = new();
-    private bool _logUntouched = true;   // true, solange nur der Begruessungstext im Log steht
+    private bool _logUntouched = true;   // true as long as only the welcome text is in the log
 
     /// <summary>
-    /// Das ganze Protokoll des laufenden Durchgangs - fuer die Protokolldatei im
-    /// Sicherungsordner. Die Anzeige kuerzt ab 40 000 Zeichen; hier bleibt alles
-    /// stehen (bis zur Obergrenze). Frueher stand in der Datei nur die Bilanz -
-    /// fuer die Fehlersuche nach einer Wiederherstellung zu wenig.
+    /// The complete log of the current run - for the log file in the backup
+    /// folder. The display truncates after 40,000 characters; here everything
+    /// is kept (up to the limit). The file used to contain only the summary -
+    /// too little for troubleshooting after a restore.
     /// </summary>
     private System.Text.StringBuilder? _laufLog;
     internal const int LaufLogGrenze = 20_000_000;
@@ -44,34 +44,33 @@ public partial class MainWindowViewModel : ObservableObject
 
     public string WindowTitle => $"Windows DaSi Tool {VersionString}";
 
-    // ---- gebundener Zustand ----
+    // ---- Bound state ----
     [ObservableProperty] private string _logText = "";
     [ObservableProperty] private bool _uiEnabled = true;
 
-    // Die Zusatzoptionen zum Benutzerprofil haengen ebenfalls daran und muessen
-    // mitgesperrt werden, solange eine Aktion laeuft.
+    // The extra options for the user profile depend on it as well and must be
+    // locked while an action is running.
     partial void OnUiEnabledChanged(bool value)
     {
         OnPropertyChanged(nameof(UserOptionsEnabled));
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
-        // Nach einem Lauf neu bewerten: Eine Sicherung hat Ordner angelegt,
-        // eine Wiederherstellung Programme installiert.
+        // Re-evaluate after a run: a backup created folders, a restore installed
+        // programs.
         if (value) CheckAvailability(); else NotifyItemsChanged();
     }
 
     /// <summary>
-    /// Laeuft gerade eine Aktion aus der Warteschlange? Bewusst getrennt von
-    /// <see cref="UiEnabled"/>: Die Oberflaeche wird auch aus anderen Gruenden
-    /// gesperrt - etwa waehrend des Selbstupdates. Nur diese Eigenschaft darf
-    /// darueber entscheiden, ob beim Schliessen nach einem harten Abbruch
-    /// gefragt wird. Sonst fragt das Fenster nach einem Abbruch, obwohl gar
-    /// nichts laeuft.
+    /// Is an action from the queue running right now? Deliberately separate
+    /// from <see cref="UiEnabled"/>: the UI is locked for other reasons as well
+    /// - e.g. during the self-update. Only this property may decide whether
+    /// closing asks about a hard abort. Otherwise the window would ask about an
+    /// abort although nothing is running.
     /// </summary>
     [ObservableProperty] private bool _isActionRunning;
     [ObservableProperty] private string _sourcePath = "";
     [ObservableProperty] private string _backupPath = "";
 
-    // ---- Schnellauswahl Benutzerprofil ----
+    // ---- Quick selection of the user profile ----
     public System.Collections.ObjectModel.ObservableCollection<string> UserProfiles { get; } = new();
 
     [ObservableProperty] private string? _selectedProfile;
@@ -81,7 +80,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (!string.IsNullOrEmpty(value)) SourcePath = value;
     }
 
-    // Haelt die Schnellauswahl mit einem manuell gewaehlten Pfad synchron.
+    // Keeps the quick selection in sync with a manually chosen path.
     partial void OnSourcePathChanged(string value)
     {
         if (!string.IsNullOrEmpty(value) && UserProfiles.Contains(value) && SelectedProfile != value)
@@ -90,12 +89,12 @@ public partial class MainWindowViewModel : ObservableObject
         ScheduleAutoStorageCheck();
     }
 
-    // ---- Speicherueberwachung ----
+    // ---- Storage monitoring ----
     [ObservableProperty] private string _storageInfo = "";
 
-    // Die Speicherzeile in beiden Sprachen. Beim Sprachwechsel wird nur die
-    // andere Fassung angezeigt - frueher blieb die Zeile bis zur naechsten
-    // Neuberechnung in der alten Sprache stehen.
+    // The storage line in both languages. On a language change only the other
+    // version is shown - the line used to stay in the old language until the
+    // next recalculation.
     private string _storageInfoDe = "", _storageInfoEn = "";
 
     private void SetStorageInfo(string de, string en)
@@ -106,29 +105,29 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [ObservableProperty] private bool _storageInfoVisible;
-    // Ampel: 0 = neutral/grau, 1 = gruen (passt), 2 = gelb (knapp), 3 = rot (reicht nicht)
+    // Traffic light: 0 = neutral/gray, 1 = green (fits), 2 = yellow (tight), 3 = red (not enough)
     [ObservableProperty] private int _storageStatus;
     [ObservableProperty] private bool _storageChecking;
 
-    // ---- Fortschrittsanzeige ----
+    // ---- Progress display ----
     [ObservableProperty] private bool _progressVisible;
     [ObservableProperty] private string _progressText = "";
     private string _currentActionText = "";
 
     public string BtnCheckStorage => Tr("Speicher prüfen", "Check storage");
 
-    // Farbe der Statuszeile passend zur Ampel.
+    // Color of the status line matching the traffic light.
     public Avalonia.Media.IBrush StorageBrush => StorageStatus switch
     {
-        1 => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#40C057")), // gruen
-        2 => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#F1A100")), // gelb/orange
-        3 => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#E03131")), // rot
-        _ => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#9AA0A6")), // grau
+        1 => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#40C057")), // green
+        2 => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#F1A100")), // yellow/orange
+        3 => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#E03131")), // red
+        _ => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#9AA0A6")), // gray
     };
 
     partial void OnStorageStatusChanged(int value) => OnPropertyChanged(nameof(StorageBrush));
 
-    // Automatische Groessenberechnung (abschaltbar).
+    // Automatic size calculation (can be switched off).
     [ObservableProperty] private bool _autoStorageCheck = true;
     public string AutoStorageLabel => AutoStorageCheck
         ? Tr("Auto-Berechnung: AN", "Auto-calc: ON")
@@ -143,19 +142,19 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ToggleAutoStorage() => AutoStorageCheck = !AutoStorageCheck;
 
-    // ---- Eigener Sicherungsordner (abschaltbar, Vorgabe: an) ----
-    // Beim Sichern entsteht unter dem gewaehlten Ziel ein Ordner je Rechner und
-    // Tag: G:\ -> G:\DASI_<Rechner>_TT_MM_JJJJ. Ist das Gewaehlte schon eine
-    // Sicherung (oder gibt es den Ordner von heute schon), wird sie
-    // aktualisiert. Beim Wiederherstellen wirkt der Schalter nicht - dort wird
-    // ja eine vorhandene Sicherung gewaehlt.
+    // ---- Own backup folder (can be switched off, default: on) ----
+    // When backing up, a folder per computer and day is created below the
+    // chosen target: G:\ -> G:\DASI_<computer>_DD_MM_YYYY. If the selection
+    // already is a backup (or today's folder already exists), it is updated.
+    // The switch has no effect on restore - an existing backup is chosen
+    // there.
     [ObservableProperty] private bool _ownBackupFolder = true;
 
     public string OwnFolderLabel => OwnBackupFolder
         ? Tr("Eigener Ordner: AN", "Own folder: ON")
         : Tr("Eigener Ordner: AUS", "Own folder: OFF");
 
-    /// <summary>Sagt, wohin die naechste Sicherung geht - am echten Ordner.</summary>
+    /// <summary>Tells where the next backup goes - based on the real folder.</summary>
     public string OwnFolderTip
     {
         get
@@ -185,11 +184,11 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Was der Benutzer als Ziel gewaehlt hat, z. B. "G:\". Das Feld zeigt beim
-    /// Sichern mit eigenem Ordner daraus schon den fertigen Ordner
-    /// ("G:\DASI_Rechner_TT_MM_JJJJ") - genau dorthin wird gesichert.
-    /// Gemerkt wird die Auswahl, damit Ausschalten und Moduswechsel wieder auf
-    /// das Gewaehlte zurueckrechnen koennen.
+    /// What the user picked as the target, e.g. "G:\". When backing up with
+    /// an own folder, the field already shows the final folder derived from it
+    /// ("G:\DASI_Computer_DD_MM_YYYY") - exactly where the backup goes. The
+    /// selection is remembered so that switching off and changing the mode can
+    /// go back to what was picked.
     /// </summary>
     private string _zielBasis = "";
 
@@ -211,18 +210,19 @@ public partial class MainWindowViewModel : ObservableObject
     private void ToggleOwnFolder() => OwnBackupFolder = !OwnBackupFolder;
 
     /// <summary>
-    /// Ziel des laufenden Vorgangs. Beim Sichern mit eigenem Ordner ist das
-    /// der neu angelegte DASI-Ordner, sonst das gewaehlte Ziel. Winget-Export
-    /// und Protokolldatei muessen dorthin - nicht ins gewaehlte Ziel darueber.
+    /// Target of the current run. When backing up with an own folder, this is
+    /// the newly created DASI folder, otherwise the chosen target. The winget
+    /// export and the log file must go there - not into the chosen target
+    /// above it.
     /// </summary>
     private string _laufZiel = "";
 
     private System.Threading.CancellationTokenSource? _autoStorageCts;
 
     /// <summary>
-    /// Stoesst die automatische Berechnung verzoegert an (Debounce), damit nicht
-    /// bei jedem Klick sofort der ganze Ordnerbaum durchlaufen wird. Zeigt kein
-    /// Popup - nur die farbige Info-Zeile.
+    /// Triggers the automatic calculation with a delay (debounce), so the whole
+    /// folder tree is not walked right away on every click. Shows no popup -
+    /// only the colored info line.
     /// </summary>
     private void ScheduleAutoStorageCheck()
     {
@@ -236,7 +236,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             try
             {
-                await Task.Delay(900, cts.Token); // kurz warten, bis die Auswahl "steht"
+                await Task.Delay(900, cts.Token); // wait briefly until the selection has "settled"
                 if (cts.Token.IsCancellationRequested) return;
                 await Dispatcher.UIThread.InvokeAsync(async () =>
                 {
@@ -244,17 +244,17 @@ public partial class MainWindowViewModel : ObservableObject
                         await RunStorageCheck(showPopup: false);
                 });
             }
-            catch (TaskCanceledException) { /* neuer Trigger kam dazwischen */ }
+            catch (TaskCanceledException) { /* a new trigger came in between */ }
         });
     }
 
     partial void OnBackupPathChanged(string value)
     {
         OnPropertyChanged(nameof(OwnFolderTip));
-        // Andere Sicherung, andere Ordner darin: die Wahl gilt nicht mehr.
+        // Another backup, other folders in it: the selection no longer applies.
         if (IsRestoreMode && SelLaufwerk) SelLaufwerk = false;
         CheckAvailability();
-        // Freien Platz am Ziellaufwerk sofort anzeigen (leichtgewichtig).
+        // Show the free space on the target drive right away (lightweight).
         if (string.IsNullOrWhiteSpace(value))
         {
             StorageInfoVisible = false;
@@ -283,18 +283,18 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _loggingLabel = "Log: aus";
 
     [ObservableProperty] private bool _updateAvailable;
-    // Die angebotene Version; der Hinweistext daraus wird bei jedem Abruf in
-    // der aktuellen Sprache gebaut, folgt also auch einem Sprachwechsel.
+    // The offered version; the notice text is built from it in the current
+    // language on every read, so it follows a language change as well.
     private string? _angeboteneVersion;
     public string UpdateBannerText => _angeboteneVersion is null ? "" : Tr(
         $"\uD83D\uDD04 Neue Version {_angeboteneVersion} verfügbar  (installiert: {VersionString})",
         $"\uD83D\uDD04 New version {_angeboteneVersion} available  (installed: {VersionString})");
 
-    // ---- Sprache ----
-    // IsEnglish steuert den Umschalter; true = Englisch.
+    // ---- Language ----
+    // IsEnglish drives the switch; true = English.
     [ObservableProperty] private bool _isEnglish;
 
-    // Auswahl im Sprach-Dropdown: 0 = Deutsch, 1 = English.
+    // Selection in the language drop-down: 0 = German, 1 = English.
     public System.Collections.Generic.List<string> Languages { get; } = new() { "Deutsch", "English" };
 
     [ObservableProperty] private int _selectedLanguageIndex;
@@ -308,14 +308,14 @@ public partial class MainWindowViewModel : ObservableObject
     {
         Localizer.I.Lang = value ? AppLang.En : AppLang.De;
         if (SelectedLanguageIndex != (value ? 1 : 0)) SelectedLanguageIndex = value ? 1 : 0;
-        // Alle lokalisierten Beschriftungen neu auswerten lassen.
+        // Have all localized labels re-evaluated.
         OnPropertyChanged(string.Empty);
-        // Dynamische Labels ebenfalls aktualisieren.
+        // Update the dynamic labels as well.
         LoggingLabel = Tr(DetailedLogging ? "Log: an" : "Log: aus",
                           DetailedLogging ? "Log: on" : "Log: off");
         StorageInfo = Tr(_storageInfoDe, _storageInfoEn);
 
-        // Begruessungstext mitschalten, solange noch keine echten Zeilen im Log stehen.
+        // Switch the welcome text along as long as the log has no real lines yet.
         lock (_logLock)
         {
             if (_logUntouched)
@@ -330,7 +330,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     private static string Tr(string de, string en) => Loc.Tr(de, en);
 
-    // ---- Lokalisierte UI-Beschriftungen ----
+    // ---- Localized UI labels ----
     public string SectionOptions   => Tr("Optionen & Verzeichnisse", "Options & directories");
     public string LabelUserProfile => Tr("Benutzerprofil:", "User profile:");
     public string LabelQuickSelect => Tr("Schnellauswahl:", "Quick select:");
@@ -348,10 +348,10 @@ public partial class MainWindowViewModel : ObservableObject
     public string BtnUpdateNotes   => Tr("Was ist neu?", "What's new?");
 
     public string TgUserProfile    => Tr("Windows Benutzerprofil", "Windows user profile");
-    // Wie bei den anderen Sonderpunkten folgt die Beschriftung dem Modus - die
-    // Haken wirken in beide Richtungen, und "sichern" waere beim
-    // Wiederherstellen schlicht falsch.
-    // Bewusst ohne "mit": Beide gehen auch ohne das Profil - dann allein.
+    // As with the other special items, the label follows the mode - the boxes
+    // work in both directions, and "back up" would simply be wrong on restore.
+    // Deliberately without "with": both work without the profile as well -
+    // then on their own.
     public string TgUserAppData => IsRestoreMode
         ? Tr("AppData wiederherstellen", "Restore AppData")
         : Tr("AppData sichern", "Back up AppData");
@@ -362,16 +362,16 @@ public partial class MainWindowViewModel : ObservableObject
     public string TgEdge           => Tr("Edge-Profil", "Edge profile");
     public string TgChrome         => Tr("Chrome-Profil", "Chrome profile");
     public string TgBrave          => Tr("Brave-Profil", "Brave profile");
-    // Ein Punkt fuer alle Opera-Fassungen (Opera, GX, Beta ...) - welche gefunden
-    // wurden, steht im Tooltip.
+    // One item for all Opera editions (Opera, GX, Beta ...) - the tooltip
+    // lists which ones were found.
     public string TgOpera          => Tr("Opera-Profil (auch GX)", "Opera profile (incl. GX)");
     public string TgThunderbird    => Tr("Thunderbird-Profil", "Thunderbird profile");
 
-    // Umschalter-Beschriftungen
+    // Labels of the switch
     public string TabBackup        => Tr("Sichern", "Backup");
     public string TabRestore       => Tr("Wiederherstellen", "Restore");
 
-    // ---- Auswahl der Aktionen (gilt fuer den gerade gewaehlten Modus) ----
+    // ---- Selection of actions (applies to the currently selected mode) ----
     [ObservableProperty] private bool _selUser;
     [ObservableProperty] private bool _selFirefox;
     [ObservableProperty] private bool _selEdge;
@@ -382,28 +382,28 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _selWinget;
     [ObservableProperty] private bool _selWlan;
     [ObservableProperty] private bool _selPrinter;
-    /// <summary>Design &amp; Desktop - frueher zwei Kacheln (Design, Desktop-Layout), jetzt eine mit drei Teilen.</summary>
+    /// <summary>Design &amp; Desktop - formerly two items (Design, Desktop layout), now one with three parts.</summary>
     [ObservableProperty] private bool _selDesignDesktop;
-    /// <summary>Ordner unter C:\ - welche, fragt beim Start eine Liste ab.</summary>
+    /// <summary>Folders under C:\ - which ones is picked from a list when the box is checked.</summary>
     [ObservableProperty] private bool _selLaufwerk;
 
-    // ---- Zusatzoptionen zum Benutzerprofil ----
+    // ---- Extra options for the user profile ----
     //
-    // Beide stehen bewusst auf AUS. Sie vervielfachen die Datenmenge und die
-    // Laufzeit; wer sie braucht, soll sie bewusst einschalten - nicht
-    // versehentlich eingeschaltet lassen.
+    // Both are deliberately OFF by default. They multiply the amount of data
+    // and the run time; whoever needs them should switch them on deliberately -
+    // not leave them on by accident.
     [ObservableProperty] private bool _selUserAppData;
     [ObservableProperty] private bool _selUserCloud;
 
     /// <summary>
-    /// Die beiden Zusatzoptionen sind nur bedienbar, wenn das Benutzerprofil
-    /// ueberhaupt gewaehlt ist - sonst haetten sie keine Wirkung.
+    /// The two extra options can only be used if the user profile is selected
+    /// at all - otherwise they would have no effect.
     /// </summary>
-    // AppData und Cloud gehen auch ohne das Profil - frueher waren sie daran
-    // gekoppelt und ohne Profil-Haken gesperrt.
+    // AppData and cloud work without the profile as well - they used to be
+    // tied to it and locked without the profile box.
     public bool UserOptionsEnabled => UiEnabled;
 
-    // Bei Aenderung der groessenrelevanten Auswahl die Auto-Berechnung anstossen.
+    // When a size-relevant selection changes, trigger the automatic calculation.
     partial void OnSelUserChanged(bool value)
     {
         ScheduleAutoStorageCheck();
@@ -420,16 +420,17 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnSelThunderbirdChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelWlanChanged(bool value) => ScheduleAutoStorageCheck();
     partial void OnSelPrinterChanged(bool value) => ScheduleAutoStorageCheck();
-    // ---- Ordner unter C:\: Auswahl vormerken ----
+    // ---- Folders under C:\: pre-select the choice ----
     //
-    // Wie das Anhaken jeder anderen Kachel merkt auch diese nur vor: Beim
-    // Anhaken erscheint die Liste, "Uebernehmen" merkt die Ordner vor, und
-    // gesichert bzw. zurueckgeschrieben wird erst mit "Ausgewaehlte Aktionen
-    // starten". Der Knopf in der Kachel zeigt die Zahl und aendert die Wahl.
+    // Like checking any other item, this one only pre-selects: checking the
+    // box shows the list, "Übernehmen" (Apply) remembers the folders, and the
+    // backup or restore only runs with "Ausgewählte Aktionen starten" (Start
+    // selected actions). The button in the item shows the count and changes
+    // the choice.
     private List<LaufwerksOrdner.Eintrag> _laufwerkGewaehlt = new();
     private bool _laufwerkWaehltGerade;
 
-    /// <summary>Die vorgemerkten Ordner.</summary>
+    /// <summary>The pre-selected folders.</summary>
     public IReadOnlyList<LaufwerksOrdner.Eintrag> LaufwerkGewaehlt => _laufwerkGewaehlt;
     public string LaufwerkKnopf => Tr($"{_laufwerkGewaehlt.Count} Ordner …", $"{_laufwerkGewaehlt.Count} {(_laufwerkGewaehlt.Count == 1 ? "folder" : "folders")} …");
     public bool LaufwerkKnopfSichtbar => SelLaufwerk && _laufwerkGewaehlt.Count > 0;
@@ -437,7 +438,7 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnSelLaufwerkChanged(bool value)
     {
         if (value && _laufwerkGewaehlt.Count == 0 && !_laufwerkWaehltGerade)
-            // Erst nach dem Klick: Ist der Haken bis dahin schon wieder weg, keine Liste.
+            // Only after the click: if the box is unchecked again by then, no list.
             Dispatcher.UIThread.Post(async () => { if (SelLaufwerk && _laufwerkGewaehlt.Count == 0) await ChooseDriveFolders(); });
         else if (!value) _laufwerkGewaehlt = new();
         NotifyDriveFolders();
@@ -456,8 +457,9 @@ public partial class MainWindowViewModel : ObservableObject
     private async Task ChangeDriveFolders() => await ChooseDriveFolders();
 
     /// <summary>
-    /// Zeigt die Liste und merkt die Wahl vor. Abgebrochen: Die bisherige Wahl
-    /// bleibt - gab es keine, geht der Haken wieder weg. Nichts gewaehlt: Haken weg.
+    /// Shows the list and remembers the choice. Cancelled: the previous choice
+    /// stays - if there was none, the box is unchecked again. Nothing chosen:
+    /// box unchecked.
     /// </summary>
     private async Task ChooseDriveFolders()
     {
@@ -496,9 +498,9 @@ public partial class MainWindowViewModel : ObservableObject
 
     partial void OnSelDesignDesktopChanged(bool value)
     {
-        // Kachel an, aber kein Teil gewaehlt: die Vorgabe. Kachel ab: alle
-        // Teile ab - angehakt bleibt nur, was auch laeuft. Kommt die Aenderung
-        // von einem Teil (TeilGeaendert), bleiben die Teile, wie sie sind.
+        // Item on but no part selected: the defaults. Item off: all parts off -
+        // only what actually runs stays checked. If the change comes from a part
+        // (PartChanged), the parts stay as they are.
         if (!_teileSetzen)
         {
             if (value && !TeilDesign && !TeilSymbole && !TeilScreenshot) SetParts(_vorgabe);
@@ -507,12 +509,12 @@ public partial class MainWindowViewModel : ObservableObject
         ScheduleAutoStorageCheck();
     }
 
-    // ---- Verfuegbarkeit der Punkte ----
+    // ---- Availability of the items ----
     //
-    // Sichern: Programmsicherungen sind gesperrt, wenn das Programm beim
-    // gewaehlten Benutzer nicht eingerichtet ist. Wiederherstellen: jeder Punkt
-    // ist gesperrt, den die gewaehlte Sicherung nicht enthaelt. Der Grund steht
-    // im Tooltip der gesperrten Kachel. Die Regeln stehen in AppCatalog.
+    // Backup: program backups are locked if the program is not set up for the
+    // selected user. Restore: every item the selected backup does not contain
+    // is locked. The reason is in the tooltip of the locked item. The rules
+    // live in AppCatalog.
     private readonly System.Collections.Generic.Dictionary<Punkt, (string De, string En)?> _gesperrt = new();
     private string? _operaFunde;
 
@@ -545,7 +547,8 @@ public partial class MainWindowViewModel : ObservableObject
     public string? TipWinget      => Reason(Punkt.Winget);
     public string? TipWlan        => Reason(Punkt.Wlan);
     public string? TipPrinter     => Reason(Punkt.Drucker);
-    // Auch im freien Zustand: was beim Anhaken passiert, bzw. was vorgemerkt ist.
+    // Also when available: what happens when checking it, or what is
+    // pre-selected.
     public string? TipLaufwerk    => Reason(Punkt.Laufwerk)
         ?? (_laufwerkGewaehlt.Count > 0
             ? Tr($"Vorgemerkt: {string.Join(", ", _laufwerkGewaehlt.Select(e => e.Name))}. Ändern über den Knopf rechts.",
@@ -555,32 +558,32 @@ public partial class MainWindowViewModel : ObservableObject
                  $"When ticked, the list of the backed-up folders appears for selection. They are written back to {LaufwerksOrdner.Wurzel} with \"Start selected actions\"; anything already there is added to.")
             : Tr($"Beim Anhaken erscheint die Liste der Ordner unter {LaufwerksOrdner.Wurzel} (etwa Daten, Scans) zum Vormerken. Gesichert wird mit \"Ausgewählte Aktionen starten\". Die Windows-Ordner (Windows, Programme, Benutzer …) sind in der Liste ausgeblendet.",
                  $"When ticked, the list of the folders under {LaufwerksOrdner.Wurzel} (such as data or scans) appears for selection. They are backed up with \"Start selected actions\". The Windows folders (Windows, Program Files, Users …) are hidden in the list."));
-    // Auch im freien Zustand: was alles dazugehoert.
+    // Also when available: everything that belongs to it.
     public string? TipDesignDesktop => !IsAvailable(Punkt.Hintergrund) && !IsAvailable(Punkt.DesktopShot)
         ? Tr("Die gewählte Sicherung enthält weder Design noch Desktop-Symbole oder Screenshot.", "The selected backup contains neither design nor desktop icons or a screenshot.")
         : Tr("Wie der Arbeitsplatz aussieht: Design (Hintergrund, Farben, Mauszeiger, Taskleiste, Start), die Lage der Desktop-Symbole, die angehefteten Taskleisten-Symbole und auf Wunsch ein Foto des Desktops.",
              "How the workspace looks: design (wallpaper, colors, pointer, taskbar, Start), where the desktop icons are, the icons pinned to the taskbar and, if wanted, a picture of the desktop.");
-    // Bei Opera auch im freien Zustand: welche Fassungen gefunden wurden.
+    // For Opera also when available: which editions were found.
     public string? TipOpera => Reason(Punkt.Opera)
         ?? (_operaFunde is null ? null : Tr($"Gefunden: {_operaFunde}", $"Found: {_operaFunde}"));
 
-    /// <summary>Bewertet alle Punkte neu und waehlt gesperrte ab.</summary>
+    /// <summary>Re-evaluates all items and unchecks the locked ones.</summary>
     private void CheckAvailability()
     {
         var sicherung = IsRestoreMode ? AppCatalog.ForRestore(BackupPath) : null;
         foreach (var p in Enum.GetValues<Punkt>())
             _gesperrt[p] = sicherung is not null ? sicherung[p] : AppCatalog.ForBackup(p, SourcePath);
 
-        // Welche Opera-Fassungen gibt es dort, wo gerade gelesen wird?
+        // Which Opera editions exist where we are reading right now?
         var operaOrt = IsRestoreMode
             ? (string.IsNullOrWhiteSpace(BackupPath) ? null : Path.Combine(BackupPath, AppCatalog.Opera.BackupOrdner))
             : (string.IsNullOrWhiteSpace(SourcePath) ? null : AppCatalog.PathIn(SourcePath, AppCatalog.Opera.Rel));
         var funde = operaOrt is null ? new System.Collections.Generic.List<string>() : AppCatalog.Opera.Variants(operaOrt);
         _operaFunde = funde.Count == 0 ? null : string.Join(", ", funde.Select(AppCatalog.Opera.DisplayName));
 
-        // Design & Desktop: welche Teile liegen in der Sicherung? Beim Sichern
-        // gibt es alle. Aendert sich das (Modus, andere Sicherung), stehen die
-        // Teile wieder auf der Vorgabe - siehe TeileVorgeben.
+        // Design & Desktop: which parts are in the backup? When backing up, all of
+        // them exist. If that changes (mode, another backup), the parts go back to
+        // their defaults - see ApplyPartDefaults.
         _hatScreenshot = _hatSymbole = true;
         if (IsRestoreMode && !string.IsNullOrWhiteSpace(BackupPath) && Directory.Exists(BackupPath))
         {
@@ -589,7 +592,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         ApplyPartDefaults();
 
-        // Was gesperrt ist, kann nicht gewaehlt bleiben.
+        // What is locked cannot stay selected.
         if (!IsAvailable(Punkt.Profil)) SelUser = false;
         if (!IsAvailable(Punkt.AppData)) SelUserAppData = false;
         if (!IsAvailable(Punkt.Cloud)) SelUserCloud = false;
@@ -624,7 +627,7 @@ public partial class MainWindowViewModel : ObservableObject
             OnPropertyChanged(n);
     }
 
-    // ---- Modus: false = Sichern (Backup), true = Wiederherstellen (Restore) ----
+    // ---- Mode: false = backup, true = restore ----
     [ObservableProperty] private bool _isRestoreMode;
 
     public bool IsBackupMode
@@ -636,7 +639,7 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnIsRestoreModeChanged(bool value)
     {
         OnPropertyChanged(nameof(IsBackupMode));
-        // Beschriftungen, die vom Modus abhaengen, aktualisieren.
+        // Update labels that depend on the mode.
         OnPropertyChanged(nameof(TgUserAppData));
         OnPropertyChanged(nameof(TgUserCloud));
         OnPropertyChanged(nameof(TgWinget));
@@ -644,7 +647,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TgPrinter));
         OnPropertyChanged(nameof(TgDesignDesktop));
         OnPropertyChanged(nameof(TgLaufwerk));
-        // Die Wahl gilt nur fuer die Richtung, in der sie getroffen wurde.
+        // The choice only applies to the direction it was made for.
         SelLaufwerk = false;
         OnPropertyChanged(nameof(OwnFolderToggleEnabled));
         ShowTarget();
@@ -652,7 +655,7 @@ public partial class MainWindowViewModel : ObservableObject
         ScheduleAutoStorageCheck();
     }
 
-    // Modusabhaengige Beschriftungen fuer die Sonderpunkte.
+    // Mode-dependent labels for the special items.
     public string TgWinget => IsRestoreMode
         ? Tr("Programme installieren (Winget)", "Install programs (winget)")
         : Tr("Programme exportieren (Winget)", "Export programs (winget)");
@@ -669,13 +672,12 @@ public partial class MainWindowViewModel : ObservableObject
         ? Tr("Design & Desktop wiederherstellen", "Restore design & desktop")
         : Tr("Design & Desktop sichern", "Back up design & desktop");
 
-    // ---- Design & Desktop: die drei Teile ----
+    // ---- Design & Desktop: the three parts ----
     //
-    // Frueher zwei Kacheln: "Design" und "Desktop-Layout" (Screenshot ODER
-    // Symbolpositionen). Jetzt eine Kachel; was dazugehoert, waehlen die
-    // Haken daneben - auch Symbole UND Foto zusammen. Kachel und Teile
-    // haengen zusammen: Ein Teil angehakt hakt die Kachel an, der letzte
-    // abgehakt hakt sie ab.
+    // Formerly two items: "Design" and "Desktop layout" (screenshot OR icon
+    // positions). Now one item; the boxes next to it choose what belongs to
+    // it - icons AND picture together, too. Item and parts are linked:
+    // checking a part checks the item, unchecking the last one unchecks it.
     [ObservableProperty] private bool _teilDesign;
     [ObservableProperty] private bool _teilSymbole;
     [ObservableProperty] private bool _teilScreenshot;
@@ -684,7 +686,7 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnTeilSymboleChanged(bool value) => PartChanged(value);
     partial void OnTeilScreenshotChanged(bool value) => PartChanged(value);
 
-    /// <summary>Ein Teil angehakt: die Kachel mit. Der letzte abgehakt: die Kachel ab.</summary>
+    /// <summary>A part checked: the item too. The last one unchecked: the item off.</summary>
     private void PartChanged(bool an)
     {
         if (_teileSetzen) return;
@@ -697,10 +699,10 @@ public partial class MainWindowViewModel : ObservableObject
         finally { _teileSetzen = false; }
     }
 
-    /// <summary>Setzt die Teile gerade selbst - dann nicht zurueck auf die Kachel wirken.</summary>
+    /// <summary>The parts are being set by code right now - then do not feed back into the item.</summary>
     private bool _teileSetzen;
 
-    /// <summary>Die Teile, die das Anhaken der Kachel waehlt - siehe TeileVorgeben.</summary>
+    /// <summary>The parts that checking the item selects - see ApplyPartDefaults.</summary>
     private (bool Design, bool Symbole, bool Screenshot) _vorgabe = (true, true, false);
 
     private void SetParts((bool Design, bool Symbole, bool Screenshot) t)
@@ -715,21 +717,21 @@ public partial class MainWindowViewModel : ObservableObject
     public string TgTeilSymbole => Tr("Symbole + Taskleiste", "Icons + taskbar");
     public string TgTeilScreenshot => Tr("Screenshot", "Screenshot");
 
-    // Beim Wiederherstellen: nur, was in der Sicherung liegt.
+    // On restore: only what is in the backup.
     private bool _hatScreenshot = true, _hatSymbole = true;
     private (bool, bool, bool, bool)? _teileStand;
-    // Bedienbar, soweit es den Teil gibt - auch ohne angehakte Kachel.
+    // Usable as far as the part exists - even with the item unchecked.
     public bool EnTeilDesign => EnDesignDesktop && IsAvailable(Punkt.Hintergrund);
     public bool EnTeilSymbole => EnDesignDesktop && _hatSymbole;
     public bool EnTeilScreenshot => EnDesignDesktop && _hatScreenshot;
 
     /// <summary>
-    /// Die Vorgabe der Teile, neu bestimmt, sobald sich Modus oder Inhalt der
-    /// Sicherung aendern - sonst bleibt die Wahl des Benutzers stehen.
-    /// Sichern: Design und Symbole, das Foto nur auf Wunsch. Wiederherstellen:
-    /// alles, was die Sicherung enthaelt; das Foto nur, wenn es keine
-    /// Symbolpositionen gibt (dann ordnet man nach ihm von Hand). Ist die
-    /// Kachel an, gilt die neue Vorgabe sofort, sonst beim Anhaken.
+    /// The default parts, determined anew as soon as the mode or the content of
+    /// the backup changes - otherwise the user's choice stays. Backup: design
+    /// and icons, the picture only on request. Restore: everything the backup
+    /// contains; the picture only if there are no icon positions (then one
+    /// arranges by it by hand). If the item is on, the new default applies at
+    /// once, otherwise when it is checked.
     /// </summary>
     private void ApplyPartDefaults()
     {
@@ -757,18 +759,18 @@ public partial class MainWindowViewModel : ObservableObject
             ? Tr("Öffnet das Foto des Desktops - die Symbole danach von Hand anordnen.", "Opens the picture of the desktop - then arrange the icons by hand.")
             : Tr("Fotografiert den Desktop, ein Bild pro Bildschirm.", "Takes a picture of the desktop, one per screen.");
 
-    // ---- Haken fuer die Pruefungen (tests/DaSiGuiTests) ----
+    // ---- Hooks for the tests (tests/DaSiGuiTests) ----
 
-    /// <summary>Ersetzt die Auswahl der Ordner unter C:\ - null: das Auswahlfenster.</summary>
+    /// <summary>Replaces the selection of folders under C:\ - null: the selection window.</summary>
     internal Func<IReadOnlyList<LaufwerksOrdner.Eintrag>, bool, IReadOnlyCollection<string>, Task<List<LaufwerksOrdner.Eintrag>?>>? LaufwerkAuswahl { get; set; }
 
-    /// <summary>Ersetzt den Ordner-Dialog des Systems - null: der echte.</summary>
+    /// <summary>Replaces the system's folder dialog - null: the real one.</summary>
     internal Func<string, Task<string?>>? OrdnerDialog { get; set; }
 
-    /// <summary>Oeffnet eine Adresse im Browser.</summary>
+    /// <summary>Opens an address in the browser.</summary>
     internal Func<string, bool> Oeffnen { get; set; } = SystemHelpers.Open;
 
-    /// <summary>Die Dienste hinter der Oberflaeche - fuer die winget-Attrappe und die Bild-Anzeige.</summary>
+    /// <summary>The services behind the UI - for the winget fake and the image viewer.</summary>
     internal WingetService Winget => _winget;
     internal BackupService Sicherung => _backup;
 
@@ -776,7 +778,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         _runner = new ProcessRunner(_cancel);
         _backup = new BackupService(_runner, _cancel, Log);
-        // Datei-Fortschritt aus dem Backup in die Anzeige spiegeln.
+        // Mirror file progress from the backup into the display.
         _backup.OnFilesProgress = count =>
         {
             var baseText = _currentActionText;
@@ -788,17 +790,17 @@ public partial class MainWindowViewModel : ObservableObject
         _winget = new WingetService(_runner, _cancel, Log);
         _backup.Winget = _winget;
 
-        // Sprache aus der Windows-Anzeigesprache uebernehmen (Fallback: Deutsch).
-        // Setzt Localizer direkt, damit der Begruessungstext sofort passt.
+        // Take the language from the Windows display language (fallback: German).
+        // Sets Localizer directly, so the welcome text matches right away.
         var lang = SystemHelpers.GetWindowsLanguage();
         _isEnglish = lang == "en";
         _selectedLanguageIndex = _isEnglish ? 1 : 0;
         Localizer.I.Lang = _isEnglish ? AppLang.En : AppLang.De;
-        // Frueher blieb hier "Log: aus" stehen - auch in englischer Umgebung,
-        // bis die Sprache einmal gewechselt wurde.
+        // This used to keep saying "Log: aus" - even in an English environment,
+        // until the language was switched once.
         _loggingLabel = Tr("Log: aus", "Log: off");
 
-        // Hell-/Dunkelmodus aus Windows uebernehmen.
+        // Take light/dark mode from Windows.
         _isLightTheme = SystemHelpers.IsWindowsLightTheme();
         var app = Avalonia.Application.Current;
         if (app is not null)
@@ -806,51 +808,49 @@ public partial class MainWindowViewModel : ObservableObject
                 ? Avalonia.Styling.ThemeVariant.Light
                 : Avalonia.Styling.ThemeVariant.Dark;
 
-        // Begruessungstext in der (jetzt gesetzten) Sprache anzeigen.
+        // Show the welcome text in the (now set) language.
         _logBuffer.Append(InitialLogText());
         LogText = _logBuffer.ToString();
 
-        // Benutzerprofile fuer die Schnellauswahl laden.
+        // Load user profiles for the quick selection.
         foreach (var p in SystemHelpers.GetUserProfiles()) UserProfiles.Add(p);
 
         _ = CheckForUpdatesAsync();
     }
 
-    // ---- Label-Umschaltung wie im Skript ----
+    // ---- Toggle labels ----
     partial void OnDetailedLoggingChanged(bool value)
     {
         LoggingLabel = Tr(value ? "Log: an" : "Log: aus",
                           value ? "Log: on" : "Log: off");
-        // Beim EINSCHALTEN auf die Performance-Auswirkung hinweisen:
-        // sowohl im Log als auch als Meldung auf dem Bildschirm.
+        // When switching ON, point out the performance impact: both in the log and
+        // as a message on screen.
         if (value)
         {
             var msg = Tr("Detailliertes Log ist aktiv. Das erzeugt sehr viele Zeilen und kann die Geschwindigkeit spürbar verringern.",
                          "Detailed logging is on. It produces a lot of output and can noticeably slow things down.");
             Log("[HINWEIS] " + msg);
-            // Dialog nicht blockierend anstossen (Handler ist synchron).
+            // Trigger the dialog without blocking (the handler is synchronous).
             Dispatcher.UIThread.Post(async () =>
                 await ShowInfo(Tr("Hinweis", "Notice"), msg));
         }
     }
 
     /// <summary>
-    /// Fehlerzeilen der gerade laufenden Aktion.
+    /// Error lines of the action currently running.
     ///
-    /// Warum ueber das Protokoll: Die Dienste werfen bei einem Fehlschlag
-    /// keine Ausnahme, sie schreiben "[FEHLER] ..." und kehren normal zurueck.
-    /// Die Warteschlange hat deshalb frueher nur Ausnahmen als Fehler gezaehlt -
-    /// ein gescheitertes robocopy (Code 16), ein fehlender Sicherungsordner
-    /// oder ein nicht startbares winget landeten als [OK] in der Bilanz UND in
-    /// der Protokolldatei im Sicherungsziel. Ausgerechnet die Datei, mit der
-    /// sich nachweisen laesst, dass eine Sicherung gelaufen ist, meldete dann
-    /// Erfolg.
+    /// Why via the log: the services do not throw on failure, they write
+    /// "[FEHLER] ..." and return normally. So the queue used to count only
+    /// exceptions as errors - a failed robocopy (code 16), a missing backup
+    /// folder or a winget that would not start ended up as [OK] in the summary
+    /// AND in the log file in the backup target. Precisely the file that proves
+    /// a backup ran then reported success.
     ///
-    /// Das Protokoll ist in diesem Programm der eine Weg, auf dem jeder Dienst
-    /// Fehler meldet - jede Stelle benutzt dafuer "[FEHLER]" bzw. "[ERROR]".
-    /// Zeilen aus der robocopy-Ausgabe selbst ("FEHLER 5 (0x00000005) ...")
-    /// tragen keine eckigen Klammern und zaehlen nicht mit; scheitert robocopy
-    /// wirklich, meldet der Dienst den Fehlercode ohnehin selbst.
+    /// In this program the log is the one channel through which every service
+    /// reports errors - every place uses "[FEHLER]" or "[ERROR]" for it. Lines
+    /// from robocopy's own output ("FEHLER 5 (0x00000005) ...") carry no square
+    /// brackets and do not count; if robocopy really fails, the service reports
+    /// the exit code itself anyway.
     /// </summary>
     private int _aktionsFehler;
 
@@ -861,7 +861,7 @@ public partial class MainWindowViewModel : ObservableObject
         string snapshot;
         lock (_logLock)
         {
-            _logUntouched = false;   // ab jetzt bleibt der Verlauf stehen
+            _logUntouched = false;   // from now on the history is kept
             _logBuffer.Append(text).Append("\r\n");
             if (_laufLog is not null && _laufLog.Length < LaufLogGrenze)
             {
@@ -885,7 +885,7 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task CheckStorage() => await RunStorageCheck(showPopup: true);
 
-    // Sammelt die relativen Profilpfade der ausgewaehlten Browser-/Mail-Punkte.
+    // Collects the relative profile paths of the selected browser/mail items.
     private System.Collections.Generic.List<string> SelectedProfileRelPaths()
     {
         var list = new System.Collections.Generic.List<string>();
@@ -898,8 +898,8 @@ public partial class MainWindowViewModel : ObservableObject
         return list;
     }
 
-    // Sammelt die Namen der Backup-Unterordner/-Dateien der ausgewaehlten
-    // Punkte - fuer die Groessenberechnung im Wiederherstellungsmodus.
+    // Collects the names of the backup subfolders/files of the selected items
+    // - for the size calculation in restore mode.
     private System.Collections.Generic.List<string> SelectedBackupSubdirs()
     {
         var list = new System.Collections.Generic.List<string>();
@@ -913,19 +913,19 @@ public partial class MainWindowViewModel : ObservableObject
         if (SelWlan)        list.Add("WLAN-Profile");
         if (SelPrinter)     list.Add("Drucker");
         if (SelDesignDesktop && TeilDesign) { list.Add("Hintergrundbild"); list.Add(DesignEinstellungen.Ordner); }
-        // Winget-Liste ist nur eine kleine Textdatei; vernachlaessigbar.
+        // The winget list is just a small text file; negligible.
         return list;
     }
 
     /// <summary>
-    /// Abbruch fuer die gerade laufende Groessenberechnung, und ob danach mit
-    /// der inzwischen geaenderten Auswahl neu gerechnet werden muss.
+    /// Cancellation for the size calculation currently running, and whether it
+    /// has to run again afterwards with the selection changed in the meantime.
     ///
-    /// Frueher kehrte ein zweiter Aufruf waehrend einer laufenden Berechnung
-    /// einfach zurueck. Hakte man in den Sekunden, die ein grosses Profil
-    /// braucht, AppData an, wurde das nie berechnet - die Anzeige zeigte die
-    /// Groesse OHNE AppData, und der Platzbedarf wurde unterschaetzt. Gerade
-    /// die beiden Zusatzoptionen veraendern die Groesse am staerksten.
+    /// A second call during a running calculation used to simply return. If
+    /// AppData was checked during the seconds a large profile takes, it was
+    /// never included - the display showed the size WITHOUT AppData, and the
+    /// space needed was underestimated. The two extra options in particular
+    /// change the size the most.
     /// </summary>
     private System.Threading.CancellationTokenSource? _storageWalkCts;
     private bool _storageRecheck;
@@ -967,8 +967,8 @@ public partial class MainWindowViewModel : ObservableObject
             bool selAppData = SelUserAppData;
             bool selCloud = SelUserCloud;
             var relPaths = SelectedProfileRelPaths();
-            var restoreSubdirs = SelectedBackupSubdirs(); // nur fuer Restore
-            // Ordner unter C:\: beim Sichern die Ordner selbst, beim Wiederherstellen ihre Kopie in der Sicherung.
+            var restoreSubdirs = SelectedBackupSubdirs(); // restore only
+            // Folders under C:\: for a backup the folders themselves, for a restore their copy in the backup.
             var laufwerk = SelLaufwerk ? _laufwerkGewaehlt.Select(e => e.Pfad).ToList() : new List<string>();
 
             var (dataSize, free) = await Task.Run(() =>
@@ -976,15 +976,14 @@ public partial class MainWindowViewModel : ObservableObject
                 long size = 0;
                 if (restore)
                 {
-                    // Wiederherstellung: nur die AUSGEWAEHLTEN Backup-Unterordner
-                    // summieren (nicht den gesamten Backup-Ordner).
+                    // Restore: sum up only the SELECTED backup subfolders (not the whole
+                    // backup folder).
                     foreach (var sub in restoreSubdirs)
                     {
                         var full = System.IO.Path.Combine(backupPath, sub);
-                        // Beim Benutzerprofil dieselben Ausschluesse wie beim
-                        // Zurueckschreiben selbst: Ohne Haken bleiben AppData und
-                        // die Cloud-Ordner draussen - dann zaehlen sie auch hier
-                        // nicht mit.
+                        // For the user profile, the same excludes as for the restore itself:
+                        // unchecked, AppData and the cloud folders stay out - then they do not
+                        // count here either.
                         if (sub == "Benutzerprofil" && System.IO.Directory.Exists(full))
                             size += SystemHelpers.GetDirectorySize(full,
                                         ProfileExcludes.Build(full, selAppData, selCloud), ct);
@@ -995,7 +994,7 @@ public partial class MainWindowViewModel : ObservableObject
                             try { size += new System.IO.FileInfo(full).Length; } catch { }
                         }
                     }
-                    // Ohne Profil: AppData und Cloud-Ordner aus der Sicherung einzeln.
+                    // Without the profile: AppData and cloud folders from the backup on their own.
                     if (!selUser)
                     {
                         var profilSicherung = System.IO.Path.Combine(backupPath, "Benutzerprofil");
@@ -1013,12 +1012,12 @@ public partial class MainWindowViewModel : ObservableObject
                 }
                 else
                 {
-                    // Sicherung: Summe ALLER ausgewaehlten Quellen.
+                    // Backup: sum of ALL selected sources.
                     if (selUser && !string.IsNullOrWhiteSpace(sourcePath))
                         size += SystemHelpers.GetDirectorySize(sourcePath,
                                     BackupService.GetProfileExcludes(sourcePath, selAppData, selCloud), ct);
 
-                    // Ohne Profil: AppData (ohne Zwischenspeicher) und Cloud-Ordner einzeln.
+                    // Without the profile: AppData (without caches) and cloud folders on their own.
                     if (!selUser && !string.IsNullOrWhiteSpace(sourcePath))
                     {
                         var appData = System.IO.Path.Combine(sourcePath, "AppData");
@@ -1030,7 +1029,7 @@ public partial class MainWindowViewModel : ObservableObject
                                 size += SystemHelpers.GetDirectorySize(cloud.Path, ct: ct);
                     }
 
-                    // Browser-/Mail-Profile einzeln dazurechnen.
+                    // Add the browser/mail profiles one by one.
                     if (!string.IsNullOrWhiteSpace(sourcePath))
                     {
                         foreach (var rel in relPaths)
@@ -1046,7 +1045,7 @@ public partial class MainWindowViewModel : ObservableObject
                 }
             }, ct);
 
-            var margin = (long)(dataSize * 0.10); // 10% Sicherheitsreserve
+            var margin = (long)(dataSize * 0.10); // 10% safety margin
             var needed = dataSize + margin;
 
             var sizeStr = SystemHelpers.FormatBytes(dataSize);
@@ -1087,14 +1086,14 @@ public partial class MainWindowViewModel : ObservableObject
             }
             StorageInfoVisible = true;
 
-            // Popup bei gelb/rot - aber nur wenn gewuenscht (manuelle Pruefung),
-            // damit die automatische Berechnung nicht staendig Fenster oeffnet.
+            // Popup for yellow/red - but only when asked for (manual check), so the
+            // automatic calculation does not keep opening windows.
             if (showPopup && popupMsg != null)
                 await ShowInfo(Tr("Speicherplatz", "Storage"), popupMsg);
         }
         catch (OperationCanceledException)
         {
-            // Die Auswahl hat sich geaendert - die Neuberechnung folgt im finally.
+            // The selection changed - the recalculation follows in finally.
         }
         catch (Exception ex)
         {
@@ -1130,10 +1129,10 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    // ---- Hell-/Dunkelmodus ----
+    // ---- Light/dark mode ----
     [ObservableProperty] private bool _isLightTheme;
 
-    public string ThemeIcon => IsLightTheme ? "\u2600" : "\u263D"; // Sonne / Mond
+    public string ThemeIcon => IsLightTheme ? "\u2600" : "\u263D"; // sun / moon
 
     [RelayCommand]
     private void ToggleTheme()
@@ -1183,29 +1182,28 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Warnt, bevor Cloud-Ordner mitgesichert oder zurueckgeschrieben werden.
+    /// Warns before cloud folders are backed up or restored.
     ///
-    /// Der Grund ist nicht nur die Datenmenge. Cloud-Ordner enthalten oft
-    /// Platzhalterdateien, die erst beim Zugriff vom Anbieter geladen werden -
-    /// robocopy loest sie dabei aus und zieht damit den gesamten
-    /// Online-Bestand auf die Platte. Beim Zurueckschreiben laeuft derselbe
-    /// Weg rueckwaerts: Der Client haelt die Dateien fuer geaendert und laedt
-    /// alles erneut hoch, was in geteilten Ordnern zu Konflikten fuehrt.
+    /// The reason is not just the amount of data. Cloud folders often contain
+    /// placeholder files that the provider only downloads on access - robocopy
+    /// triggers that and pulls the entire online content onto the disk.
+    /// Restoring takes the same path backwards: the client considers the files
+    /// changed and uploads everything again, which causes conflicts in shared
+    /// folders.
     /// </summary>
     private async Task<bool> ConfirmCloudAsync()
     {
-        // Beim Wiederherstellen kommt es darauf an, was IN DER SICHERUNG liegt -
-        // das wird gleich zurueckgeschrieben. Frueher wurde hier das Zielprofil
-        // durchsucht; auf einem frischen Rechner hat das noch keine Cloud-Ordner,
-        // und die Rueckfrage meldete "keine erkannt", waehrend gleich OneDrive
-        // zurueckgeschrieben wurde.
+        // On restore, what matters is what is IN THE BACKUP - that is what gets
+        // written back. This used to search the target profile; on a fresh
+        // computer it has no cloud folders yet, and the prompt said "none
+        // detected" while OneDrive was about to be restored.
         var ort = IsRestoreMode ? Path.Combine(BackupPath, "Benutzerprofil") : SourcePath;
         var gefunden = CloudProviders.Detect(ort);
         var liste = gefunden.Count > 0
             ? CloudProviders.Summarize(gefunden)
             : Tr("keine erkannt", "none detected");
 
-        // Am echten Ordnernamen ist leichter zu erkennen, was gleich passiert.
+        // The real folder name makes it easier to see what is about to happen.
         var beispielName = gefunden.Count > 0 ? Path.GetFileName(gefunden[0].Path) : "OneDrive";
         var beispiel = CloudProviders.RestoredFolderName(beispielName);
 
@@ -1246,10 +1244,9 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Warnt vor dem Zurueckschreiben von AppData. Beim Sichern ist AppData
-    /// harmlos - gefaehrlich wird es erst in der Gegenrichtung: Dort liegen
-    /// maschinengebundene Angaben (Lizenzen, Geraetekennungen, Sitzungen) und
-    /// Dateien laufender Programme.
+    /// Warns before AppData is restored. Backing up AppData is harmless - it
+    /// only becomes dangerous the other way round: it holds machine-bound data
+    /// (licenses, device IDs, sessions) and files of running programs.
     /// </summary>
     private async Task<bool> ConfirmAppDataRestoreAsync()
     {
@@ -1277,14 +1274,14 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Prueft vor Export oder Import, ob winget einsatzbereit ist.
+    /// Checks before export or import whether winget is ready.
     ///
-    /// Ist es das nicht, haengt die Antwort davon ab, was sonst noch ansteht:
-    /// Steht winget allein in der Warteschlange, ist Schluss. Gibt es daneben
-    /// andere Aufgaben, darf der Benutzer ohne den winget-Schritt weitermachen -
-    /// ein kaputtes winget soll nicht die Profilsicherung verhindern.
+    /// If it is not, the answer depends on what else is queued: if winget is
+    /// alone in the queue, that is the end. If there are other tasks, the user
+    /// may continue without the winget step - a broken winget should not
+    /// prevent the profile backup.
     /// </summary>
-    /// <returns>true, wenn weitergemacht werden darf.</returns>
+    /// <returns>true if it may continue.</returns>
     private async Task<bool> EnsureWingetReadyAsync(List<string> tasks)
     {
         _cancel.Reset();
@@ -1350,10 +1347,9 @@ public partial class MainWindowViewModel : ObservableObject
             await ShowInfo(Tr("Fehler", "Error"), Tr("Bitte lege zuerst das Quell- und Zielverzeichnis fest.", "Please set the source and target directory first."));
             return;
         }
-        // Ein Profil, das es nicht gibt, wird NICHT angelegt. Beim
-        // Wiederherstellen entstuende sonst ein Ordner unter C:\Users, zu dem
-        // kein Benutzer gehoert - Windows legt das echte Profil eines neuen
-        // Benutzers erst bei dessen erster Anmeldung an, und zwar daneben.
+        // A profile that does not exist is NOT created. Otherwise a restore would
+        // create a folder under C:\Users that no user owns - Windows creates a new
+        // user's real profile only at the first sign-in, and next to it.
         if (!Directory.Exists(SourcePath))
         {
             await ShowInfo(Tr("Fehler", "Error"), IsRestoreMode
@@ -1373,11 +1369,11 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        // Akkubetrieb pruefen: Bei Notebooks ohne Netzteil warnen und rueckfragen.
+        // Check for battery mode: warn and ask on notebooks without a charger.
         if (SystemHelpers.IsOnBattery(out var battery))
         {
             var pct = battery >= 0 ? $" ({battery}%)" : "";
-            // Warnung zusaetzlich ins Log schreiben (bleibt dort bestehen).
+            // Also write the warning to the log (it stays there).
             Log(Tr($"[HINWEIS] Notebook läuft im Akkubetrieb{pct}. Bitte zur Sicherheit das Ladegerät anschließen.",
                    $"[NOTE] The notebook is running on battery{pct}. Please connect the charger to be safe."));
             var proceed = await ShowYesNo(
@@ -1392,21 +1388,21 @@ public partial class MainWindowViewModel : ObservableObject
             }
         }
 
-        // ---- Rueckfragen zu den Zusatzoptionen des Benutzerprofils ----
+        // ---- Confirmation prompts for the extra options of the user profile ----
         if (SelUserCloud && !await ConfirmCloudAsync()) return;
         if (SelUserAppData && IsRestoreMode && !await ConfirmAppDataRestoreAsync()) return;
 
-        // ---- winget: erst pruefen, dann arbeiten ----
+        // ---- winget: check first, then work ----
         //
-        // Bewusst VOR der Paketauswahl und vor dem ersten Kopiervorgang: Ein
-        // nicht einsatzbereites winget soll auffallen, solange der Benutzer
-        // noch etwas entscheiden kann - nicht nach zwanzig Minuten Profilkopie.
+        // Deliberately BEFORE the package selection and before the first copy: a
+        // winget that is not ready should show up while the user can still decide
+        // something - not after twenty minutes of profile copying.
         if (tasks.Contains("Export-Winget") || tasks.Contains("Import-Winget"))
         {
             if (!await EnsureWingetReadyAsync(tasks)) return;
         }
 
-        // Winget-Import: Auswahl JETZT auf dem UI-Thread abfragen
+        // Winget import: ask for the selection NOW, on the UI thread
         List<WingetPackage>? wingetSelection = null;
         if (tasks.Contains("Import-Winget"))
         {
@@ -1421,12 +1417,12 @@ public partial class MainWindowViewModel : ObservableObject
             if (win != null)
             {
                 wingetSelection = await WingetSelectionDialog.Show(win, pkgs);
-                if (wingetSelection == null) return; // Abgebrochen
+                if (wingetSelection == null) return; // Cancelled
             }
         }
 
-        // Ordner unter C:\: vorgemerkt beim Anhaken der Kachel. Fehlt die Wahl
-        // (Kachel ohne Liste angehakt), wird jetzt noch einmal gefragt.
+        // Folders under C:\: pre-selected when the item was checked. If the choice
+        // is missing (item checked without a list), ask once more now.
         _laufwerkAuswahl = null;
         if (tasks.Contains("Backup-Laufwerk") || tasks.Contains("Restore-Laufwerk"))
         {
@@ -1445,19 +1441,19 @@ public partial class MainWindowViewModel : ObservableObject
         _cancel.Reset();
         _cancel.FastMode = !DetailedLogging;
         _backup.SourcePath = SourcePath;
-        // Mit Profil laufen AppData und Cloud in der Profilsicherung mit;
-        // ohne Profil als eigene Aktionen (siehe BuildTaskList).
+        // With the profile, AppData and cloud run as part of the profile backup;
+        // without it as actions of their own (see BuildTaskList).
         _backup.IncludeAppData = SelUserAppData;
         _backup.IncludeCloud = SelUserCloud;
 
-        // Gesichert wird genau dorthin, wo das Feld zeigt - mit eigenem Ordner
-        // steht dort schon "G:\DASI_...". Angelegt wird er erst jetzt.
+        // The backup goes exactly where the field points - with an own folder it
+        // already says "G:\DASI_...". It is only created now.
         _laufZiel = BackupPath;
         if (!IsRestoreMode && Directory.Exists(_laufZiel) && BackupTarget.IsBackupFolder(_laufZiel))
         {
-            // Hinein in eine vorhandene Sicherung: Sie wird aktualisiert (das
-            // Profil per /MIR gespiegelt). Stammt sie erkennbar von einem
-            // anderen Rechner, ginge dabei dessen Stand verloren - nachfragen.
+            // Into an existing backup: it is updated (the profile mirrored with
+            // /MIR). If it evidently comes from another computer, that computer's
+            // state would be lost - ask first.
             var vonRechner = BackupTarget.MachineOf(_laufZiel);
             if (vonRechner is not null
                 && !string.Equals(vonRechner, BackupTarget.SafeMachineName(Environment.MachineName), StringComparison.OrdinalIgnoreCase)
@@ -1497,8 +1493,8 @@ public partial class MainWindowViewModel : ObservableObject
         Log("\r\n=========================================");
         Log(Tr("Starte Abarbeitung der Warteschlange...", "Starting to process the queue..."));
 
-        // Leistungsmodus anfordern: kein Standby, hoehere Prioritaet.
-        // Wird im finally garantiert vollstaendig zurueckgesetzt.
+        // Request performance mode: no standby, higher priority.
+        // Guaranteed to be fully reset in finally.
         var perf = new PerformanceMode(Log);
         perf.Enable();
 
@@ -1517,7 +1513,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    // ---------------------------------------------------------------- Warteschlange
+    // ---------------------------------------------------------------- Queue
 
     private List<string> BuildTaskList()
     {
@@ -1528,7 +1524,7 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelUser)        t.Add("Restore-User");
             else
             {
-                // Ohne Profil: AppData und Cloud einzeln.
+                // Without the profile: AppData and cloud on their own.
                 if (SelUserAppData) t.Add("Restore-AppData");
                 if (SelUserCloud)   t.Add("Restore-Cloud");
             }
@@ -1542,31 +1538,30 @@ public partial class MainWindowViewModel : ObservableObject
             if (SelWlan)        t.Add("Import-Wlan");
             if (SelPrinter)     t.Add("Import-Printer");
             if (SelLaufwerk)    t.Add("Restore-Laufwerk");
-            // Symbole und Taskleiste VOR dem Design: Fuer die Taskleiste wird
-            // der Explorer neu gestartet. Unter Windows 11 holt ein hart
-            // beendeter Explorer beim Start seinen zuletzt gespeicherten
-            // Hintergrund zurueck - danach gesetzt, war die wiederhergestellte
-            // Farbe sofort und nach dem Neustart von Windows wieder weg (auch
-            // eine ueber die Einstellungen gewaehlte).
+            // Icons and taskbar BEFORE the design: Explorer is restarted for the
+            // taskbar. On Windows 11, an Explorer that was killed restores its last
+            // saved wallpaper at startup - set before that, the restored color was
+            // gone right away and after a Windows restart (even one chosen in
+            // Settings).
             if (SelDesignDesktop && TeilSymbole) t.Add("Restore-DesktopIcons");
             if (SelDesignDesktop && TeilDesign)  t.Add("Import-Design");
-            // Zuletzt: Das Foto soll offen sein, wenn alles andere fertig ist
-            // und es ans Anordnen der Symbole geht.
+            // Last: the picture should be open when everything else is done and it is
+            // time to arrange the icons.
             if (SelDesignDesktop && TeilScreenshot) t.Add("Show-DesktopShot");
         }
         else
         {
-            // Zuerst: Das Foto zeigt den Desktop, wie er VOR der Sicherung war,
-            // und das kurze Ausblenden der Fenster faellt direkt nach dem Klick
-            // auf "Starten" nicht als Stoerung auf.
-            // Das Foto vor den Symbolen: Es soll den Desktop zeigen, bevor
-            // irgendetwas daran rührt.
+            // First: the picture shows the desktop as it was BEFORE the backup, and
+            // hiding the windows briefly right after clicking "Start" does not come
+            // across as a disturbance.
+            // The picture before the icons: it should show the desktop before
+            // anything touches it.
             if (SelDesignDesktop && TeilScreenshot) t.Add("Capture-DesktopShot");
             if (SelDesignDesktop && TeilSymbole)    t.Add("Backup-DesktopIcons");
             if (SelUser)        t.Add("Backup-User");
             else
             {
-                // Ohne Profil: AppData und Cloud einzeln.
+                // Without the profile: AppData and cloud on their own.
                 if (SelUserAppData) t.Add("Backup-AppData");
                 if (SelUserCloud)   t.Add("Backup-Cloud");
             }
@@ -1585,7 +1580,7 @@ public partial class MainWindowViewModel : ObservableObject
         return t;
     }
 
-    /// <summary>Die beim Start gewaehlten Ordner unter C:\.</summary>
+    /// <summary>The folders under C:\ chosen for this run.</summary>
     private List<LaufwerksOrdner.Eintrag>? _laufwerkAuswahl;
 
     private async Task RunQueue(List<string> tasks, List<WingetPackage>? wingetSelection)
@@ -1594,7 +1589,7 @@ public partial class MainWindowViewModel : ObservableObject
         int index = 0;
         ProgressVisible = true;
 
-        // Fuer das Backup-Protokoll: Start, Ergebnisse je Aktion, alle Zeilen.
+        // For the backup log: start, results per action, all lines.
         lock (_logLock) _laufLog = new System.Text.StringBuilder();
         var startTime = DateTime.Now;
         var results = new List<(string action, bool ok)>();
@@ -1655,13 +1650,13 @@ public partial class MainWindowViewModel : ObservableObject
             }
             catch (Exception ex)
             {
-                // Ein Fehler in EINER Aktion darf nicht die App beenden.
+                // An error in ONE action must not end the app.
                 ok = false;
                 Log(Tr($"[FEHLER] Aktion '{choice}' abgebrochen: {ex.Message}", $"[ERROR] Action '{choice}' aborted: {ex.Message}"));
                 Program.WriteCrashLog($"RunQueue/{choice}", ex);
             }
 
-            // Erfolgreich heisst: keine Ausnahme, keine Fehlerzeile, kein Abbruch.
+            // Successful means: no exception, no error line, no cancellation.
             if (System.Threading.Volatile.Read(ref _aktionsFehler) > 0 || _cancel.IsCancelled) ok = false;
 
             results.Add((choice, ok));
@@ -1669,19 +1664,19 @@ public partial class MainWindowViewModel : ObservableObject
         }
         swTotal.Stop();
 
-        // Fortschrittsanzeige nach der Warteschlange ausblenden.
+        // Hide the progress display after the queue.
         _currentActionText = "";
         ProgressText = "";
         ProgressVisible = false;
 
-        // Zusammenfassung ins Log und Protokolldatei schreiben.
+        // Write the summary to the log and the log file.
         WriteRunSummaryAndReport(startTime, swTotal.Elapsed, results);
         lock (_logLock) _laufLog = null;
     }
 
     /// <summary>
-    /// Schreibt eine kurze Bilanz ins Log und legt eine Protokolldatei im
-    /// Backup-Ziel ab (Sicherungs-Protokoll_JJJJ-MM-TT_HH-MM.txt).
+    /// Writes a short summary to the log and puts a log file into the backup
+    /// target (Sicherungs-Protokoll_YYYY-MM-DD_HH-MM.txt).
     /// </summary>
     private void WriteRunSummaryAndReport(DateTime start, TimeSpan duration,
                                          List<(string action, bool ok)> results)
@@ -1696,17 +1691,17 @@ public partial class MainWindowViewModel : ObservableObject
             ? $"{(int)duration.TotalMinutes} min {duration.Seconds} s"
             : $"{duration.Seconds} s";
 
-        // Kurze Bilanz ins Log.
+        // Short summary to the log.
         Log(Tr($"\r\n[BILANZ] {okCount} von {results.Count} erfolgreich, {failCount} Fehler. Dauer: {durStr}.",
                $"\r\n[SUMMARY] {okCount} of {results.Count} succeeded, {failCount} errors. Duration: {durStr}."));
 
-        // Protokolldatei schreiben (nur wenn ein gueltiges Ziel existiert).
+        // Write the log file (only if a valid target exists).
         try
         {
             if (string.IsNullOrWhiteSpace(_laufZiel) || !Directory.Exists(_laufZiel)) return;
 
             var modeStr = restore ? Tr("Wiederherstellung", "Restore") : Tr("Sicherung", "Backup");
-            // Computername in den Dateinamen aufnehmen (ungueltige Zeichen entfernen).
+            // Put the computer name into the file name (remove invalid characters).
             var pcName = Environment.MachineName;
             foreach (var ch in Path.GetInvalidFileNameChars())
                 pcName = pcName.Replace(ch, '_');
@@ -1752,7 +1747,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Uebersetzt einen internen Aktionsnamen in einen lesbaren Text.</summary>
+    /// <summary>Translates an internal action name into readable text.</summary>
     private string FriendlyAction(string choice)
     {
         return choice switch
@@ -1780,14 +1775,14 @@ public partial class MainWindowViewModel : ObservableObject
     // ---------------------------------------------------------------- Update
 
     /// <summary>
-    /// Der zuletzt abgefragte Stand. Bewusst gemerkt: Die Abfrage laeuft beim
-    /// Start, geklickt wird oft erst Minuten spaeter.
+    /// The release found by the last check. Remembered on purpose: the check
+    /// runs at startup, the click often comes minutes later.
     /// </summary>
     private UpdateManifest? _manifest;
 
     /// <summary>
-    /// Fragt update.json ab und blendet bei einem neueren Stand den Streifen
-    /// ein. Heruntergeladen wird hier noch nichts.
+    /// Fetches update.json and shows the bar if there is a newer version.
+    /// Nothing is downloaded here yet.
     /// </summary>
     private async Task CheckForUpdatesAsync()
     {
@@ -1807,12 +1802,12 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Laedt die neue EXE, vergleicht ihre SHA256-Summe mit der Angabe aus
-    /// update.json und tauscht sie aus.
+    /// Downloads the new EXE, compares its SHA256 checksum with the one from
+    /// update.json and swaps it in.
     ///
-    /// Eine laufende EXE kann sich unter Windows nicht selbst ueberschreiben.
-    /// Deshalb uebernimmt das ein kleines Skript, das auf das Ende dieses
-    /// Vorgangs wartet, die Datei ersetzt und danach neu startet.
+    /// On Windows a running EXE cannot overwrite itself. So a small script does
+    /// it: it waits for this process to end, replaces the file and starts the
+    /// new version.
     /// </summary>
     [RelayCommand]
     private async Task UpdateProgram()
@@ -1884,7 +1879,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Oeffnet die Uebersicht der Veroeffentlichungen im Browser.</summary>
+    /// <summary>Opens the overview of the releases in the browser.</summary>
     [RelayCommand]
     private void OpenUpdateNotes()
     {
@@ -1901,16 +1896,16 @@ public partial class MainWindowViewModel : ObservableObject
         _cancel.KillAll();
     }
 
-    // ---------------------------------------------------------------- UI-Helfer
+    // ---------------------------------------------------------------- UI helpers
 
     private static Window? GetMainWindow()
         => (Avalonia.Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
 
     /// <summary>
-    /// Holt das Hauptfenster nach dem Desktop-Foto sicher wieder nach vorn.
-    /// "Desktop anzeigen" stellt die Fenster zwar selbst zurueck - klickt der
-    /// Benutzer in der Zwischenzeit aber etwas an, bliebe das Tool sonst
-    /// minimiert, und die laufende Sicherung waere nicht mehr zu sehen.
+    /// Reliably brings the main window back to the front after the desktop
+    /// picture. The screenshot restores the windows itself - but if the user
+    /// clicks something in the meantime, the tool would otherwise stay
+    /// minimized and the running backup would no longer be visible.
     /// </summary>
     private static async Task BringMainWindowToFront()
     {
@@ -1931,16 +1926,16 @@ public partial class MainWindowViewModel : ObservableObject
 
         try
         {
-            // Einen garantiert existierenden Startordner vorgeben. Das ist wichtig,
-            // weil Avalonia sonst die Liste zuletzt besuchter Orte aufbaut und bei
-            // einem darin enthaltenen, nicht mehr existierenden Pfad (abgezogener
-            // USB-Stick, getrenntes Netzlaufwerk) mit "Directory must exist"
-            // abstuerzen kann. Ein gueltiger Startordner umgeht das zuverlaessig.
+            // Pass a start folder that is guaranteed to exist. This matters because
+            // Avalonia otherwise builds the list of recently visited places and can
+            // crash with "Directory must exist" on a path in it that no longer exists
+            // (removed USB stick, disconnected network drive). A valid start folder
+            // avoids that reliably.
             Avalonia.Platform.Storage.IStorageFolder? startFolder = null;
             foreach (var candidate in new[]
             {
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                Path.GetPathRoot(Environment.SystemDirectory), // z.B. "C:\"
+                Path.GetPathRoot(Environment.SystemDirectory), // e.g. "C:\"
             })
             {
                 if (string.IsNullOrWhiteSpace(candidate)) continue;
@@ -1952,7 +1947,7 @@ public partial class MainWindowViewModel : ObservableObject
                         if (startFolder != null) break;
                     }
                 }
-                catch { /* naechsten Kandidaten versuchen */ }
+                catch { /* try the next candidate */ }
             }
 
             var result = await sp.OpenFolderPickerAsync(new FolderPickerOpenOptions
@@ -1966,11 +1961,11 @@ public partial class MainWindowViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            // Absturzschutz: Sollte der Dialog trotzdem scheitern, nicht abstuerzen.
+            // Crash protection: should the dialog fail anyway, do not crash.
             Program.WriteCrashLog("PickFolder", ex);
-            // Die Pfadfelder sind bewusst schreibgeschuetzt (der Dialog prueft das
-            // Ziel auf NTFS). Frueher stand hier "Pfad manuell eingeben" - eine
-            // Anweisung, die sich nicht befolgen liess.
+            // The path fields are read-only on purpose (the dialog checks the target
+            // for NTFS). This used to say "enter the path manually" - an instruction
+            // that could not be followed.
             var msg = Tr("Der Ordner-Dialog konnte nicht geöffnet werden. Bitte erneut versuchen. "
                          + "Bleibt der Fehler, steht die Ursache in WindowsDaSiTool_Absturz.log auf dem Desktop.",
                          "The folder dialog could not be opened. Please try again. "
@@ -1990,7 +1985,7 @@ public partial class MainWindowViewModel : ObservableObject
     private async Task<bool> ShowYesNo(string title, string message)
     {
         var win = GetMainWindow();
-        if (win == null) return true; // ohne Fenster nicht blockieren
+        if (win == null) return true; // do not block without a window
         return await MessageBox.ShowYesNo(win, title, message);
     }
 }

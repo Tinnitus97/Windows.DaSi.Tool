@@ -5,23 +5,23 @@ using System.IO.Compression;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Schreibt ein Bildschirmfoto als PNG - ohne zusaetzliches Paket.
+/// Writes a screenshot as PNG - without an extra package.
 ///
-/// System.Drawing waere eine neue Abhaengigkeit nur fuer diese eine Datei,
-/// und die Bitmap-Klassen von Avalonia gehoeren an den UI-Thread. Ein PNG
-/// besteht aber nur aus drei Bausteinen: Kopf (IHDR), zlib-gepackte Zeilen
-/// (IDAT) und Ende (IEND), jeder mit einer CRC-32. Das zlib-Packen bringt
-/// .NET selbst mit (ZLibStream). Bleibt dieser Code - und der laesst sich
-/// ohne Windows und ohne Bildschirm pruefen.
+/// System.Drawing would be a new dependency just for this one file, and
+/// Avalonia's bitmap classes belong on the UI thread. A PNG consists of only
+/// three building blocks, though: header (IHDR), zlib-compressed rows (IDAT)
+/// and end (IEND), each with a CRC-32. .NET ships zlib compression itself
+/// (ZLibStream). What remains is this code - and it can be tested without
+/// Windows and without a screen.
 /// </summary>
 public static class PngWriter
 {
     private static ReadOnlySpan<byte> Signature => new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
 
     /// <summary>
-    /// Schreibt 32-Bit-Pixel im Windows-Format (B, G, R, A; Zeilen von oben
-    /// nach unten) als 24-Bit-RGB-PNG. Der Alphakanal eines Bildschirmfotos
-    /// traegt nichts und entfaellt.
+    /// Writes 32-bit pixels in Windows format (B, G, R, A; rows top-down) as a
+    /// 24-bit RGB PNG. A screenshot's alpha channel carries nothing and is
+    /// dropped.
     /// </summary>
     public static void WriteBgra(Stream output, int width, int height, ReadOnlySpan<byte> bgra)
     {
@@ -33,21 +33,21 @@ public static class PngWriter
         Span<byte> ihdr = stackalloc byte[13];
         WriteBigEndian(ihdr, (uint)width);
         WriteBigEndian(ihdr[4..], (uint)height);
-        ihdr[8] = 8;    // 8 Bit je Farbkanal
-        ihdr[9] = 2;    // Farbtyp 2 = RGB
+        ihdr[8] = 8;    // 8 bits per color channel
+        ihdr[9] = 2;    // color type 2 = RGB
         ihdr[10] = 0;   // Deflate
-        ihdr[11] = 0;   // Standardfilter
-        ihdr[12] = 0;   // kein Interlacing
+        ihdr[11] = 0;   // standard filter method
+        ihdr[12] = 0;   // no interlacing
         WriteChunk(output, "IHDR", ihdr);
 
         using (var packed = new MemoryStream())
         {
             using (var zlib = new ZLibStream(packed, CompressionLevel.Optimal, leaveOpen: true))
             {
-                // Je Zeile: ein Filterbyte, dann die Farbwerte. Filter 1 ("Sub")
-                // speichert nur den Unterschied zum linken Nachbarn - gleichmaessige
-                // Flaechen wie Fenster und Taskleiste werden so zu Nullen und
-                // packen deutlich besser als die Rohwerte.
+                // Per row: one filter byte, then the color values. Filter 1 ("Sub") stores
+                // only the difference to the left neighbor - uniform areas such as windows
+                // and the taskbar become zeros and compress much better than the raw
+                // values.
                 var row = new byte[1 + width * 3];
                 var prev = new byte[3];
                 for (int y = 0; y < height; y++)
@@ -72,7 +72,7 @@ public static class PngWriter
         WriteChunk(output, "IEND", ReadOnlySpan<byte>.Empty);
     }
 
-    /// <summary>Bequeme Form fuer Tests und kleine Bilder.</summary>
+    /// <summary>Convenience overload for tests and small images.</summary>
     public static byte[] EncodeBgra(int width, int height, ReadOnlySpan<byte> bgra)
     {
         using var ms = new MemoryStream();
@@ -88,7 +88,7 @@ public static class PngWriter
         output.Write(head);
         output.Write(data);
 
-        // Die Pruefsumme laeuft ueber Typ UND Daten, nicht ueber die Laenge.
+        // The checksum covers type AND data, not the length.
         var crc = Crc32Update(0xFFFFFFFFu, head[4..]);
         crc = Crc32Update(crc, data) ^ 0xFFFFFFFFu;
         Span<byte> tail = stackalloc byte[4];
@@ -126,6 +126,6 @@ public static class PngWriter
         return crc;
     }
 
-    /// <summary>CRC-32 wie in PNG und ZIP - fuer die Pruefungen offen gelegt.</summary>
+    /// <summary>CRC-32 as in PNG and ZIP - public for the tests.</summary>
     public static uint Crc32(ReadOnlySpan<byte> data) => Crc32Update(0xFFFFFFFFu, data) ^ 0xFFFFFFFFu;
 }

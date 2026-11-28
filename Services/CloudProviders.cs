@@ -5,32 +5,32 @@ using System.Linq;
 
 namespace WindowsDaSiTool.Services;
 
-/// <summary>Ein im Benutzerprofil gefundener Ordner eines Cloud-Anbieters.</summary>
+/// <summary>A cloud provider's folder found in the user profile.</summary>
 public sealed record CloudFolder(string Provider, string Path);
 
 /// <summary>
-/// Erkennt die Ordner der gaengigen Cloud-Anbieter im Benutzerprofil.
+/// Detects the folders of common cloud providers in the user profile.
 ///
-/// Warum erkannt und nicht fest eingetragen: Die Ordner heissen je nach
-/// Anbieter, Fassung und Sprache anders - OneDrive haengt den Firmennamen an
-/// ("OneDrive - Muster GmbH"), Nextcloud und ownCloud lassen den Namen beim
-/// Einrichten frei waehlen. Eine feste Liste trifft deshalb nie alle.
+/// Why detect them instead of listing them: the folder names differ by
+/// provider, version and language - OneDrive appends the company name
+/// ("OneDrive - Muster GmbH"), Nextcloud and ownCloud let the user choose
+/// the name during setup. A fixed list never catches them all.
 ///
-/// Die Erkennung schaut ausschliesslich auf Ordnernamen DIREKT im Profil. Sie
-/// liest nichts aus der Registry und startet nichts - sie darf jederzeit und
-/// ohne Rechte laufen, auch waehrend die Oberflaeche auf sie wartet.
+/// Detection looks only at folder names DIRECTLY in the profile. It reads
+/// nothing from the registry and starts nothing - it may run at any time
+/// and without privileges, even while the UI waits for it.
 /// </summary>
 public static class CloudProviders
 {
     /// <summary>
-    /// Bekannte Anbieter. Je Eintrag der Anzeigename und die Ordnermuster.
+    /// Known providers. Each entry has the display name and the folder patterns.
     ///
-    /// Ein Muster ohne '*' muss genau passen, eines mit '*' am Ende passt auf
-    /// jeden Ordner, der so beginnt. Das deckt die Faelle ab, in denen der
-    /// Anbieter den Konto- oder Firmennamen anhaengt.
+    /// A pattern without '*' must match exactly; one ending in '*' matches every
+    /// folder that starts that way. That covers the cases where the provider
+    /// appends the account or company name.
     ///
-    /// Bewusst eine ueberschaubare Auswahl: Was haeufig vorkommt, steht drin -
-    /// eine vollstaendige Liste aller Anbieter waere nicht zu pflegen.
+    /// Deliberately a short list: what is common is in it - a complete list of
+    /// all providers could not be maintained.
     /// </summary>
     public static readonly IReadOnlyList<(string Provider, string[] Patterns)> Known = new[]
     {
@@ -53,12 +53,11 @@ public static class CloudProviders
     };
 
     /// <summary>
-    /// Sucht die Cloud-Ordner direkt unterhalb von <paramref name="userDir"/>.
+    /// Finds the cloud folders directly below <paramref name="userDir"/>.
     ///
-    /// Jeder Ordner wird hoechstens einmal gemeldet, auch wenn mehrere Muster
-    /// auf ihn passen (bei OneDrive treffen "OneDrive" und "OneDrive*"
-    /// zugleich). Die Reihenfolge folgt <see cref="Known"/>, damit die Meldung
-    /// an den Benutzer immer gleich aussieht.
+    /// Each folder is reported at most once, even if several patterns match it
+    /// (for OneDrive, "OneDrive" and "OneDrive*" both match). The order follows
+    /// <see cref="Known"/>, so the message to the user always looks the same.
     /// </summary>
     public static List<CloudFolder> Detect(string userDir)
     {
@@ -77,7 +76,7 @@ public static class CloudProviders
         }
         catch
         {
-            // Ein nicht lesbares Profil darf die Sicherung nicht aufhalten.
+            // A profile that cannot be read must not hold up the backup.
             return gefunden;
         }
 
@@ -88,11 +87,10 @@ public static class CloudProviders
             foreach (var name in unterordner)
             {
                 if (schonGemeldet.Contains(name)) continue;
-                // "OneDrive_wiederhergestellt" passt auf das Muster "OneDrive*",
-                // ist aber eine gewoehnliche, NICHT synchronisierte Kopie. Als
-                // Cloud-Ordner erkannt, bliebe sie bei der naechsten Sicherung
-                // standardmaessig draussen - und mit ihr womoeglich die einzige
-                // Kopie dieser Dateien.
+                // "OneDrive_wiederhergestellt" matches the pattern "OneDrive*", but is a
+                // plain copy that is NOT synchronized. Detected as a cloud folder, it would
+                // be left out of the next backup by default - and with it possibly the only
+                // copy of these files.
                 if (IsRestoredCopy(name)) continue;
                 if (!muster.Any(m => Matches(name, m))) continue;
 
@@ -105,13 +103,13 @@ public static class CloudProviders
     }
 
     /// <summary>
-    /// Vergleicht einen Ordnernamen mit einem Muster. Nur ein '*' am Ende wird
-    /// unterstuetzt - mehr braucht es hier nicht, und eine vollstaendige
-    /// Mustersprache waere nur eine weitere Fehlerquelle.
+    /// Matches a folder name against a pattern. Only a trailing '*' is
+    /// supported - nothing more is needed here, and a full pattern language
+    /// would just be another source of bugs.
     ///
-    /// Ein Praefixmuster verlangt mindestens ein weiteres Zeichen: Sonst meldet
-    /// "OneDrive*" denselben Ordner ein zweites Mal, den "OneDrive" schon
-    /// getroffen hat - harmlos wegen der Dublettenpruefung, aber irrefuehrend.
+    /// A prefix pattern needs at least one more character: otherwise
+    /// "OneDrive*" would report the folder that "OneDrive" already matched a
+    /// second time - harmless thanks to the duplicate check, but misleading.
     /// </summary>
     private static bool Matches(string ordnerName, string muster)
     {
@@ -124,36 +122,35 @@ public static class CloudProviders
     }
 
     /// <summary>
-    /// Fasst die gefundenen Anbieter fuer eine Meldung zusammen, etwa
-    /// "OneDrive, Dropbox, STRATO HiDrive". Jeder Anbieter erscheint einmal,
-    /// auch wenn er mehrere Ordner hat.
+    /// Joins the providers found into one message, e.g.
+    /// "OneDrive, Dropbox, STRATO HiDrive". Each provider appears once, even if
+    /// it has several folders.
     /// </summary>
     public static string Summarize(IEnumerable<CloudFolder> folders)
         => string.Join(", ", folders.Select(f => f.Provider).Distinct());
 
-    // ------------------------------------------------------------ Zurueckschreiben
+    // ------------------------------------------------------------ Restore
 
     /// <summary>
-    /// Zusatz fuer zurueckgeschriebene Cloud-Ordner. Bewusst immer deutsch,
-    /// wie alle Ordnernamen, die das Tool anlegt ("Benutzerprofil",
-    /// "Hintergrundbild"): Die Sprache der Oberflaeche soll nicht bestimmen,
-    /// wie ein Ordner auf der Platte heisst.
+    /// Suffix for restored cloud folders. Deliberately always German, like all
+    /// folder names the tool creates ("Benutzerprofil", "Hintergrundbild"): the
+    /// UI language should not decide what a folder on disk is called.
     /// </summary>
     public const string RestoredSuffix = "_wiederhergestellt";
 
     /// <summary>
-    /// Name, unter dem ein Cloud-Ordner zurueckgeschrieben wird:
+    /// Name a cloud folder is restored under:
     /// "OneDrive" -> "OneDrive_wiederhergestellt".
     ///
-    /// Warum nicht an den Originalplatz: Dort arbeitet der Cloud-Client. Er
-    /// hielte jede zurueckgeschriebene Datei fuer geaendert und luede sie
-    /// erneut hoch - in geteilten Ordnern entstuenden Dubletten und
-    /// Konflikte bei allen, die den Ordner nutzen. Daneben abgelegt laesst
-    /// sich in Ruhe vergleichen und von Hand uebernehmen, was fehlt.
+    /// Why not to its original place: the cloud client works there. It would
+    /// treat every restored file as changed and upload it again - shared
+    /// folders would get duplicates and conflicts for everyone using them.
+    /// Placed next to it, the user can compare at leisure and take over by hand
+    /// whatever is missing.
     /// </summary>
     public static string RestoredFolderName(string folderName) => folderName + RestoredSuffix;
 
-    /// <summary>true fuer einen Ordner, den das Tool beim Zurueckschreiben angelegt hat.</summary>
+    /// <summary>true for a folder the tool created while restoring.</summary>
     public static bool IsRestoredCopy(string folderName)
         => folderName.EndsWith(RestoredSuffix, StringComparison.OrdinalIgnoreCase);
 }

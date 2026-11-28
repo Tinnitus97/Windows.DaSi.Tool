@@ -11,40 +11,40 @@ using Microsoft.Win32.SafeHandles;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Welches Profil Firefox (und Thunderbird) beim Start nimmt.
+/// Which profile Firefox (and Thunderbird) picks at startup.
 ///
-/// Seit Firefox 67 hat jede Installation ihr eigenes Standardprofil. In
-/// profiles.ini (und installs.ini) steht es unter "[Install&lt;Schluessel&gt;]";
-/// der Schluessel ist aus dem Installationsordner berechnet. Ein Anwender
-/// hatte auf dem alten PC das 32-Bit-Firefox in "C:\Program Files (x86)\Mozilla
-/// Firefox" (Schluessel E7CF176E110C211B), winget installierte auf dem neuen
-/// das 64-Bit-Firefox in "C:\Program Files\Mozilla Firefox" (308046B0AF4A39CB).
-/// Das zurueckgeschriebene Profil gehoerte - gesperrt ("Locked=1") - der alten
-/// Installation, Firefox fand fuer sich keins und legte ein leeres
-/// "default-release" an. Die Daten waren da, nur nicht im benutzten Profil.
+/// Since Firefox 67, every installation has its own default profile. In
+/// profiles.ini (and installs.ini) it is listed under "[Install&lt;hash&gt;]";
+/// the hash is computed from the installation folder. One user had the
+/// 32-bit Firefox in "C:\Program Files (x86)\Mozilla Firefox" on the old PC
+/// (hash E7CF176E110C211B); on the new one winget installed the 64-bit
+/// Firefox in "C:\Program Files\Mozilla Firefox" (308046B0AF4A39CB). The
+/// restored profile belonged - locked ("Locked=1") - to the old
+/// installation, Firefox found none for itself and created an empty
+/// "default-release". The data was there, just not in the profile in use.
 ///
-/// Abhilfe nach dem Zurueckschreiben: das Profil, das auf dem alten PC lief,
-/// als Standard fuer jede Installation auf diesem PC eintragen.
+/// Remedy after restoring: register the profile that ran on the old PC as
+/// the default for every installation on this PC.
 ///
-/// Bis auf das Suchen der Installationen ohne Abhaengigkeiten, damit es sich
-/// pruefen laesst.
+/// Apart from finding the installations, free of dependencies, so it can be
+/// tested.
 /// </summary>
 public static class MozillaProfile
 {
-    /// <summary>Was <see cref="Adjust"/> getan hat.</summary>
-    /// <param name="Profil">Pfad des Profils, wie in profiles.ini (z. B. "Profiles/abcd1234.default"); null: keins gefunden.</param>
-    /// <param name="Name">Name des Profils (z. B. "default").</param>
-    /// <param name="AlteSchluessel">Die Installationen aus der Sicherung (Schluessel).</param>
-    /// <param name="Neu">Die Installationen auf diesem PC: Ordner und Schluessel.</param>
-    /// <param name="Verzeichnis">Der Ordner des Profils auf der Platte.</param>
+    /// <summary>What <see cref="Adjust"/> did.</summary>
+    /// <param name="Profil">Path of the profile as in profiles.ini (e.g. "Profiles/abcd1234.default"); null: none found.</param>
+    /// <param name="Name">Name of the profile (e.g. "default").</param>
+    /// <param name="AlteSchluessel">The installations from the backup (hashes).</param>
+    /// <param name="Neu">The installations on this PC: folder and hash.</param>
+    /// <param name="Verzeichnis">The profile's folder on disk.</param>
     public sealed record Ergebnis(string? Profil, string? Name, IReadOnlyList<string> AlteSchluessel, IReadOnlyList<(string Ordner, string Schluessel)> Neu,
                                   string? Verzeichnis = null)
     {
-        /// <summary>Lief das Profil auf dem alten PC unter einer der Installationen dieses PCs?</summary>
+        /// <summary>Did the profile run on the old PC under one of this PC's installations?</summary>
         public bool SchonPassend => Neu.Count > 0 && Neu.All(n => AlteSchluessel.Contains(n.Schluessel, StringComparer.OrdinalIgnoreCase));
     }
 
-    /// <summary>Die Programme mit Mozilla-Profilverwaltung: Programmdatei und ueblicher Installationsordner.</summary>
+    /// <summary>The programs with Mozilla profile management: executable and usual installation folder.</summary>
     public static (string Exe, string Ordner)? ProgramOf(AppEintrag app) => app.Punkt switch
     {
         Punkt.Firefox => ("firefox.exe", "Mozilla Firefox"),
@@ -52,12 +52,12 @@ public static class MozillaProfile
         _ => null,
     };
 
-    // ------------------------------------------------------------ Schluessel einer Installation
+    // ------------------------------------------------------------ Hash of an installation
 
     /// <summary>
-    /// Der Schluessel einer Installation, wie Firefox ihn berechnet: CityHash64
-    /// (Fassung 1.0, wie in Firefox enthalten) ueber den Pfad des Ordners in
-    /// UTF-16, hexadezimal in Grossbuchstaben ohne fuehrende Nullen.
+    /// The hash of an installation as Firefox computes it: CityHash64 (version
+    /// 1.0, as shipped in Firefox) over the folder path in UTF-16, hexadecimal
+    /// in upper case without leading zeros.
     /// "C:\Program Files\Mozilla Firefox" -> "308046B0AF4A39CB".
     /// </summary>
     public static string InstallHash(string installationsOrdner)
@@ -165,7 +165,7 @@ public static class MozillaProfile
 
     // ------------------------------------------------------------ profiles.ini
 
-    /// <summary>Eine INI-Datei, wie Firefox sie schreibt - Reihenfolge bleibt erhalten.</summary>
+    /// <summary>An INI file the way Firefox writes it - the order is preserved.</summary>
     internal sealed class Ini
     {
         public List<(string Name, List<KeyValuePair<string, string>> Werte)> Abschnitte { get; } = new();
@@ -208,14 +208,14 @@ public static class MozillaProfile
         }
     }
 
-    // [Install308046B0AF4A39CB], [Profile0] - nicht [General], [BackgroundTasksProfiles] ...
+    // [Install308046B0AF4A39CB], [Profile0] - not [General], [BackgroundTasksProfiles] ...
     private static bool IsInstallSection(string abschnitt) => Regex.IsMatch(abschnitt, "^Install[0-9A-Fa-f]+$");
     private static bool IsProfileSection(string abschnitt) => Regex.IsMatch(abschnitt, "^Profile[0-9]+$");
 
     private static string? Value(List<KeyValuePair<string, string>> werte, string schluessel)
         => werte.FirstOrDefault(w => w.Key.Equals(schluessel, StringComparison.OrdinalIgnoreCase)).Value;
 
-    /// <summary>Der Ordner eines Profils (relativ zum Datenordner oder absolut).</summary>
+    /// <summary>The folder of a profile (relative to the data folder or absolute).</summary>
     private static string ProfileFolder(string datenOrdner, List<KeyValuePair<string, string>> profil)
     {
         var pfad = Value(profil, "Path") ?? "";
@@ -224,7 +224,7 @@ public static class MozillaProfile
             : Path.Combine(new[] { datenOrdner }.Concat(pfad.Split('/', '\\', StringSplitOptions.RemoveEmptyEntries)).ToArray());
     }
 
-    /// <summary>Zuletzt benutzt: prefs.js schreibt Firefox bei jedem Beenden.</summary>
+    /// <summary>Last used: Firefox writes prefs.js every time it exits.</summary>
     private static DateTime LastUsed(string ordner)
     {
         try
@@ -236,20 +236,21 @@ public static class MozillaProfile
     }
 
     /// <summary>
-    /// Traegt im Datenordner (…\Mozilla\Firefox) das Profil, das auf dem alten
-    /// PC lief, als Standard fuer die Installationen dieses PCs ein.
+    /// In the data folder (…\Mozilla\Firefox), registers the profile that ran on
+    /// the old PC as the default for this PC's installations.
     ///
-    /// Welches Profil lief: das einer Installation aus der Sicherung - bei
-    /// mehreren das zuletzt benutzte. Ohne Installationseintraege (vor Firefox
-    /// 67) das mit "Default=1", sonst das zuletzt benutzte.
+    /// Which profile ran: the one of an installation from the backup - the most
+    /// recently used one if there are several. Without installation entries
+    /// (before Firefox 67) the one with "Default=1", otherwise the most recently
+    /// used one.
     ///
-    /// Die Installationseintraege des alten PCs fallen weg, jede Installation
-    /// dieses PCs bekommt das Profil - gesperrt, wie Firefox es selbst
-    /// eintraegt. Zusaetzlich traegt das Profil "Default=1": Findet sich auf
-    /// diesem PC keine Installation (oder kommt eine andere hinzu), uebernimmt
-    /// Firefox beim ersten Start dieses Profil, statt ein neues anzulegen.
+    /// The old PC's installation entries are removed, and every installation of
+    /// this PC gets the profile - locked, as Firefox registers it itself. In
+    /// addition the profile gets "Default=1": if no installation is found on
+    /// this PC (or another one is added), Firefox takes this profile at first
+    /// start instead of creating a new one.
     /// </summary>
-    /// <param name="installationen">Die Installationsordner auf diesem PC (Schreibweise wie auf der Platte).</param>
+    /// <param name="installationen">The installation folders on this PC (spelled as on disk).</param>
     public static Ergebnis Adjust(string datenOrdner, IEnumerable<string> installationen)
     {
         var neu = installationen.Select(o => (Ordner: o, Schluessel: InstallHash(o)))
@@ -264,7 +265,7 @@ public static class MozillaProfile
         var installs = ini.Abschnitte.Where(a => IsInstallSection(a.Name)).ToList();
         var alteSchluessel = installs.Select(a => a.Name["Install".Length..]).ToList();
 
-        // Welches Profil lief auf dem alten PC?
+        // Which profile ran on the old PC?
         var benutzt = installs.Select(a => Value(a.Werte, "Default")).OfType<string>()
             .Select(p => profile.FirstOrDefault(pr => string.Equals(Value(pr.Werte, "Path"), p, StringComparison.OrdinalIgnoreCase)))
             .Where(pr => pr.Werte is not null).ToList();
@@ -278,22 +279,22 @@ public static class MozillaProfile
         if (gewaehlt.Werte is null) return new Ergebnis(null, null, alteSchluessel, neu);
         var pfad = Value(gewaehlt.Werte, "Path")!;
 
-        // Profile: nur das gewaehlte ist der Standard.
+        // Profiles: only the selected one is the default.
         foreach (var (_, werte) in profile)
         {
             werte.RemoveAll(w => w.Key.Equals("Default", StringComparison.OrdinalIgnoreCase));
             if (ReferenceEquals(werte, gewaehlt.Werte)) werte.Add(new("Default", "1"));
         }
 
-        // Installationen: die des alten PCs weg, die dieses PCs vorne dazu.
+        // Installations: remove the old PC's, add this PC's at the front.
         ini.Abschnitte.RemoveAll(a => IsInstallSection(a.Name));
         var eintraege = neu.Select(n => ($"Install{n.Schluessel}", new List<KeyValuePair<string, string>> { new("Default", pfad), new("Locked", "1") })).ToList();
         ini.Abschnitte.InsertRange(0, eintraege);
         Write(datei, ini.Text(zeilenende));
 
-        // installs.ini: dieselben Installationen, dort nur mit dem Schluessel
-        // als Namen ("[308046B0AF4A39CB]"). Liest ein Firefox profiles.ini ohne
-        // "Version=2" (vor Firefox 69), uebernimmt er sie von dort.
+        // installs.ini: the same installations, there just with the hash as the
+        // name ("[308046B0AF4A39CB]"). A Firefox that reads profiles.ini without
+        // "Version=2" (before Firefox 69) takes them from there.
         var installsIni = Path.Combine(datenOrdner, "installs.ini");
         if (eintraege.Count > 0)
         {
@@ -309,7 +310,7 @@ public static class MozillaProfile
         return new Ergebnis(pfad, Value(gewaehlt.Werte, "Name"), alteSchluessel, neu, ProfileFolder(datenOrdner, gewaehlt.Werte));
     }
 
-    /// <summary>Die Profilordner, die profiles.ini nennt und die es gibt.</summary>
+    /// <summary>The profile folders profiles.ini names and that exist.</summary>
     public static List<string> ProfileFolders(string datenOrdner)
     {
         var datei = Path.Combine(datenOrdner, "profiles.ini");
@@ -319,22 +320,22 @@ public static class MozillaProfile
                   .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    // ------------------------------------------------------------ Versionen (Schutz vor aelteren Fassungen)
+    // ------------------------------------------------------------ Versions (protection against older versions)
 
-    /// <summary>Wie weit das Profil der installierten Fassung voraus ist.</summary>
+    /// <summary>How far the profile is ahead of the installed version.</summary>
     public enum Abstand
     {
-        /// <summary>Gleich alt oder aelter - Firefox nimmt das Profil.</summary>
+        /// <summary>Same age or older - Firefox accepts the profile.</summary>
         Passt,
-        /// <summary>Gleiche Hauptversion, aber neuer (146.0.1 statt 146.0) - Firefox nimmt es (er vergleicht nur die Hauptversion).</summary>
+        /// <summary>Same major version, but newer (146.0.1 instead of 146.0) - Firefox accepts it (it only compares the major version).</summary>
         Neuer,
-        /// <summary>Neuere Hauptversion (147 statt 146) - Firefox lehnt das Profil ab und legt ein neues an.</summary>
+        /// <summary>Newer major version (147 instead of 146) - Firefox rejects the profile and creates a new one.</summary>
         VielNeuer,
     }
 
     /// <summary>
     /// "146.0.1_20261120123456/20261120123456" (compatibility.ini, LastVersion)
-    /// bzw. Version und BuildID aus application.ini -> (Version, BuildID).
+    /// or version and BuildID from application.ini -> (version, BuildID).
     /// </summary>
     public static (string Version, string BuildId)? LastVersion(string? lastVersion)
     {
@@ -344,15 +345,14 @@ public static class MozillaProfile
         return strich > 0 ? (teil[..strich], teil[(strich + 1)..]) : (teil, "");
     }
 
-    /// <summary>Die Zahlen am Anfang jedes Teils: "147.0b3" -> 147, 0; "128.5.0esr" -> 128, 5, 0.</summary>
+    /// <summary>The numbers at the start of each part: "147.0b3" -> 147, 0; "128.5.0esr" -> 128, 5, 0.</summary>
     private static List<long> Numbers(string version)
         => version.Split('.').Select(t => new string(t.TakeWhile(char.IsDigit).ToArray()))
                   .Select(t => long.TryParse(t, out var z) ? z : 0).ToList();
 
     /// <summary>
-    /// Vergleicht die Fassung, mit der das Profil zuletzt lief, mit der
-    /// installierten - wie Firefox beim Start: erst die Version, bei gleicher
-    /// die BuildID.
+    /// Compares the version the profile last ran with against the installed
+    /// one - like Firefox at startup: first the version, if equal the BuildID.
     /// </summary>
     public static Abstand Compare((string Version, string BuildId) profil, (string Version, string BuildId) installiert)
     {
@@ -366,14 +366,14 @@ public static class MozillaProfile
             if (a < b) return Abstand.Passt;
             return n == 0 ? Abstand.VielNeuer : Abstand.Neuer;
         }
-        // Vorabfassung (147.0b3) gegen die fertige (147.0): die fertige ist neuer.
+        // A pre-release (147.0b3) against the final one (147.0): the final one is newer.
         var pVorab = profil.Version.Any(char.IsLetter) && !profil.Version.EndsWith("esr", StringComparison.OrdinalIgnoreCase);
         var iVorab = installiert.Version.Any(char.IsLetter) && !installiert.Version.EndsWith("esr", StringComparison.OrdinalIgnoreCase);
         if (pVorab != iVorab) return pVorab ? Abstand.Passt : Abstand.Neuer;
         return string.CompareOrdinal(profil.BuildId, installiert.BuildId) > 0 ? Abstand.Neuer : Abstand.Passt;
     }
 
-    /// <summary>Fassung, mit der das Profil zuletzt lief (compatibility.ini) - null, wenn unbekannt.</summary>
+    /// <summary>The version the profile last ran with (compatibility.ini) - null if unknown.</summary>
     public static (string Version, string BuildId)? ProfileVersion(string profilOrdner)
     {
         var datei = Path.Combine(profilOrdner, "compatibility.ini");
@@ -381,7 +381,7 @@ public static class MozillaProfile
         catch { return null; }
     }
 
-    /// <summary>Die installierte Fassung (application.ini im Installationsordner) - null, wenn unbekannt.</summary>
+    /// <summary>The installed version (application.ini in the installation folder) - null if unknown.</summary>
     public static (string Version, string BuildId)? InstalledVersion(string installationsOrdner)
     {
         var datei = Path.Combine(installationsOrdner, "application.ini");
@@ -395,16 +395,16 @@ public static class MozillaProfile
         catch { return null; }
     }
 
-    // ------------------------------------------------------------ Pfade des alten Benutzers
+    // ------------------------------------------------------------ Paths of the old user
 
-    // In prefs.js und extensions.json steht "\\" fuer jeden Backslash - im
-    // Muster also vier: "C:\\Users\\Besitzer\\AppData\\Roaming\\...".
+    // In prefs.js and extensions.json every backslash is written as "\\" - so
+    // four in the pattern: "C:\\Users\\Besitzer\\AppData\\Roaming\\...".
     private static readonly Regex AlterBenutzer = new(@"(?<![A-Za-z])([A-Za-z]:(?:\\\\[^\\""\r\n]+?)+?)\\\\AppData\\\\(?:Roaming|Local)\\\\", RegexOptions.IgnoreCase);
 
     /// <summary>
-    /// Der Benutzerordner des alten PCs ("C:\Users\Besitzer"), abgelesen an
-    /// Pfaden in prefs.js oder extensions.json, die nach AppData zeigen - null,
-    /// wenn keiner darin steht.
+    /// The old PC's user folder ("C:\Users\Besitzer"), read from paths in
+    /// prefs.js or extensions.json that point into AppData - null if there are
+    /// none.
     /// </summary>
     public static string? OldUserFolder(string profilOrdner)
     {
@@ -418,22 +418,22 @@ public static class MozillaProfile
                 foreach (Match m in AlterBenutzer.Matches(File.ReadAllText(datei)))
                     funde.Add(m.Groups[1].Value.Replace(@"\\", @"\"));
             }
-            catch { /* naechste */ }
+            catch { /* next one */ }
         }
         return funde.GroupBy(f => f, StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
     }
 
     /// <summary>
-    /// Stellt in prefs.js die Pfade des alten Benutzers auf den neuen um -
-    /// Mailordner von Thunderbird, Download-Ordner, Seiten aus dem Profil
-    /// (file:///C:/Users/...). Sonst zeigen sie auf einen Ordner, den es hier
-    /// nicht gibt.
+    /// Rewrites the old user's paths in prefs.js to the new one - Thunderbird's
+    /// mail folders, the download folder, pages from the profile
+    /// (file:///C:/Users/...). Otherwise they point to a folder that does not
+    /// exist here.
     /// </summary>
-    /// <returns>Wie viele Eintraege umgestellt wurden.</returns>
+    /// <returns>How many entries were rewritten.</returns>
     public static int RewritePaths(string profilOrdner, string alt, string neu)
     {
         var datei = Path.Combine(profilOrdner, "prefs.js");
-        // Windows-Pfade (auch vom alten PC) - unabhaengig von Schreibweise und Schlusszeichen.
+        // Windows paths (also from the old PC) - regardless of casing and trailing separator.
         if (!File.Exists(datei) || string.Equals(alt.TrimEnd('\\', '/'), neu.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase)) return 0;
         string Escaped(string pfad) => pfad.TrimEnd('\\').Replace(@"\", @"\\");
         string Url(string pfad) => "file:///" + pfad.TrimEnd('\\').Replace('\\', '/');
@@ -449,7 +449,7 @@ public static class MozillaProfile
             if (!zeilen[z].StartsWith("user_pref(", StringComparison.Ordinal)) continue;
             foreach (var (a, n) in ersetzen)
             {
-                // Nur ganze Ordnernamen: "C:\Users\Max" nicht in "C:\Users\Maxi".
+                // Whole folder names only: "C:\Users\Max" not in "C:\Users\Maxi".
                 var muster = Regex.Escape(a) + @"(?=\\\\|/|"")";
                 var neuZeile = Regex.Replace(zeilen[z], muster, n.Replace("$", "$$"), RegexOptions.IgnoreCase);
                 if (neuZeile != zeilen[z]) { zeilen[z] = neuZeile; anzahl++; break; }
@@ -459,17 +459,17 @@ public static class MozillaProfile
         return anzahl;
     }
 
-    // ------------------------------------------------------------ Thunderbird: Mail ausserhalb des Profils
+    // ------------------------------------------------------------ Thunderbird: mail outside the profile
 
-    /// <summary>Ein Konto, dessen Mails ausserhalb des Profilordners liegen.</summary>
+    /// <summary>An account whose mail lives outside the profile folder.</summary>
     public sealed record Postfach(string Server, string Ordner);
 
     private static readonly Regex MailOrdner = new(@"^user_pref\(""mail\.server\.(server\d+)\.directory"",\s*""(.*)""\);", RegexOptions.IgnoreCase);
 
     /// <summary>
-    /// Die Konten, deren Ordner (mail.server.serverN.directory) nicht im
-    /// Profilordner liegt - in Thunderbird unter Konten-Einstellungen >
-    /// Server-Einstellungen > "Lokaler Ordner" verlegt.
+    /// The accounts whose folder (mail.server.serverN.directory) is not inside
+    /// the profile folder - moved in Thunderbird under Account Settings >
+    /// Server Settings > "Local Directory".
     /// </summary>
     public static List<Postfach> MailFoldersOutside(string profilOrdner)
     {
@@ -491,8 +491,8 @@ public static class MozillaProfile
     }
 
     /// <summary>
-    /// Traegt fuer ein Konto einen neuen Ordner ein (absolut und, falls im
-    /// Profil, relativ "[ProfD]...") - nachdem sein Ordner verlegt wurde.
+    /// Registers a new folder for an account (absolute and, if inside the
+    /// profile, relative "[ProfD]...") - after its folder was moved.
     /// </summary>
     public static bool MoveMailFolder(string profilOrdner, string server, string neuerOrdner)
     {
@@ -513,13 +513,13 @@ public static class MozillaProfile
 
     private static void Write(string datei, string inhalt)
     {
-        // Ueber eine Zwischendatei: Bricht das Schreiben ab, bleibt die alte stehen.
+        // Through a temporary file: if writing is interrupted, the old file stays.
         var tmp = datei + ".dasi";
         File.WriteAllText(tmp, inhalt, new UTF8Encoding(false));
         File.Move(tmp, datei, overwrite: true);
     }
 
-    /// <summary>Wo eine Installation laut ihrem Schluessel lag - soweit es ein ueblicher Ort ist.</summary>
+    /// <summary>Where an installation was according to its hash - as far as it is a usual location.</summary>
     public static string? KnownLocation(string schluessel, string ordnerName, string profil)
     {
         foreach (var ort in UsualLocations(ordnerName, profil))
@@ -528,9 +528,9 @@ public static class MozillaProfile
     }
 
     /// <summary>
-    /// Die ueblichen Installationsordner: fuer alle Benutzer (64 und 32 Bit) und
-    /// nur fuer den Benutzer (AppData\Local). Feste Laufwerksbuchstaben, wie sie
-    /// auf dem alten PC lagen - unabhaengig davon, wo dieser PC Programme ablegt.
+    /// The usual installation folders: for all users (64 and 32 bit) and for
+    /// the user only (AppData\Local). Fixed drive letters, as on the old PC -
+    /// regardless of where this PC puts programs.
     /// </summary>
     internal static IEnumerable<string> UsualLocations(string ordnerName, string profil)
     {
@@ -539,13 +539,13 @@ public static class MozillaProfile
         yield return Path.Combine(profil, "AppData", "Local", ordnerName);
     }
 
-    // ------------------------------------------------------------ Installationen auf diesem PC
+    // ------------------------------------------------------------ Installations on this PC
 
     /// <summary>
-    /// Die Installationsordner des Programms auf diesem PC: die ueblichen Orte
-    /// und die, die Windows unter "App Paths" fuehrt - jeweils nur, wenn die
-    /// Programmdatei dort liegt. Geschrieben wie auf der Platte, denn so
-    /// berechnet Firefox den Schluessel.
+    /// The program's installation folders on this PC: the usual locations and
+    /// those Windows lists under "App Paths" - each only if the executable is
+    /// there. Spelled as on disk, because that is what Firefox computes the
+    /// hash from.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static List<string> Installations(string exe, string ordnerName, string profil)
@@ -566,7 +566,7 @@ public static class MozillaProfile
                 if (k?.GetValue("") is string p && Path.GetDirectoryName(p.Trim().Trim('"')) is { Length: > 0 } ordner)
                     orte.Add(ordner);
             }
-            catch { /* naechste */ }
+            catch { /* next one */ }
         }
         return orte.Where(o => o.Length > 0 && File.Exists(Path.Combine(o, exe)))
                    .Select(RealPath)
@@ -575,16 +575,15 @@ public static class MozillaProfile
     }
 
     /// <summary>
-    /// Der Pfad so, wie er auf der Platte steht - Gross-/Kleinschreibung,
-    /// Verknuepfungen aufgeloest. Firefox tut dasselbe, bevor es den Schluessel
-    /// berechnet.
+    /// The path as it is on disk - casing and links resolved. Firefox does the
+    /// same before computing the hash.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static string RealPath(string ordner)
     {
         var voll = Path.TrimEndingDirectorySeparator(Path.GetFullPath(ordner));
-        using var h = CreateFileW(voll, 0, 7 /* lesen, schreiben, loeschen */, IntPtr.Zero, 3 /* OPEN_EXISTING */,
-                                  0x02000000 /* FILE_FLAG_BACKUP_SEMANTICS: auch Ordner */, IntPtr.Zero);
+        using var h = CreateFileW(voll, 0, 7 /* read, write, delete */, IntPtr.Zero, 3 /* OPEN_EXISTING */,
+                                  0x02000000 /* FILE_FLAG_BACKUP_SEMANTICS: folders as well */, IntPtr.Zero);
         if (h.IsInvalid) return voll;
         var sb = new StringBuilder(1024);
         var n = GetFinalPathNameByHandleW(h, sb, (uint)sb.Capacity, 0);

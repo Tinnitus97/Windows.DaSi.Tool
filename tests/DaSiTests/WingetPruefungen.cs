@@ -9,8 +9,8 @@ using WindowsDaSiTool.Services;
 namespace DaSiTests;
 
 /// <summary>
-/// WingetService gegen die winget-Attrappe (tests/WingetAttrappe): Bereitschaft,
-/// Reparatur, Export mit Filter und Bekannt-Liste, Import mit allen Ausgaengen.
+/// WingetService against the winget fake (tests/WingetAttrappe): readiness,
+/// repair, export with filter and known list, import with every outcome.
 /// </summary>
 internal static partial class Program
 {
@@ -19,8 +19,8 @@ internal static partial class Program
 
     private static void WingetServiceCheck(string root)
     {
-        // Nur unter Windows: winget meldet 32-Bit-Rueckgabewerte (0x8A15...),
-        // andere Systeme kuerzen Exit-Codes auf 8 Bit.
+        // Windows only: winget reports 32-bit return codes (0x8A15...), other
+        // systems truncate exit codes to 8 bit.
         if (!OperatingSystem.IsWindows()) return;
         Console.WriteLine("\n== winget (Attrappe statt echtem winget) ==");
         var attrappe = Attrappen.WingetFake();
@@ -36,7 +36,7 @@ internal static partial class Program
         WingetService NewService(Func<System.Threading.Tasks.Task<bool>>? nach = null)
             => new(runner, c, log.Write) { FesteKandidaten = new[] { attrappe }, Nachinstallation = nach ?? (() => System.Threading.Tasks.Task.FromResult(false)) };
 
-        // ---- Bereitschaft ----
+        // ---- Readiness ----
         var ordner = Attrappen.WingetScenario(root, Scenario());
         var w = NewService();
         var stand = w.CheckReadinessAsync().GetAwaiter().GetResult();
@@ -44,7 +44,7 @@ internal static partial class Program
         Check("bereit: Startweg im Protokoll", log.Has("Verwende winget v1.12.460") && log.Has("Startmethode: Direct"), log.Text);
         Check("bereit: Paketquelle gefragt", Attrappen.Calls(ordner).Any(a => a.StartsWith("source list")));
 
-        // winget startet nicht - Registrierung (echt) und Nachinstallation (ersetzt) helfen nicht.
+        // winget does not start - registration (real) and reinstall (replaced) do not help.
         log.Clear();
         ordner = Attrappen.WingetScenario(root, Scenario(("version.code", "1"), ("version", "kaputt")));
         int nachinstalliert = 0;
@@ -57,7 +57,7 @@ internal static partial class Program
         stand = w.CheckReadinessAsync().GetAwaiter().GetResult();
         Check("Nachinstallation hoechstens einmal je Lauf", nachinstalliert == 1 && !stand.Ready);
 
-        // Nachinstallation repariert winget.
+        // Reinstalling repairs winget.
         log.Clear();
         ordner = Attrappen.WingetScenario(root, Scenario(("version.code", "1")));
         var ordnerFuerReparatur = ordner;
@@ -69,7 +69,7 @@ internal static partial class Program
         stand = w.CheckReadinessAsync().GetAwaiter().GetResult();
         Check("nach der Nachinstallation startet winget", stand.Ready, $"{stand.Problem} {log.Text}");
 
-        // Paketquelle fehlt - Zuruecksetzen hilft nicht, Nachinstallation schon.
+        // Package source missing - resetting does not help, reinstalling does.
         log.Clear();
         ordner = Attrappen.WingetScenario(root, Scenario(("source list", "Name Argument\n---- --------\nmsstore https://storeedgefd.dsx.mp.microsoft.com")));
         var ordnerQuelle = ordner;
@@ -99,7 +99,7 @@ internal static partial class Program
         Check("Abbruch: Pruefung meldet 'Abgebrochen'", !stand.Ready && stand.Problem == "Abgebrochen.", stand.Problem);
         c.Reset();
 
-        // Abbruch, waehrend winget seine Paketquellen liest.
+        // Cancel while winget reads its package sources.
         log.Clear();
         Attrappen.WingetScenario(root, Scenario(("source list.warte", "8000")));
         var laeuft = NewService().CheckReadinessAsync();
@@ -109,7 +109,7 @@ internal static partial class Program
         c.Reset();
         Check("Abbruch waehrend der Paketquellen-Pruefung: 'Abgebrochen'", !stand.Ready && stand.Problem == "Abgebrochen." && !log.Has("setze sie zurück"), $"{stand.Problem} {log.Text}");
 
-        // Ohne Attrappe: das winget dieses Rechners suchen (Suchpfad, Alias, App-Installer-Ordner).
+        // Without the fake: look for this computer's winget (search path, alias, App Installer folder).
         log.Clear();
         Environment.SetEnvironmentVariable("DASI_WINGET_ATTRAPPE", null);
         var echt = new WingetService(runner, c, log.Write) { Nachinstallation = () => System.Threading.Tasks.Task.FromResult(false) };
@@ -189,7 +189,7 @@ internal static partial class Program
         File.WriteAllText(nullJson, "null");
         ExportFails("leer (null)", Scenario(("export.datei", nullJson)), "Export.json ist leer");
 
-        // Abbruch, nachdem winget schon gefunden ist - wie mitten in der Warteschlange.
+        // Cancel after winget has been found - as in the middle of the queue.
         Attrappen.WingetScenario(root, Scenario(("export.datei", roh)));
         var bereit = NewService();
         bereit.CheckReadinessAsync().GetAwaiter().GetResult();
@@ -227,7 +227,7 @@ internal static partial class Program
         NewService().ImportAsync(new[] { new WingetPackage { PackageIdentifier = "A.B" } }).GetAwaiter().GetResult();
         Check("Import ohne Fehler: Bilanz mit [ERFOLG]", log.Has("[ERFOLG] Winget-Import abgeschlossen: 1 installiert"), log.Text);
 
-        // Vom alten PC kommt Firefox ESR - hier wird die aktuelle Fassung installiert, einmal.
+        // Firefox ESR comes from the old PC - the current release is installed here, once.
         Check("Zielpaket: Firefox ESR -> aktuelle Fassung (mit und ohne Sprache)",
             WingetService.TargetPackage("Mozilla.Firefox.ESR.de") == "Mozilla.Firefox.de" && WingetService.TargetPackage("Mozilla.Firefox.ESR") == "Mozilla.Firefox"
             && WingetService.TargetPackage("mozilla.firefox.esr.en-US") == "Mozilla.Firefox.en-US");
@@ -242,7 +242,7 @@ internal static partial class Program
             installiert.Count == 2 && installiert.Any(a => a.Contains("Mozilla.Firefox.de")) && !installiert.Any(a => a.Contains("ESR"))
             && log.Has("[INFO] Mozilla.Firefox.ESR.de -> Mozilla.Firefox.de: Firefox kommt auf diesem PC in der aktuellen Fassung statt ESR"), string.Join(" | ", installiert) + " / " + log.Text);
 
-        // Paketquelle kaputt (0x8A150009): reparieren, nachinstallieren, dann aufgeben.
+        // Package source broken (0x8A150009): repair, reinstall, then give up.
         log.Clear();
         var kaputtCode = unchecked((int)0x8A150009).ToString();
         ordner = Attrappen.WingetScenario(root, Scenario(("install.*.code", kaputtCode)));
@@ -266,7 +266,7 @@ internal static partial class Program
         Check("Import: Abbruch vor dem ersten Paket, nichts installiert",
             log.Has("[ABBRUCH] Winget-Import") && !Attrappen.Calls(ordner).Any(a => a.StartsWith("install")), log.Text);
 
-        // Ohne startbares winget: Import scheitert vor dem ersten Paket.
+        // Without a startable winget: the import fails before the first package.
         log.Clear();
         Attrappen.WingetScenario(root, Scenario(("version.code", "1")));
         NewService().ImportAsync(new[] { new WingetPackage { PackageIdentifier = "A.B" } }).GetAwaiter().GetResult();
@@ -278,7 +278,7 @@ internal static partial class Program
         Check("Beschreibung: Code, Hex und letzte Meldung",
             WingetService.DescribeResult(new ProcessResult(1603, "zeile eins\nInstaller failed", null)).Contains("ExitCode 1603 (0x00000643)"));
 
-        // ReadExportedPackages: alle Zustaende.
+        // ReadExportedPackages: every state.
         var lesen = Path.Combine(root, "winget-lesen");
         Directory.CreateDirectory(lesen);
         WingetService.ReadExportedPackages(lesen, out status);
@@ -291,6 +291,6 @@ internal static partial class Program
         Check("Liste lesen: nur leere Kennungen -> Empty", status == "Empty");
 
         Environment.SetEnvironmentVariable("DASI_WINGET_ATTRAPPE", null);
-        _ = JsonSerializer.Serialize(new WingetExport());   // Modell ohne Inhalt ist serialisierbar
+        _ = JsonSerializer.Serialize(new WingetExport());   // A model without content can be serialized
     }
 }

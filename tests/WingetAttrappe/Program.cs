@@ -3,19 +3,19 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-// Szenario: Zeilen "schluessel=wert", "\n" im Wert steht fuer einen
-// Zeilenumbruch. Ausgewertet werden (fehlt ein Schluessel, gilt die Vorgabe):
-//   version                 Ausgabe von --version            (v1.12.460)
-//   version.code            Rueckgabe von --version          (0)
-//   source list             Ausgabe von "source list"        ("winget  https://cdn.winget.microsoft.com/cache")
-//   source list.code        Rueckgabe                        (0)
+// Scenario: lines "key=value"; "\n" in a value stands for a line break.
+// These keys are evaluated (a missing key means the default):
+//   version                 output of --version              (v1.12.460)
+//   version.code            exit code of --version           (0)
+//   source list             output of "source list"          ("winget  https://cdn.winget.microsoft.com/cache")
+//   source list.code        exit code                        (0)
 //   source reset.code / source update.code                   (0)
-//   source list.warte       so viele Millisekunden warten    (0)
-//   export.datei            Datei, die nach -o kopiert wird  (keine -> keine Datei)
+//   source list.warte       wait this many milliseconds      (0)
+//   export.datei            file copied to -o                (none -> no file)
 //   export.ausgabe / export.code
-//   show.<Id>.code          (1 = unbekannt)
+//   show.<Id>.code          (1 = unknown)
 //   install.<Id>.code / install.<Id>.ausgabe                 (0)
-//   install.*.code          fuer jede andere Id
+//   install.*.code          for every other Id
 var ordner = Environment.GetEnvironmentVariable("DASI_WINGET_ATTRAPPE");
 if (string.IsNullOrEmpty(ordner)) { Console.Error.WriteLine("DASI_WINGET_ATTRAPPE fehlt"); return 99; }
 

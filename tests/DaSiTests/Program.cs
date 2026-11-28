@@ -21,7 +21,7 @@ internal static partial class Program
     private static extern bool ShowWindow(IntPtr h, int cmd);
     private static void MaximizeForTest(IntPtr h) => ShowWindow(h, 3);   // SW_MAXIMIZE
 
-    // ---- Hilfen zum Zuruecklesen der selbst geschriebenen PNG-Dateien ----
+    // ---- Helpers for reading back the PNG files we wrote ourselves ----
 
     private sealed record Chunk(string Type, byte[] Data, bool CrcOk);
 
@@ -42,7 +42,7 @@ internal static partial class Program
         return liste;
     }
 
-    /// <summary>Liest genau das Format, das PngWriter schreibt: RGB, 8 Bit, Filter je Zeile.</summary>
+    /// <summary>Reads exactly the format PngWriter writes: RGB, 8 bit, one filter per row.</summary>
     private static byte[] DecodeOwnPng(byte[] png, out int width, out int height)
     {
         var chunks = ReadChunks(png);
@@ -74,16 +74,16 @@ internal static partial class Program
 
     public static int Main()
     {
-        // Wie im Programm (Program.Main): Codepage 850 & Co. fuer die Ausgabe
-        // von robocopy, netsh und PrintBrm.
+        // As in the program (Program.Main): code page 850 etc. for the output of
+        // robocopy, netsh and PrintBrm.
         System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
         var root = Path.Combine(Path.GetTempPath(), "dasi-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
 
-        // DASI_NUR=hintergrund: nur die echte Hintergrund-Pruefung - fuer den
-        // Windows-11-Laeufer, auf dem es um genau das geht.
+        // DASI_NUR=hintergrund: only the real wallpaper test - for the Windows 11
+        // runner, where that is exactly what matters.
 #if MIT_UIA
-        // DASI_NUR=taskleiste: nur der Versuch mit der echten Taskleiste.
+        // DASI_NUR=taskleiste: only the trial with the real taskbar.
         if (Environment.GetEnvironmentVariable("DASI_NUR") == "taskleiste")
         {
             TaskbarTrial(root);
@@ -92,7 +92,7 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 #endif
-        // DASI_NUR=thunderbird-alt/-neu, firefox-alt/-neu: Umzug mit echtem Thunderbird bzw. Firefox (CI).
+        // DASI_NUR=thunderbird-alt/-neu, firefox-alt/-neu: migration with a real Thunderbird or Firefox (CI).
         if (Environment.GetEnvironmentVariable("DASI_NUR") is "thunderbird-alt" or "thunderbird-neu" or "firefox-alt" or "firefox-neu" && OperatingSystem.IsWindows())
         {
             switch (Environment.GetEnvironmentVariable("DASI_NUR"))
@@ -190,7 +190,7 @@ internal static partial class Program
         Check("Skript wurde geschrieben", File.Exists(skript));
         Check("Skript liegt im eigenen Arbeitsordner",
             skript.StartsWith(UpdateService.WorkFolder, StringComparison.OrdinalIgnoreCase), skript);
-        // Gewartet wird ueber die Dateisperre: move wird wiederholt, bis es klappt.
+        // The wait uses the file lock: move is repeated until it works.
         Check("Skript wiederholt den Austausch, solange die Datei gesperrt ist",
             inhalt.Contains("goto ersetzen", StringComparison.Ordinal)
             && inhalt.Contains("ping -n 2", StringComparison.Ordinal));
@@ -201,8 +201,8 @@ internal static partial class Program
             && !inhalt.Contains("tasklist", StringComparison.OrdinalIgnoreCase));
         Check("Skript ersetzt die Datei", inhalt.Contains("move /y", StringComparison.Ordinal));
         Check("Skript startet danach neu", inhalt.Contains("start \"\"", StringComparison.Ordinal));
-        // Frueher endete der Fehlerzweig mit "pause" - in einem Fenster, das wegen
-        // CreateNoWindow nie erschien. Das cmd wartete dann unsichtbar fuer immer.
+        // The error branch used to end with "pause" - in a window that never
+        // appeared because of CreateNoWindow. cmd then waited invisibly forever.
         Check("Skript meldet einen Fehlschlag sichtbar (Editor statt pause)",
             inhalt.Contains("errorlevel", StringComparison.Ordinal)
             && inhalt.Contains("notepad.exe", StringComparison.Ordinal)
@@ -213,7 +213,7 @@ internal static partial class Program
         Check("Skript startet im Fehlerfall die bisherige Fassung wieder",
             inhalt.Split(":fehler")[1].Contains("start \"\" \"%~2\"", StringComparison.Ordinal));
 
-        // Der Kern des Fehlers: Pfade mit Umlauten duerfen nicht in der Datei stehen.
+        // The core of the bug: paths with umlauts must not be in the file.
         var umlautNeu = Path.Combine(root, "Jürgen Müller", "neu", "WindowsDaSiTool.exe");
         var umlautZiel = Path.Combine(root, "Björn Öztürk", "WindowsDaSiTool.exe");
         var skriptU = UpdateService.WriteUpdateScript(umlautNeu, umlautZiel);
@@ -246,21 +246,21 @@ internal static partial class Program
         Check("Arbeitsordner laesst sich aufraeumen", !Directory.Exists(UpdateService.WorkFolder));
 
         // ================================================================
-        // Cloud-Anbieter erkennen
+        // Detect cloud providers
         // ================================================================
         Console.WriteLine("\n== Cloud-Anbieter erkennen ==");
 
         var profil = Path.Combine(root, "Profil");
         foreach (var d in new[]
                  {
-                     "OneDrive",                 // genauer Name
-                     "OneDrive - Muster GmbH",   // Firmenkonto, Praefixmuster
+                     "OneDrive",                 // exact name
+                     "OneDrive - Muster GmbH",   // company account, prefix pattern
                      "Dropbox",
                      "HiDrive",                  // STRATO
                      "Nextcloud",
-                     "Dokumente",                // keine Cloud
-                     "Desktop",                  // keine Cloud
-                     "AppData"                   // keine Cloud
+                     "Dokumente",                // no cloud
+                     "Desktop",                  // no cloud
+                     "AppData"                   // no cloud
                  })
         {
             Directory.CreateDirectory(Path.Combine(profil, d));
@@ -298,7 +298,7 @@ internal static partial class Program
         Check("HiDrive -> HiDrive_wiederhergestellt",
             CloudProviders.RestoredFolderName("HiDrive") == "HiDrive_wiederhergestellt");
 
-        // Nach einer Wiederherstellung liegen Original und Kopie nebeneinander.
+        // After a restore, original and copy sit side by side.
         var nachher = Path.Combine(root, "ProfilNachWiederherstellung");
         foreach (var d in new[] { "OneDrive", "OneDrive_wiederhergestellt", "HiDrive_WIEDERHERGESTELLT", "Dropbox_wiederhergestellt", "Dokumente" })
             Directory.CreateDirectory(Path.Combine(nachher, d));
@@ -316,7 +316,7 @@ internal static partial class Program
             && !nachherAus.Contains(Path.Combine(nachher, "Dropbox_wiederhergestellt")));
 
         // ================================================================
-        // Was beim Profil-Backup ausgelassen wird
+        // What the profile backup leaves out
         // ================================================================
         Console.WriteLine("\n== Ausschlussliste fuer das Benutzerprofil ==");
 
@@ -357,7 +357,7 @@ internal static partial class Program
             beides.Count == beides.Distinct(StringComparer.OrdinalIgnoreCase).Count());
 
         // ================================================================
-        // Liegt das Ziel im Quellprofil? (frueher ein reiner Praefixvergleich)
+        // Is the target inside the source profile? (used to be a plain prefix comparison)
         // ================================================================
         Console.WriteLine("\n== Ziel im Quellverzeichnis ==");
         var nutzer = Path.Combine(root, "Users");
@@ -378,7 +378,7 @@ internal static partial class Program
             !ProfileExcludes.IsInside("", max) && !ProfileExcludes.IsInside(max, ""));
 
         // ================================================================
-        // Wann gilt eine Aktion als fehlgeschlagen?
+        // When does an action count as failed?
         // ================================================================
         Console.WriteLine("\n== Fehlerzeilen im Protokoll ==");
         Check("[FEHLER] am Zeilenanfang zaehlt",
@@ -399,7 +399,7 @@ internal static partial class Program
             !ActionOutcome.IsErrorLine("") && !ActionOutcome.IsErrorLine(null));
 
         // ================================================================
-        // Desktop-Screenshot: PNG schreiben, Profil vergleichen, Schwarzbild
+        // Desktop screenshot: write PNG, compare profile, black image
         // ================================================================
         Console.WriteLine("\n== Eigener Sicherungsordner ==");
         var zeitpunkt = new DateTime(2026, 11, 10, 8, 5, 0);
@@ -430,7 +430,7 @@ internal static partial class Program
         Check("ausgeschaltet bleibt auch ein DASI-Ordner, wie er ist",
             BackupTarget.Resolve(schonDasi, false, "PC", zeitpunkt) == schonDasi);
 
-        // Ein selbst benannter Ordner mit einer Sicherung darin.
+        // A self-named folder with a backup inside it.
         var eigenerName = Path.Combine(laufwerk, "Sicherung Max");
         Directory.CreateDirectory(Path.Combine(eigenerName, "Benutzerprofil", "Documents"));
         Check("Ordner mit Sicherung darin (ohne DASI-Namen): auch hinein",
@@ -466,11 +466,11 @@ internal static partial class Program
         Check("CRC-32 stimmt mit dem Normwert ueberein (\"123456789\" -> CBF43926)",
             PngWriter.Crc32("123456789"u8) == 0xCBF43926u, PngWriter.Crc32("123456789"u8).ToString("X8"));
 
-        // 3 x 2 Bildpunkte, Windows-Reihenfolge B, G, R, A.
+        // 3 x 2 pixels, Windows order B, G, R, A.
         byte[] klein =
         {
-            0, 0, 255, 255,    0, 255, 0, 255,    255, 0, 0, 255,      // rot, gruen, blau
-            255, 255, 255, 255, 10, 20, 30, 0,    128, 128, 128, 255   // weiss, (30,20,10), grau
+            0, 0, 255, 255,    0, 255, 0, 255,    255, 0, 0, 255,      // red, green, blue
+            255, 255, 255, 255, 10, 20, 30, 0,    128, 128, 128, 255   // white, (30,20,10), gray
         };
         var png = PngWriter.EncodeBgra(3, 2, klein);
         Check("beginnt mit der PNG-Kennung",
@@ -490,7 +490,7 @@ internal static partial class Program
                 255, 255, 255, 30, 20, 10,  128, 128, 128
             }), string.Join(" ", rgb));
 
-        // Ein groesseres Bild mit Verlauf: prueft den Filter ueber viele Zeilen.
+        // A larger image with a gradient: checks the filter across many rows.
         int gw = 257, gh = 64;
         var verlauf = new byte[gw * gh * 4];
         for (int i = 0; i < gw * gh; i++) { verlauf[i * 4] = (byte)i; verlauf[i * 4 + 1] = (byte)(i / 7); verlauf[i * 4 + 2] = (byte)(255 - i); }
@@ -556,10 +556,10 @@ internal static partial class Program
             bool linksOk = true;
             try
             {
-                Directory.CreateSymbolicLink(Path.Combine(lp, "Documents", "Spiele"), aussen);                        // nach draussen
-                Directory.CreateSymbolicLink(Path.Combine(lp, "Documents", "Eigene Bilder"), Path.Combine(lp, "Pictures")); // ins Profil
+                Directory.CreateSymbolicLink(Path.Combine(lp, "Documents", "Spiele"), aussen);                        // pointing outside
+                Directory.CreateSymbolicLink(Path.Combine(lp, "Documents", "Eigene Bilder"), Path.Combine(lp, "Pictures")); // into the profile
                 Directory.CreateSymbolicLink(Path.Combine(lp, "AppData", "Local", "Verlauf"), aussen);                // in AppData
-                Directory.CreateSymbolicLink(Path.Combine(lp, "OneDrive", "Extern"), aussen);                          // in ausgelassenem Ordner
+                Directory.CreateSymbolicLink(Path.Combine(lp, "OneDrive", "Extern"), aussen);                          // in an excluded folder
             }
             catch (Exception ex) { linksOk = false; Console.WriteLine($"         (symbolische Links hier nicht moeglich: {ex.Message})"); }
             if (linksOk)
@@ -570,8 +570,8 @@ internal static partial class Program
                     string.Join(" | ", gefunden.Select(g => $"{g.Path} -> {g.Target}")));
                 Check("Verknuepfung ins Profil (wie \"Eigene Bilder\") wird nicht gemeldet",
                     !gefunden.Any(g => g.Path.EndsWith("Eigene Bilder")));
-                // Relativ zum Profil: Unter Windows liegt das Pruefverzeichnis selbst
-                // in ...\AppData\Local\Temp - der volle Pfad enthielte "AppData" immer.
+                // Relative to the profile: on Windows the test folder itself lives in
+                // ...\AppData\Local\Temp - the full path would always contain "AppData".
                 Check("AppData und ausgelassene Ordner werden nicht durchsucht",
                     !gefunden.Select(g => Path.GetRelativePath(lp, g.Path))
                              .Any(r => r.StartsWith("AppData", StringComparison.OrdinalIgnoreCase)
@@ -594,9 +594,9 @@ internal static partial class Program
             }
             Profile("Opera Stable", "Local State");
             Profile("Opera GX Stable", "Preferences");
-            Profile("Opera Beta", Path.Combine("Default", "Bookmarks"));   // neuere Fassungen: Profil in "Default"
-            Directory.CreateDirectory(Path.Combine(os, "Opera Crash Reports"));  // kein Profil
-            Profile("Fremd", "Local State");                                   // kein Opera-Ordner
+            Profile("Opera Beta", Path.Combine("Default", "Bookmarks"));   // newer editions: profile in "Default"
+            Directory.CreateDirectory(Path.Combine(os, "Opera Crash Reports"));  // no profile
+            Profile("Fremd", "Local State");                                   // no Opera folder
             var gefunden = AppCatalog.Opera.Variants(os);
             Check("Opera, Opera Beta und Opera GX werden gefunden, nach Anzeigename",
                 gefunden.SequenceEqual(new[] { "Opera Stable", "Opera Beta", "Opera GX Stable" }), string.Join(", ", gefunden));
@@ -615,9 +615,9 @@ internal static partial class Program
 
         Console.WriteLine("\n== Verfuegbarkeit der Punkte ==");
         {
-            // Die CI-Rechner haben kein WLAN - fuer diese Pruefungen gibt es eins.
+            // The CI machines have no Wi-Fi - for these tests there is one.
             AppCatalog.HatWlanAdapter = () => true;
-            // Sichern: Profil mit Firefox und Opera, ohne die anderen Programme.
+            // Backup: profile with Firefox and Opera, without the other programs.
             var pr = Path.Combine(root, "verf", "Besitzer");
             Directory.CreateDirectory(AppCatalog.PathIn(pr, AppCatalog.Firefox.ProfilRel));
             var gx = Path.Combine(AppCatalog.PathIn(pr, AppCatalog.Opera.Rel), "Opera GX Stable");
@@ -637,7 +637,7 @@ internal static partial class Program
             Check("Sichern: ohne (vorhandenes) Profil wird nichts gesperrt",
                 AppCatalog.ForBackup(Punkt.Chrome, "") is null && AppCatalog.ForBackup(Punkt.Chrome, Path.Combine(root, "gibt-es-nicht")) is null);
 
-            // Wiederherstellen: leere Sicherung - alles gesperrt.
+            // Restore: empty backup - everything locked.
             var si = Path.Combine(root, "verf", "Sicherung");
             Directory.CreateDirectory(si);
             Check("Wiederherstellen: leere Sicherung sperrt jeden Punkt",
@@ -646,12 +646,12 @@ internal static partial class Program
             Check("Wiederherstellen: Ordner ohne jede Sicherung - ein gemeinsamer Hinweis",
                 Enum.GetValues<Punkt>().All(p => AppCatalog.ForRestore(p, si)?.De.StartsWith("Der gewählte Ordner enthält keine Sicherung") == true),
                 AppCatalog.ForRestore(Punkt.Wlan, si)?.De);
-            // Typischer Fall: der Ordner ueber den Sicherungen ist gewaehlt.
+            // Typical case: the folder above the backups is selected.
             Directory.CreateDirectory(Path.Combine(si, "..", "Ueber", "DASI_PC_11_11_2026_17_55", "Benutzerprofil"));
             Check("Wiederherstellen: auch der Ordner ueber den Sicherungen ist keine Sicherung",
                 AppCatalog.ForRestore(Punkt.Profil, Path.Combine(root, "verf", "Ueber"))?.De.StartsWith("Der gewählte Ordner enthält keine Sicherung") == true);
 
-            // Nach und nach befuellen.
+            // Fill it step by step.
             Directory.CreateDirectory(Path.Combine(si, "Benutzerprofil", "Documents"));
             Check("Wiederherstellen: Grund nennt, was fehlt",
                 AppCatalog.ForRestore(Punkt.Wlan, si)?.De == "Die gewählte Sicherung enthält keine WLAN-Profile.",
@@ -679,7 +679,7 @@ internal static partial class Program
             Check("Wiederherstellen: AppData und Cloud frei, sobald sie in der Sicherung liegen",
                 AppCatalog.ForRestore(Punkt.AppData, si) is null && AppCatalog.ForRestore(Punkt.Cloud, si) is null);
 
-            // Ohne WLAN-Adapter.
+            // Without a Wi-Fi adapter.
             AppCatalog.HatWlanAdapter = () => false;
             var ohneWlan = AppCatalog.ForBackup(Punkt.Wlan, pr);
             Check("ohne WLAN-Adapter: Sichern gesperrt, mit Grund", ohneWlan?.De.StartsWith("Dieser PC hat keinen WLAN-Adapter") == true, ohneWlan?.De);
@@ -745,7 +745,7 @@ internal static partial class Program
             Check("Stellen ausserhalb werden in den Desktop geholt",
                 DesktopIcons.Plan(draussen, jetzt, 1920, 1080).Zuordnung.Single() is { X: 1919, Y: 0 });
 
-            // Anzeigename nur als Notbehelf - und nie doppelt vergeben.
+            // Display name only as a fallback - and never assigned twice.
             var umbenannt = new DesktopLayout
             {
                 Symbole = { S("Firefox (alt).lnk", "Firefox", 1, 1), S("Firefox.lnk", "Firefox", 2, 2) }
@@ -758,7 +758,7 @@ internal static partial class Program
             Check("ohne Namenstreffer hilft der Anzeigename",
                 DesktopIcons.Plan(nurAnzeige, jetzt, 1920, 1080).Zuordnung.Single().Index == 3);
 
-            // Datei: lesbar, mit Umlauten, und wieder einlesbar.
+            // File: readable, with umlauts, and readable again.
             var ordner = Path.Combine(root, "symbole", DesktopIcons.FolderName);
             gesichert.Rechner = "PC"; gesichert.Benutzer = "Anwender"; gesichert.AmRasterAusrichten = true;
             var symDatei = DesktopIcons.Save(ordner, gesichert);
@@ -771,7 +771,7 @@ internal static partial class Program
             Check("Datei: fehlend oder kaputt -> null",
                 DesktopIcons.Load(Path.Combine(root, "gibt-es-nicht.json")) is null && DesktopIcons.Load(Path.Combine(root, "kaputt.json")) is null);
 
-            // Verfuegbarkeit beim Wiederherstellen: Symbolpositionen allein genuegen.
+            // Availability on restore: icon positions alone are enough.
             var nurSymbole = Path.Combine(root, "symbole");
             Check("Wiederherstellen: Desktop-Layout frei, wenn nur Symbolpositionen da sind",
                 AppCatalog.ForRestore(Punkt.DesktopShot, nurSymbole) is null
@@ -792,8 +792,8 @@ internal static partial class Program
                 Breite = 1920, Hoehe = 1080, AutomatischAnordnen = false, AmRasterAusrichten = true,
                 Symbole = { new("b.txt", "b", 500, 400), new("a.txt", "a", 700, 50), new("c.txt", "c", 900, 900) }
             };
-            // "c.txt" erscheint erst nach dem zweiten Nachsehen - wie eine Datei,
-            // die der Explorer nach dem Zurueckschreiben gerade erst entdeckt.
+            // "c.txt" only appears at the second look - like a file Explorer just
+            // discovered after the restore.
             testDesktop.SpaeterDazu = (2, new DesktopIcon("c.txt", "c", 10, 210));
             var erg = DesktopIcons.Restore(symZiel, TimeSpan.FromSeconds(8));
             Check("Wiederherstellen: alle drei gesetzt, auch das spaet erschienene", erg.Gesetzt == 3 && erg.Fehlend.Count == 0,
@@ -820,7 +820,7 @@ internal static partial class Program
             try { DesktopIcons.Read("PC", "x"); } catch (InvalidOperationException) { gemeldet = true; }
             Check("ohne Desktop: der Fehler kommt beim Aufrufer an (nicht verschluckt)", gemeldet);
 
-            // Explorer startet gerade (neu): erst kein Desktop, dann doch.
+            // Explorer is (re)starting: no desktop at first, then there is one.
             int versuche = 0;
             var wert = DesktopIcons.WithWaiting(() => ++versuche < 3 ? throw new KeinDesktopException("noch nicht") : 42,
                 TimeSpan.FromSeconds(5), ex => ex is KeinDesktopException, TimeSpan.FromMilliseconds(10));
@@ -849,7 +849,7 @@ internal static partial class Program
                     == "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
                 && WingetInstaller.DependenciesFile == "DesktopAppInstaller_Dependencies.zip");
 
-            // Aufbau wie im echten Paket: je Architektur ein Ordner mit .appx.
+            // Layout as in the real package: one folder with .appx per architecture.
             var ent = Path.Combine(root, "winget-deps");
             foreach (var a in new[] { "x64", "x86", "arm64" })
             {
@@ -889,7 +889,7 @@ internal static partial class Program
                 && DesktopScreenshot.DisplayNumber(@"\\.\DISPLAY12") == 12 && DesktopScreenshot.DisplayNumber("") == 0
                 && DesktopScreenshot.DisplayNumber("Monitor") == 0);
 
-            // Wie beim Benutzer: 4K-Hauptbildschirm und daneben ein kleinerer.
+            // As at the user's: a 4K primary screen and a smaller one next to it.
             var haupt = new MonitorArea(0, 0, 3840, 2160, true, @"\\.\DISPLAY1");
             var neben = new MonitorArea(3840, 0, 1920, 1080, false, @"\\.\DISPLAY2");
             var zwei = DesktopScreenshot.PlanImages(new[] { neben, haupt });
@@ -928,8 +928,8 @@ internal static partial class Program
             Check("doppelte Nummer: es wird gezaehlt, kein Name doppelt",
                 doppelt.Select(p => p.FileName).Distinct().Count() == 2);
 
-            // Ausschneiden: virtueller Bildschirm 7 x 3 ab (-3, 0); Hauptbildschirm
-            // 4 x 3 bei (0, 0), links daneben ein flacher 3 x 1 bei (-3, 2).
+            // Cropping: virtual screen 7 x 3 from (-3, 0); primary screen 4 x 3 at
+            // (0, 0), a flat 3 x 1 to its left at (-3, 2).
             int vw = 7, vh = 3;
             var pix = new byte[vw * vh * 4];
             for (int i = 0; i < vw * vh; i++) { pix[i * 4] = (byte)i; pix[i * 4 + 1] = (byte)(100 + i); pix[i * 4 + 3] = 255; }
@@ -945,7 +945,7 @@ internal static partial class Program
             DesktopScreenshot.Crop(pix, vw, vh, 50, 50, 5, 5, out var nw, out var nh);
             Check("ganz ausserhalb: leeres Bild", nw == 0 && nh == 0);
 
-            // Wiederherstellen: welche Bilder werden gezeigt?
+            // Restore: which images are shown?
             var bo = Path.Combine(root, "bilder-finden");
             Directory.CreateDirectory(bo);
             Check("leerer Ordner: kein Bild", DesktopScreenshot.FindImages(bo).Count == 0
@@ -974,7 +974,7 @@ internal static partial class Program
         Check("leere Angabe ist kein Profil", !ProfileExcludes.SameFolder("", anwender));
 
         Check("schwarzes Bild wird erkannt", DesktopScreenshot.IsBlank(new byte[4 * 5000]));
-        var fastSchwarz = new byte[4 * 5000]; fastSchwarz[2] = 200;    // ein roter Bildpunkt
+        var fastSchwarz = new byte[4 * 5000]; fastSchwarz[2] = 200;    // one red pixel
         Check("ein einziger heller Bildpunkt genuegt, wenn er in der Stichprobe liegt",
             !DesktopScreenshot.IsBlank(fastSchwarz));
         Check("Rauschen knapp ueber Schwarz zaehlt noch als schwarz",
@@ -1004,7 +1004,7 @@ internal static partial class Program
         static string En(string de, string en) => en;
         {
             var s = new RobocopySkips(@"C:\Users\Anwender\AppData");
-            // Genau die Zeilen aus der Meldung des Benutzers (deutsches Windows).
+            // Exactly the lines from the user's report (German Windows).
             var deutsch = new[]
             {
                 @"2026/11/10 20:15:31 FEHLER 2 (0x00000002) Datei wird kopiert C:\Users\Anwender\AppData\Roaming\discord\Local Storage\leveldb\012884.log",
@@ -1023,7 +1023,7 @@ internal static partial class Program
             };
             Check("englischer Block: ebenso", englisch.All(s.Swallow));
 
-            // Bei /MT rutscht die Dateizeile eines anderen Threads dazwischen.
+            // With /MT, another thread's file line slips in between.
             Check("Kopfzeile eines weiteren Blocks wird geschluckt",
                 s.Swallow(@"2026/11/10 20:15:33 FEHLER 32 (0x00000020) Datei wird kopiert C:\Users\Anwender\AppData\Roaming\Teams\x.db"));
             Check("eingerueckte Dateizeile mittendrin bleibt im Protokoll",
@@ -1035,7 +1035,7 @@ internal static partial class Program
             Check("Zaehlung je Fehlerart", s.Count == 3 && s.CountByCode[2] == 1 && s.CountByCode[32] == 2);
             Check("gesperrt/verschwunden: alles erwartbar", s.AllExpected && s.OtherErrors == 0);
 
-            // Ausserhalb von AppData: alles bleibt, wie es war.
+            // Outside AppData: everything stays as it was.
             Check("Fehler in Dokumente bleibt im Protokoll",
                 !s.Swallow(@"2026/11/10 20:15:34 FEHLER 32 (0x00000020) Datei wird kopiert C:\Users\Anwender\Documents\Brief.docx"));
             Check("samt Grund und Abschluss",
@@ -1057,7 +1057,7 @@ internal static partial class Program
             Check("Schreibweise des Ordners spielt keine Rolle",
                 new RobocopySkips(@"c:\users\anwender\appdata\").Swallow(@"2026/11/10 20:15:31 FEHLER 2 (0x00000002) Datei wird kopiert C:\Users\Anwender\AppData\x"));
 
-            // Zugriff verweigert ist KEIN normaler AppData-Fall.
+            // Access denied is NOT a normal AppData case.
             s.Swallow(@"2026/11/10 20:15:37 FEHLER 5 (0x00000005) Datei wird kopiert C:\Users\Anwender\AppData\Local\geschuetzt.dat");
             s.Swallow("Zugriff verweigert");
             s.Swallow("FEHLER: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.");
@@ -1078,7 +1078,7 @@ internal static partial class Program
                 liste.Contains("Fehler 32 - The process cannot access the file") && liste.Contains("(2 Dateien)"));
             Check("Liste: Datum und Quelle", liste.Contains("10.11.2026 20:15") && liste.Contains(@"C:\Users\Anwender\AppData"));
 
-            // Viele Dateien: Tausendertrennung, Obergrenze fuer die gemerkten Pfade.
+            // Many files: thousands separator, limit for the remembered paths.
             var viele = new RobocopySkips(@"C:\U\AppData");
             for (int i = 0; i < 1234; i++)
             {
@@ -1092,8 +1092,8 @@ internal static partial class Program
 
         Console.WriteLine("\n== robocopy beim Zurueckschreiben: gesperrte Dateien im Profil ==");
         {
-            // Die Zeilen aus dem Protokoll vom 18.11.2026: robocopy nennt den
-            // Pfad in der SICHERUNG, gesperrt ist die Datei im Profil.
+            // The lines from the log of 2026-11-18: robocopy names the path in the
+            // BACKUP, the locked file is the one in the profile.
             const string wurzel = @"C:\DASI_DESKTOP-6SLTVM2_18_11_2026\Benutzerprofil\AppData";
             var z = new RobocopySkips(wurzel, zurueck: true);
             var bloecke = new[]
@@ -1126,9 +1126,9 @@ internal static partial class Program
             Check("Sichern bleibt beim alten Wortlaut", !new RobocopySkips(wurzel).Zurueck
                 && new RobocopySkips(wurzel).Summary("AppData", null, De).Contains("nicht gesichert"));
 
-            // Mit /R:1 (Zurueckschreiben) meldet robocopy eine gesperrte Datei
-            // ZWEIMAL: erst mit der Ankuendigung des naechsten Versuchs, dann
-            // endgueltig - so gesehen auf dem Windows-Laeufer.
+            // With /R:1 (restore), robocopy reports a locked file TWICE: first with
+            // the announcement of the next attempt, then for good - as seen on the
+            // Windows runner.
             var w = new RobocopySkips(@"C:\S\AppData", zurueck: true);
             var zweimal = new[]
             {
@@ -1150,9 +1150,9 @@ internal static partial class Program
             Check("Wiederholung gelingt: die Datei zaehlt NICHT als uebersprungen",
                 klappt.Count == 0 && klappt.Paths.Count == 0 && klappt.CountByCode.Count == 0 && !klappt.Swallow("\t  Neuer       \t\t  12\tC:\\S\\AppData\\b.db"));
 
-            // Protokoll vom 18.11.2026, 21:11 Uhr: 32 Kopier-Threads, deren
-            // Meldungen sich verschraenken - dazwischen die gesperrte
-            // Programmdatei des Tools auf dem Desktop (ausserhalb von AppData).
+            // Log of 2026-11-18, 21:11: 32 copy threads whose messages interleave -
+            // in between, the tool's locked executable on the desktop (outside
+            // AppData).
             const string sp = @"C:\DASI_DESKTOP-6SLTVM2_18_11_2026\Benutzerprofil";
             var v = new RobocopySkips(sp + @"\AppData", zurueck: true);
             const string gesperrtDe = "Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird.";
@@ -1161,12 +1161,12 @@ internal static partial class Program
                 (@"2026/11/18 21:11:55 FEHLER 32 (0x00000020) Folgende Datei wird kopiert " + sp + @"\AppData\Local\a\data_0", true),
                 (@"2026/11/18 21:11:55 FEHLER 1920 (0x00000780) Folgende Datei wird kopiert " + sp + @"\AppData\Local\Microsoft\WindowsApps\winget.exe", true),
                 (@"2026/11/18 21:11:55 FEHLER 32 (0x00000020) Folgende Datei wird kopiert " + sp + @"\Desktop\WindowsDaSiTool.exe", false),
-                (gesperrtDe, true),                                          // Grund zu data_0
-                ("Das System kann auf die Datei nicht zugreifen.", true),     // Grund zu winget.exe
-                (gesperrtDe, false),                                         // Grund zur Programmdatei - bleibt sichtbar
+                (gesperrtDe, true),                                          // reason for data_0
+                ("Das System kann auf die Datei nicht zugreifen.", true),     // reason for winget.exe
+                (gesperrtDe, false),                                         // reason for the executable - stays visible
                 ("Fehler: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.", true),
                 ("Fehler: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.", true),
-                ("Wartezeit: 1 Sekunden... Wiederholung...", false),        // Programmdatei, zweiter Versuch folgt
+                ("Wartezeit: 1 Sekunden... Wiederholung...", false),        // executable, a second attempt follows
                 (@"2026/11/18 21:11:56 FEHLER 32 (0x00000020) Folgende Datei wird kopiert " + sp + @"\Desktop\WindowsDaSiTool.exe", false),
                 (gesperrtDe, false),
                 ("Fehler: Die maximale Anzahl von Wiederholungsversuchen wurde überschritten.", false),
@@ -1212,7 +1212,7 @@ internal static partial class Program
             Check("alles liegt in AppData", ProfileExcludes.AppDataExcludes().All(a => a.StartsWith(@"AppData\", StringComparison.Ordinal)));
             Check("App-Aliase (WindowsApps) bleiben draussen - Fehler 1920", Contains(@"AppData\Local\Microsoft\WindowsApps"));
 
-            // Das Tool laeuft vom Desktop des Zielprofils.
+            // The tool runs from the target profile's desktop.
             var zielP = Path.Combine(root, "selbst", "Users", "Anwender123");
             var sichP = Path.Combine(root, "selbst", "DASI", "Benutzerprofil");
             Check("laufendes Tool im Zielprofil: dieselbe Stelle in der Sicherung",
@@ -1241,8 +1241,8 @@ internal static partial class Program
             Check("Erklaerung fuer 0x8A150009", WingetFehler.Explanation(WingetFehler.IndexZuNeu, De)?.Contains("neueren winget-Fassung") == true);
             Check("keine Erklaerung fuer unbekannte Werte", WingetFehler.Explanation(1603, De) is null);
 
-            // So kam die Ausgabe an: Fortschrittskreisel und eine Zeile voller
-            // Leerzeichen, per Wagenruecklauf ueberschrieben.
+            // That is how the output arrived: progress spinner and a line full of
+            // spaces, overwritten by carriage returns.
             var roh = "   - \r   \\ \r   | \r   / \r" + new string(' ', 120) + "\r"
                       + "An unexpected error occurred while executing the command:\r\n"
                       + "0x8a150009 : Cannot write to index; it is a higher schema version\r\n";
@@ -1278,8 +1278,8 @@ internal static partial class Program
             Check("Dateien und unbekannte Kennungen sind keine Systemsymbole", DesktopIcons.SystemIconId("Firefox.lnk") is null
                 && DesktopIcons.SystemIconId("::{00000000-0000-0000-0000-000000000000}") is null);
 
-            // Wie im Protokoll: Auf dem alten Desktop lagen "Dieser PC" und der
-            // Benutzerordner ("Anwender"), auf dem neuen nur der Papierkorb.
+            // As in the log: the old desktop had "This PC" and the user folder
+            // ("Anwender"), the new one only the Recycle Bin.
             var alt = new DesktopLayout
             {
                 Breite = 1920, Hoehe = 1080,
@@ -1289,7 +1289,7 @@ internal static partial class Program
             Check("fehlende Systemsymbole: genau die zwei", DesktopIcons.MissingSystemIcons(alt, neuDesk.Icons())
                 .SequenceEqual(new[] { "{20D04FE0-3AEA-1069-A2D8-08002B30309D}", "{59031A47-3F72-44A7-89C5-5595FE6B30EE}" }));
 
-            // Nach dem Einschalten zeigt der Explorer sie - hier: beim naechsten Nachsehen.
+            // After switching on, Explorer shows them - here: at the next look.
             List<string>? angefragt = null;
             DesktopIcons.OeffneDesktop = () => neuDesk;
             var ergSys = DesktopIcons.Restore(alt, TimeSpan.FromSeconds(8), k =>
@@ -1308,9 +1308,9 @@ internal static partial class Program
             Check("nur Firefox fehlt noch", ergSys.Fehlend.Count == 1 && ergSys.Fehlend[0].Name == "Firefox.lnk",
                 string.Join(", ", ergSys.Fehlend.Select(f => f.Name)));
 
-            // Woher kommen die fehlenden Symbole? Firefox.lnk liegt im
-            // Desktop-Ordner der Sicherung, "Finalisierung.lnk" nicht - es lag
-            // auf dem oeffentlichen Desktop.
+            // Where do the missing icons come from? Firefox.lnk is in the backup's
+            // desktop folder, "Finalisierung.lnk" is not - it was on the public
+            // desktop.
             var sichDesktop = Path.Combine(root, "herkunft", "Benutzerprofil", "Desktop");
             Directory.CreateDirectory(sichDesktop);
             File.WriteAllText(Path.Combine(sichDesktop, "Firefox.lnk"), "x");
@@ -1333,7 +1333,7 @@ internal static partial class Program
 
         Console.WriteLine("\n== Browserprofil nach dem Zurueckschreiben pruefen ==");
         {
-            // Wie Chrome: "Local State" oben, zwei Profile mit Preferences & Co.
+            // Like Chrome: "Local State" at the top, two profiles with Preferences & co.
             var sicherungCh = Path.Combine(root, "abgleich", "Chrome-Profil");
             void WriteFileUnder(string basis, string rel, string inhalt)
             {
@@ -1351,15 +1351,15 @@ internal static partial class Program
                 ProfilAbgleich.Profiles(sicherungCh).SequenceEqual(new[] { "Default", "Profile 1" }),
                 string.Join(", ", ProfilAbgleich.Profiles(sicherungCh)));
 
-            // Vollstaendig kopiert.
+            // Copied completely.
             var zielUd = Path.Combine(root, "abgleich", "User Data");
             foreach (var f in Directory.GetFiles(sicherungCh, "*", SearchOption.AllDirectories))
                 WriteFileUnder(zielUd, Path.GetRelativePath(sicherungCh, f), File.ReadAllText(f));
             Check("vollstaendig: keine Abweichung", ProfilAbgleich.Differences(sicherungCh, zielUd).Count == 0,
                 string.Join(", ", ProfilAbgleich.Differences(sicherungCh, zielUd)));
 
-            // Wie am 19.11.2026: Chrome lief und schrieb beim Beenden ein frisches
-            // "Local State" und "Preferences" ueber das zurueckgeschriebene Profil.
+            // As on 2026-11-19: Chrome was running and, when it exited, wrote a fresh
+            // "Local State" and "Preferences" over the restored profile.
             File.WriteAllText(Path.Combine(zielUd, "Local State"), "{\"profile\":{}}");
             File.WriteAllText(Path.Combine(zielUd, "Profile 1", "Preferences"), "{}");
             File.Delete(Path.Combine(zielUd, "Default", "Bookmarks"));
@@ -1369,7 +1369,7 @@ internal static partial class Program
                 && abw.Contains(Path.Combine("Default", "Bookmarks")) && abw.Count == 3, string.Join(", ", abw));
             Check("nicht gesicherte Dateien zaehlen nicht", !abw.Contains(Path.Combine("Default", "History")));
 
-            // Firefox: profiles.ini und Profiles\xxxx.default-release\prefs.js
+            // Firefox: profiles.ini and Profiles\xxxx.default-release\prefs.js
             var ff = Path.Combine(root, "abgleich", "Firefox-Profil");
             WriteFileUnder(ff, "profiles.ini", "[Profile0]\nPath=Profiles/abcd.default-release\n");
             WriteFileUnder(ff, Path.Combine("Profiles", "abcd.default-release", "prefs.js"), "user_pref(\"a\", 1);");
@@ -1393,7 +1393,7 @@ internal static partial class Program
             Check("Farbe als Hex", Hintergrund.Hex(blau) == "#0063B1", Hintergrund.Hex(blau));
             Check("COLORREF fuer SetSysColors (0x00BBGGRR)", Hintergrund.ColorRef(blau) == 0xB16300, Hintergrund.ColorRef(blau).ToString("X6"));
 
-            // Was ist eingestellt? (BackgroundType: 0 Bild, 1 Volltonfarbe, 2 Diashow, 3 Blickpunkt)
+            // What is configured? (BackgroundType: 0 image, 1 solid color, 2 slideshow, 3 Spotlight)
             Check("Volltonfarbe laut Windows (BackgroundType 1)",
                 Hintergrund.Determine(@"C:\Windows\Web\Wallpaper\Windows\img0.jpg", true, 1, "0 99 177") == HintergrundArt.Volltonfarbe);
             Check("Volltonfarbe: kein Bildpfad, Farbe gesetzt (aelteres Windows ohne BackgroundType)",
@@ -1405,7 +1405,7 @@ internal static partial class Program
             Check("Diashow mit aktuellem Bild: das Bild", Hintergrund.Determine(@"C:\x\TranscodedWallpaper", true, 2, null) == HintergrundArt.Bild);
             Check("Bildpfad ohne Datei: unbekannt", Hintergrund.Determine(@"C:\weg.jpg", false, 0, "0 0 0") == HintergrundArt.Unbekannt);
 
-            // Windows' Zwischenspeicher ist kein Ort fuer den Hintergrund.
+            // Windows' cache is no place for the wallpaper.
             Check("Zwischenspeicher: TranscodedWallpaper und CachedFiles erkannt",
                 Hintergrund.IsWindowsCache(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper")
                 && Hintergrund.IsWindowsCache(@"C:\Users\A\AppData\Roaming\Microsoft\Windows\Themes\CachedFiles\CachedImage_1920_1080_POS4.jpg")
@@ -1436,7 +1436,7 @@ internal static partial class Program
                 && Hintergrund.BackupName(@"C:\x\Bild", kPng) == "Bild.png"
                 && Hintergrund.BackupName(@"C:\x\Bild", kSonst) == "Bild");
 
-            // Gespeichert und wieder gelesen.
+            // Saved and read back.
             var hg = Path.Combine(root, "hintergrund", "Hintergrundbild");
             Directory.CreateDirectory(hg);
             Hintergrund.Save(hg, new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "0 99 177" });
@@ -1450,7 +1450,7 @@ internal static partial class Program
             File.WriteAllText(Path.Combine(root, "hintergrund", "kaputt", HintergrundEinstellung.DateiName), "{ kaputt");
             Check("kaputte Hintergrund.json: null statt Absturz", Hintergrund.Load(Path.Combine(root, "hintergrund", "kaputt")) is null);
 
-            // Verfuegbarkeit: eine Sicherung, die nur die Farbe enthaelt.
+            // Availability: a backup that contains only the color.
             AppCatalog.HatWlanAdapter = () => true;
             var nurFarbe = Path.Combine(root, "hintergrund");
             Check("Wiederherstellen: Volltonfarbe allein macht den Punkt frei",
@@ -1464,8 +1464,8 @@ internal static partial class Program
 
         Console.WriteLine("\n== Design-Datei von Windows (Custom.theme) ==");
         {
-            // So sah sie beim Anwender aus (gekuerzt): Windows setzte beim
-            // Anmelden Background=0 0 0 zurueck in die Registry.
+            // This is what it looked like at the user's (shortened): at sign-in,
+            // Windows wrote Background=0 0 0 back into the registry.
             const string thema = "; Copyright © Microsoft Corp.\r\n\r\n[Theme]\r\nDisplayName=Benutzerdefiniert\r\nSetLogonBackground=0\r\n\r\n"
                 + "[Control Panel\\Cursors]\r\nArrow=%SystemRoot%\\cursors\\aero_arrow.cur\r\nDefaultValue=Windows Default\r\n\r\n"
                 + "[Control Panel\\Desktop]\r\nWallpaper=%SystemRoot%\\web\\wallpaper\\Windows\\img0.jpg\r\nTileWallpaper=0\r\nWallpaperStyle=10\r\n\r\n"
@@ -1537,7 +1537,7 @@ internal static partial class Program
                 && DesignDatei.Read(design, DesignDatei.ZeigerAbschnitt, "Arrow") == @"%SystemRoot%\cursors\aero_arrow_l.cur"
                 && DesignDatei.Read(design, DesignDatei.ZeigerAbschnitt, "Hand") is null);
 
-            // Kodierung bleibt: UTF-16 mit BOM, UTF-8 mit BOM, ASCII; Umlaut in ASCII -> UTF-16.
+            // The encoding is kept: UTF-16 with BOM, UTF-8 with BOM, ASCII; an umlaut in ASCII -> UTF-16.
             var dd = Path.Combine(root, "design-datei");
             Directory.CreateDirectory(dd);
             foreach (var (name, kod) in new (string, System.Text.Encoding)[]
@@ -1588,7 +1588,7 @@ internal static partial class Program
             Check("Katalog: nur HKEY_CURRENT_USER-Pfade (Software\\..., Control Panel\\...)",
                 designKat.All(k => k.Schluessel.StartsWith(@"Software\", StringComparison.Ordinal) || k.Schluessel.StartsWith(@"Control Panel\", StringComparison.Ordinal)));
 
-            // Ein nachgebauter Rechner: dunkel, Transparenz an, Akzent #0063B1, Taskleiste links.
+            // A simulated computer: dark, transparency on, accent #0063B1, taskbar on the left.
             var fakeReg = new Dictionary<string, (string Typ, string Wert)>
             {
                 [pers + "|SystemUsesLightTheme"] = ("DWord", "0"),
@@ -1614,7 +1614,7 @@ internal static partial class Program
             var mitAuto = designWerte.Append(new DesignEintrag { Schluessel = @"Control Panel\Desktop", Name = "AutoColorization", Typ = "DWord", Wert = "1" }).ToList();
             Check("Akzentfarbe automatisch statt fester Farbe", DesignEinstellungen.Summary(mitAuto, De).Contains("Akzentfarbe automatisch"));
 
-            // Mauszeiger aus einem eigenen Schema, dessen Datei hier fehlt.
+            // Mouse pointer from a custom scheme whose file is missing here.
             bool PointerPresent(string pfad) => pfad.Contains("aero_arrow");
             Check("Zeiger mit vorhandener Datei wird gesetzt", !DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "Arrow"), PointerPresent));
             Check("Zeiger ohne Datei wird ausgelassen", DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "Hand"), PointerPresent));
@@ -1622,7 +1622,7 @@ internal static partial class Program
                 !DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "" && e.Gruppe == "Mauszeiger"), PointerPresent)
                 && !DesignEinstellungen.PointerMissing(designWerte.First(e => e.Name == "TaskbarAl"), PointerPresent));
 
-            // Speichern und Laden.
+            // Save and load.
             var designOrdner = Path.Combine(root, "design", "DASI");
             DesignEinstellungen.Save(designOrdner, new DesignSicherung { Rechner = "PC", Erstellt = new DateTime(2026, 11, 21), Werte = designWerte });
             var designZurueck = DesignEinstellungen.Load(designOrdner);
@@ -1632,7 +1632,7 @@ internal static partial class Program
             Check("eine Datei: Design\\Design.json", File.Exists(Path.Combine(designOrdner, "Design", "Design.json"))
                 && !File.Exists(Path.Combine(designOrdner, "Design", "Design-Einstellungen.json")));
 
-            // Hintergrund und Einstellungen in einer Datei - Bild mit Herkunft.
+            // Wallpaper and settings in one file - image with its origin.
             var eins = Path.Combine(root, "design", "eins");
             DesignEinstellungen.Save(eins, new DesignSicherung
             {
@@ -1652,9 +1652,9 @@ internal static partial class Program
             AppCatalog.HatWlanAdapter = () => true;
             Check("eine Datei: Punkt beim Wiederherstellen frei", AppCatalog.ForRestore(Punkt.Hintergrund, nurHg) is null);
 
-            // Zwischenfassung (Sicherung vom 21.11.2026, 20:41): Einstellungen in
-            // Design\Design-Einstellungen.json, Volltonfarbe getrennt in
-            // Hintergrundbild\Hintergrund.json - bleibt wiederherstellbar.
+            // Interim version (backup of 2026-11-21, 20:41): settings in
+            // Design\Design-Einstellungen.json, solid color separately in
+            // Hintergrundbild\Hintergrund.json - stays restorable.
             var zwischen = Path.Combine(root, "design", "zwischenfassung");
             Directory.CreateDirectory(Path.Combine(zwischen, "Design"));
             File.WriteAllText(Path.Combine(zwischen, "Design", "Design-Einstellungen.json"),
@@ -1668,12 +1668,12 @@ internal static partial class Program
                 && Hintergrund.IsSolidColor(Hintergrund.Load(Path.Combine(zwischen, "Hintergrundbild"))));
             Check("Zwischenfassung: Punkt beim Wiederherstellen frei", AppCatalog.ForRestore(Punkt.Hintergrund, zwischen) is null);
 
-            // Liegen beide Dateien da, gilt Design.json.
+            // If both files are there, Design.json counts.
             DesignEinstellungen.Save(zwischen, new DesignSicherung { Hintergrund = new HintergrundEinstellung { Art = "Volltonfarbe", Farbe = "1 2 3" } });
             Check("Design.json hat Vorrang vor der Datei der Zwischenfassung", DesignEinstellungen.Load(zwischen)?.Hintergrund?.Farbe == "1 2 3");
             Check("ohne Datei: nicht vorhanden", !DesignEinstellungen.Exists(Path.Combine(root, "design", "leer")));
 
-            // Verfuegbarkeit: nur Design-Einstellungen (Hintergrund Diashow) genuegen.
+            // Availability: design settings alone (wallpaper slideshow) are enough.
             AppCatalog.HatWlanAdapter = () => true;
             Check("Wiederherstellen: Design-Einstellungen allein machen den Punkt frei",
                 AppCatalog.ForRestore(Punkt.Hintergrund, designOrdner) is null, AppCatalog.ForRestore(Punkt.Hintergrund, designOrdner)?.De);
@@ -1714,40 +1714,40 @@ internal static partial class Program
             Taskleiste.Save(leerTl, new TaskleistenSicherung());
             Check("leere Taskleiste gilt nicht als gesichert", !Taskleiste.Exists(leerTl) && Taskleiste.Load(Path.Combine(root, "taskleiste", "nichts")) is null);
 
-            // Verfuegbarkeit: nur die Taskleiste, keine Symbolpositionen.
+            // Availability: only the taskbar, no icon positions.
             AppCatalog.HatWlanAdapter = () => true;
             Check("nur Taskleiste: Variante Symbole frei", AppCatalog.HasDesktopIcons(tlSich) && !DesktopIcons.Exists(tlSich));
             Check("nur Taskleiste: Desktop-Layout beim Wiederherstellen frei", AppCatalog.ForRestore(Punkt.DesktopShot, tlSich) is null);
         }
 
         // ================================================================
-        // Austauschskript WIRKLICH ausfuehren - nur unter Windows moeglich
+        // REALLY run the swap script - only possible on Windows
         // ================================================================
         if (OperatingSystem.IsWindows())
         {
             Console.WriteLine("\n== Austauschskript echt ausführen (Umlaute im Pfad) ==");
 
-            // Wie im echten Leben: Der Benutzername steckt im Pfad, und er hat Umlaute.
+            // As in real life: the user name is in the path, and it has umlauts.
             var heim = Path.Combine(root, "Jürgen Müller");
             var ziel2 = Path.Combine(heim, "Programme", "WindowsDaSiTool.exe");
             var neu2 = Path.Combine(heim, "Neu", "WindowsDaSiTool.exe");
             Directory.CreateDirectory(Path.GetDirectoryName(ziel2)!);
             Directory.CreateDirectory(Path.GetDirectoryName(neu2)!);
 
-            // Als "neue Fassung" dient hostname.exe: echte EXE, startet, endet sofort.
+            // hostname.exe serves as the "new version": a real EXE that starts and exits right away.
             File.Copy(Path.Combine(Environment.SystemDirectory, "hostname.exe"), neu2);
             File.WriteAllText(ziel2, "alte Fassung");
             var erwartet = File.ReadAllBytes(neu2);
 
             var skript2 = UpdateService.WriteUpdateScript(neu2, ziel2);
-            // Genau der Aufruf, den auch das Programm benutzt.
+            // Exactly the command line the program uses as well.
             var psi = UpdateService.BuildUpdateStart(skript2, neu2, ziel2);
             psi.RedirectStandardInput = true;
             psi.RedirectStandardOutput = true;
             psi.RedirectStandardError = true;
             using (var proc = System.Diagnostics.Process.Start(psi)!)
             {
-                proc.StandardInput.Close();   // ein "pause" darf den Test nicht aufhalten
+                proc.StandardInput.Close();   // a "pause" must not hold up the test
                 var fertig = proc.WaitForExit(60_000);
                 var ausgabe = proc.StandardOutput.ReadToEnd() + proc.StandardError.ReadToEnd();
                 Check("Skript endet von selbst", fertig);
@@ -1759,8 +1759,8 @@ internal static partial class Program
                     ausgabe.Trim().Replace("\r\n", " | "));
             }
 
-            // Zweiter Lauf: Die Zieldatei ist gesperrt, wie von einem noch
-            // laufenden Programm. Das Skript muss warten und danach austauschen.
+            // Second run: the target file is locked, as if by a program that is still
+            // running. The script has to wait and swap afterwards.
             Console.WriteLine("\n== Austauschskript wartet, solange das Ziel gesperrt ist ==");
             var ziel3 = Path.Combine(heim, "Gesperrt", "WindowsDaSiTool.exe");
             var neu3 = Path.Combine(heim, "Neu3", "WindowsDaSiTool.exe");
@@ -1780,11 +1780,11 @@ internal static partial class Program
             {
                 proc.StandardInput.Close();
                 System.Threading.Thread.Sleep(3000);
-                // Solange gesperrt: Das Skript darf weder fertig sein noch
-                // die neue Fassung schon verschoben haben.
+                // While locked: the script must neither be finished nor have moved the new
+                // version yet.
                 Check("waehrend der Sperre wartet das Skript noch",
                     !proc.HasExited && File.Exists(neu3));
-                sperre.Dispose();   // "Programm beendet"
+                sperre.Dispose();   // "program exited"
                 var fertig = proc.WaitForExit(30_000);
                 uhr.Stop();
                 var ausgabe = proc.StandardOutput.ReadToEnd() + proc.StandardError.ReadToEnd();
@@ -1801,7 +1801,7 @@ internal static partial class Program
         }
 
         // ================================================================
-        // Desktop-Screenshot WIRKLICH aufnehmen - nur unter Windows moeglich
+        // REALLY take a desktop screenshot - only possible on Windows
         // ================================================================
         if (OperatingSystem.IsWindows())
         {
@@ -1826,7 +1826,7 @@ internal static partial class Program
                 Check("ein Bild pro Monitor geplant", plan.Count == aufnahme.Areas.Count,
                     string.Join(", ", plan.Select(p => p.FileName)));
 
-                // Wie im Programm: je Monitor ausschneiden und als PNG speichern.
+                // As in the program: crop per monitor and save as PNG.
                 var bildOrdner = Path.Combine(root, "Desktop-Screenshot");
                 Directory.CreateDirectory(bildOrdner);
                 bool monitorBilderOk = true;
@@ -1856,7 +1856,7 @@ internal static partial class Program
                 Check("echt: %SystemRoot% in Zeigerpfaden bleibt unaufgeloest",
                     !echt.Any(e => e.Typ == "ExpandString") || echt.Where(e => e.Typ == "ExpandString").Any(e => e.Wert.Contains('%')));
 
-                // Hin und zurueck in einem eigenen Testschluessel - alle vier Typen.
+                // There and back in a test key of our own - all four types.
                 const string test = @"Software\DaSiTest\Design";
                 var proben = new[]
                 {
@@ -1898,7 +1898,7 @@ internal static partial class Program
 
             Console.WriteLine("\n== Desktop-Symbole echt (Explorer) ==");
             {
-                // Ohne Explorer kein Desktop - auf einem Laeufer ggf. erst starten.
+                // No desktop without Explorer - start it first on a runner if needed.
                 if (System.Diagnostics.Process.GetProcessesByName("explorer").Length == 0)
                 {
                     Console.WriteLine("         Explorer laeuft nicht - wird gestartet");
@@ -1938,7 +1938,7 @@ internal static partial class Program
                         Check("echt: Name im Desktop-Ordner mit Endung, Anzeigename lesbar",
                             symStart.Name == testName && symStart.Anzeige.StartsWith("DaSi-Symboltest", StringComparison.OrdinalIgnoreCase), symStart.Anzeige);
 
-                        // Verschieben: alles wie es ist, nur das Testsymbol woanders hin.
+                        // Move: everything as it is, only the test icon somewhere else.
                         var zielX = symStart.X < vorher.Breite / 2 ? vorher.Breite / 2 : vorher.Breite / 4;
                         var zielY = symStart.Y < vorher.Hoehe / 2 ? vorher.Hoehe / 2 : vorher.Hoehe / 4;
                         var verschoben = new DesktopLayout
@@ -1954,7 +1954,7 @@ internal static partial class Program
                             && Math.Abs(mitte.X - zielX) < 200 && Math.Abs(mitte.Y - zielY) < 200
                             && (Math.Abs(mitte.X - symStart.X) > 50 || Math.Abs(mitte.Y - symStart.Y) > 50));
 
-                        // Zurueck: die gesicherte Anordnung von vorhin - ueber die Datei.
+                        // Back: the arrangement saved earlier - through the file.
                         var dateiOrdner = Path.Combine(root, "echt-symbole");
                         DesktopIcons.Save(Path.Combine(dateiOrdner, DesktopIcons.FolderName), vorher);
                         var zurueck = DesktopIcons.Load(DesktopIcons.FilePath(dateiOrdner))!;
@@ -2058,7 +2058,7 @@ internal static partial class Program
 
             using (var sperre = new FileStream(gesperrt, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             {
-                // Dieselben Schalter wie die AppData-Sicherung des Programms.
+                // The same switches as the program's AppData backup.
                 var psiRobo = new System.Diagnostics.ProcessStartInfo("robocopy.exe",
                     $"\"{appdata}\" \"{zielRobo}\" /MIR /ZB /SL /R:0 /W:0 /MT:32 /XJ /XA:SH /NP /NDL")
                 {
@@ -2070,7 +2070,7 @@ internal static partial class Program
                 string? zeile;
                 while ((zeile = robo.StandardOutput.ReadLine()) is not null)
                 {
-                    if (string.IsNullOrWhiteSpace(zeile)) continue;   // wie im Programm
+                    if (string.IsNullOrWhiteSpace(zeile)) continue;   // as in the program
                     if (!skips.Swallow(zeile)) durch.Add(zeile);
                 }
                 robo.WaitForExit();
@@ -2084,9 +2084,9 @@ internal static partial class Program
                 Check("mit dem Grund aus robocopy", skips.ReasonByCode.TryGetValue(32, out var grund) && grund.Length > 10, grund);
                 foreach (var z in durch.Where(z => z.Contains("012884")))
                     Console.WriteLine($"         uebrig: [{z.Replace("\t", "\\t")}]");
-                // Eingerueckte Dateizeilen ("New File ... 012884.log") schreibt robocopy
-                // fuer JEDE Datei vor dem Kopierversuch; das Programm zaehlt sie im
-                // Normalfall nur (Fortschritt) und schreibt sie nicht ins Protokoll.
+                // robocopy writes indented file lines ("New File ... 012884.log") for
+                // EVERY file before the copy attempt; normally the program only counts
+                // them (progress) and does not write them to the log.
                 var meldungen = durch.Where(z => z[0] != ' ' && z[0] != '\t').ToList();
                 Check("im Protokoll steht keine Meldung mehr dazu",
                       !meldungen.Any(z => z.Contains("012884.log") || z.Contains("0x00000020")
@@ -2101,8 +2101,8 @@ internal static partial class Program
 
             Console.WriteLine("\n== echtes robocopy: Zurueckschreiben, Datei im Profil gesperrt ==");
             {
-                // Wie am 18.11.2026: Edge laeuft im Hintergrund und haelt eine
-                // Datei im Profil offen, waehrend AppData zurueckgeschrieben wird.
+                // As on 2026-11-18: Edge runs in the background and holds a file in the
+                // profile open while AppData is restored.
                 var neuProfil = Path.Combine(root, "robo", "Neu", "AppData");
                 var neuLeveldb = Path.Combine(neuProfil, "Roaming", "discord", "Local Storage", "leveldb");
                 Directory.CreateDirectory(neuLeveldb);
@@ -2111,7 +2111,7 @@ internal static partial class Program
                 File.SetLastWriteTimeUtc(imProfil, DateTime.UtcNow.AddDays(-3));
 
                 using var sperreZiel = new FileStream(imProfil, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-                // Dieselben Schalter wie das Zurueckschreiben des Programms.
+                // The same switches as the program's restore.
                 var schalter = string.Join(" ", ProfileExcludes.RestoreSwitches().Select(s => s.Contains(' ') ? $"\"{s}\"" : s));
                 var psiZurueck = new System.Diagnostics.ProcessStartInfo("robocopy.exe",
                     $"\"{zielRobo}\" \"{neuProfil}\" {schalter} /NP /NDL")
@@ -2146,8 +2146,8 @@ internal static partial class Program
 
             Console.WriteLine("\n== echtes robocopy: das laufende Tool wird nicht ueberschrieben ==");
             {
-                // Wie am 18.11.2026, 21:11 Uhr: Das Tool laeuft vom Desktop des
-                // Zielprofils, in der Sicherung liegt eine aeltere Fassung.
+                // As on 2026-11-18, 21:11: the tool runs from the target profile's
+                // desktop, and the backup holds an older version.
                 var sichSelbst = Path.Combine(root, "selbst-echt", "DASI", "Benutzerprofil");
                 var zielSelbst = Path.Combine(root, "selbst-echt", "Users", "Anwender123");
                 Directory.CreateDirectory(Path.Combine(sichSelbst, "Desktop"));
@@ -2189,8 +2189,8 @@ internal static partial class Program
                 if (attr is { } a) File.SetAttributes(p, a);
             }
             WriteFile(@"Documents\Normal\a.txt", "a");
-            // Ein angepasster Ordner (eigenes Symbol/eigene Ansicht): Windows setzt
-            // dafuer das System-Attribut und legt eine versteckte desktop.ini hinein.
+            // A customized folder (own icon/own view): Windows sets the system
+            // attribute for it and puts a hidden desktop.ini inside.
             WriteFile(@"Documents\Angepasst\brief.docx", "b");
             WriteFile(@"Documents\Angepasst\desktop.ini", "[.ShellClassInfo]\r\nIconResource=C:\\Windows\\System32\\imageres.dll,-3\r\n",
                   FileAttributes.Hidden | FileAttributes.System);
@@ -2204,12 +2204,12 @@ internal static partial class Program
             WriteFile(@"Pictures\p.jpg", "p");
             WriteFile("NTUSER.DAT", "hive", FileAttributes.Hidden | FileAttributes.System);
             WriteFile("ntuser.dat.LOG1", "log", FileAttributes.Hidden | FileAttributes.System);
-            // Verknuepfungspunkt wie "Eigene Bilder" in Dokumente - zeigt auf Pictures.
+            // A junction like "My Pictures" in Documents - points to Pictures.
             using (var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe",
                        $"/c mklink /J \"{Path.Combine(doks, "Eigene Bilder")}\" \"{Path.Combine(besitzer, "Pictures")}\"")
                    { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true }))
             { mk!.StandardOutput.ReadToEnd(); mk.WaitForExit(); }
-            // Und einer, der aus dem Profil hinauszeigt ("Dokumente\Spiele" -> "D:\Spiele").
+            // And one that points out of the profile ("Dokumente\Spiele" -> "D:\Spiele").
             var draussen = Path.Combine(root, "profilwechsel", "D-Laufwerk", "Spiele");
             Directory.CreateDirectory(draussen);
             File.WriteAllText(Path.Combine(draussen, "spielstand.sav"), "s");
@@ -2266,9 +2266,8 @@ internal static partial class Program
             }
 
             Console.WriteLine("\n== echtes robocopy: Zurueckschreiben zu einem anderen Benutzer ==");
-            // In der Sicherung: eine Datei mit eigenen, nicht geerbten Rechten (wie
-            // sie das Sicherungsmedium mitbringen kann), dazu eine NTUSER.DAT aus
-            // einer aelteren Sicherung.
+            // In the backup: a file with its own, non-inherited permissions (as the
+            // backup medium may bring them), plus an NTUSER.DAT from an older backup.
             var probe = Path.Combine(sicherungNeu, @"Documents\Normal\a.txt");
             var sec = new FileInfo(probe).GetAccessControl();
             sec.SetAccessRuleProtection(true, false);
@@ -2307,7 +2306,7 @@ internal static partial class Program
             Console.WriteLine($"         (alt: NTUSER.DAT danach \"{File.ReadAllText(Path.Combine(anwenderAlt, "NTUSER.DAT"))}\")");
         }
 
-        // Die Dienste, die anfangs keine eigenen Pruefungen hatten.
+        // The services that had no tests of their own at first.
         LocalizerCheck();
         SystemHelpersCheck(root);
         CancellationAndPerformanceCheck();
@@ -2326,8 +2325,8 @@ internal static partial class Program
         if (OperatingSystem.IsWindows()) ShortcutsRealCheck(root);
         BackupServiceOnRealDesktop(root);
 
-        // Zuletzt: den Explorer neu starten - wie beim Zurueckschreiben der
-        // Taskleiste. Laeuft als letzte Pruefung, weil danach der Desktop kurz weg ist.
+        // Last: restart Explorer - as when restoring the taskbar. Runs as the last
+        // test, because the desktop is briefly gone afterwards.
         if (OperatingSystem.IsWindows())
         {
             Console.WriteLine("\n== Taskleiste echt: angeheftete Symbole lesen, Explorer neu starten ==");
@@ -2356,8 +2355,8 @@ internal static partial class Program
 
         IconsOnRealDesktop(root);
 
-        // Hintergrund: so setzen wie das Tool, Explorer neu starten, auf dem
-        // Bildschirm nachsehen. Ganz am Ende, der Desktop wechselt dabei mehrfach.
+        // Wallpaper: set it like the tool does, restart Explorer, check on screen.
+        // At the very end, since the desktop changes several times.
         if (OperatingSystem.IsWindows()) WallpaperRealCheck(root);
 
         Console.WriteLine($"\nErgebnis: {_passed} bestanden, {_failed} fehlgeschlagen.");
@@ -2368,10 +2367,10 @@ internal static partial class Program
     private static string German(string de, string en) => de;
 
     /// <summary>
-    /// Hintergrund echt: setzen wie das Tool, den Explorer neu starten und am
-    /// Bildschirm nachsehen. Dazu der Ablauf aus dem Protokoll eines Anwenders
-    /// (Design-Werte, Volltonfarbe, Explorer-Neustart fuer die Taskleiste) und
-    /// zum Vergleich die Schnittstelle der Einstellungen-App (IDesktopWallpaper).
+    /// Real wallpaper: set it like the tool does, restart Explorer and check on
+    /// screen. Plus the sequence from a user's log (design values, solid color,
+    /// Explorer restart for the taskbar) and, for comparison, the Settings
+    /// app's interface (IDesktopWallpaper).
     /// </summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void WallpaperRealCheck(string root)
@@ -2416,7 +2415,7 @@ internal static partial class Program
         HintergrundEcht.LargeWindows("Fenster beiseite");
         try
         {
-            // 1. Ein Bild - wie das Tool es setzt.
+            // 1. An image - as the tool sets it.
             var r1 = DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken);
             Console.WriteLine($"         Bild: eingetragen {r1.Eingetragen}, angezeigt {r1.Angezeigt}, virtuelle Desktops {r1.VirtuelleDesktops}");
             Check("echt: Bild beim angemeldeten Benutzer eingetragen", r1.Eingetragen);
@@ -2427,11 +2426,10 @@ internal static partial class Program
             var a2 = HintergrundEcht.IsVisible(rot);
             Check("echt: nach dem Explorer-Neustart ist das Bild noch da", a2 > 0.5, $"{a2:P0} rot");
 
-            // 2. Nur in der Registry - so steht es beim angemeldeten Benutzer,
-            //    wenn das Tool unter einem ANDEREN Konto laeuft. Ein
-            //    Explorer-Neustart liest den Hintergrund nicht neu ein (er
-            //    gehoert zur Sitzung) - der Neustart fuer die Taskleiste kann
-            //    ihn also nicht verlieren. Erst die Anmeldung liest die Registry.
+            // 2. Only in the registry - that is what the signed-in user has when the
+            //    tool runs under ANOTHER account. An Explorer restart does not reload
+            //    the wallpaper (it belongs to the session) - so the restart for the
+            //    taskbar cannot lose it. Only sign-in reads the registry.
             DesktopHintergrund.WriteImage(hgWurzel, gruenBild, strecken);
             Restart("nur eingetragen");
             System.Threading.Thread.Sleep(3000);
@@ -2439,16 +2437,16 @@ internal static partial class Program
             Check("echt: ein Explorer-Neustart laesst den Hintergrund der Sitzung stehen", a3 > 0.5,
                 $"{a3:P0} rot, {HintergrundEcht.Share(gruen):P0} gruen");
 
-            // Zur Auskunft: was die Anmeldung taete (UpdatePerUserSystemParameters
-            // liest die Registry wie beim Anmelden) - erst mit altem
-            // Zwischenspeicher, dann verworfen wie beim fremden Konto.
+            // For information: what sign-in would do (UpdatePerUserSystemParameters
+            // reads the registry as at sign-in) - first with the old cache, then with
+            // it discarded as for another account.
             HintergrundEcht.AsAtSignIn();
             Console.WriteLine($"         wie beim Anmelden, alter Zwischenspeicher: {HintergrundEcht.Share(gruen):P0} gruen (Registry), {HintergrundEcht.Share(rot):P0} rot (alt)");
             DesktopHintergrund.DiscardCache(hgWurzel, hgNutzer?.ProfilePath);
             HintergrundEcht.AsAtSignIn();
             Console.WriteLine($"         wie beim Anmelden, Zwischenspeicher verworfen: {HintergrundEcht.Share(gruen):P0} gruen (Registry), {HintergrundEcht.Share(rot):P0} rot (alt)");
 
-            // 3. Volltonfarbe.
+            // 3. Solid color.
             var r4 = DesktopHintergrund.SetColor(hgWurzel, hgEigen, lila);
             Console.WriteLine($"         Volltonfarbe: eingetragen {r4.Eingetragen}, angezeigt {r4.Angezeigt}");
             Check("echt: Volltonfarbe eingetragen", r4.Eingetragen);
@@ -2472,7 +2470,7 @@ internal static partial class Program
             var desktopFoto = DesktopScreenshot.CaptureDesktopWindow();
             Console.WriteLine($"         Desktop-Fenster (PrintWindow): {(desktopFoto is null ? "nicht abbildbar" : $"{DesktopScreenshot.ColorShare(desktopFoto, lila):P0} lila, meist {DesktopScreenshot.MostCommonColor(desktopFoto)}")}");
 
-            // Kontrolle bemerkt, wenn der Desktop etwas anderes zeigt, und Erneut repariert es.
+            // Verify notices when the desktop shows something else, and Retry fixes it.
             DesktopHintergrund.SetColor(hgWurzel, hgEigen, tuerkis, hgNutzer?.ProfilePath);
             HintergrundEcht.IsVisible(tuerkis);
             var k2 = DesktopHintergrund.Verify(standLila, German);
@@ -2490,7 +2488,7 @@ internal static partial class Program
             var a5 = HintergrundEcht.IsVisible(lila);
             Check("echt: nach dem Explorer-Neustart ist die Volltonfarbe noch da", a5 > 0.5, $"{a5:P0} lila");
 
-            // 4. Nur eingetragene Farbe: Der Explorer-Neustart laesst die der Sitzung stehen.
+            // 4. Only the registered color: the Explorer restart keeps the session's color.
             DesktopHintergrund.WriteColor(hgWurzel, tuerkis);
             Restart("Farbe nur eingetragen");
             System.Threading.Thread.Sleep(3000);
@@ -2500,9 +2498,9 @@ internal static partial class Program
             HintergrundEcht.AsAtSignIn();
             Console.WriteLine($"         wie beim Anmelden: {HintergrundEcht.Share(tuerkis):P0} tuerkis (Registry), {HintergrundEcht.Share(lila):P0} lila (Sitzung)");
 
-            // 5. Ablauf wie beim Anwender (Protokoll vom 22.11.2026): erst die
-            //    Design-Werte (seine 33), dann die Volltonfarbe #6B69D6, dann der
-            //    Explorer-Neustart fuer die Taskleiste. Ausgangslage: ein Bild.
+            // 5. Sequence as at the user's (log of 2026-11-22): first the design values
+            //    (the user's 33), then the solid color #6B69D6, then the Explorer
+            //    restart for the taskbar. Starting point: an image.
             Console.WriteLine("   -- Ablauf wie beim Anwender: Design-Werte, Volltonfarbe, Explorer-Neustart --");
             DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
             HintergrundEcht.IsVisible(rot);
@@ -2516,8 +2514,8 @@ internal static partial class Program
             HintergrundEcht.State("danach", hgWurzel, hgNutzer?.ProfilePath);
             Check("echt: Volltonfarbe nach Design-Werten und Explorer-Neustart noch da (Ablauf des Anwenders)", v5 > 0.5, $"{v5:P0} lila");
 
-            // 5b. Wie 5, aber jeder virtuelle Desktop behaelt einen LEEREN
-            //     Wallpaper-Eintrag statt keinen.
+            // 5b. Like 5, but every virtual desktop keeps an EMPTY wallpaper entry
+            //     instead of none.
             Console.WriteLine("   -- wie 5, virtuelle Desktops mit leerem Wallpaper-Eintrag --");
             DesktopHintergrund.SetImage(hgWurzel, hgEigen, rotBild, strecken, hgNutzer?.ProfilePath);
             HintergrundEcht.IsVisible(rot);
@@ -2533,10 +2531,10 @@ internal static partial class Program
                 foreach (var n in vd?.GetSubKeyNames() ?? Array.Empty<string>())
                     using (var d = vd!.OpenSubKey(n, true)) d?.DeleteValue("Wallpaper", false);
 
-            // 5c. Wie das Tool: Windows wendet ein Design an (geplante Aufgabe,
-            //     explorer.exe), danach die Volltonfarbe bzw. das Bild direkt.
-            //     Im Design bleibt bei einer Farbe ein Bild stehen - ein leeres
-            //     deutete Windows 11 als Blickpunkt.
+            // 5c. Like the tool: Windows applies a theme (scheduled task,
+            //     explorer.exe), then the solid color or the image directly. For a
+            //     color, an image stays in the theme - Windows 11 read an empty one
+            //     as Spotlight.
             var aktuellesDesign = DesktopHintergrund.ThemeFilePath(hgWurzel, hgNutzer?.ProfilePath);
             Console.WriteLine($"   -- Windows wendet das Design an (aktuell: {aktuellesDesign ?? "-"}) --");
             if (aktuellesDesign is not null && File.Exists(aktuellesDesign) && hgNutzer?.ProfilePath is { } profilWd)
@@ -2589,7 +2587,7 @@ internal static partial class Program
                 Console.WriteLine("         (keine Design-Datei - uebersprungen)");
             }
 
-            // 6./7. Dasselbe ueber IDesktopWallpaper - die Schnittstelle der Einstellungen-App.
+            // 6./7. The same through IDesktopWallpaper - the Settings app's interface.
             Console.WriteLine($"   -- IDesktopWallpaper: {DesktopHintergrund.Schnittstelle.Snapshot() ?? "nicht erreichbar"} --");
             foreach (var abschalten in new[] { false, true })
             {
@@ -2631,13 +2629,13 @@ internal static partial class Program
                 else if (Hintergrund.ReadColor(hgVorher.Farbe) is { } altFarbe)
                     DesktopHintergrund.SetColor(hgWurzel, hgEigen, altFarbe);
             }
-            catch { /* Laeufer */ }
+            catch { /* runner */ }
             DesktopScreenshot.RestoreWindows(hgWeg);
         }
     }
 }
 
-/// <summary>Ein Desktop ohne Explorer - zum Pruefen des Ablaufs.</summary>
+/// <summary>A desktop without Explorer - for testing the flow.</summary>
 internal sealed class TestDesktop : IDesktopView
 {
     private readonly int _b, _h;
@@ -2679,7 +2677,7 @@ internal sealed class TestDesktop : IDesktopView
     public void Dispose() { }
 }
 
-/// <summary>Fuer die echte Hintergrund-Pruefung: einfarbige Bilder und was auf dem Bildschirm zu sehen ist.</summary>
+/// <summary>For the real wallpaper test: single-color images and what is visible on screen.</summary>
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 internal static class HintergrundEcht
 {
@@ -2696,10 +2694,10 @@ internal static class HintergrundEcht
     }
 
     /// <summary>
-    /// Welcher Anteil hat (ungefaehr) diese Farbe - auf dem Bildschirm oder im
-    /// Desktop-Fenster selbst, je nachdem, wo mehr davon zu sehen ist. Das
-    /// Desktop-Fenster zaehlt mit, weil auf manchem Laeufer ein Fenster den
-    /// Desktop verdeckt, das sich nicht beiseitelegen laesst.
+    /// Which share has (roughly) this color - on screen or in the desktop
+    /// window itself, whichever shows more of it. The desktop window counts as
+    /// well because on some runners a window that cannot be moved aside covers
+    /// the desktop.
     /// </summary>
     public static double Share((byte R, byte G, byte B) f)
     {
@@ -2721,9 +2719,8 @@ internal static class HintergrundEcht
     }
 
     /// <summary>
-    /// Liest die Benutzereinstellungen aus der Registry neu ein, wie beim
-    /// Anmelden. Unter neueren Windows-Fassungen nicht immer wirksam - daher
-    /// nur zur Auskunft.
+    /// Re-reads the user settings from the registry, as at sign-in. Not always
+    /// effective on newer Windows versions - so for information only.
     /// </summary>
     public static void AsAtSignIn()
     {
@@ -2738,9 +2735,9 @@ internal static class HintergrundEcht
     }
 
     /// <summary>
-    /// Das Desktop-Fenster (Progman, samt Hintergrund) per PrintWindow - auch
-    /// wenn andere Fenster darueber liegen. null, wenn das nicht geht oder es
-    /// leer bleibt.
+    /// The desktop window (Progman, with the wallpaper) via PrintWindow - even
+    /// when other windows lie on top. null if that does not work or it stays
+    /// empty.
     /// </summary>
     public static byte[]? DesktopWindow()
     {
@@ -2769,7 +2766,7 @@ internal static class HintergrundEcht
         }
     }
 
-    /// <summary>Sichtbare Fenster, die mindestens die Haelfte des Hauptbildschirms bedecken - fuer das Protokoll.</summary>
+    /// <summary>Visible windows that cover at least half of the primary screen - for the log.</summary>
     public static void LargeWindows(string wann)
     {
         int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
@@ -2813,7 +2810,7 @@ internal static class HintergrundEcht
     [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr o);
     [DllImport("gdi32.dll")] private static extern IntPtr CreateDIBSection(IntPtr hdc, ref BITMAPINFO bmi, uint usage, out IntPtr bits, IntPtr section, uint offset);
 
-    /// <summary>Welche Windows-Fassung - fuer das Protokoll.</summary>
+    /// <summary>Which Windows version - for the log.</summary>
     public static void WindowsVersion()
     {
         string name = "?", fassung = "?", build = "?";
@@ -2828,7 +2825,7 @@ internal static class HintergrundEcht
         Console.WriteLine($"         Windows: {name} {fassung}, Build {build}, {System.Runtime.InteropServices.RuntimeInformation.OSArchitecture}");
     }
 
-    /// <summary>Die Design-Werte aus der Sicherung eines Anwenders (Windows 11, dunkel, Akzentfarbe #0078D4).</summary>
+    /// <summary>The design values from a user's backup (Windows 11, dark, accent color #0078D4).</summary>
     public static List<DesignEintrag> UserTheme() => new()
     {
             new() { Gruppe = @"Farben", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", Name = @"SystemUsesLightTheme", Typ = @"DWord", Wert = @"0" },
@@ -2866,14 +2863,14 @@ internal static class HintergrundEcht
             new() { Gruppe = @"Start", Schluessel = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", Name = @"Start_IrisRecommendations", Typ = @"DWord", Wert = @"0" },
     };
 
-    /// <summary>Die haeufigsten Farben auf dem Bildschirm und im Desktop-Fenster.</summary>
+    /// <summary>The most common colors on screen and in the desktop window.</summary>
     public static string MostCommon()
     {
         var d = DesktopWindow();
         return $"Bildschirm {MostCommonIn(DesktopScreenshot.CaptureVirtualScreen().Bgra)}; Desktop-Fenster {(d is null ? "-" : MostCommonIn(d))}";
     }
 
-    /// <summary>Die zwei haeufigsten Farben, z. B. "#6B69D6 83 %, #000000 9 %".</summary>
+    /// <summary>The two most common colors, e.g. "#6B69D6 83 %, #000000 9 %".</summary>
     private static string MostCommonIn(byte[] b)
     {
         int pixel = b.Length / 4, schritt = Math.Max(1, pixel / 20000), gesamt = 0;
@@ -2889,7 +2886,7 @@ internal static class HintergrundEcht
             $"#{((x.Key >> 8) & 0xF) * 17:X2}{((x.Key >> 4) & 0xF) * 17:X2}{(x.Key & 0xF) * 17:X2} {(double)x.Value / Math.Max(1, gesamt):P0}"));
     }
 
-    /// <summary>Anteil der Farbe nach 1, 3 ... Sekunden - mit den haeufigsten Farben. Gibt den letzten Anteil zurueck.</summary>
+    /// <summary>Share of the color after 1, 3 ... seconds - with the most common colors. Returns the last share.</summary>
     public static double ShareOverTime(string was, (byte R, byte G, byte B) f, params int[] sekunden)
     {
         var uhr = System.Diagnostics.Stopwatch.StartNew();
@@ -2904,7 +2901,7 @@ internal static class HintergrundEcht
         return a;
     }
 
-    /// <summary>Was Windows zum Hintergrund meint: Registry, Sitzung, Zwischenspeicher, Blickpunkt, Design-Datei, IDesktopWallpaper.</summary>
+    /// <summary>What Windows says about the wallpaper: registry, session, cache, Spotlight, theme file, IDesktopWallpaper.</summary>
     public static void State(string wann, Microsoft.Win32.RegistryKey wurzel, string? profil)
     {
         var s = DesktopHintergrund.Read(wurzel);
@@ -2948,7 +2945,7 @@ internal static class HintergrundEcht
         catch (Exception ex) { Console.WriteLine($"         [{wann}] virtuelle Desktops: {ex.Message}"); }
     }
 
-    /// <summary>Wartet bis zu 15 Sekunden, bis die Farbe ueberwiegt - der Desktop braucht nach dem Setzen einen Moment.</summary>
+    /// <summary>Waits up to 15 seconds until the color dominates - the desktop needs a moment after it is set.</summary>
     public static double IsVisible((byte R, byte G, byte B) f)
     {
         var uhr = System.Diagnostics.Stopwatch.StartNew();

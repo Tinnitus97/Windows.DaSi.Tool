@@ -9,20 +9,21 @@ using WindowsDaSiTool.Services;
 namespace DaSiTests;
 
 /// <summary>
-/// Der Umzug mit echtem Thunderbird, wie er beim Kunden laeuft: auf dem alten
-/// PC Thunderbird 32 Bit, auf dem neuen 64 Bit. In der CI in zwei Schritten,
-/// dazwischen deinstalliert der Workflow die 32-Bit-Fassung und installiert
-/// die 64-Bit-Fassung:
+/// The migration with a real Thunderbird, as it happens in practice:
+/// Thunderbird 32 bit on the old PC, 64 bit on the new one. In CI in two
+/// steps; in between, the workflow uninstalls the 32-bit version and
+/// installs the 64-bit version:
 ///
-///  DASI_NUR=thunderbird-alt: Thunderbird (32 Bit) legt sein Profil an, dazu
-///    zwei Konten - "Lokale Ordner" im Profil und ein Archiv ausserhalb
-///    (C:\DaSi-Mail\Archiv) - mit je einer Mail. Dann sichert das Tool.
-///  DASI_NUR=thunderbird-neu: Profilordner und Archiv sind weg (neuer PC).
-///    Gegenprobe (nur zur Auskunft): die Sicherung nur zurueckkopiert - welches
-///    Profil oeffnet Thunderbird? Dann mit dem Tool: Thunderbird (64 Bit) nimmt
-///    das alte Profil, das Archiv ist wieder da.
+///  DASI_NUR=thunderbird-alt: Thunderbird (32 bit) creates its profile, plus
+///    two accounts - "Local Folders" inside the profile and an archive
+///    outside it (C:\DaSi-Mail\Archiv) - with one mail each. Then the tool
+///    backs it up.
+///  DASI_NUR=thunderbird-neu: profile folder and archive are gone (new PC).
+///    Cross-check (for information only): the backup only copied back -
+///    which profile does Thunderbird open? Then with the tool: Thunderbird
+///    (64 bit) takes the old profile, and the archive is back.
 ///
-/// Die Sicherung liegt in DASI_SICHERUNG.
+/// The backup lives in DASI_SICHERUNG.
 /// </summary>
 internal static partial class Program
 {
@@ -36,14 +37,14 @@ internal static partial class Program
     private static string Mbox(string betreff)
         => $"From - Mon Nov 25 10:00:00 2026\r\nFrom: alt@example.com\r\nTo: neu@example.com\r\nSubject: {betreff}\r\nDate: Mon, 25 Nov 2026 10:00:00 +0100\r\n\r\n{TbMarke}\r\n\r\n";
 
-    /// <summary>Die Profilordner unter Profiles.</summary>
+    /// <summary>The profile folders under Profiles.</summary>
     private static List<string> TbProfiles()
     {
         var p = Path.Combine(TbDaten, "Profiles");
         return Directory.Exists(p) ? Directory.GetDirectories(p).Select(Path.GetFileName).OfType<string>().OrderBy(n => n).ToList() : new List<string>();
     }
 
-    /// <summary>Das Profil, das profiles.ini einer Installation zuordnet ("xxxx.default-release").</summary>
+    /// <summary>The profile profiles.ini assigns to an installation ("xxxx.default-release").</summary>
     private static string? TbProfileOf(string datenOrdner, string installation)
     {
         var ini = Path.Combine(datenOrdner, "profiles.ini");
@@ -61,15 +62,14 @@ internal static partial class Program
             ? File.ReadAllText(Path.Combine(TbDaten, "Profiles", profil, "compatibility.ini")) : "").Value("Compatibility", "LastOSABI") ?? "";
 
     /// <summary>
-    /// Welches Profil Thunderbird 64 Bit geoeffnet hat: das, in dessen
-    /// compatibility.ini jetzt die 64-Bit-Kennung steht (vorher stand dort die
-    /// 32-Bit-Kennung oder gar nichts). Die Version allein verraet es nicht -
-    /// 32 und 64 Bit tragen dieselbe.
+    /// Which profile Thunderbird 64 bit opened: the one whose compatibility.ini
+    /// now carries the 64-bit ID (before, it had the 32-bit ID or nothing). The
+    /// version alone does not tell - 32 and 64 bit carry the same one.
     /// </summary>
     private static List<string> Tb64Used()
         => TbProfiles().Where(p => TbAbi(p).Contains("x86_64", StringComparison.OrdinalIgnoreCase)).ToList();
 
-    /// <summary>Startet Thunderbird ohne Fenster, wartet, bis die Bedingung gilt (hoechstens 60 s), und beendet ihn.</summary>
+    /// <summary>Starts Thunderbird without a window, waits until the condition holds (at most 60 s), and closes it.</summary>
     [SupportedOSPlatform("windows")]
     private static void StartThunderbird(string ordner, Func<bool> fertig)
     {
@@ -77,7 +77,7 @@ internal static partial class Program
         using (var p = Process.Start(new ProcessStartInfo(Path.Combine(ordner, "thunderbird.exe"), "-headless -no-remote") { UseShellExecute = false }))
         {
             while (uhr.Elapsed < TimeSpan.FromSeconds(60) && !AskDone(fertig)) System.Threading.Thread.Sleep(500);
-            // Noch einen Moment: Konten laden, profiles.ini und compatibility.ini fertig schreiben.
+            // One more moment: load the accounts, let profiles.ini and compatibility.ini finish writing.
             System.Threading.Thread.Sleep(8000);
             try { p?.Kill(true); } catch { }
         }
@@ -100,7 +100,7 @@ internal static partial class Program
             Console.WriteLine($"         {Path.GetRelativePath(ordner, d)} ({new FileInfo(d).Length} Bytes)");
     }
 
-    // ------------------------------------------------------------ alter PC
+    // ------------------------------------------------------------ old PC
 
     [SupportedOSPlatform("windows")]
     private static void ThunderbirdOldPc()
@@ -111,7 +111,7 @@ internal static partial class Program
         if (!File.Exists(Path.Combine(Tb32, "thunderbird.exe"))) return;
         DeleteFolder(TbDaten);
 
-        // Erster Start: Thunderbird legt sein Profil an.
+        // First start: Thunderbird creates its profile.
         StartThunderbird(Tb32, () => TbProfileOf(TbDaten, Tb32) is { } p && TbVersion(p).Length > 0);
         Dump("profiles.ini (32 Bit)", Path.Combine(TbDaten, "profiles.ini"));
         var benutzt = TbProfileOf(TbDaten, Tb32);
@@ -121,7 +121,7 @@ internal static partial class Program
         var profil = Path.Combine(TbDaten, "Profiles", benutzt);
         Dump("compatibility.ini (32 Bit)", Path.Combine(profil, "compatibility.ini"));
 
-        // Zwei Konten: Lokale Ordner im Profil, ein Archiv ausserhalb.
+        // Two accounts: Local Folders inside the profile, an archive outside it.
         var lokal = Path.Combine(profil, "Mail", "Local Folders");
         Directory.CreateDirectory(lokal);
         File.WriteAllText(Path.Combine(lokal, "Inbox"), Mbox("Lokale Ordner"));
@@ -145,7 +145,7 @@ internal static partial class Program
             + "user_pref(\"mail.server.server2.userName\", \"nobody\");\n"
             + $"user_pref(\"mail.server.server2.directory\", \"{Js(TbArchiv)}\");\n");
 
-        // Thunderbird laedt die Konten einmal (wie im Alltag), dann wird gesichert.
+        // Thunderbird loads the accounts once (as in everyday use), then the backup runs.
         StartThunderbird(Tb32, () => false);
         DumpFolder("Archiv nach dem Start", TbArchiv);
 
@@ -162,7 +162,7 @@ internal static partial class Program
             && File.Exists(Path.Combine(sicherung, BackupService.ThunderbirdExternOrdner, "1_server2", "Inbox")), log.Text);
     }
 
-    // ------------------------------------------------------------ neuer PC
+    // ------------------------------------------------------------ new PC
 
     [SupportedOSPlatform("windows")]
     private static void ThunderbirdNewPc()
@@ -188,21 +188,21 @@ internal static partial class Program
                 DeleteFolder(alt);
         }
 
-        // 1. Gegenprobe: die Sicherung nur zurueckkopiert.
+        // 1. Cross-check: the backup only copied back.
         NewPc();
         CopyFolder(gesichert, TbDaten);
         StartThunderbird(Tb64, () => Tb64Used().Count > 0);
         Dump("profiles.ini nach dem Start (Gegenprobe)", Path.Combine(TbDaten, "profiles.ini"));
         var gegenprobe = Tb64Used();
         Console.WriteLine($"         Profile: {string.Join(", ", TbProfiles())}; von Thunderbird 64 Bit geoeffnet: {string.Join(", ", gegenprobe)}");
-        // Nur zur Auskunft: Anders als Firefox uebernimmt Thunderbird (161, CI)
-        // das Profil einer anderen Installation auch ohne Anpassung - es traegt
-        // fuer sich einen eigenen Eintrag auf dasselbe Profil ein.
+        // For information only: unlike Firefox, Thunderbird (161, CI) takes over
+        // another installation's profile even without adjustment - it registers an
+        // entry of its own pointing to the same profile.
         Console.WriteLine(gegenprobe.Contains(altesProfil)
             ? "         Gegenprobe: Thunderbird 64 Bit uebernimmt das Profil der 32-Bit-Installation auch ohne Anpassung."
             : $"         Gegenprobe: ohne Anpassung oeffnet Thunderbird 64 Bit ein anderes Profil ({string.Join(", ", gegenprobe)}) - das alte waere leer erschienen.");
 
-        // 2. Mit dem Tool.
+        // 2. With the tool.
         NewPc();
         var c = new CancellationTokenState();
         var log = new Protokoll();

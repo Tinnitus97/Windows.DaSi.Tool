@@ -8,9 +8,9 @@ using WindowsDaSiTool.Services;
 namespace DaSiTests;
 
 /// <summary>
-/// "Ordner unter C:\": die Liste (was Windows dort anlegt, bleibt ausgeblendet),
-/// die Verfuegbarkeit der Kachel und - unter Windows mit echtem robocopy -
-/// Sichern und Wiederherstellen an einem Schein-Laufwerk im Temp-Ordner.
+/// "Folders under C:\": the list (what Windows creates there stays hidden),
+/// the availability of the item and - on Windows with real robocopy -
+/// backup and restore on a fake drive in the temp folder.
 /// </summary>
 internal static partial class Program
 {
@@ -27,7 +27,7 @@ internal static partial class Program
             && !LaufwerksOrdner.IsWindowsFolder("Intel") && !LaufwerksOrdner.IsWindowsFolder("Windows-Daten"));
         Check("Systemlaufwerk mit Backslash", LaufwerksOrdner.DefaultRoot().EndsWith('\\') && LaufwerksOrdner.DefaultRoot().Length == 3, LaufwerksOrdner.DefaultRoot());
 
-        // Ein Schein-Laufwerk: Windows-Ordner, eigene Ordner, die Sicherung selbst.
+        // A fake drive: Windows folders, own folders, the backup itself.
         var c = Path.Combine(root, "laufwerk", "C");
         foreach (var n in new[] { "Windows", "Program Files", "Users", "$Recycle.Bin", "PerfLogs" }) Directory.CreateDirectory(Path.Combine(c, n));
         WriteFile(Path.Combine(c, "Daten", "Rechnungen", "2026.pdf"), new string('r', 1000));
@@ -63,7 +63,7 @@ internal static partial class Program
         }
         Check("Groesse: Ordner fehlt = 0", LaufwerksOrdner.SizeOf(Path.Combine(c, "Fehlt")) == 0);
 
-        // In der Sicherung.
+        // In the backup.
         var sicherung = Path.Combine(root, "laufwerk", "Sicherung");
         Check("Sicherung ohne C-Ordner: nichts", !LaufwerksOrdner.Exists(sicherung) && LaufwerksOrdner.InBackup(sicherung).Count == 0 && !LaufwerksOrdner.Exists(null));
         WriteFile(Path.Combine(sicherung, LaufwerksOrdner.BackupOrdner, "Daten", "liste.txt"));
@@ -72,7 +72,7 @@ internal static partial class Program
         Check("Sicherung: Ordner darin, Windows-Ordner markiert", LaufwerksOrdner.Exists(sicherung) && gesichert.Count == 2
             && gesichert.Single(e => e.Name == "Program Files").Windows && !gesichert.Single(e => e.Name == "Daten").Windows);
 
-        // Verfuegbarkeit der Kachel.
+        // Availability of the item.
         var vorher = LaufwerksOrdner.Wurzel;
         try
         {
@@ -90,7 +90,7 @@ internal static partial class Program
         if (OperatingSystem.IsWindows()) DriveFoldersWithRobocopy(root, c, ziel);
     }
 
-    /// <summary>Sichern und Wiederherstellen mit echtem robocopy.</summary>
+    /// <summary>Backup and restore with real robocopy.</summary>
     private static void DriveFoldersWithRobocopy(string root, string c, string zielInC)
     {
         Console.WriteLine("\n== Ordner unter C:\\: sichern und wiederherstellen (robocopy) ==");
@@ -110,13 +110,13 @@ internal static partial class Program
             && File.Exists(Path.Combine(gesichert, "Daten", "Rechnungen", "2026.pdf")) && File.Exists(Path.Combine(gesichert, "scans", "scan1.pdf")), log.Text);
         Check("fehlender Ordner: Warnung, die anderen trotzdem", log.Has("Weg gibt es nicht") && !Directory.Exists(Path.Combine(gesichert, "Weg")), log.Text);
 
-        // Die Sicherung liegt in einem der gewaehlten Ordner: sie bleibt draussen.
+        // The backup lives inside one of the chosen folders: it stays out.
         log.Clear();
         new BackupService(runner, abbruch, log.Write) { SourcePath = root, BackupPath = zielInC }.BackupDriveFolders(new[] { Path.Combine(c, "DaSi") }).Wait();
         Check("Sicherung im gewaehlten Ordner: nicht in sich selbst kopiert", log.Has("DaSi gesichert")
             && !Directory.Exists(Path.Combine(zielInC, LaufwerksOrdner.BackupOrdner, "DaSi", "DASI_PC_01_01_2026")), log.Text);
 
-        // Zurueck auf ein neues "C:" - einmal leer, einmal mit neuerer Datei.
+        // Restore onto a new "C:" - once empty, once with a newer file.
         var neu = Path.Combine(root, "laufwerk", "NeuesC");
         WriteFile(Path.Combine(neu, "scans", "scan1.pdf"), "neuer auf dem neuen PC");
         File.SetLastWriteTimeUtc(Path.Combine(neu, "scans", "scan1.pdf"), DateTime.UtcNow.AddDays(1));

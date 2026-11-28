@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Schreibt update.json fort - die eine Datei, die das Programm beim Start abfragt.
+Updates update.json - the one file the program checks at startup.
 
-Das Windows DaSi Tool besteht aus einer einzigen EXE. Entsprechend kennt
-update.json genau einen Abschnitt: "program". Mehr braucht es nicht.
+Windows DaSi Tool consists of a single EXE. Accordingly, update.json has
+exactly one section: "program". Nothing more is needed.
 
-Abgefragt wird die Datei ueber raw.githubusercontent.com und NICHT ueber die
-GitHub-Schnittstelle (api.github.com): Die Schnittstelle laesst ohne Anmeldung
-nur 60 Abrufe je Stunde und IP-Adresse zu. In einer Firma sitzen alle Rechner
-hinter derselben Adresse - nach 60 Programmstarts waere Schluss.
-raw.githubusercontent liefert ueber ein Auslieferungsnetz aus und kennt diese
-Grenze nicht.
+The file is fetched through raw.githubusercontent.com and NOT through the
+GitHub API (api.github.com): without sign-in, the API allows only 60
+requests per hour and IP address. In a company all computers sit behind the
+same address - it would stop after 60 program starts.
+raw.githubusercontent serves through a content delivery network and has no
+such limit.
 
-Aufruf (in der Regel aus dem Workflow "Veroeffentlichen"):
+Usage (normally from the "Veröffentlichen" workflow):
 
   python tools/write-update-json.py \\
       --repo Tinnitus97/Windows.DaSi.Tool \\
@@ -22,8 +22,8 @@ Aufruf (in der Regel aus dem Workflow "Veroeffentlichen"):
       [--datei WindowsDaSiTool.exe] \\
       [--datum 2026-08-17]
 
-Ohne --datum wird das heutige Datum eingetragen. --datei ist nur noetig, wenn
-die EXE an der Veroeffentlichung einmal anders heissen sollte.
+Without --datum, today's date is used. --datei is only needed if the EXE in
+the release should ever have a different name.
 """
 
 from __future__ import annotations

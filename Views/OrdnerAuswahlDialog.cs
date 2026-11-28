@@ -11,17 +11,19 @@ using WindowsDaSiTool.Services;
 namespace WindowsDaSiTool.Views;
 
 /// <summary>
-/// Auswahl der Ordner unter C:\ - aufgebaut wie die Winget-Auswahl. Oben der
-/// Haken "Windows-Standardordner ausblenden" (steht von Anfang an): Windows,
-/// Programme, Benutzer &amp; Co. tauchen erst auf, wenn er weg ist. Neben jedem
-/// Ordner erscheint seine Groesse, sobald sie berechnet ist.
-/// "Uebernehmen" merkt die Wahl nur vor - gesichert wird erst mit "Ausgewaehlte
-/// Aktionen starten" im Hauptfenster.
-/// Liefert die gewaehlten Ordner, oder null bei Abbruch.
+/// Selection of the folders under C:\ - laid out like the winget selection.
+/// At the top the box "Windows-Standardordner ausblenden" (hide Windows
+/// default folders, checked from the start): Windows, Program Files, Users
+/// &amp; co. only show up once it is unchecked. Next to each folder its size
+/// appears as soon as it is calculated.
+/// "Übernehmen" (Apply) only pre-selects the choice - the backup only runs
+/// with "Ausgewählte Aktionen starten" (Start selected actions) in the main
+/// window.
+/// Returns the chosen folders, or null when cancelled.
 /// </summary>
 public static class OrdnerAuswahlDialog
 {
-    /// <param name="vorgewaehlt">Die schon vorgemerkten Ordner (Namen) - leer: die Vorgabe.</param>
+    /// <param name="vorgewaehlt">The folders already pre-selected (names) - empty: the default.</param>
     public static async Task<List<LaufwerksOrdner.Eintrag>?> Show(Window owner, IReadOnlyList<LaufwerksOrdner.Eintrag> eintraege, bool wiederherstellen,
                                                                   IReadOnlyCollection<string>? vorgewaehlt = null)
     {
@@ -48,9 +50,9 @@ public static class OrdnerAuswahlDialog
             var cb = new CheckBox
             {
                 Content = inhalt,
-                // Schon vorgemerkt: wieder angehakt. Sonst ist beim
-                // Wiederherstellen alles Gesicherte vorgewaehlt, beim Sichern
-                // nichts: Was mit soll, entscheidet der Benutzer.
+                // Already pre-selected: checked again. Otherwise on restore everything
+                // backed up is pre-selected, on backup nothing: the user decides what goes
+                // along.
                 IsChecked = vorher.Count > 0 ? vorher.Contains(e.Name) : wiederherstellen && !e.Windows,
                 Classes = { "dialogItem" },
                 HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -83,7 +85,7 @@ public static class OrdnerAuswahlDialog
         {
             Content = Loc.Tr("Windows-Standardordner ausblenden (Windows, Programme, Benutzer …)",
                              "Hide the standard Windows folders (Windows, Program Files, Users …)"),
-            // Ist ein Windows-Ordner schon vorgemerkt, bleibt er sichtbar.
+            // If a Windows folder is already pre-selected, it stays visible.
             IsChecked = !eintraege.Any(e => e.Windows && vorher.Contains(e.Name)),
             Classes = { "dialogItem" },
             Margin = new Avalonia.Thickness(0, 0, 0, 8),
@@ -111,7 +113,7 @@ public static class OrdnerAuswahlDialog
                          $"{gewaehlt.Count} selected, ~{SystemHelpers.FormatBytes(bekannt)}{(gewaehlt.Any(z => z.Bytes < 0) ? " …" : "")}");
         }
 
-        // Groessen im Hintergrund - nur fuer die sichtbaren Ordner, jeder einmal.
+        // Sizes in the background - only for the visible folders, each once.
         void FetchSizes()
         {
             foreach (var z in Visible().Where(z => !z.Gestartet))
@@ -138,7 +140,7 @@ public static class OrdnerAuswahlDialog
             foreach (var z in zeilen)
             {
                 z.Cb.IsVisible = !(aus && z.E.Windows);
-                // Ausgeblendetes darf nicht unbemerkt mitlaufen.
+                // Hidden entries must not run along unnoticed.
                 if (!z.Cb.IsVisible) z.Cb.IsChecked = false;
             }
             leer.IsVisible = !Visible().Any();
@@ -218,11 +220,11 @@ public static class OrdnerAuswahlDialog
         public LaufwerksOrdner.Eintrag E { get; } = e;
         public TextBlock Anzeige { get; } = anzeige;
         public bool Gestartet { get; set; }
-        /// <summary>-1, solange die Groesse noch nicht feststeht.</summary>
+        /// <summary>-1 as long as the size is not known yet.</summary>
         public long Bytes { get; set; } = -1;
     }
 
-    /// <param name="art">"yes", "cancel" oder nichts (neutral) - siehe Button.dialog in App.axaml.</param>
+    /// <param name="art">"yes", "cancel" or nothing (neutral) - see Button.dialog in App.axaml.</param>
     private static Button MakeButton(string inhalt, string? art = null)
     {
         var b = new Button { Content = inhalt, Width = 70, Height = 30, CornerRadius = new Avalonia.CornerRadius(4), Classes = { "dialog" } };

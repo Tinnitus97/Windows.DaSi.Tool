@@ -1,26 +1,25 @@
-# Hält die NuGet-Pakete von selbst auf Stand.
+# Keeps the NuGet packages up to date by itself.
 #
-# Dependabot sieht einmal pro Woche nach, ob es für ein Paket aus einer
-# .csproj eine neuere Fassung gibt, und öffnet dafür einen Pull Request.
-# Gebaut und geprüft wird der von build.yml wie jeder andere Zweig auch -
-# was dort nicht durchläuft, lässt sich also nicht versehentlich
-# zusammenführen. Zusammengeführt wird nichts von allein; das bleibt ein Klick.
+# Once a week Dependabot checks whether there is a newer version of a
+# package from a .csproj and opens a pull request for it. build.yml builds
+# and tests it like any other branch - so whatever fails there cannot be
+# merged by accident. Nothing is merged automatically; that stays a click.
 #
-# WICHTIG: Die Datei wirkt erst, wenn sie im Standardzweig liegt. Auf einem
-# Nebenzweig tut sie nichts.
+# IMPORTANT: the file only takes effect once it is on the default branch.
+# On another branch it does nothing.
 #
-# Sicherheitslücken meldet Dependabot unabhängig von diesem Takt sofort -
-# vorausgesetzt, "Dependabot security updates" ist in den Einstellungen des
-# Repositories eingeschaltet.
+# Dependabot reports security vulnerabilities right away, independent of
+# this schedule - provided "Dependabot security updates" is enabled in the
+# repository settings.
 
 version: 2
 
 updates:
   - package-ecosystem: nuget
 
-    # "/" meint das ganze Repository: Dependabot durchsucht von der Wurzel aus
-    # auch die Unterordner und findet damit WindowsDaSiTool.csproj und das
-    # Testprojekt unter tests\.
+    # "/" means the whole repository: Dependabot searches the subfolders from
+    # the root as well and so finds WindowsDaSiTool.csproj and the test
+    # projects under tests\.
     directory: "/"
 
     schedule:
@@ -29,26 +28,26 @@ updates:
       time: "06:00"
       timezone: Europe/Berlin
 
-    # Mehr als drei offene Paket-Anfragen gleichzeitig bringen nichts - sie
-    # veralten schneller, als sie durchgesehen werden.
+    # More than three open package requests at a time are no use - they go
+    # stale faster than they get reviewed.
     open-pull-requests-limit: 3
 
     commit-message:
       prefix: "Pakete"
 
     groups:
-      # Die vier Avalonia-Pakete tragen stets dieselbe Versionsnummer und
-      # müssen gemeinsam wandern. Einzeln angehoben ergäbe das einen Build,
-      # der an widersprüchlichen Fassungen scheitert - deshalb steht hier
-      # bewusst KEIN update-types: Auch der Sprung auf eine neue Hauptversion
-      # kommt als ein einziger Pull Request, der alle vier zusammen anhebt.
+      # The four Avalonia packages always carry the same version number and must
+      # move together. Raised one by one, the build would fail on contradicting
+      # versions - which is why there is deliberately NO update-types here: even
+      # the jump to a new major version comes as a single pull request that
+      # raises all four together.
       avalonia:
         patterns:
           - "Avalonia*"
 
-      # Alles Übrige (CommunityToolkit.Mvvm, Tmds.DBus.Protocol, ...) in einer
-      # gemeinsamen Anfrage - aber nur kleine Sprünge. Eine neue Hauptversion
-      # kommt absichtlich allein, damit sie einzeln angesehen werden kann.
+      # Everything else (CommunityToolkit.Mvvm, Tmds.DBus.Protocol, ...) in one
+      # shared request - but only small jumps. A new major version deliberately
+      # comes on its own, so it can be looked at separately.
       uebrige-pakete:
         patterns:
           - "*"
@@ -58,16 +57,17 @@ updates:
           - minor
           - patch
 
-  # Dieselbe Pflege für die Aktionen in .github/workflows/ - checkout,
-  # setup-dotnet, upload-artifact und die übrigen. Bis hierher wurden sie von
-  # Hand gepflegt und waren entsprechend ungleich (checkout@v4 neben
-  # checkout@v5, upload-artifact@v4 neben @v6); künftig hebt Dependabot sie an.
+  # The same care for the actions in .github/workflows/ - checkout,
+  # setup-dotnet, upload-artifact and the rest. Until now they were
+  # maintained by hand and were accordingly uneven (checkout@v4 next to
+  # checkout@v5, upload-artifact@v4 next to @v6); from now on Dependabot
+  # raises them.
   - package-ecosystem: github-actions
 
-    # Bei Aktionen ist "/" wörtlich das Repository-Stammverzeichnis: Dependabot
-    # sieht dann in .github/workflows/ nach. Dazu die eigene Aktion
-    # .github/actions/dotnet-lts - sie ruft setup-dotnet auf und soll mit
-    # angehoben werden.
+    # For actions, "/" literally means the repository root: Dependabot then
+    # looks in .github/workflows/. Plus our own action
+    # .github/actions/dotnet-lts - it calls setup-dotnet and should be raised
+    # as well.
     directories:
       - "/"
       - "/.github/actions/*"
@@ -84,10 +84,10 @@ updates:
       prefix: "Aktionen"
 
     groups:
-      # Alle Aktionen in einer einzigen Anfrage, bewusst ohne update-types.
-      # Eine neue Hauptversion wechselt bei den offiziellen Aktionen fast immer
-      # nur die Node-Fassung des Läufers; sie gemeinsam anzuheben hält die
-      # Workflows untereinander gleich - genau darum ging es.
+      # All actions in one single request, deliberately without update-types.
+      # For the official actions, a new major version almost always only
+      # switches the runner's Node version; raising them together keeps the
+      # workflows consistent with each other - which is exactly the point.
       aktionen:
         patterns:
           - "*"

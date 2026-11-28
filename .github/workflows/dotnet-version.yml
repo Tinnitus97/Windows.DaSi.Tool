@@ -1,29 +1,29 @@
 name: .NET-Version prüfen
 
-# Wird mit der neuesten LTS-Version von .NET gebaut?
+# Is the build using the latest LTS version of .NET?
 #
-# LTS-Versionen (.NET 8, 10, 12 ...) werden drei Jahre unterstützt,
-# STS-Versionen (.NET 9, 11 ...) nur zwei. Gebaut wird deshalb immer mit der
-# neuesten LTS-Version - nie mit einer neueren STS-Version, auch wenn sie
-# schon erschienen ist.
+# LTS versions (.NET 8, 10, 12 ...) are supported for three years, STS
+# versions (.NET 9, 11 ...) for only two. So the build always uses the
+# latest LTS version - never a newer STS version, even if it is already
+# out.
 #
-# Maßstab ist die Liste von Microsoft, aus der auch die Download-Seite
-# gespeist wird (releases-index.json): die höchste LTS-Version, die
-# unterstützt wird - also weder Vorschau noch Release Candidate.
+# The yardstick is Microsoft's list that also feeds the download page
+# (releases-index.json): the highest LTS version that is supported - so
+# neither preview nor release candidate.
 #
-# Die Workflows holen sich ihr SDK über .github/actions/dotnet-lts selbst aus
-# dieser Liste; dort steht keine feste Nummer. Geprüft wird hier jede Stelle,
-# die die Version FEST nennt:
+# The workflows get their SDK from this list themselves through
+# .github/actions/dotnet-lts; no fixed number is written there. This check
+# covers every place that names the version EXPLICITLY:
 #
-#   <TargetFramework> in jeder .csproj / .props    net10.0, net10.0-windows
-#   sdk.version in global.json                     falls vorhanden
-#   die SDK-Prüfung in build.ps1                   falls vorhanden
-#   .NET-Einrichtung in den Workflows              nur über .github/actions/dotnet-lts
+#   <TargetFramework> in every .csproj / .props   net10.0, net10.0-windows
+#   sdk.version in global.json                    if present
+#   the SDK check in build.ps1                    if present
+#   .NET setup in the workflows                   only through .github/actions/dotnet-lts
 #
-# Steht irgendwo eine andere Version - oder richtet ein Workflow .NET an der
-# gemeinsamen Aktion vorbei ein -, schlägt die Prüfung fehl und nennt Datei
-# und Zeile. Zusätzlich läuft sie jeden Montag von selbst: Erscheint eine neue
-# LTS-Version, wird sie rot, bis die Projektdateien nachgezogen sind.
+# If a different version appears anywhere - or a workflow sets up .NET
+# bypassing the shared action -, the check fails and names file and line.
+# It also runs by itself every Monday: when a new LTS version comes out, it
+# turns red until the project files are updated.
 
 on:
   push:
@@ -58,7 +58,7 @@ jobs:
           AKTION = './.github/actions/dotnet-lts'
 
           def lade_liste():
-              # Zum Ausprobieren ohne Netz: RELEASES_INDEX=pfad/zur/datei.json
+              # To try it without network access: RELEASES_INDEX=path/to/file.json
               if os.environ.get('RELEASES_INDEX'):
                   return json.loads(Path(os.environ['RELEASES_INDEX']).read_text(encoding='utf-8'))
               fehler = ''
@@ -77,8 +77,8 @@ jobs:
               return tuple(int(teil) for teil in version.split('.'))
 
           liste = lade_liste()['releases-index']
-          # Unterstützt heißt: weder Vorschau (preview) noch Release Candidate
-          # (go-live) noch aus dem Support (eol).
+          # Supported means: neither preview nor release candidate (go-live) nor out
+          # of support (eol).
           unterstuetzt = [r for r in liste if r.get('support-phase') in ('active', 'maintenance')]
           lts = [r for r in unterstuetzt if r.get('release-type') == 'lts']
           if not lts:
@@ -96,7 +96,7 @@ jobs:
           print()
           art_von = {r['channel-version']: str(r.get('release-type', '')).upper() for r in liste}
 
-          # (Datei, Zeile, was dort steht, die Version darin oder None, Art der Stelle)
+          # (file, line, what is written there, the version in it or None, kind of place)
           stellen = []
 
           def zeilen(pfad):
@@ -135,7 +135,7 @@ jobs:
                       stellen.append((pfad, nr, version, '.'.join(version.split('.')[:2]), 'SDK in global.json'))
 
               elif pfad.name == 'build.ps1':
-                  # Die SDK-Prüfung des Bauskripts:  $_ -match '^\s*10\.'
+                  # The build script's SDK check:  $_ -match '^\s*10\.'
                   for nr, zeile in zeilen(pfad):
                       v = re.search(r"-match\s+'\^\\s\*(\d+)\\\.'", zeile)
                       if v:

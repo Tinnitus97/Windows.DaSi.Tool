@@ -6,32 +6,32 @@ using System.Net.NetworkInformation;
 
 namespace WindowsDaSiTool.Services;
 
-/// <summary>Die Punkte der Oberflaeche - beim Sichern wie beim Wiederherstellen.</summary>
+/// <summary>The items of the UI - for backup and restore alike.</summary>
 public enum Punkt
 {
     Profil, AppData, Cloud,
     Firefox, Edge, Chrome, Brave, Opera, Thunderbird,
     Winget, Wlan, Drucker, Hintergrund, DesktopShot,
-    /// <summary>Ordner unter C:\ (eigene Ordner auf dem Systemlaufwerk).</summary>
+    /// <summary>Folders under C:\ (the user's own folders on the system drive).</summary>
     Laufwerk
 }
 
-/// <summary>Ein Programm, dessen Profil gesichert wird.</summary>
-/// <param name="ProfilRel">Ort des Profils im Benutzerprofil, z. B. "AppData\Roaming\Mozilla\Firefox".</param>
-/// <param name="Prozess">Prozessname ohne ".exe" - wird vor dem Kopieren beendet.</param>
-/// <param name="WingetId">Paket fuer die Neuinstallation beim Wiederherstellen, falls bekannt.</param>
-/// <param name="Chromium">Chromium-Browser: die Zwischenspeicher bleiben draussen.</param>
+/// <summary>A program whose profile is backed up.</summary>
+/// <param name="ProfilRel">Location of the profile inside the user profile, e.g. "AppData\Roaming\Mozilla\Firefox".</param>
+/// <param name="Prozess">Process name without ".exe" - it is closed before copying.</param>
+/// <param name="WingetId">Package used to reinstall the program on restore, if known.</param>
+/// <param name="Chromium">Chromium-based browser: its caches are left out.</param>
 public sealed record AppEintrag(Punkt Punkt, string Name, string ProfilRel, string Prozess, string? WingetId, bool Chromium)
 {
-    /// <summary>Unterordner in der Sicherung, z. B. "Firefox-Profil".</summary>
+    /// <summary>Subfolder in the backup, e.g. "Firefox-Profil".</summary>
     public string BackupOrdner => Name + "-Profil";
 }
 
 /// <summary>
-/// Wo die Programme ihre Profile ablegen, und welche Punkte gerade sinnvoll
-/// waehlbar sind.
+/// Where the programs keep their profiles, and which items can sensibly be
+/// selected right now.
 ///
-/// Ohne Abhaengigkeiten, damit sich die Regeln pruefen lassen.
+/// No dependencies, so the rules can be tested.
 /// </summary>
 public static class AppCatalog
 {
@@ -41,13 +41,13 @@ public static class AppCatalog
     public static readonly AppEintrag Brave = new(Punkt.Brave, "Brave", @"AppData\Local\BraveSoftware\Brave-Browser\User Data", "brave", "Brave.Brave", true);
     public static readonly AppEintrag Thunderbird = new(Punkt.Thunderbird, "Thunderbird", @"AppData\Roaming\Thunderbird", "thunderbird", "Mozilla.Thunderbird.de", false);
 
-    /// <summary>Alle Programme mit genau einem Profilordner (Opera hat mehrere, siehe <see cref="Opera"/>).</summary>
+    /// <summary>All programs with exactly one profile folder (Opera has several, see <see cref="Opera"/>).</summary>
     public static readonly IReadOnlyList<AppEintrag> Programme = new[] { Firefox, Edge, Chrome, Brave, Thunderbird };
 
     /// <summary>
-    /// Setzt einen Ort aus dem Katalog an ein Profil an. Die Teile werden
-    /// einzeln angehaengt - unter Windows dasselbe wie Path.Combine mit "\",
-    /// und auch in der Pruefumgebung ein echter Pfad.
+    /// Appends a catalog location to a profile path. The parts are appended one
+    /// by one - on Windows the same as Path.Combine with "\", and a real path in
+    /// the test environment as well.
     /// </summary>
     public static string PathIn(string basis, string rel)
         => Path.Combine(new[] { basis }.Concat(rel.Split('\\', StringSplitOptions.RemoveEmptyEntries)).ToArray());
@@ -55,11 +55,11 @@ public static class AppCatalog
     // ------------------------------------------------------------ Opera
 
     /// <summary>
-    /// Opera gibt es in mehreren Fassungen - Opera, Opera GX, Beta, Developer,
-    /// Air ... Jede legt ihr Profil in einen eigenen Ordner unter
+    /// Opera comes in several editions - Opera, Opera GX, Beta, Developer,
+    /// Air ... Each keeps its profile in its own folder under
     /// "AppData\Roaming\Opera Software" ("Opera Stable", "Opera GX Stable" ...).
-    /// Erkannt wird jede Fassung an ihren Profildateien statt an einer festen
-    /// Liste - so ist auch eine kuenftige Fassung dabei.
+    /// Each edition is recognized by its profile files instead of a fixed
+    /// list - so a future edition is covered as well.
     /// </summary>
     public static class Opera
     {
@@ -67,10 +67,10 @@ public static class AppCatalog
         public const string BackupOrdner = "Opera-Profil";
         public const string Prozess = "opera";
 
-        /// <summary>Daran erkennt man ein Chromium-Profil (je nach Opera-Fassung direkt oder in "Default").</summary>
+        /// <summary>Marks a Chromium profile (directly or in "Default", depending on the Opera edition).</summary>
         private static readonly string[] Merkmale = { "Local State", "Preferences", "Bookmarks" };
 
-        /// <summary>Die Profilordner aller Opera-Fassungen unter <paramref name="wurzel"/>, nach Anzeigename.</summary>
+        /// <summary>The profile folders of all Opera editions under <paramref name="wurzel"/>, sorted by display name.</summary>
         public static List<string> Variants(string wurzel)
         {
             var liste = new List<string>();
@@ -85,17 +85,17 @@ public static class AppCatalog
                         liste.Add(name);
                 }
             }
-            catch { /* nicht lesbar - dann eben keine */ }
-            // Nach Anzeigename: "Opera, Opera Beta, Opera GX" statt nach Ordnernamen.
+            catch { /* not readable - then there are none */ }
+            // By display name: "Opera, Opera Beta, Opera GX" instead of by folder name.
             return liste.OrderBy(DisplayName, StringComparer.OrdinalIgnoreCase)
                         .ThenBy(v => v, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
-        /// <summary>"Opera GX Stable" -> "Opera GX", "Opera Stable" -> "Opera", "Opera Beta" bleibt.</summary>
+        /// <summary>"Opera GX Stable" -> "Opera GX", "Opera Stable" -> "Opera", "Opera Beta" stays.</summary>
         public static string DisplayName(string variante)
             => variante.EndsWith(" Stable", StringComparison.OrdinalIgnoreCase) ? variante[..^" Stable".Length] : variante;
 
-        /// <summary>winget-Paket fuer die Neuinstallation - nur fuer die Fassungen, deren Paket sicher bekannt ist.</summary>
+        /// <summary>winget package for reinstalling - only for the editions whose package is known for sure.</summary>
         public static string? WingetId(string variante) => DisplayName(variante).ToLowerInvariant() switch
         {
             "opera" => "Opera.Opera",
@@ -104,20 +104,19 @@ public static class AppCatalog
         };
     }
 
-    // ------------------------------------------------------------ Verfuegbarkeit
+    // ------------------------------------------------------------ Availability
 
     /// <summary>
-    /// Hat dieser PC einen WLAN-Adapter? Austauschbar, damit sich die
-    /// Verfuegbarkeit auch ohne echten Adapter pruefen laesst.
+    /// Does this PC have a Wi-Fi adapter? Replaceable, so availability can be
+    /// tested without a real adapter.
     /// </summary>
     public static Func<bool> HatWlanAdapter { get; set; } = WifiAdapterPresent;
 
     /// <summary>
-    /// Ein WLAN-Adapter, wie ihn Windows meldet - eingeschaltet, auch im
-    /// Flugmodus oder ohne Verbindung. Ein im Geraete-Manager deaktivierter
-    /// Adapter zaehlt nicht: Ohne ihn liefert "netsh wlan" weder Profile noch
-    /// nimmt es welche an. Laesst es sich nicht feststellen, wird nichts
-    /// gesperrt.
+    /// A Wi-Fi adapter as Windows reports it - enabled, even in airplane mode
+    /// or without a connection. An adapter disabled in Device Manager does not
+    /// count: without it, "netsh wlan" neither returns profiles nor accepts
+    /// any. If it cannot be determined, nothing is locked.
     /// </summary>
     public static bool WifiAdapterPresent()
     {
@@ -138,17 +137,17 @@ public static class AppCatalog
          "This PC has no WiFi adapter (or it is disabled) - the WiFi profiles from the backup cannot be imported here.");
 
     /// <summary>
-    /// Ist der Punkt beim SICHERN waehlbar? null = ja, sonst der Grund.
+    /// Can the item be selected for BACKUP? null = yes, otherwise the reason.
     ///
-    /// Gesperrt werden nur die Programmsicherungen: ohne Profil beim gewaehlten
-    /// Benutzer gibt es nichts zu sichern. Ist (noch) kein vorhandenes Profil
-    /// gewaehlt, wird nichts gesperrt - dann fehlt die Grundlage dafuer.
+    /// Only program backups are locked: without a profile for the selected user
+    /// there is nothing to back up. If no existing profile is selected (yet),
+    /// nothing is locked - there is nothing to base it on.
     /// </summary>
     public static (string De, string En)? ForBackup(Punkt p, string? profil)
     {
-        // WLAN haengt am Rechner, nicht am Benutzer: ohne Adapter keine Profile.
+        // Wi-Fi belongs to the computer, not to the user: no adapter, no profiles.
         if (p == Punkt.Wlan) return HatWlanAdapter() ? null : KeinWlanSichern;
-        // Ordner unter C:\ haengen am Rechner, nicht am Benutzer.
+        // Folders under C:\ belong to the computer, not to the user.
         if (p == Punkt.Laufwerk)
             return Directory.Exists(LaufwerksOrdner.Wurzel) ? null
                 : ($"Das Laufwerk {LaufwerksOrdner.Wurzel} gibt es hier nicht.", $"The drive {LaufwerksOrdner.Wurzel} does not exist here.");
@@ -171,16 +170,16 @@ public static class AppCatalog
     }
 
     /// <summary>
-    /// Ist der Punkt beim WIEDERHERSTELLEN waehlbar? null = ja, sonst der Grund.
-    /// Gesperrt wird alles, was in der Sicherung nicht enthalten ist. Ist
-    /// (noch) kein vorhandener Sicherungsordner gewaehlt, wird nichts gesperrt.
+    /// Can the item be selected for RESTORE? null = yes, otherwise the reason.
+    /// Everything the backup does not contain is locked. If no existing backup
+    /// folder is selected (yet), nothing is locked.
     /// </summary>
     public static (string De, string En)? ForRestore(Punkt p, string? sicherung)
         => ForRestore(sicherung)[p];
 
     /// <summary>
-    /// Alle Punkte auf einmal - jeder wird dabei genau einmal nachgesehen, auch
-    /// wenn die Sicherung auf einem langsamen Netzlaufwerk liegt.
+    /// All items at once - each one is looked up exactly once, even if the
+    /// backup lives on a slow network drive.
     /// </summary>
     public static Dictionary<Punkt, (string De, string En)?> ForRestore(string? sicherung)
     {
@@ -189,24 +188,24 @@ public static class AppCatalog
         if (!string.IsNullOrWhiteSpace(sicherung) && Directory.Exists(sicherung))
         {
             var da = punkte.ToDictionary(p => p, p => Contains(sicherung, p));
-            // Enthaelt der Ordner gar nichts davon, ist er keine Sicherung - meist
-            // ist der Ordner darueber gewaehlt (D:\DaSi statt D:\DaSi\DASI_...).
-            // Dann ein gemeinsamer Hinweis statt vierzehn einzelner Gruende.
+            // If the folder contains none of these, it is not a backup - usually the
+            // folder above it was picked (D:\DaSi instead of D:\DaSi\DASI_...).
+            // Then one shared hint instead of fourteen separate reasons.
             bool keine = !da.Values.Any(x => x);
             foreach (var p in punkte)
                 if (!da[p]) erg[p] = keine ? KeineSicherung : MissingReason(p);
         }
 
-        // Liegen WLAN-Profile in der Sicherung, braucht es zum Einspielen
-        // trotzdem einen Adapter - "netsh wlan add profile" scheitert sonst.
-        // Fehlen sie in der Sicherung, bleibt das der Grund.
+        // Even if the backup contains Wi-Fi profiles, importing them still needs
+        // an adapter - "netsh wlan add profile" fails otherwise. If they are
+        // missing from the backup, that remains the reason.
         if (erg[Punkt.Wlan] is null && !HatWlanAdapter()) erg[Punkt.Wlan] = KeinWlanZurueck;
         return erg;
     }
 
     /// <summary>
-    /// Liegt in dem Ordner schon eine Sicherung? Irgendein Punkt oder ein
-    /// Protokoll des Tools genuegt.
+    /// Does the folder already hold a backup? Any item or a log written by the
+    /// tool is enough.
     /// </summary>
     public static bool IsBackup(string? ordner)
     {
@@ -243,18 +242,18 @@ public static class AppCatalog
         return ($"Die gewählte Sicherung enthält {was.Item1}.", $"The selected backup contains {was.Item2}.");
     }
 
-    /// <summary>Desktop-Layout, Variante Screenshot: Bilder in der Sicherung?</summary>
+    /// <summary>Design &amp; Desktop, part Screenshot: are there images in the backup?</summary>
     public static bool HasDesktopScreenshot(string sicherung)
         => DesktopScreenshot.FindImages(Path.Combine(sicherung, DesktopScreenshot.FolderName)).Count > 0;
 
-    /// <summary>Desktop-Layout, Variante Symbolpositionen: Datei in der Sicherung?</summary>
+    /// <summary>Design &amp; Desktop, part Icons + taskbar: icon positions or taskbar in the backup?</summary>
     public static bool HasDesktopIcons(string sicherung) => DesktopIcons.Exists(sicherung) || Taskleiste.Exists(sicherung);
 
-    /// <summary>Hintergrund in der Sicherung - ein Bild oder eine Volltonfarbe (Hintergrund.json)?</summary>
+    /// <summary>Is there a wallpaper image in the backup?</summary>
     public static bool HasWallpaper(string sicherung)
         => HasFiles(Path.Combine(sicherung, "Hintergrundbild"), "*", ohne: ".txt");
 
-    /// <summary>Liegt der Punkt in der Sicherung?</summary>
+    /// <summary>Is the item in the backup?</summary>
     private static bool Contains(string sicherung, Punkt p)
     {
         var profil = Path.Combine(sicherung, "Benutzerprofil");

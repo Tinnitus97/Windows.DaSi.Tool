@@ -15,7 +15,7 @@
 
     <Grid Margin="16" RowDefinitions="Auto,*">
 
-        <!-- ============ Kopfzeile ============ -->
+        <!-- ============ Header ============ -->
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="2,0,2,14">
             <StackPanel Grid.Column="0" VerticalAlignment="Center">
                 <TextBlock Classes="appTitle" Text="{Binding WindowTitle}"/>
@@ -31,24 +31,24 @@
             </StackPanel>
         </Grid>
 
-        <!-- ============ Hauptbereich: zwei Spalten ============ -->
+        <!-- ============ Main area: two columns ============ -->
         <Grid Grid.Row="1" ColumnDefinitions="6*,4*">
 
-            <!-- ============ Linke Spalte: Bedienung ============ -->
+            <!-- ============ Left column: controls ============ -->
             <Grid Grid.Column="0" Margin="0,0,12,0" RowDefinitions="*,Auto">
 
-                <!-- Scrollbarer Bereich: passt sich kleinen Fensterhoehen an.
-                     Der Inhalt ist ueber MinHeight an die Hoehe des Sichtfensters
-                     gebunden. Dadurch kann die Kachelflaeche darunter mit "*" den
-                     verbleibenden Platz ausfuellen - ohne die Bindung bekaeme sie
-                     im ScrollViewer unendlich viel Hoehe angeboten und fiele auf
-                     ihre Inhaltsgroesse zurueck. Wird der Inhalt hoeher als das
-                     Fenster, greift wie bisher der Rollbalken. -->
+                <!-- Scrollable area: adapts to small window heights.
+                     The content is bound to the height of the viewport through
+                     MinHeight. That lets the card area below fill the remaining space
+                     with "*" - without the binding, the ScrollViewer would offer it an
+                     infinite height and it would fall back to its content size. If the
+                     content gets taller than the window, the scroll bar kicks in as
+                     before. -->
                 <ScrollViewer Name="LeftScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled" Padding="0,0,4,0">
                     <Grid RowDefinitions="Auto,*" MinHeight="{Binding #LeftScroll.Bounds.Height}">
 
-                <!-- Optionen & Verzeichnisse -->
+                <!-- Options & folders -->
                 <Border Grid.Row="0" Classes="panel" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Classes="section" Text="{Binding SectionOptions}"/>
@@ -76,9 +76,9 @@
                                     Command="{Binding SelectBackupCommand}" IsEnabled="{Binding UiEnabled}"/>
                         </Grid>
 
-                        <!-- Oben drei Knoepfe, unten zwei - auf sechs Spalten verteilt,
-                             damit beide Reihen buendig abschliessen. Eine dritte
-                             Reihe haette wieder einen Rollbalken erzwungen. -->
+                        <!-- Three buttons at the top, two at the bottom - spread over six
+                             columns so both rows end flush. A third row would have forced a
+                             scroll bar again. -->
                         <Grid ColumnDefinitions="*,*,*,*,*,*" ColumnSpacing="8">
                             <Button Grid.Column="0" Grid.ColumnSpan="2" Classes="secondary" Content="{Binding BtnClearPaths}"
                                     Command="{Binding ClearPathsCommand}" IsEnabled="{Binding UiEnabled}"/>
@@ -89,7 +89,7 @@
                                     Command="{Binding ToggleOwnFolderCommand}" IsEnabled="{Binding OwnFolderToggleEnabled}"/>
                         </Grid>
 
-                        <!-- Speicherueberwachung -->
+                        <!-- Storage monitoring -->
                         <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
                             <Button Grid.Column="0" Classes="secondary" Margin="0,0,4,0"
                                     Content="{Binding BtnCheckStorage}"
@@ -109,20 +109,20 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Aktionen: umschaltbar zwischen Sichern und Wiederherstellen -->
+                <!-- Actions: switchable between backup and restore -->
                 <Border Grid.Row="1" Classes="panel">
-                    <!-- Das Fluent-Design gibt dem Kaestchen jeder Checkbox einen Kasten
-                         mit fester Hoehe aus der Ressource CheckBoxMinHeight (32 px) -
-                         nicht ueber MinHeight, sondern als Height in der Vorlage. Deshalb
-                         wirkt nur das Ueberschreiben der Ressource. Bewusst hier und nicht
-                         in App.axaml: So gilt es nur fuer die Kacheln, und die Checkboxen
-                         in anderen Fenstern (etwa der Winget-Auswahl) bleiben, wie sie sind. -->
+                    <!-- The Fluent design gives the box of every checkbox a frame of fixed
+                         height from the resource CheckBoxMinHeight (32 px) - not through
+                         MinHeight but as Height in the template. So only overriding the
+                         resource works. Deliberately here and not in App.axaml: that way it
+                         only applies to the cards, and the checkboxes in other windows (such
+                         as the winget selection) stay as they are. -->
                     <Border.Resources>
-                        <!-- 22: passt in die 24 px hohe Kachel (1 px Rahmen oben und unten). -->
+                        <!-- 22: fits into the 24 px tall card (1 px border top and bottom). -->
                         <x:Double x:Key="CheckBoxMinHeight">22</x:Double>
                     </Border.Resources>
                     <Grid RowDefinitions="Auto,Auto,*">
-                            <!-- Umschalter -->
+                            <!-- Switch -->
                             <Border Grid.Row="0" Classes="segmentBar">
                                 <Grid ColumnDefinitions="*,*">
                                     <RadioButton Grid.Column="0" Classes="segment" GroupName="mode"
@@ -136,28 +136,28 @@
                                 </Grid>
                             </Border>
 
-                            <!-- Das Benutzerprofil steht ueber voller Breite und traegt seine
-                                 beiden Zusatzoptionen gleich bei sich. Sie gehoeren fachlich dazu
-                                 und waeren als eigene Kacheln in der Reihe nicht als Unterpunkte
-                                 erkennbar. Beide sind nur bedienbar, wenn das Profil gewaehlt ist,
-                                 und stehen bewusst auf AUS. -->
-                            <!-- Ausrichtung: Margin 3 + Rahmen 1 + Padding 14 sind dieselben 18 px
-                                 wie bei den Kacheln darunter, und "*,*" teilt die Kachel genau in
-                                 der Mitte. Dadurch steht das Profil-Kaestchen buendig ueber der
-                                 linken Spalte und - mit nochmals 18 px Einzug - die Unterpunkte
-                                 buendig ueber der rechten. -->
+                            <!-- The user profile spans the full width and carries its two extra
+                                 options right with it. They belong to it, and as cards of their own
+                                 in the row they would not be recognizable as sub-items. Both can
+                                 only be used when the profile is selected, and they are deliberately
+                                 OFF by default. -->
+                            <!-- Alignment: margin 3 + border 1 + padding 14 are the same 18 px as
+                                 for the cards below, and "*,*" splits the card exactly in the
+                                 middle. So the profile's box is flush above the left column and -
+                                 with another 18 px indent - the sub-items are flush above the right
+                                 one. -->
                             <Border Grid.Row="1" Classes="cardHost" Margin="3,2,3,2" Padding="14,3">
                                 <Grid ColumnDefinitions="*,*">
                                     <CheckBox Grid.Column="0" Classes="card" VerticalAlignment="Center"
                                               Content="{Binding TgUserProfile}"
                                               IsChecked="{Binding SelUser}" IsEnabled="{Binding EnUser}"
                                               ToolTip.Tip="{Binding TipUser}" ToolTip.ShowOnDisabled="True"/>
-                                    <!-- Die beiden Unterpunkte untereinander, buendig mit den
-                                         Kaestchen der rechten Kachelspalte. -->
+                                    <!-- The two sub-items one below the other, flush with the boxes of the
+                                         right card column. -->
                                     <StackPanel Grid.Column="1" Spacing="2" Margin="18,0,0,0"
                                                 VerticalAlignment="Center">
-                                        <!-- Unterpunkte noch enger: zwei uebereinander sollen
-                                             die Kachel nur so hoch machen wie noetig. -->
+                                        <!-- Sub-items even tighter: two stacked ones should make the card only
+                                             as tall as needed. -->
                                         <StackPanel.Resources>
                                             <x:Double x:Key="CheckBoxMinHeight">21</x:Double>
                                         </StackPanel.Resources>
@@ -175,13 +175,13 @@
                                 </Grid>
                             </Border>
 
-                            <!-- Freigabe und Tooltip je Kachel: gesperrt, wenn das Programm beim
-                                 Benutzer fehlt (Sichern) oder die Sicherung den Punkt nicht
-                                 enthaelt (Wiederherstellen). Der Tooltip nennt den Grund. -->
-                            <!-- Feste Zeilen statt UniformGrid: fuenf Reihen mit je zwei Kacheln,
-                                 darunter "Design & Desktop" ueber volle Breite (mit seinen Teilen),
-                                 alle Reihen gleich hoch - so viele wie bisher, die Oberflaeche wird
-                                 nicht hoeher. -->
+                            <!-- Enabled state and tooltip per card: locked if the program is
+                                 missing for the user (backup) or the backup does not contain the
+                                 item (restore). The tooltip names the reason. -->
+                            <!-- Fixed rows instead of a UniformGrid: five rows with two cards each,
+                                 below them "Design & Desktop" across the full width (with its
+                                 parts), all rows equally tall - as many as before, so the window
+                                 does not get taller. -->
                             <Grid Grid.Row="2" ColumnDefinitions="*,*" RowDefinitions="*,*,*,*,*,*">
                                 <Border Grid.Row="0" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgFirefox}" IsChecked="{Binding SelFirefox}" IsEnabled="{Binding EnFirefox}" ToolTip.Tip="{Binding TipFirefox}" ToolTip.ShowOnDisabled="True"/></Border>
                                 <Border Grid.Row="0" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgEdge}" IsChecked="{Binding SelEdge}" IsEnabled="{Binding EnEdge}" ToolTip.Tip="{Binding TipEdge}" ToolTip.ShowOnDisabled="True"/></Border>
@@ -192,8 +192,9 @@
                                 <Border Grid.Row="3" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWinget}" IsChecked="{Binding SelWinget}" IsEnabled="{Binding EnWinget}" ToolTip.Tip="{Binding TipWinget}" ToolTip.ShowOnDisabled="True"/></Border>
                                 <Border Grid.Row="3" Grid.Column="1" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgWlan}" IsChecked="{Binding SelWlan}" IsEnabled="{Binding EnWlan}" ToolTip.Tip="{Binding TipWlan}" ToolTip.ShowOnDisabled="True"/></Border>
                                 <Border Grid.Row="4" Grid.Column="0" Classes="cardHost"><CheckBox Classes="card" Content="{Binding TgPrinter}" IsChecked="{Binding SelPrinter}" IsEnabled="{Binding EnPrinter}" ToolTip.Tip="{Binding TipPrinter}" ToolTip.ShowOnDisabled="True"/></Border>
-                                <!-- Ordner unter C:\: Beim Anhaken erscheint die Liste, die Wahl wird nur
-                                     vorgemerkt. Der Knopf rechts zeigt, wie viele, und aendert die Wahl. -->
+                                <!-- Folders under C:\: checking the box shows the list, and the choice
+                                     is only pre-selected. The button on the right shows how many and
+                                     changes the choice. -->
                                 <Border Grid.Row="4" Grid.Column="1" Classes="cardHost">
                                     <Grid ColumnDefinitions="*,Auto">
                                         <CheckBox Classes="card" Content="{Binding TgLaufwerk}" IsChecked="{Binding SelLaufwerk}" IsEnabled="{Binding EnLaufwerk}" ToolTip.Tip="{Binding TipLaufwerk}" ToolTip.ShowOnDisabled="True"/>
@@ -205,11 +206,11 @@
                                     </Grid>
                                 </Border>
 
-                                <!-- Design & Desktop: eine Kachel, die drei Teile rechts in derselben
-                                     Zeile (rechtsbuendig, damit sie beim Umschalten Sichern /
-                                     Wiederherstellen nicht springen). Ein Teil angehakt hakt die Kachel
-                                     mit an (siehe TeilGeaendert). Beim Wiederherstellen ist ein Teil nur
-                                     bedienbar, wenn die Sicherung ihn enthaelt. -->
+                                <!-- Design & Desktop: one card, its three parts on the right in the same
+                                     row (right-aligned, so they do not jump when switching between
+                                     backup and restore). Checking a part checks the card as well (see
+                                     PartChanged). On restore a part can only be used if the backup
+                                     contains it. -->
                                 <Border Grid.Row="5" Grid.ColumnSpan="2" Classes="cardHost">
                                     <Grid ColumnDefinitions="Auto,*">
                                         <CheckBox Grid.Column="0" Classes="card" Content="{Binding TgDesignDesktop}" IsChecked="{Binding SelDesignDesktop}" IsEnabled="{Binding EnDesignDesktop}" ToolTip.Tip="{Binding TipDesignDesktop}" ToolTip.ShowOnDisabled="True"/>
@@ -245,7 +246,7 @@
                 </StackPanel>
             </Grid>
 
-            <!-- ============ Rechte Spalte: Protokoll ============ -->
+            <!-- ============ Right column: log ============ -->
             <Border Grid.Column="1" Classes="panel" Margin="0" Padding="14">
                 <Grid RowDefinitions="Auto,Auto,*">
                     <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
@@ -255,9 +256,9 @@
                                 Padding="10,4" FontSize="11" Command="{Binding ClearLogCommand}"/>
                     </Grid>
 
-                    <!-- Update-Streifen: erscheint nur, wenn es wirklich etwas Neues gibt.
-                         Der Klick auf die Fläche öffnet nichts mehr von selbst - beide
-                         Schaltflächen sagen ausdrücklich, was sie tun. -->
+                    <!-- Update bar: only appears if there really is something new.
+                         Clicking the area no longer opens anything by itself - both
+                         buttons say explicitly what they do. -->
                     <Border Grid.Row="1" Background="{DynamicResource Surface0Brush}"
                             BorderBrush="{DynamicResource YellowBrush}" BorderThickness="1"
                             CornerRadius="5" Padding="10,7" Margin="0,0,0,10"

@@ -22,13 +22,13 @@ using WindowsDaSiTool.Views;
 namespace DaSiGuiTests;
 
 /// <summary>
-/// Prueft die Oberflaeche: das echte Hauptfenster samt ViewModel, ohne
-/// Bildschirm (Avalonia.Headless). Geklickt wird mit der Maus - an der Stelle,
-/// an der der Knopf steht. Ein verdeckter oder gesperrter Knopf faellt so auf.
+/// Tests the UI: the real main window with its ViewModel, without a screen
+/// (Avalonia.Headless). Clicks are mouse clicks - at the spot where the
+/// button is. A covered or disabled button shows up that way.
 ///
-/// Was hinter den Knoepfen passiert, laeuft echt: robocopy, die Sicherung
-/// eines Testprofils, das Update ueber einen eigenen Webserver. Ersetzt sind
-/// nur der Ordner-Dialog des Systems, der Browser und winget (Attrappe).
+/// What happens behind the buttons runs for real: robocopy, the backup of a
+/// test profile, the update from our own web server. Only the system's
+/// folder dialog, the browser and winget (a fake) are replaced.
 /// </summary>
 internal static class Program
 {
@@ -57,7 +57,7 @@ internal static class Program
         var root = Path.Combine(Path.GetTempPath(), "dasi-gui-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(root);
 
-        // Update-Abfrage auf den eigenen Server umlenken (Update-Url.txt neben der EXE).
+        // Point the update check at our own server (Update-Url.txt next to the EXE).
         using var server = new MiniHttp();
         var urlDatei = Path.Combine(SystemHelpers.GetApplicationDirectory(), UpdateService.UrlOverrideFileName);
         File.WriteAllText(urlDatei, "# Pruefung\n" + server.Basis + "update.json\n");
@@ -91,7 +91,7 @@ internal static class Program
         return ergebnis;
     }
 
-    // ------------------------------------------------------------ Hilfen
+    // ------------------------------------------------------------ Helpers
 
     private static void Render()
     {
@@ -130,7 +130,7 @@ internal static class Program
         => All<T>(v).FirstOrDefault(b => Text(b.Content) == beschriftung)
            ?? throw new InvalidOperationException($"{typeof(T).Name} \"{beschriftung}\" nicht gefunden.");
 
-    /// <summary>Klickt mit der Maus in die Mitte des Steuerelements - wie ein Mensch.</summary>
+    /// <summary>Clicks the middle of the control with the mouse - like a human.</summary>
     private static void Click(Control c)
     {
         Render();
@@ -152,7 +152,7 @@ internal static class Program
 
     private static string DialogText(Window d) => string.Join("\n", All<TextBlock>(d).Select(t => t.Text));
 
-    /// <summary>Wartet auf den Dialog, prueft seinen Text und klickt die Antwort.</summary>
+    /// <summary>Waits for the dialog, checks its text and clicks the answer.</summary>
     private static async Task<string> Answer(Window owner, string antwort, string? erwartet = null, string? pruefung = null)
     {
         Window d;
@@ -181,7 +181,7 @@ internal static class Program
         File.WriteAllText(pfad, inhalt);
     }
 
-    // ------------------------------------------------------------ Ablauf
+    // ------------------------------------------------------------ Flow
 
     private static async Task RunAll(ClassicDesktopStyleApplicationLifetime life, string root, MiniHttp server)
     {
@@ -193,7 +193,7 @@ internal static class Program
         vm.Oeffnen = u => { oeffnen.Add(u); return true; };
         var bilder = new List<string>();
         vm.Sicherung.BildOeffnen = bilder.Add;
-        // Gleiche Ausgangslage fuer jeden Lauf: deutsch, dunkel.
+        // Same starting point for every run: German, dark.
         vm.IsEnglish = false;
         if (vm.IsLightTheme) vm.ToggleThemeCommand.Execute(null);
         w.Show();
@@ -252,7 +252,7 @@ internal static class Program
         Click(thema);
         Check("und wieder zurueck", Application.Current.RequestedThemeVariant == vorher);
 
-        // Jede Beschriftung gibt es in beiden Sprachen.
+        // Every label exists in both languages.
         var props = typeof(MainWindowViewModel).GetProperties().Where(p => p.PropertyType == typeof(string) && p.GetIndexParameters().Length == 0).ToList();
         var de = props.ToDictionary(p => p.Name, p => (string?)p.GetValue(vm));
         vm.IsEnglish = true;
@@ -288,7 +288,7 @@ internal static class Program
         var ziel = Path.Combine(root, "Ziel");
         Directory.CreateDirectory(ziel);
 
-        // Ohne Haken: der echte Ordner-Dialog - ohne Bildschirm liefert er nichts.
+        // Without the hook: the real folder dialog - without a screen it returns nothing.
         var pfadKnoepfe = All<Button>(w).Where(b => Text(b.Content) == "…").ToList();
         Click(pfadKnoepfe[0]);
         Check("Ordner-Dialog ohne Auswahl: Pfad bleibt leer", await WaitFor(() => !vm.SelectSourceCommand.IsRunning) && vm.SourcePath == "");
@@ -314,7 +314,7 @@ internal static class Program
             vm.BackupPath = ziel;
         }
 
-        // Speicher pruefen: von Hand (mit Hinweisfenster nur bei knapp/rot) und automatisch.
+        // Check storage: by hand (with a notice window only when tight/red) and automatically.
         vm.SelUser = true;
         Click(FindButton(w, "Speicher prüfen"));
         Check("Speicher: Datenmenge berechnet", await WaitFor(() => !vm.StorageChecking && vm.StorageInfo.Contains("Datenmenge")), vm.StorageInfo);
@@ -333,7 +333,7 @@ internal static class Program
         Check("Speicher ohne Profil: AppData und Cloud einzeln", await WaitFor(() => !vm.StorageChecking && vm.StorageInfo.Contains("Datenmenge")), vm.StorageInfo);
         vm.SelUserAppData = vm.SelUserCloud = false;
 
-        // Schnellauswahl: ein Profil daraus setzt den Pfad.
+        // Quick selection: a profile from it sets the path.
         if (vm.UserProfiles.Count > 0)
         {
             var schnell = All<ComboBox>(w).First(c => c.ItemsSource == vm.UserProfiles);
@@ -353,7 +353,7 @@ internal static class Program
     private static async Task ModeSwitch(MainWindow w, MainWindowViewModel vm, string root)
     {
         Console.WriteLine("\n== Sichern / Wiederherstellen: Beschriftungen und gesperrte Kacheln ==");
-        // Eine Sicherung, die nur ein Firefox-Profil und ein Desktop-Foto enthaelt.
+        // A backup that contains only a Firefox profile and a desktop picture.
         var sicherung = Path.Combine(root, "NurFirefox");
         WriteFile(Path.Combine(sicherung, "Firefox-Profil", "profiles.ini"), "[Profile0]");
         WriteFile(Path.Combine(sicherung, DesktopScreenshot.FolderName, DesktopScreenshot.FilePrefix + "1.png"), "png");
@@ -413,7 +413,7 @@ internal static class Program
         vm.IsBackupMode = true;
         Check("IsBackupMode setzen aendert nichts am Sichern", !vm.IsRestoreMode);
 
-        // Jede Auswahl einmal an und aus - jede stoesst die Groessenberechnung an.
+        // Every selection on and off once - each one triggers the size calculation.
         var auswahl = typeof(MainWindowViewModel).GetProperties().Where(p => p.Name.StartsWith("Sel") && p.PropertyType == typeof(bool)).ToList();
         foreach (var p in auswahl) { p.SetValue(vm, true); p.SetValue(vm, false); }
         Check("jede Kachel laesst sich an- und abwaehlen", auswahl.Count >= 14 && auswahl.All(p => (bool)p.GetValue(vm)! == false), auswahl.Count.ToString());
@@ -440,7 +440,7 @@ internal static class Program
         Click(start);
         await Answer(w, "OK", "gibt es nicht", "Profil fehlt: Hinweis");
 
-        // Cloud: Rueckfrage, abgelehnt.
+        // Cloud: confirmation prompt, declined.
         vm.SourcePath = profil;
         var ziel = Path.Combine(root, "Ziel", "Lauf1");
         vm.BackupPath = ziel;
@@ -450,11 +450,11 @@ internal static class Program
         await Answer(w, "Nein", "Erkannte Cloud-Anbieter: OneDrive", "Cloud: Rueckfrage nennt den Anbieter");
         Check("Cloud abgelehnt: nichts gestartet", await Finished(vm) && vm.LogText.Contains("Cloud-Ordner wurden nicht bestätigt") && !Directory.Exists(ziel));
 
-        // Jetzt wirklich: Profil mit Cloud, Desktop-Foto, Design - Ordner wird angelegt.
+        // Now for real: profile with cloud, desktop picture, design - the folder is created.
         vm.SelUserCloud = true;
         vm.SelUserAppData = true;
-        // Design & Desktop: Design und Foto - die Symbole nicht (deren
-        // Zurueckschreiben startete den Explorer neu).
+        // Design & Desktop: design and picture - not the icons (restoring them
+        // would restart Explorer).
         vm.SelDesignDesktop = true;
         vm.TeilDesign = true;
         vm.TeilSymbole = false;
@@ -473,7 +473,7 @@ internal static class Program
             && berichtText.Contains("--- Führe Aktion Backup-User aus ---") && berichtText.Contains("[BILANZ]"), berichtText);
         Check("Oberflaeche nach dem Lauf wieder frei", vm.UiEnabled && !vm.IsActionRunning && !vm.ProgressVisible);
 
-        // In eine vorhandene Sicherung eines anderen Rechners: Rueckfrage.
+        // Into an existing backup of another computer: confirmation prompt.
         var fremd = Path.Combine(root, "Ziel", "DASI_ANDERER-PC_01_01_2026");
         Directory.CreateDirectory(fremd);
         foreach (var p in typeof(MainWindowViewModel).GetProperties().Where(p => p.Name.StartsWith("Sel") && p.PropertyType == typeof(bool)))
@@ -489,14 +489,14 @@ internal static class Program
 
         if (OperatingSystem.IsWindows())
         {
-            // Ein Ziel, das sich nicht anlegen laesst.
+            // A target that cannot be created.
             var frei = "QRSTUVWXYZ".Select(c => c + @":\").First(l => !DriveInfo.GetDrives().Any(d => string.Equals(d.Name, l, StringComparison.OrdinalIgnoreCase)));
             vm.BackupPath = frei + "Sicherung";
             Click(start);
             await Answer(w, "OK", "konnte nicht angelegt werden", "Ziel nicht anlegbar: Hinweis");
         }
 
-        // Wiederherstellen: fehlende Sicherung, AppData-Rueckfrage, dann echt.
+        // Restore: missing backup, AppData prompt, then for real.
         Click(Element<RadioButton>(w, "Wiederherstellen"));
         vm.BackupPath = Path.Combine(root, "GibtEsNicht");
         vm.SelUser = true;
@@ -526,7 +526,7 @@ internal static class Program
             && Directory.Exists(Path.Combine(anwender, "OneDrive_wiederhergestellt")), vm.LogText);
         Check("Protokolldatei der Wiederherstellung", Directory.GetFiles(ziel, "Wiederherstellung-Protokoll_*.txt").Length == 1);
 
-        // Ohne Profil: AppData und Cloud einzeln - in beide Richtungen.
+        // Without the profile: AppData and cloud on their own - in both directions.
         vm.SelUser = false;
         vm.SelDesignDesktop = false;
         vm.SelUserAppData = true;
@@ -561,7 +561,7 @@ internal static class Program
         var roh = Path.Combine(root, "export.json");
         File.WriteAllText(roh, """{ "Sources": [ { "Packages": [ { "PackageIdentifier": "Notepad++.Notepad++" }, { "PackageIdentifier": "7zip.7zip" } ] } ] }""");
 
-        // winget kaputt, aber noch etwas anderes ausgewaehlt: ohne winget weiter.
+        // winget broken, but something else selected as well: continue without winget.
         Attrappen.WingetScenario(root, new Dictionary<string, string> { ["version.code"] = "1" });
         vm.SourcePath = Path.Combine(root, "Besitzer");
         vm.BackupPath = sicherung;
@@ -581,12 +581,12 @@ internal static class Program
         Check("ohne winget weiter? Nein: nichts gestartet", await Finished(vm) && vm.LogText.Contains("[INFO] Start abgebrochen."));
         vm.SelUser = false;
 
-        // winget heil: Export ueber die Attrappe.
+        // winget healthy: export through the fake.
         Attrappen.WingetScenario(root, new Dictionary<string, string> { ["export.datei"] = roh });
         Click(start);
         Check("Export ueber die Oberflaeche", await Finished(vm) && File.Exists(Path.Combine(sicherung, "Winget", "Export.json")), vm.LogText);
 
-        // Import: Liste fehlt, kaputt, leer - dann die Auswahl.
+        // Import: list missing, broken, empty - then the selection.
         Click(Element<RadioButton>(w, "Wiederherstellen"));
         vm.SelWinget = true;
         var leer = Path.Combine(root, "Ziel", "WingetLeer");
@@ -625,8 +625,8 @@ internal static class Program
     }
 
     /// <summary>
-    /// Ordner unter C:\ - an einem Schein-Laufwerk im Temp-Ordner, mit dem
-    /// echten Auswahlfenster: ausblenden, waehlen, sichern, abbrechen, zurueck.
+    /// Folders under C:\ - on a fake drive in the temp folder, with the real
+    /// selection window: hide, choose, back up, cancel, restore.
     /// </summary>
     private static async Task DriveFoldersInUi(MainWindow w, MainWindowViewModel vm, string root)
     {
@@ -641,7 +641,7 @@ internal static class Program
         try
         {
             LaufwerksOrdner.Wurzel = c + Path.DirectorySeparatorChar;
-            // Hin und zurueck: liest die Beschriftungen mit dem neuen Laufwerk neu.
+            // There and back: re-reads the labels with the new drive.
             Click(Element<RadioButton>(w, "Wiederherstellen"));
             Click(Element<RadioButton>(w, "Sichern"));
             foreach (var p in typeof(MainWindowViewModel).GetProperties().Where(p => p.Name.StartsWith("Sel") && p.PropertyType == typeof(bool)))
@@ -652,7 +652,7 @@ internal static class Program
             var kachel = All<CheckBox>(w).First(cb => Text(cb.Content) == vm.TgLaufwerk);
             Check("Tooltip: Liste beim Anhaken, gesichert wird beim Start", (vm.TipLaufwerk ?? "").Contains("Beim Anhaken") && vm.TipLaufwerk!.Contains("Ausgewählte Aktionen starten"), vm.TipLaufwerk);
 
-            // Anhaken oeffnet die Liste. Abbrechen: Haken wieder weg.
+            // Checking the box opens the list. Cancel: box unchecked again.
             Click(kachel);
             var d = await Dialog(w);
             CheckBox Row(string name) => All<CheckBox>(d).First(cb => cb.Tag is LaufwerksOrdner.Eintrag e && e.Name == name);
@@ -666,7 +666,7 @@ internal static class Program
             Click(FindButton(d, "Abbrechen"));
             Check("Abgebrochen: Haken wieder weg, nichts vorgemerkt", await WaitFor(() => !vm.SelLaufwerk) && vm.LaufwerkGewaehlt.Count == 0 && !vm.LaufwerkKnopfSichtbar);
 
-            // Windows-Ordner einblenden, waehlen, wieder ausblenden: faellt heraus.
+            // Show Windows folders, choose one, hide them again: it drops out.
             Click(kachel);
             d = await Dialog(w);
             var ausblenden = All<CheckBox>(d).First(cb => Text(cb.Content).StartsWith("Windows-Standardordner ausblenden"));
@@ -686,7 +686,7 @@ internal static class Program
                 await WaitFor(() => vm.LaufwerkKnopfSichtbar) && vm.SelLaufwerk && vm.LaufwerkKnopf == "1 Ordner …" && vm.LogText.Contains("Vorgemerkt")
                 && !vm.LogText.Contains("Backup-Laufwerk") && !Directory.Exists(ziel) && (vm.TipLaufwerk ?? "").Contains("Vorgemerkt: Daten"), vm.LogText);
 
-            // Aendern ueber den Knopf: Vorgemerktes ist angehakt.
+            // Change through the button: pre-selected folders are checked.
             Click(FindButton(w, "1 Ordner …"));
             d = await Dialog(w);
             Check("Aendern: Vorgemerktes angehakt", Row("Daten").IsChecked == true && Row("Scans").IsChecked != true);
@@ -698,7 +698,7 @@ internal static class Program
             Click(FindButton(d, "Abbrechen"));
             Check("Aendern abgebrochen: Wahl bleibt", await WaitFor(() => w.OwnedWindows.Count == 0) && vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 2);
 
-            // Erst jetzt: Start - ohne weitere Liste.
+            // Only now: Start - without another list.
             Click(start);
             await Task.Delay(300);
             Render();
@@ -709,7 +709,7 @@ internal static class Program
             Check("Protokolldatei nennt die Aktion", bericht is not null && File.ReadAllText(bericht).Contains("Ordner unter"), bericht);
             Check("nach dem Lauf bleibt die Wahl vorgemerkt", vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 2);
 
-            // Zurueck: auf ein leeres neues Laufwerk.
+            // Restore: onto an empty new drive.
             if (!OperatingSystem.IsWindows()) WriteFile(Path.Combine(ziel, LaufwerksOrdner.BackupOrdner, "Daten", "Kunden", "liste.txt"), "d");
             var neu = Path.Combine(root, "LaufwerkNeu");
             Directory.CreateDirectory(neu);
@@ -730,7 +730,7 @@ internal static class Program
             Check("andere Sicherung gewaehlt: Wahl verworfen", !vm.SelLaufwerk && vm.LaufwerkGewaehlt.Count == 0);
             vm.BackupPath = ziel;
 
-            // Ohne Fenster: eine leere Wahl, ein Abbruch.
+            // Without a window: an empty choice, a cancel.
             vm.LaufwerkAuswahl = (_, _, _) => Task.FromResult<List<LaufwerksOrdner.Eintrag>?>(new List<LaufwerksOrdner.Eintrag>());
             vm.SelLaufwerk = true;
             Check("leere Wahl: Haken wieder weg", await WaitFor(() => !vm.SelLaufwerk));
@@ -790,7 +790,7 @@ internal static class Program
         }
         finally { CultureInfo.CurrentUICulture = vorher; }
 
-        // Absturzbericht: landet auf dem Desktop (oder im Temp-Ordner).
+        // Crash report: ends up on the desktop (or in the temp folder).
         var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
         if (string.IsNullOrEmpty(desktop) || !Directory.Exists(desktop)) { Console.WriteLine("         (kein Desktop-Ordner)"); return; }
         var bericht = Path.Combine(desktop, "WindowsDaSiTool_Absturz.log");
@@ -826,7 +826,7 @@ internal static class Program
         await Answer(w, "Ja", "hart abgebrochen");
         Check("Ja: Fenster geschlossen", await WaitFor(() => !w.IsVisible));
 
-        // Ohne laufende Aktion: ohne Rueckfrage zu.
+        // Without a running action: closes without asking.
         var life = (ClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!;
         var w2 = new MainWindow { DataContext = new MainWindowViewModel() };
         life.MainWindow = w2;
@@ -837,8 +837,8 @@ internal static class Program
     }
 
     /// <summary>
-    /// Das Programm selbst starten - so, wie ein Anwender es tut - und wieder
-    /// schliessen. Nur unter Windows (dort steht ein Desktop zur Verfuegung).
+    /// Start the program itself - the way a user does - and close it again.
+    /// Windows only (a desktop is available there).
     /// </summary>
     private static void ProgramStartCheck()
     {

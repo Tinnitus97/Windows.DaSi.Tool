@@ -11,22 +11,22 @@ using WindowsDaSiTool.Services;
 namespace DaSiTests;
 
 /// <summary>
-/// Firefox/Thunderbird: Welches Profil nimmt das Programm nach dem
-/// Zurueckschreiben? Anlass: Auf dem alten PC lief das 32-Bit-Firefox, auf dem
-/// neuen installierte winget das 64-Bit-Firefox - in einen anderen Ordner. Das
-/// zurueckgeschriebene Profil gehoerte der alten Installation, Firefox legte
-/// ein leeres "default-release" an.
+/// Firefox/Thunderbird: which profile does the program pick after a restore?
+/// Reason: the old PC ran the 32-bit Firefox, on the new one winget
+/// installed the 64-bit Firefox - into a different folder. The restored
+/// profile belonged to the old installation, and Firefox created an empty
+/// "default-release".
 /// </summary>
 internal static partial class Program
 {
-    /// <summary>Wie Firefox - nur mit eigenem Prozessnamen, damit kein echter Firefox beendet wird.</summary>
+    /// <summary>Like Firefox - only with a process name of its own, so no real Firefox is closed.</summary>
     private static readonly AppEintrag Testfuchs =
         new(Punkt.Firefox, "Testfuchs", @"AppData\Roaming\DaSiTest\Testfuchs", "dasi-testfuchs", "DaSi.Testfuchs", false);
 
     private const string Fx64 = @"C:\Program Files\Mozilla Firefox";
     private const string Fx32 = @"C:\Program Files (x86)\Mozilla Firefox";
 
-    /// <summary>profiles.ini, wie sie ein PC mit 32-Bit-Firefox schreibt: zwei Profile, das neuere gehoert der Installation.</summary>
+    /// <summary>profiles.ini as a PC with 32-bit Firefox writes it: two profiles, the newer one belongs to the installation.</summary>
     private const string ProfilesIniAlt =
         "[InstallE7CF176E110C211B]\r\nDefault=Profiles/neu0abcd.default\r\nLocked=1\r\n\r\n"
         + "[Profile1]\r\nName=default\r\nIsRelative=1\r\nPath=Profiles/neu0abcd.default\r\n\r\n"
@@ -35,8 +35,8 @@ internal static partial class Program
         + "[BackgroundTasksProfiles]\r\nMozillaBackgroundTask-E7CF176E110C211B-backgroundupdate=abc.MozillaBackgroundTask\r\n";
 
     /// <summary>
-    /// Wie beim Anwender: Das Standardprofil gehoert - gesperrt - der
-    /// 32-Bit-Installation. Ein 64-Bit-Firefox darf es nicht uebernehmen.
+    /// As at the user's: the default profile belongs - locked - to the 32-bit
+    /// installation. A 64-bit Firefox must not take it over.
     /// </summary>
     private const string ProfilesIniGesperrt =
         "[InstallE7CF176E110C211B]\r\nDefault=Profiles/neu0abcd.default\r\nLocked=1\r\n\r\n"
@@ -62,10 +62,10 @@ internal static partial class Program
     {
         Console.WriteLine("\n== Firefox/Thunderbird: Standardprofil der Installation ==");
 
-        // Der Schluessel einer Installation - wie Firefox ihn berechnet. Die
-        // ersten drei stehen so in profiles.ini echter Rechner; die uebrigen
-        // decken jede Laenge ab (CityHash rechnet je nach Laenge anders) und
-        // werden auf dem Windows-Laeufer gegen ein echtes Firefox geprueft.
+        // The hash of an installation - as Firefox computes it. The first three
+        // appear like this in profiles.ini of real computers; the others cover
+        // every length (CityHash computes differently depending on the length) and
+        // are checked against a real Firefox on the Windows runner.
         var erwartet = new (string Pfad, string Schluessel)[]
         {
             (Fx64, "308046B0AF4A39CB"),
@@ -87,7 +87,7 @@ internal static partial class Program
         Check("alter Ort aus dem Schluessel: 32-Bit-Firefox", MozillaProfile.KnownLocation("E7CF176E110C211B", "Mozilla Firefox", @"C:\Users\Anwender") == Fx32);
         Check("alter Ort unbekannt", MozillaProfile.KnownLocation("0123456789ABCDEF", "Mozilla Firefox", @"C:\Users\Anwender") is null);
 
-        // Der Fall des Anwenders: Sicherung vom 32-Bit-Firefox, hier 64 Bit.
+        // The user's case: backup from the 32-bit Firefox, 64 bit here.
         var jetzt = DateTime.UtcNow;
         var daten = MozillaData(Path.Combine(root, "mozilla", "fall"), ProfilesIniAlt,
                                  ("neu0abcd.default", jetzt.AddDays(-1)), ("alt0abcd.default", jetzt.AddYears(-3)));
@@ -108,11 +108,11 @@ internal static partial class Program
         Check("alte und neue Installationen im Ergebnis", erg.AlteSchluessel.SequenceEqual(new[] { "E7CF176E110C211B" })
             && erg.Neu.Single() == (Fx64, "308046B0AF4A39CB") && !erg.SchonPassend);
 
-        // Dieselbe Installation wie auf dem alten PC: nichts Neues - "wie gehabt".
+        // The same installation as on the old PC: nothing new - "as before".
         var gleich = MozillaData(Path.Combine(root, "mozilla", "gleich"), ProfilesIniAlt, ("neu0abcd.default", jetzt));
         Check("gleiche Installation: schon passend", MozillaProfile.Adjust(gleich, new[] { Fx32 }).SchonPassend);
 
-        // Mehrere Installationen (64 Bit und nur fuer den Benutzer) - beide bekommen das Profil.
+        // Several installations (64 bit and user-only) - both get the profile.
         var zwei = MozillaData(Path.Combine(root, "mozilla", "zwei"), ProfilesIniAlt, ("neu0abcd.default", jetzt));
         var nurBenutzer = @"C:\Users\Anwender\AppData\Local\Mozilla Firefox";
         var ergZwei = MozillaProfile.Adjust(zwei, new[] { Fx64, nurBenutzer, Fx64 });
@@ -121,7 +121,7 @@ internal static partial class Program
             ergZwei.Neu.Count == 2 && iniZwei.Value("InstallC6B16A5DF0475837", "Default") == "Profiles/neu0abcd.default"
             && iniZwei.Abschnitte.Count(a => a.Name.StartsWith("Install")) == 2);
 
-        // Mehrere Installationen auf dem alten PC mit verschiedenen Profilen: das zuletzt benutzte.
+        // Several installations on the old PC with different profiles: the most recently used one.
         var mehrere = MozillaData(Path.Combine(root, "mozilla", "mehrere"),
             "[InstallE7CF176E110C211B]\nDefault=Profiles/alt0abcd.default\nLocked=1\n\n[Install308046B0AF4A39CB]\nDefault=Profiles/neu0abcd.default\nLocked=1\n\n"
             + "[Profile0]\nName=a\nIsRelative=1\nPath=Profiles/alt0abcd.default\n\n[Profile1]\nName=b\nIsRelative=1\nPath=Profiles/neu0abcd.default\n\n[General]\nStartWithLastProfile=1\n",
@@ -130,27 +130,27 @@ internal static partial class Program
             MozillaProfile.Adjust(mehrere, new[] { Fx64 }).Profil == "Profiles/alt0abcd.default");
         Check("Zeilenende bleibt (LF)", !File.ReadAllText(Path.Combine(mehrere, "profiles.ini")).Contains('\r'));
 
-        // Vor Firefox 67: keine Installationen, Default=1 entscheidet.
+        // Before Firefox 67: no installations, Default=1 decides.
         var vor67 = MozillaData(Path.Combine(root, "mozilla", "vor67"),
             "[General]\nStartWithLastProfile=1\n\n[Profile0]\nName=default\nIsRelative=1\nPath=Profiles/alt0abcd.default\nDefault=1\n\n[Profile1]\nName=test\nIsRelative=1\nPath=Profiles/neu0abcd.default\n",
             ("alt0abcd.default", jetzt.AddYears(-1)), ("neu0abcd.default", jetzt));
         Check("vor Firefox 67: das Profil mit Default=1", MozillaProfile.Adjust(vor67, new[] { Fx64 }).Profil == "Profiles/alt0abcd.default");
 
-        // Weder Installation noch Default=1: das zuletzt benutzte.
+        // Neither an installation nor Default=1: the most recently used one.
         var ohne = MozillaData(Path.Combine(root, "mozilla", "ohne"),
             "; von Hand bearbeitet\n[Profile0]\nName=a\nIsRelative=1\nPath=Profiles/alt0abcd.default\nunsinn ohne Gleichheitszeichen\n\n[Profile1]\nName=b\nIsRelative=1\nPath=Profiles/neu0abcd.default\n",
             ("alt0abcd.default", jetzt.AddYears(-1)), ("neu0abcd.default", jetzt));
         Check("ohne Standard: das zuletzt benutzte Profil", MozillaProfile.Adjust(ohne, new[] { Fx64 }).Profil == "Profiles/neu0abcd.default");
 
-        // Absoluter Profilpfad (IsRelative=0).
+        // Absolute profile path (IsRelative=0).
         var absolutOrdner = Path.Combine(root, "mozilla", "woanders", "profil");
         WriteFile(Path.Combine(absolutOrdner, "prefs.js"));
         var absolut = MozillaData(Path.Combine(root, "mozilla", "absolut"),
             $"[Profile0]\nName=extern\nIsRelative=0\nPath={absolutOrdner}\nDefault=1\n");
         Check("absoluter Profilpfad", MozillaProfile.Adjust(absolut, new[] { Fx64 }).Profil == absolutOrdner);
 
-        // Kein Firefox auf diesem PC: keine Installation eintragen, aber das
-        // Profil als Standard - Firefox uebernimmt es beim ersten Start.
+        // No Firefox on this PC: register no installation, but make the profile
+        // the default - Firefox takes it over at first start.
         var keiner = MozillaData(Path.Combine(root, "mozilla", "keiner"), ProfilesIniAlt, ("neu0abcd.default", jetzt));
         var ergKeiner = MozillaProfile.Adjust(keiner, Array.Empty<string>());
         var iniKeiner = MozillaProfile.Ini.Read(File.ReadAllText(Path.Combine(keiner, "profiles.ini")));
@@ -160,7 +160,7 @@ internal static partial class Program
         File.Delete(Path.Combine(keiner, "profiles.ini"));
         Check("keine profiles.ini: nichts zu tun", MozillaProfile.Adjust(keiner, new[] { Fx64 }).Profil is null);
 
-        // Das Profil fehlt im Datenordner: nichts anfassen.
+        // The profile is missing from the data folder: touch nothing.
         var leer = MozillaData(Path.Combine(root, "mozilla", "leer"), ProfilesIniAlt);
         var vorher = File.ReadAllText(Path.Combine(leer, "profiles.ini"));
         var ergLeer = MozillaProfile.Adjust(leer, new[] { Fx64 });
@@ -168,11 +168,11 @@ internal static partial class Program
             && File.ReadAllText(Path.Combine(leer, "profiles.ini")) == vorher);
     }
 
-    /// <summary>Wie Thunderbird - eigener Prozessname, damit kein echter Thunderbird beendet wird.</summary>
+    /// <summary>Like Thunderbird - a process name of its own, so no real Thunderbird is closed.</summary>
     private static readonly AppEintrag Testvogel =
         new(Punkt.Thunderbird, "Testvogel", @"AppData\Roaming\DaSiTest\Testvogel", "dasi-testvogel", "DaSi.Testvogel", false);
 
-    /// <summary>Ein Installationsordner mit application.ini, wie Firefox ihn anlegt.</summary>
+    /// <summary>An installation folder with application.ini, the way Firefox creates it.</summary>
     private static string FakeInstallation(string ordner, string version, string buildId)
     {
         Directory.CreateDirectory(ordner);
@@ -181,9 +181,9 @@ internal static partial class Program
     }
 
     /// <summary>
-    /// Was ein Profil ausser profiles.ini an den alten PC bindet - Anregungen
-    /// aus MozBackup: neuere Fassung (Firefox lehnt das Profil ab), Pfade des
-    /// alten Benutzers in prefs.js, Mails ausserhalb des Profils.
+    /// What ties a profile to the old PC besides profiles.ini - ideas from
+    /// MozBackup: a newer version (Firefox rejects the profile), paths of the
+    /// old user in prefs.js, mail outside the profile.
     /// </summary>
     private static void MozillaMaintenanceCheck(string root)
     {
@@ -207,7 +207,7 @@ internal static partial class Program
         Check("Fassung des Profils aus compatibility.ini", MozillaProfile.ProfileVersion(profil) == ("146.0.1", "20261120123456")
             && MozillaProfile.ProfileVersion(inst) is null);
 
-        // Pfade des alten Benutzers in prefs.js.
+        // Paths of the old user in prefs.js.
         WriteFile(Path.Combine(profil, "prefs.js"),
             "// Mozilla User Preferences\n"
             + "user_pref(\"browser.download.dir\", \"C:\\\\Users\\\\Besitzer\\\\Downloads\");\n"
@@ -231,7 +231,7 @@ internal static partial class Program
         Check("alter Benutzerordner aus extensions.json; ohne Hinweis keiner",
             MozillaProfile.OldUserFolder(nurErweiterungen) == @"C:\Users\Max" && MozillaProfile.OldUserFolder(inst) is null);
 
-        // Thunderbird: Mails ausserhalb des Profils.
+        // Thunderbird: mail outside the profile.
         var tb = Path.Combine(root, "mozpflege", "tb");
         var imProfil = Path.Combine(tb, "ImapMail", "imap.example.com");
         WriteFile(Path.Combine(tb, "prefs.js"),
@@ -249,17 +249,17 @@ internal static partial class Program
             && File.ReadAllText(Path.Combine(tb, "prefs.js")).Contains(verlegtNach.Replace("\\", "\\\\")), File.ReadAllText(Path.Combine(tb, "prefs.js")));
         Check("Postfach verlegen: unbekanntes Konto, keine prefs.js", !MozillaProfile.MoveMailFolder(tb, "server9", verlegtNach) && !MozillaProfile.MoveMailFolder(inst, "server2", verlegtNach));
 
-        // Profilordner laut profiles.ini.
+        // Profile folder according to profiles.ini.
         var daten = MozillaData(Path.Combine(root, "mozpflege", "daten"), ProfilesIniAlt, ("neu0abcd.default", DateTime.UtcNow));
         Check("Profilordner laut profiles.ini (nur vorhandene)", MozillaProfile.ProfileFolders(daten).Count == 1
             && MozillaProfile.ProfileFolders(daten)[0].EndsWith("neu0abcd.default") && MozillaProfile.ProfileFolders(inst).Count == 0);
     }
 
-    /// <summary>Firefox zurueckschreiben ueber den Dienst - mit der winget-Attrappe und festen Installationsordnern.</summary>
+    /// <summary>Restore Firefox through the service - with the winget fake and fixed installation folders.</summary>
     private static void MozillaServiceCheck(string basis, Func<string, BackupService> dienst, Protokoll log, string szenario)
     {
         Console.WriteLine("\n== Sicherungsdienst: Firefox-Profil einer anderen Installation ==");
-        // "bereits installiert" - sonst wartete jeder Lauf, ob der Installer das Programm startet.
+        // "already installed" - otherwise every run would wait to see whether the installer starts the program.
         Attrappen.WriteScenario(szenario, Scenario(("install.*.code", WingetFehler.SchonInstalliert.ToString())));
         var sicherung = dienst(basis).BackupPath;
         var gesichert = Path.Combine(sicherung, Testfuchs.BackupOrdner);
@@ -277,8 +277,8 @@ internal static partial class Program
         Check("Dienst: Protokoll nennt Profil, neuen und alten Ort",
             log.Has($"[INFO] Testfuchs: Profil \"default\" (Profiles/neu0abcd.default) ist jetzt Standard für {Fx64}. Auf dem alten PC lief Testfuchs aus {Fx32}"), log.Text);
         Check("Sicherung selbst bleibt unveraendert", File.ReadAllText(Path.Combine(gesichert, "profiles.ini")) == ProfilesIniAlt);
-        // Kein "App Paths"-Eintrag (den nimmt etwa das Deinstallieren einer
-        // parallelen ESR-Fassung mit), das Programm liegt aber im Programmordner.
+        // No "App Paths" entry (uninstalling a parallel ESR version removes it,
+        // for instance), but the program is in the program folder.
         Check("Dienst: im Programmordner gefunden - kein winget", log.Has("[INFO] Testfuchs ist bereits installiert.") && !log.Has("via Winget"), log.Text);
 
         d.TestInstallationen = new List<string> { Fx32 };
@@ -292,14 +292,14 @@ internal static partial class Program
         Check("Dienst: nicht installiert - Profil trotzdem Standard", log.Has("[WARNUNG] Testfuchs ist auf diesem PC nicht installiert. Das Profil \"default\""), log.Text);
         Check("Dienst: nicht installiert - erst winget versucht", log.Has("Versuche, Testfuchs via Winget zu installieren"), log.Text);
 
-        // Ohne profiles.ini in der Sicherung.
+        // Without profiles.ini in the backup.
         File.Move(Path.Combine(gesichert, "profiles.ini"), Path.Combine(gesichert, "profiles.bak"));
         log.Clear();
         d.RestoreAppProfile(Testfuchs).Wait();
         Check("Dienst: ohne profiles.ini - Hinweis", log.Has("[WARNUNG] Testfuchs: In der Sicherung steht kein Profil in profiles.ini"), log.Text);
         File.Move(Path.Combine(gesichert, "profiles.bak"), Path.Combine(gesichert, "profiles.ini"));
 
-        // Schreiben scheitert (an der Stelle der Zwischendatei liegt ein Ordner).
+        // Writing fails (a folder sits where the temporary file should be).
         Directory.CreateDirectory(Path.Combine(gesichert, "profiles.ini.dasi"));
         d.TestInstallationen = new List<string> { Fx64 };
         log.Clear();
@@ -307,7 +307,7 @@ internal static partial class Program
         Check("Dienst: Eintragen scheitert - Fehler mit Abhilfe", log.Has("[FEHLER] Testfuchs: Das Profil ließ sich nicht als Standard eintragen") && log.Has("-P"), log.Text);
         Directory.Delete(Path.Combine(gesichert, "profiles.ini.dasi"));
 
-        // Pfade des alten Benutzers und eine etwas neuere Fassung im Profil.
+        // Paths of the old user and a slightly newer version in the profile.
         var profilDaten = Path.Combine(gesichert, "Profiles", "neu0abcd.default");
         File.AppendAllText(Path.Combine(profilDaten, "prefs.js"),
             "\nuser_pref(\"browser.download.dir\", \"C:\\\\Users\\\\Besitzer\\\\Downloads\");\n"
@@ -335,7 +335,7 @@ internal static partial class Program
         Check("Dienst: aeltere Fassung im Profil - kein Hinweis", !log.Has("lief zuletzt mit"), log.Text);
         File.Delete(Path.Combine(profilDaten, "compatibility.ini"));
 
-        // Thunderbird: Mails ausserhalb des Profils - mitsichern und zurueckschreiben.
+        // Thunderbird: mail outside the profile - back it up and restore it.
         var vogelBesitzer = Path.Combine(basis, "Vogel-Besitzer");
         var vogelDaten = AppCatalog.PathIn(vogelBesitzer, Testvogel.ProfilRel);
         var vogelProfil = Path.Combine(vogelDaten, "Profiles", "vogel.default");
@@ -367,7 +367,7 @@ internal static partial class Program
             Check("Thunderbird: Mails an ihren Ort zurueckgeschrieben",
                 log.Has("[ERFOLG] Testvogel: Mails von server2 an ihren Ort außerhalb des Profils zurückgeschrieben") && File.Exists(Path.Combine(extern1, "Inbox")), log.Text);
 
-            // Das Laufwerk gibt es hier nicht: in den Profilordner, prefs.js angepasst.
+            // The drive does not exist here: into the profile folder, prefs.js adjusted.
             File.WriteAllText(liste, File.ReadAllText(liste).Replace(extern1.Replace("\\", "\\\\"), "Q:\\\\gibt-es-nicht\\\\Local Folders"));
             log.Clear();
             var anwender2 = Path.Combine(basis, "Vogel-Anwender2");
@@ -384,8 +384,8 @@ internal static partial class Program
             File.Delete(liste);
         }
 
-        // Ohne feste Ordner: die echte Suche nach Firefox - auf dem Windows-
-        // Laeufer ist eins installiert, sonst meist nicht.
+        // Without fixed folders: the real search for Firefox - there is one
+        // installed on the Windows runner, usually not elsewhere.
         d.TestInstallationen = null;
         log.Clear();
         d.RestoreAppProfile(Testfuchs).Wait();
@@ -395,11 +395,10 @@ internal static partial class Program
     }
 
     /// <summary>
-    /// Mit dem echten Firefox des Windows-Laeufers: Nimmt er nach dem
-    /// Zurueckschreiben das gesicherte Profil? Und rechnet er die Schluessel
-    /// genauso wie das Tool? Nur in der CI - Firefox schreibt dabei in den
-    /// echten Profilordner des Benutzers (der Ordner wird vorher beiseitegelegt
-    /// und danach zurueckgeholt).
+    /// With the real Firefox of the Windows runner: does it pick the backed-up
+    /// profile after the restore? And does it compute the hashes the same way
+    /// as the tool? CI only - Firefox writes into the user's real profile folder
+    /// (the folder is moved aside first and brought back afterwards).
     /// </summary>
     [SupportedOSPlatform("windows")]
     private static void FirefoxRealCheck(string root)
@@ -423,7 +422,7 @@ internal static partial class Program
         var kopien = new List<string>();
         try
         {
-            // 1. Wiederherstellen ueber den Dienst - Sicherung von einem PC mit 32-Bit-Firefox.
+            // 1. Restore through the service - backup from a PC with 32-bit Firefox.
             var sicherung = Path.Combine(root, "firefox-echt");
             var gesichert = Path.Combine(sicherung, AppCatalog.Firefox.BackupOrdner);
             MozillaData(gesichert, ProfilesIniGesperrt, ("neu0abcd.default", DateTime.UtcNow), ("alt0abcd.default", DateTime.UtcNow.AddYears(-3)));
@@ -444,13 +443,13 @@ internal static partial class Program
                 $"compatibility.ini: {Version(daten, "neu0abcd.default")}");
             Check("echt: kein neues, leeres Profil", neuAngelegt.Count == 0, string.Join(", ", neuAngelegt));
 
-            // 2. Gegenprobe: dieselbe Sicherung ohne Anpassung - so wie bisher.
+            // 2. Cross-check: the same backup without adjustment - as before.
             DeleteFolder(daten);
             CopyFolder(gesichert, daten);
             StartFirefox(Path.Combine(firefox, "firefox.exe"), () => NewProfiles(daten).Count > 0);
             Check("echt, Gegenprobe: ohne Anpassung legt Firefox ein neues Profil an", NewProfiles(daten).Count > 0, "keins angelegt");
 
-            // 3. Keine Installation gefunden: nur Default=1 - uebernimmt Firefox das Profil?
+            // 3. No installation found: only Default=1 - does Firefox take the profile?
             DeleteFolder(daten);
             CopyFolder(gesichert, daten);
             MozillaProfile.Adjust(daten, Array.Empty<string>());
@@ -459,9 +458,9 @@ internal static partial class Program
                 Version(daten, "neu0abcd.default") != "115.18.0_20241104101315/20241104101315" && NewProfiles(daten).Count == 0,
                 $"{Version(daten, "neu0abcd.default")}; neu: {string.Join(", ", NewProfiles(daten))}");
 
-            // 3b. Das Profil lief zuletzt mit einer neueren Fassung. Gleiche
-            //     Hauptversion: Firefox nimmt es. Neuere Hauptversion: Firefox
-            //     lehnt es ab - der Dienst meldet das als Fehler.
+            // 3b. The profile last ran with a newer version. Same major version:
+            //     Firefox accepts it. Newer major version: Firefox rejects it - the
+            //     service reports that as an error.
             if (MozillaProfile.InstalledVersion(firefox) is { } fassung && int.TryParse(fassung.Version.Split('.')[0], out var haupt))
             {
                 foreach (var (lastVersion, nimmt) in new[] { ($"{fassung.Version}.99_29991231000000/29991231000000", true), ($"{haupt + 1}.0_29991231000000/29991231000000", false) })
@@ -483,9 +482,8 @@ internal static partial class Program
                     "[Compatibility]\r\nLastVersion=115.18.0_20241104101315/20241104101315\r\nLastOSABI=WINNT_x86-msvc\r\n");
             }
 
-            // 4. Schluessel jeder Laenge: Firefox aus anderen Ordnern starten
-            //    (Dateien hart verknuepft - kein Kopieren) und nachsehen, unter
-            //    welchem Schluessel er sich eintraegt.
+            // 4. Hashes of every length: start Firefox from other folders (files
+            //    hard-linked - no copying) and check which hash it registers under.
             foreach (var ordner in new[] { @"C:\F", @"C:\FFox", @"C:\Firefox-1",
                                            @"C:\DaSi-Pruefung\Firefox mit einem sehr langen Ordnernamen fuer zwei Runden\Mozilla Firefox" })
             {
@@ -511,9 +509,9 @@ internal static partial class Program
     }
 
     /// <summary>
-    /// Beendet alle Prozesse dieses Namens und wartet, bis keiner mehr laeuft.
-    /// Kill kehrt sofort zurueck - ohne Warten hielt Firefox parent.lock noch,
-    /// waehrend die Pruefung den Profilordner schon loeschen wollte.
+    /// Kills all processes of this name and waits until none is running. Kill
+    /// returns right away - without waiting, Firefox still held parent.lock
+    /// while the test was already trying to delete the profile folder.
     /// </summary>
     private static void KillAllNamed(string name)
     {
@@ -528,8 +526,8 @@ internal static partial class Program
     }
 
     /// <summary>
-    /// Fragt "fertig?" waehrend das Programm laeuft. Schreibt es gerade eine
-    /// Datei (profiles.ini) und haelt sie gesperrt, heisst das: noch nicht.
+    /// Asks "done?" while the program is running. If it is writing a file
+    /// (profiles.ini) right now and holds it locked, that means: not yet.
     /// </summary>
     private static bool AskDone(Func<bool> fertig)
     {
@@ -537,7 +535,7 @@ internal static partial class Program
         catch (IOException) { return false; }
     }
 
-    /// <summary>Loescht einen Ordner, falls da - mit Wiederholung, solange ein eben beendetes Programm noch Dateien haelt.</summary>
+    /// <summary>Deletes a folder if it exists - retrying while a program that just exited still holds files.</summary>
     private static void DeleteFolder(string ordner)
     {
         for (int versuch = 1; ; versuch++)
@@ -567,7 +565,7 @@ internal static partial class Program
         catch { return ""; }
     }
 
-    /// <summary>Profile, die Firefox selbst angelegt hat (default-release ...).</summary>
+    /// <summary>Profiles Firefox created itself (default-release ...).</summary>
     private static List<string> NewProfiles(string daten)
     {
         var p = Path.Combine(daten, "Profiles");
@@ -590,7 +588,7 @@ internal static partial class Program
         catch { return new List<string>(); }
     }
 
-    /// <summary>Startet Firefox ohne Fenster, wartet, bis die Bedingung gilt (hoechstens 45 s), und beendet ihn.</summary>
+    /// <summary>Starts Firefox without a window, waits until the condition holds (at most 45 s), and closes it.</summary>
     [SupportedOSPlatform("windows")]
     private static void StartFirefox(string exe, Func<bool> fertig)
     {
@@ -598,7 +596,7 @@ internal static partial class Program
         using (var p = Process.Start(new ProcessStartInfo(exe, "-headless -no-remote about:blank") { UseShellExecute = false }))
         {
             while (uhr.Elapsed < TimeSpan.FromSeconds(45) && !AskDone(fertig)) System.Threading.Thread.Sleep(500);
-            // Noch einen Moment: profiles.ini und compatibility.ini fertig schreiben lassen.
+            // One more moment: let profiles.ini and compatibility.ini finish writing.
             System.Threading.Thread.Sleep(3000);
             try { p?.Kill(true); } catch { }
         }
@@ -606,7 +604,7 @@ internal static partial class Program
         Console.WriteLine($"         {exe}: {uhr.Elapsed.TotalSeconds:F0} s");
     }
 
-    /// <summary>Legt den Ordner neu an, jede Datei hart verknuepft mit dem Original.</summary>
+    /// <summary>Recreates the folder, every file hard-linked to the original.</summary>
     [SupportedOSPlatform("windows")]
     private static bool HardLink(string quelle, string ziel)
     {

@@ -12,83 +12,83 @@ using System.Threading;
 
 namespace WindowsDaSiTool.Services;
 
-/// <summary>Ein Desktop-Symbol und seine Stelle.</summary>
-/// <param name="Name">Eindeutiger Name im Desktop-Ordner, z. B. "Rechnung.pdf" oder
-/// "::{645FF040-5081-101B-9F08-00AA002F954E}" (Papierkorb) - unabhaengig von der Sprache.</param>
-/// <param name="Anzeige">Was unter dem Symbol steht, z. B. "Papierkorb" - fuer das Protokoll
-/// und als Notbehelf beim Zuordnen.</param>
-/// <param name="X">Position in Bildpunkten des Desktops (linke obere Ecke = 0,0).</param>
+/// <summary>A desktop icon and its position.</summary>
+/// <param name="Name">Unique name in the desktop folder, e.g. "Rechnung.pdf" or
+/// "::{645FF040-5081-101B-9F08-00AA002F954E}" (Recycle Bin) - independent of the language.</param>
+/// <param name="Anzeige">The label below the icon, e.g. "Papierkorb" - for the log and as a
+/// fallback when matching.</param>
+/// <param name="X">Position in desktop pixels (top left corner = 0,0).</param>
 public sealed record DesktopIcon(string Name, string Anzeige, int X, int Y);
 
-/// <summary>Die gesicherte Anordnung des Desktops.</summary>
+/// <summary>The backed-up arrangement of the desktop.</summary>
 public sealed class DesktopLayout
 {
     public int Version { get; set; } = 1;
     public string Rechner { get; set; } = "";
     public string Benutzer { get; set; } = "";
     public DateTime Erstellt { get; set; }
-    /// <summary>Groesse der Desktop-Flaeche ueber alle Monitore, in Bildpunkten.</summary>
+    /// <summary>Size of the desktop area across all monitors, in pixels.</summary>
     public int Breite { get; set; }
     public int Hoehe { get; set; }
-    /// <summary>"Symbole automatisch anordnen" war an.</summary>
+    /// <summary>"Auto arrange icons" was on.</summary>
     public bool AutomatischAnordnen { get; set; }
-    /// <summary>"Symbole am Raster ausrichten" war an.</summary>
+    /// <summary>"Align icons to grid" was on.</summary>
     public bool AmRasterAusrichten { get; set; }
     public List<DesktopIcon> Symbole { get; set; } = new();
 }
 
-/// <summary>Ein Symbol der Sicherung und wohin es auf diesem Desktop kommt.</summary>
-/// <param name="Index">Stelle des Symbols in der Liste des aktuellen Desktops.</param>
+/// <summary>An icon from the backup and where it goes on this desktop.</summary>
+/// <param name="Index">Position of the icon in the current desktop's list.</param>
 public sealed record IconZiel(DesktopIcon Gesichert, int Index, int X, int Y);
 
-/// <summary>Welches gesicherte Symbol wohin kommt - und welche es hier nicht gibt.</summary>
+/// <summary>Which backed-up icon goes where - and which ones do not exist here.</summary>
 public sealed record IconPlan(List<IconZiel> Zuordnung, List<DesktopIcon> Fehlend, bool Skaliert);
 
-/// <summary>Was beim Zurueckschreiben geschah.</summary>
-/// <param name="Eingeschaltet">Systemsymbole ("Dieser PC" ...), die dafuer erst eingeschaltet wurden.</param>
+/// <summary>What happened while restoring.</summary>
+/// <param name="Eingeschaltet">System icons ("This PC" ...) that had to be turned on first.</param>
 public sealed record IconErgebnis(int Gesetzt, int Gesamt, List<DesktopIcon> Fehlend, bool Skaliert,
                                   int BreiteJetzt, int HoeheJetzt, bool AnordnenAusgeschaltet,
                                   bool RasterUmgestellt, bool AnordnenWiederAn,
                                   IReadOnlyList<string>? Eingeschaltet = null);
 
 /// <summary>
-/// Der Desktop, wie ihn der Explorer gerade zeigt. Unter Windows
-/// <see cref="ExplorerDesktop"/>; austauschbar, damit sich der Ablauf ohne
-/// Explorer pruefen laesst.
+/// The desktop as Explorer currently shows it. On Windows
+/// <see cref="ExplorerDesktop"/>; replaceable, so the flow can be tested
+/// without Explorer.
 /// </summary>
 public interface IDesktopView : IDisposable
 {
     (int Breite, int Hoehe) Size();
     bool AutomatischAnordnen { get; set; }
     bool AmRasterAusrichten { get; set; }
-    /// <summary>Alle Symbole mit ihrer Stelle. Die Reihenfolge gilt fuer <see cref="Set"/>.</summary>
+    /// <summary>All icons with their positions. The order is what <see cref="Set"/> refers to.</summary>
     IReadOnlyList<DesktopIcon> Icons();
-    /// <summary>Setzt das Symbol mit diesem Index (aus dem letzten <see cref="Icons"/>) an eine Stelle.</summary>
+    /// <summary>Moves the icon with this index (from the last <see cref="Icons"/>) to a position.</summary>
     void Set(int index, int x, int y);
-    /// <summary>Laesst den Explorer den Desktop neu einlesen (wie F5).</summary>
+    /// <summary>Makes Explorer reload the desktop (like F5).</summary>
     void Refresh();
 }
 
 /// <summary>
-/// Sichert die Stellen der Desktop-Symbole und setzt sie spaeter zurueck -
-/// wie das Programm DesktopOK.
+/// Backs up the positions of the desktop icons and restores them later -
+/// like the program DesktopOK.
 ///
-/// Gelesen und gesetzt wird ueber die Schnittstelle, die der Explorer selbst
-/// fuer seinen Desktop anbietet (IFolderView), nicht durch Mitlesen in seinem
-/// Speicher. Zugeordnet wird ueber den Namen im Desktop-Ordner ("Rechnung.pdf",
-/// beim Papierkorb seine Kennung) - der ist unabhaengig von der Sprache und
-/// davon, ob Windows Dateiendungen anzeigt.
+/// Reading and setting go through the interface Explorer itself offers for
+/// its desktop (IFolderView), not by peeking into its memory. Icons are
+/// matched by their name in the desktop folder ("Rechnung.pdf", for the
+/// Recycle Bin its ID) - which does not depend on the language or on
+/// whether Windows shows file extensions.
 /// </summary>
 public static class DesktopIcons
 {
-    /// <summary>Unterordner im Backup-Ziel.</summary>
+    /// <summary>Subfolder in the backup target.</summary>
     public const string FolderName = "Desktop-Symbole";
 
     /// <summary>
-    /// Die Systemsymbole aus "Desktopsymboleinstellungen" mit ihrer Kennung -
-    /// so heissen sie im Desktop-Ordner ("::{...}"), unabhaengig von Sprache
-    /// und Benutzername. Der Benutzerordner etwa traegt den Namen des
-    /// Benutzers: "Anwender" auf dem alten, "Anwender123" auf dem neuen Rechner.
+    /// The system icons from "Desktop icon settings" with their IDs - that is
+    /// their name in the desktop folder ("::{...}"), independent of language
+    /// and user name. The user folder, for instance, carries the user's name:
+    /// "Anwender" on the old, "Anwender123" on the new computer.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, (string De, string En)> Systemsymbole =
         new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase)
@@ -100,7 +100,7 @@ public static class DesktopIcons
             ["{645FF040-5081-101B-9F08-00AA002F954E}"] = ("Papierkorb", "Recycle Bin"),
         };
 
-    /// <summary>"::{20D04FE0-...}" -> "{20D04FE0-...}", wenn es ein Systemsymbol ist; sonst null.</summary>
+    /// <summary>"::{20D04FE0-...}" -> "{20D04FE0-...}" if it is a system icon; otherwise null.</summary>
     public static string? SystemIconId(string name)
     {
         if (string.IsNullOrEmpty(name) || !name.StartsWith("::", StringComparison.Ordinal)) return null;
@@ -109,15 +109,14 @@ public static class DesktopIcons
     }
 
     /// <summary>
-    /// Teilt fehlende Symbole danach, ob sie aus dem Benutzerprofil stammen:
-    /// Liegt ihre Datei im Desktop-Ordner der Sicherung (oder ist es ein
-    /// Systemsymbol), kommt sie mit dem Profil. Die uebrigen lagen woanders -
-    /// meist auf dem oeffentlichen Desktop fuer alle Benutzer, auf den
-    /// Programme bei ihrer Installation ihre Verknuepfung legen. Sie erscheinen
-    /// erst mit dem Programm.
+    /// Splits missing icons by whether they come from the user profile: if
+    /// their file is in the backup's desktop folder (or it is a system icon),
+    /// it comes back with the profile. The others lived elsewhere - usually on
+    /// the public desktop for all users, where programs put their shortcut when
+    /// they are installed. Those appear only together with the program.
     ///
-    /// Ohne Desktop-Ordner in der Sicherung (nur Symbolpositionen gesichert)
-    /// laesst sich das nicht sagen - dann zaehlen alle zum Profil.
+    /// Without a desktop folder in the backup (only icon positions backed up)
+    /// this cannot be told - then they all count as profile icons.
     /// </summary>
     public static (List<DesktopIcon> ImProfil, List<DesktopIcon> Fremd) ByOrigin(
         IReadOnlyList<DesktopIcon> fehlend, string desktopDerSicherung)
@@ -139,9 +138,9 @@ public static class DesktopIcons
     }
 
     /// <summary>
-    /// Die Systemsymbole, die beim Sichern auf dem Desktop lagen, hier aber
-    /// fehlen - auf einem frisch eingerichteten Rechner sind "Dieser PC" und
-    /// der Benutzerordner meist ausgeschaltet.
+    /// The system icons that were on the desktop at backup time but are missing
+    /// here - on a freshly set up computer, "This PC" and the user folder are
+    /// usually turned off.
     /// </summary>
     public static List<string> MissingSystemIcons(DesktopLayout gesichert, IReadOnlyList<DesktopIcon> jetzt)
     {
@@ -153,15 +152,15 @@ public static class DesktopIcons
     }
     public const string FileName = "Symbolpositionen.json";
 
-    /// <summary>Wie der Desktop geoeffnet wird - unter Windows der Explorer-Desktop.</summary>
+    /// <summary>How the desktop is opened - on Windows, the Explorer desktop.</summary>
     public static Func<IDesktopView> OeffneDesktop { get; set; } = () =>
         OperatingSystem.IsWindows()
             ? ExplorerDesktop.Open()
             : throw new PlatformNotSupportedException("Desktop-Symbole gibt es nur unter Windows.");
 
     /// <summary>
-    /// Versucht es erneut, solange <paramref name="nochmal"/> den Fehler als
-    /// voruebergehend einstuft - hoechstens <paramref name="hoechstens"/> lang.
+    /// Tries again as long as <paramref name="nochmal"/> considers the error
+    /// temporary - for at most <paramref name="hoechstens"/>.
     /// </summary>
     internal static T WithWaiting<T>(Func<T> versuch, TimeSpan hoechstens, Func<Exception, bool> nochmal, TimeSpan? pause = null)
     {
@@ -183,12 +182,12 @@ public static class DesktopIcons
         try { return File.Exists(FilePath(sicherung)); } catch { return false; }
     }
 
-    // ------------------------------------------------------------ Datei
+    // ------------------------------------------------------------ File
 
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,
-        // Umlaute lesbar lassen ("Präsentation.pptx" statt "Präsentation.pptx").
+        // Keep umlauts readable ("Präsentation.pptx" instead of "Präsentation.pptx").
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
@@ -200,7 +199,7 @@ public static class DesktopIcons
         return datei;
     }
 
-    /// <summary>Liest eine gesicherte Anordnung - null, wenn es keine (lesbare) gibt.</summary>
+    /// <summary>Reads a backed-up arrangement - null if there is no (readable) one.</summary>
     public static DesktopLayout? Load(string datei)
     {
         try
@@ -212,19 +211,20 @@ public static class DesktopIcons
         catch { return null; }
     }
 
-    // ------------------------------------------------------------ Zuordnen
+    // ------------------------------------------------------------ Matching
 
     /// <summary>
-    /// Ordnet jedem gesicherten Symbol eines auf diesem Desktop zu und rechnet
-    /// seine Stelle um.
+    /// Matches each backed-up icon to one on this desktop and converts its
+    /// position.
     ///
-    /// Zuerst ueber den Namen im Desktop-Ordner, dann - fuer Sicherungen von
-    /// Verknuepfungen, die hier anders heissen koennten - ueber den angezeigten
-    /// Namen. Jedes Symbol wird hoechstens einmal vergeben.
+    /// First by the name in the desktop folder, then - for shortcuts that may
+    /// have a different name here - by the displayed name. Each icon is
+    /// assigned at most once.
     ///
-    /// Ist der Desktop hier anders gross (anderer Monitor, andere Aufloesung),
-    /// werden die Stellen im selben Verhaeltnis umgerechnet: Was links oben lag,
-    /// liegt wieder links oben, was am rechten Rand lag, wieder am rechten Rand.
+    /// If the desktop has a different size here (another monitor, another
+    /// resolution), the positions are scaled in proportion: what was top left
+    /// is top left again, what was at the right edge is at the right edge
+    /// again.
     /// </summary>
     public static IconPlan Plan(DesktopLayout gesichert, IReadOnlyList<DesktopIcon> jetzt, int breite, int hoehe)
     {
@@ -241,9 +241,8 @@ public static class DesktopIcons
             return -1;
         }
 
-        // Erst alle ueber den eindeutigen Namen, dann den Rest ueber den
-        // angezeigten - sonst schnappte ein Anzeigename einem spaeteren
-        // Symbol seinen eigentlichen Partner weg.
+        // First all by the unique name, then the rest by the displayed one -
+        // otherwise a display name could snatch the real partner of a later icon.
         var offen = new List<DesktopIcon>();
         var treffer = new Dictionary<DesktopIcon, int>(ReferenceEqualityComparer.Instance);
         foreach (var s in gesichert.Symbole)
@@ -274,9 +273,9 @@ public static class DesktopIcons
         return new IconPlan(zuordnung, fehlend, skalieren);
     }
 
-    // ------------------------------------------------------------ Ablauf
+    // ------------------------------------------------------------ Flow
 
-    /// <summary>Liest die aktuelle Anordnung des Desktops.</summary>
+    /// <summary>Reads the current arrangement of the desktop.</summary>
     public static DesktopLayout Read(string rechner, string benutzer) => OnOwnThread(() =>
     {
         using var desktop = OeffneDesktop();
@@ -295,15 +294,15 @@ public static class DesktopIcons
     });
 
     /// <summary>
-    /// Setzt die gesicherten Symbole an ihre Stelle.
+    /// Moves the backed-up icons to their positions.
     ///
-    /// Fehlen noch Symbole, wird bis <paramref name="warten"/> darauf gewartet:
-    /// Direkt nach dem Zurueckschreiben des Profils braucht der Explorer einen
-    /// Moment, bis die neuen Dateien auf dem Desktop erscheinen.
+    /// If icons are still missing, it waits up to <paramref name="warten"/> for
+    /// them: right after the profile is restored, Explorer needs a moment until
+    /// the new files show up on the desktop.
     /// </summary>
     /// <param name="einschalten">
-    /// Schaltet Systemsymbole ein, die gesichert waren, hier aber fehlen
-    /// (Kennungen "{...}"); true, wenn es geklappt hat. null: nichts einschalten.
+    /// Turns on system icons that were backed up but are missing here (IDs
+    /// "{...}"); true if that worked. null: turn nothing on.
     /// </param>
     public static IconErgebnis Restore(DesktopLayout gesichert, TimeSpan warten,
                                                 Func<IReadOnlyList<string>, bool>? einschalten = null) => OnOwnThread(() =>
@@ -311,8 +310,8 @@ public static class DesktopIcons
         using var desktop = OeffneDesktop();
         var (b, h) = desktop.Size();
 
-        // Erst die Systemsymbole einschalten - der Explorer zeigt sie nach
-        // einem Moment, die Warteschleife unten nimmt sie dann mit.
+        // Turn on the system icons first - Explorer shows them after a moment, and
+        // the waiting loop below picks them up.
         IReadOnlyList<string>? eingeschaltet = null;
         var fehlendeSystem = MissingSystemIcons(gesichert, desktop.Icons());
         if (fehlendeSystem.Count > 0 && einschalten is not null)
@@ -325,7 +324,7 @@ public static class DesktopIcons
                     desktop.Refresh();
                 }
             }
-            catch { /* dann bleiben sie eben aus - gemeldet werden sie als fehlend */ }
+            catch { /* then they stay off - they are reported as missing */ }
         }
 
         var plan = Plan(gesichert, desktop.Icons(), b, h);
@@ -340,12 +339,12 @@ public static class DesktopIcons
             plan = neu;
         }
 
-        // Mit "Automatisch anordnen" setzt Windows jedes Symbol sofort wieder
-        // an seinen Platz in der Reihe - Positionen haetten keine Wirkung.
+        // With "Auto arrange", Windows puts every icon straight back into its slot
+        // in the row - positions would have no effect.
         bool anordnenAus = false;
         if (desktop.AutomatischAnordnen) { desktop.AutomatischAnordnen = false; anordnenAus = true; }
-        // Raster wie beim Sichern: Sonst rueckten frei platzierte Symbole auf
-        // das Raster, oder ausgerichtete laegen leicht daneben.
+        // Grid as at backup time: otherwise freely placed icons would snap to the
+        // grid, or aligned ones would sit slightly off.
         bool raster = false;
         if (desktop.AmRasterAusrichten != gesichert.AmRasterAusrichten)
         {
@@ -357,11 +356,11 @@ public static class DesktopIcons
         foreach (var z in plan.Zuordnung)
         {
             try { desktop.Set(z.Index, z.X, z.Y); gesetzt++; }
-            catch { /* einzelnes Symbol - die anderen trotzdem */ }
+            catch { /* a single icon - carry on with the others */ }
         }
 
-        // War beim Sichern "Automatisch anordnen" an, ordnet Windows selbst -
-        // dann auch hier wieder so.
+        // If "Auto arrange" was on at backup time, Windows arranges the icons
+        // itself - so switch it back on here.
         bool wiederAn = false;
         if (gesichert.AutomatischAnordnen) { desktop.AutomatischAnordnen = true; wiederAn = true; }
 
@@ -370,8 +369,8 @@ public static class DesktopIcons
     });
 
     /// <summary>
-    /// COM-Objekte des Explorers gehoeren in einen STA-Thread, und die Masse
-    /// sollen echte Bildpunkte sein (nicht auf 100 % umgerechnet).
+    /// Explorer's COM objects belong on an STA thread, and the measurements
+    /// should be real pixels (not scaled to 100 %).
     /// </summary>
     private static T OnOwnThread<T>(Func<T> arbeit)
     {
@@ -395,19 +394,19 @@ public static class DesktopIcons
 }
 
 /// <summary>
-/// Der Desktop des Explorers, angesprochen wie in Raymond Chens Beispiel
-/// "Manipulating the positions of desktop icons": ShellWindows liefert das
-/// Desktop-Fenster, dessen Browser die aktive Ansicht, und die Ansicht ist
-/// ein IFolderView - mit GetItemPosition und SelectAndPositionItems.
+/// Explorer's desktop, accessed as in Raymond Chen's example "Manipulating
+/// the positions of desktop icons": ShellWindows returns the desktop window,
+/// its browser the active view, and the view is an IFolderView - with
+/// GetItemPosition and SelectAndPositionItems.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class ExplorerDesktop : IDesktopView
 {
     /// <summary>
-    /// Oeffnet den Desktop des Explorers. Startet der Explorer gerade (neu) -
-    /// nach der Anmeldung oder direkt nach dem Neustart fuer die Taskleiste -,
-    /// ist die Taskleiste oft schon da, der Desktop aber erst Sekunden spaeter.
-    /// So lange wird gewartet, statt mit "Kein Explorer-Desktop" aufzugeben.
+    /// Opens Explorer's desktop. While Explorer is (re)starting - after sign-in
+    /// or right after the restart for the taskbar - the taskbar is often there
+    /// already, but the desktop only seconds later. Wait that long instead of
+    /// giving up with "no Explorer desktop".
     /// </summary>
     public static ExplorerDesktop Open(TimeSpan? hoechstens = null)
         => DesktopIcons.WithWaiting(() => new ExplorerDesktop(), hoechstens ?? TimeSpan.FromSeconds(20), ex => ex is KeinDesktopException);
@@ -434,7 +433,7 @@ public sealed class ExplorerDesktop : IDesktopView
 
             var sid = SID_STopLevelBrowser;
             var iidBrowser = typeof(IShellBrowser).GUID;
-            // Angemeldet, aber noch ohne Ansicht: ebenso "noch nicht da".
+            // Registered, but without a view yet: "not there yet" as well.
             int hrDienst = ((IComServiceProvider)dispatch).QueryService(ref sid, ref iidBrowser, out var browser);
             if (hrDienst < 0) throw new KeinDesktopException($"Der Explorer-Desktop ist noch nicht bereit (QueryService 0x{hrDienst:X8}).");
             int hrAnsicht = ((IShellBrowser)browser).QueryActiveShellView(out var ansicht);
@@ -489,9 +488,8 @@ public sealed class ExplorerDesktop : IDesktopView
     }
 
     /// <summary>
-    /// "Aktualisieren" aus dem Kontextmenue des Desktops: Befehl 0x7103 an die
-    /// Ansicht. Erst danach zeigt der Explorer frisch eingeschaltete
-    /// Systemsymbole.
+    /// "Refresh" from the desktop's context menu: command 0x7103 sent to the
+    /// view. Only then does Explorer show freshly enabled system icons.
     /// </summary>
     public void Refresh()
     {
@@ -539,13 +537,13 @@ public sealed class ExplorerDesktop : IDesktopView
         if (hr < 0) throw new COMException($"{was} fehlgeschlagen (0x{hr:X8}).", hr);
     }
 
-    /// <summary>Der aufrufende Thread rechnet in echten Bildpunkten (pro Monitor).</summary>
+    /// <summary>The calling thread works in real pixels (per monitor).</summary>
     internal static void PerMonitorDpi()
     {
-        try { SetThreadDpiAwarenessContext(new IntPtr(-4)); } catch { /* aeltere Windows-Fassung */ }
+        try { SetThreadDpiAwarenessContext(new IntPtr(-4)); } catch { /* older Windows version */ }
     }
 
-    // ------------------------------------------------------------ Windows-Schnittstellen
+    // ------------------------------------------------------------ Windows interfaces
 
     private const int SWC_DESKTOP = 8;
     private const int SWFO_NEEDDISPATCH = 1;
@@ -566,10 +564,10 @@ public sealed class ExplorerDesktop : IDesktopView
     [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("shlwapi.dll")] private static extern int StrRetToStrW(IntPtr pstr, IntPtr pidl, out IntPtr ppsz);
 
-    // Platzhalter (_n) halten die Reihenfolge der Methoden ein; aufgerufen
-    // werden nur die ausgeschriebenen.
+    // Placeholders (_n) keep the order of the methods; only the spelled-out
+    // ones are called.
 
-    /// <summary>IShellWindows - ein duales Interface: nach IUnknown kommen die vier von IDispatch.</summary>
+    /// <summary>IShellWindows - a dual interface: the four IDispatch methods follow IUnknown.</summary>
     [ComImport, Guid("85CB6900-4D95-11CF-960C-0080C7F4EE85"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IShellWindows
     {
@@ -611,7 +609,7 @@ public sealed class ExplorerDesktop : IDesktopView
         [PreserveSig] int GetDisplayNameOf(IntPtr pidl, uint uFlags, IntPtr pName);
     }
 
-    /// <summary>IFolderView2 - mit allen Methoden von IFolderView davor.</summary>
+    /// <summary>IFolderView2 - with all methods of IFolderView before it.</summary>
     [ComImport, Guid("1AF3A467-214F-4298-908E-06B03E0B39F9"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IFolderView2
     {
@@ -639,5 +637,5 @@ public sealed class ExplorerDesktop : IDesktopView
     }
 }
 
-/// <summary>Der Explorer-Desktop ist (noch) nicht da - laeuft der Explorer, kommt er gleich.</summary>
+/// <summary>The Explorer desktop is not there (yet) - if Explorer is running, it will be soon.</summary>
 public sealed class KeinDesktopException(string message) : InvalidOperationException(message);

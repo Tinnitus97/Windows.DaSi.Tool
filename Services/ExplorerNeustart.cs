@@ -7,20 +7,20 @@ using System.Threading.Tasks;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Startet den Explorer (Desktop und Taskleiste) neu - noetig, damit er die
-/// zurueckgeschriebenen Taskleisten-Symbole liest: Er liest sie nur beim Start.
+/// Restarts Explorer (desktop and taskbar) - needed so it reads the restored
+/// taskbar icons: it reads them only at startup.
 ///
-/// Beendet wird nur der Explorer dieser Sitzung. Windows startet die Shell
-/// danach von selbst neu (AutoRestartShell) - als angemeldeter Benutzer, ohne
-/// Adminrechte. Kommt sie nicht zurueck, startet das Tool sie selbst.
+/// Only this session's Explorer is ended. Windows then restarts the shell by
+/// itself (AutoRestartShell) - as the signed-in user, without admin rights.
+/// If it does not come back, the tool starts it itself.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static class ExplorerNeustart
 {
-    /// <summary>Ist die Taskleiste da?</summary>
+    /// <summary>Is the taskbar there?</summary>
     public static bool TaskbarPresent() => FindWindowW("Shell_TrayWnd", null) != IntPtr.Zero;
 
-    /// <returns>Ok: die Taskleiste ist wieder da. VonSelbst: Windows hat die Shell selbst neu gestartet.</returns>
+    /// <returns>Ok: the taskbar is back. VonSelbst: Windows restarted the shell by itself.</returns>
     public static async Task<(bool Ok, bool VonSelbst)> Restart(TimeSpan warten)
     {
         int sitzung;
@@ -28,11 +28,11 @@ public static class ExplorerNeustart
         foreach (var p in Process.GetProcessesByName("explorer"))
         {
             try { if (p.SessionId == sitzung) p.Kill(); }
-            catch { /* naechster */ }
+            catch { /* next one */ }
             finally { p.Dispose(); }
         }
 
-        // Erst weg sein lassen - sonst gilt die alte Taskleiste als "wieder da".
+        // Let it disappear first - otherwise the old taskbar would count as "back".
         for (int i = 0; i < 40 && TaskbarPresent(); i++) await Task.Delay(250);
 
         if (await WaitForTaskbar(warten)) return (true, true);
@@ -53,7 +53,7 @@ public static class ExplorerNeustart
             await Task.Delay(500);
             if (TaskbarPresent())
             {
-                // Desktop und Symbole brauchen nach der Taskleiste noch einen Moment.
+                // The desktop and its icons need another moment after the taskbar.
                 await Task.Delay(2500);
                 return true;
             }

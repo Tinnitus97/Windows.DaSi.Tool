@@ -7,7 +7,7 @@
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
 
-                <!-- ===== Dunkles Theme (Catppuccin Mocha) ===== -->
+                <!-- ===== Dark theme (Catppuccin Mocha) ===== -->
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="BaseBrush" Color="#1E1E2E"/>
                     <SolidColorBrush x:Key="CrustBrush" Color="#11111B"/>
@@ -24,7 +24,7 @@
                     <SolidColorBrush x:Key="YellowBrush" Color="#F9E2AF"/>
                 </ResourceDictionary>
 
-                <!-- ===== Helles Theme (Catppuccin Latte) ===== -->
+                <!-- ===== Light theme (Catppuccin Latte) ===== -->
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="BaseBrush" Color="#EFF1F5"/>
                     <SolidColorBrush x:Key="CrustBrush" Color="#FFFFFF"/>
@@ -54,7 +54,7 @@
             <Setter Property="Margin" Value="2,0,2,8"/>
         </Style>
 
-        <!-- ============ App-Titel / Untertitel ============ -->
+        <!-- ============ App title / subtitle ============ -->
         <Style Selector="TextBlock.appTitle">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Setter Property="FontSize" Value="20"/>
@@ -70,7 +70,7 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
-        <!-- ============ Segment-Umschalter (Sichern/Wiederherstellen) ============ -->
+        <!-- ============ Segment switch (backup/restore) ============ -->
         <Style Selector="RadioButton.segment">
             <Setter Property="Foreground" Value="{DynamicResource SubtextBrush}"/>
             <Setter Property="FontSize" Value="13"/>
@@ -104,7 +104,7 @@
             <Setter Property="Margin" Value="0,0,0,12"/>
         </Style>
 
-        <!-- ============ Panel-Karte (Gruppen-Container) ============ -->
+        <!-- ============ Panel card (group container) ============ -->
         <Style Selector="Border.panel">
             <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Surface0Brush}"/>
@@ -114,7 +114,7 @@
             <Setter Property="Margin" Value="0"/>
         </Style>
 
-        <!-- ============ ComboBox (Schnellauswahl) ============ -->
+        <!-- ============ ComboBox (quick selection) ============ -->
         <Style Selector="ComboBox.quick">
             <Setter Property="Background" Value="{DynamicResource CrustBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
@@ -129,33 +129,32 @@
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
 
-        <!-- ============ Karten-Checkbox ============
-             Die CheckBox selbst traegt KEINEN Rahmen mehr. Der Karten-Look
-             (Rahmen, Hintergrund, Ecken) kommt vom umschliessenden Border
-             "cardHost". Dadurch sitzt die Haekchen-Box zuverlaessig mit
-             Abstand zur Umrandung, unabhaengig von Template-Interna. -->
+        <!-- ============ Card checkbox ============
+             The CheckBox itself carries NO border any more. The card look
+             (border, background, corners) comes from the surrounding Border
+             "cardHost". That way the check box reliably keeps its distance
+             from the outline, independent of template internals. -->
         <Style Selector="Border.cardHost">
             <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Surface1Brush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="5"/>
-            <!-- MinHeight ist die UNTERGRENZE, nicht die Hoehe: Die Kachelflaeche
-                 bekommt ueber "*" den restlichen Platz der linken Spalte, und die
-                 UniformGrid verteilt ihn gleichmaessig auf ihre Zeilen. Die
-                 Kacheln sind dadurch so gross, wie das Fenster es hergibt.
+            <!-- MinHeight is the LOWER LIMIT, not the height: the card area gets the
+                 remaining space of the left column through "*", and its grid of
+                 equal "*" rows shares it evenly. So the cards are as large as the
+                 window allows.
 
-                 Der Wert muss klein genug bleiben, dass die Summe aller Zeilen
-                 bei der Vorgabegroesse (1200x720) unter die Sichthoehe passt -
-                 und zwar AUCH dann, wenn die Speicherpruefung ihre Zeile unter
-                 den Schaltflaechen einblendet (32 px). Die eigentliche Bremse
-                 sitzt aber in der Checkbox: siehe CheckBoxMinHeight in
-                 MainWindow.axaml.
-                 Gerendert werden die Kacheln trotzdem hoeher, weil sie sich den
-                 freien Platz teilen.
+                 The value must stay small enough for the sum of all rows to fit
+                 below the visible height at the default size (1200x720) - ALSO
+                 when the storage check shows its line below the buttons (32 px).
+                 The real brake sits in the checkbox, though: see CheckBoxMinHeight
+                 in MainWindow.axaml.
+                 The cards are still rendered taller, because they share the free
+                 space.
 
-                 Seit der Opera-Kachel sind es 6 Zeilen (5 mit je zwei Kacheln, dazu
-                 das Desktop-Layout ueber volle Breite): 24 statt 28 px Untergrenze
-                 halten die Summe unter der Sichthoehe. -->
+                 There are 6 rows (5 with two cards each, plus "Design & Desktop"
+                 across the full width): a lower limit of 24 instead of 28 px keeps
+                 the sum below the visible height. -->
             <Setter Property="MinHeight" Value="24"/>
             <Setter Property="Margin" Value="3,2"/>
             <Setter Property="Padding" Value="14,0"/>
@@ -181,9 +180,9 @@
             <Setter Property="Background" Value="{DynamicResource Surface0Brush}"/>
         </Style>
 
-        <!-- Unterpunkte einer Kachel (AppData, Cloud-Anbieter). Kleiner und
-             blasser als die Kachel selbst, damit auf einen Blick erkennbar
-             bleibt, dass sie zu ihr gehoeren und nicht gleichrangig sind. -->
+        <!-- Sub-items of a card (AppData, cloud providers). Smaller and paler
+             than the card itself, so one can see at a glance that they belong to
+             it and are not on the same level. -->
         <Style Selector="CheckBox.subCard">
             <Setter Property="Foreground" Value="{DynamicResource SubtextBrush}"/>
             <Setter Property="FontSize" Value="12"/>
@@ -195,9 +194,10 @@
         <Style Selector="CheckBox.subCard TextBlock">
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
-        <!-- Auswahl innerhalb einer Kachel (Desktop-Layout: Screenshot / Symbolpositionen).
-             Eigene, flache Vorlage: Der Fluent-RadioButton ist 32 px hoch und
-             machte die Kachelzeile hoeher als die anderen. -->
+        <!-- Radio choice inside a card (formerly Desktop layout: screenshot /
+             icon positions; not used at the moment). A flat template of its
+             own: the Fluent RadioButton is 32 px tall and made the card row
+             taller than the others. -->
         <Style Selector="RadioButton.subRadio">
             <Setter Property="Foreground" Value="{DynamicResource SubtextBrush}"/>
             <Setter Property="Background" Value="Transparent"/>
@@ -237,14 +237,14 @@
         <Style Selector="CheckBox.subCard:checked">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
         </Style>
-        <!-- Gesperrt (Programm fehlt / nicht in der Sicherung): deutlich blasser.
-             Auch fuer die Unterpunkte - ihre feste Textfarbe verdeckt sonst,
-             dass sie gesperrt sind. -->
+        <!-- Locked (program missing / not in the backup): clearly paler.
+             Also for the sub-items - their fixed text color would otherwise hide
+             that they are locked. -->
         <Style Selector="CheckBox.card:disabled, CheckBox.subCard:disabled">
             <Setter Property="Opacity" Value="0.35"/>
         </Style>
 
-        <!-- ============ Primaerer Aktions-Button ============ -->
+        <!-- ============ Primary action button ============ -->
         <Style Selector="Button.action">
             <Setter Property="Background" Value="{DynamicResource BlueBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource CrustBrush}"/>
@@ -266,7 +266,7 @@
             <Setter Property="Opacity" Value="0.4"/>
         </Style>
 
-        <!-- ============ Sekundaerer Button ============ -->
+        <!-- ============ Secondary button ============ -->
         <Style Selector="Button.secondary">
             <Setter Property="Background" Value="{DynamicResource Surface0Brush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
@@ -289,15 +289,15 @@
             <Setter Property="Opacity" Value="0.35"/>
         </Style>
 
-        <!-- ============ Beenden-Button ============ -->
+        <!-- ============ Exit button ============ -->
         <Style Selector="Button.exit">
             <Setter Property="Foreground" Value="{DynamicResource RedBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource RedBrush}"/>
         </Style>
 
-        <!-- ============ Dialoge (Meldungen, Rueckfragen, Winget-Auswahl) ============
-             Dieselben Theme-Farben wie das Hauptfenster - frueher waren die Farben
-             fest eingetragen, und die Dialoge blieben im hellen Modus dunkel. -->
+        <!-- ============ Dialogs (messages, prompts, winget selection) ============
+             The same theme colors as the main window - the colors used to be
+             hard-coded, and the dialogs stayed dark in light mode. -->
         <Style Selector="Window.dialog">
             <Setter Property="Background" Value="{DynamicResource BaseBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
@@ -318,7 +318,7 @@
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
         </Style>
 
-        <!-- Dialog-Knoepfe: neutral, "ja"/"installieren" (gruen), "ok" (blau), "abbrechen" (rot) -->
+        <!-- Dialog buttons: neutral, "yes"/"install" (green), "ok" (blue), "cancel" (red) -->
         <Style Selector="Button.dialog">
             <Setter Property="Background" Value="{DynamicResource Surface0Brush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
@@ -356,7 +356,7 @@
             <Setter Property="Foreground" Value="{DynamicResource RedBrush}"/>
         </Style>
 
-        <!-- ============ Pfad-Textbox ============ -->
+        <!-- ============ Path text box ============ -->
         <Style Selector="TextBox.path">
             <Setter Property="Background" Value="{DynamicResource CrustBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>

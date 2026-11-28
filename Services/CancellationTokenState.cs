@@ -4,9 +4,8 @@ using System.Diagnostics;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Ersetzt SyncHash.CancelRequested + SyncHash.ActiveProcesses.
-/// Wird von allen Services geteilt, damit der Abbrechen-/Schliessen-Weg
-/// laufende Prozesse hart beenden kann.
+/// Cancellation state shared by all services, so that Cancel and closing
+/// the window can kill the processes that are still running.
 /// </summary>
 public sealed class CancellationTokenState
 {
@@ -31,7 +30,7 @@ public sealed class CancellationTokenState
         {
             try { Process.GetProcessById(pid).Kill(entireProcessTree: true); } catch { }
         }
-        // Sicherheitshalber auch verwaiste winget-Prozesse beenden
+        // To be safe, also kill orphaned winget processes
         foreach (var name in new[] { "winget" })
         {
             try { foreach (var p in Process.GetProcessesByName(name)) p.Kill(true); } catch { }

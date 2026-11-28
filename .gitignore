@@ -1,4 +1,4 @@
-# Build-Ausgaben
+# Build output
 bin/
 obj/
 publish/
@@ -9,12 +9,12 @@ publish/
 .idea/
 *.suo
 
-# Signaturzertifikate niemals einchecken
+# Never commit signing certificates
 *.pfx
 *.snk
 
-# Sonstiges
+# Miscellaneous
 *.log
 
-# Abdeckungsberichte der Pruefungen (coverlet)
+# Coverage reports of the tests (coverlet)
 abdeckung/

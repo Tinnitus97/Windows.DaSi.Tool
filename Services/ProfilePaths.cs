@@ -4,31 +4,32 @@ using System.Text.RegularExpressions;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Uebertraegt Pfade aus dem gesicherten Profil in das Profil, in das
-/// zurueckgeschrieben wird.
+/// Carries paths from the backed-up profile over to the profile being
+/// restored into.
 ///
-/// Gesichert wurde etwa "C:\Users\Besitzer\Pictures\Urlaub.jpg", zurueck
-/// geht es zum Benutzer "Anwender". Wer den gespeicherten Pfad unveraendert
-/// benutzt, legt auf dem neuen Rechner einen Ordner "C:\Users\Besitzer" an -
-/// ein Profil, das es dort nicht gibt.
+/// Backed up was, say, "C:\Users\Besitzer\Pictures\Urlaub.jpg", restored to
+/// the user "Anwender". Using the stored path as is creates a folder
+/// "C:\Users\Besitzer" on the new computer - a profile that does not exist
+/// there.
 ///
-/// Ohne Abhaengigkeiten, damit sich die Regel pruefen laesst.
+/// No dependencies, so the rule can be tested.
 /// </summary>
 public static class ProfilePaths
 {
-    // "C:\Users\<Name>\<Rest>" - fuer Sicherungen, die das gesicherte Profil
-    // noch nicht mit abgelegt haben.
+    // "C:\Users\<name>\<rest>" - for backups that did not store the backed-up
+    // profile yet.
     private static readonly Regex UnterUsers =
         new(@"^(?:[A-Za-z]:)?\\Users\\[^\\]+\\(.+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     /// <summary>
-    /// Der Pfad im Zielprofil, der <paramref name="original"/> im gesicherten
-    /// Profil entspricht - oder null, wenn der Pfad in keinem Benutzerprofil lag
-    /// (etwa ein Windows-Hintergrund unter C:\Windows\Web).
+    /// The path in the target profile that corresponds to
+    /// <paramref name="original"/> in the backed-up profile - or null if the
+    /// path was not inside any user profile (e.g. a Windows wallpaper under
+    /// C:\Windows\Web).
     /// </summary>
-    /// <param name="original">Der gesicherte Pfad, z. B. "C:\Users\Besitzer\Pictures\a.jpg".</param>
-    /// <param name="originalProfile">Das gesicherte Profil, falls bekannt ("C:\Users\Besitzer").</param>
-    /// <param name="targetProfile">Das Profil, in das zurueckgeschrieben wird ("C:\Users\Anwender").</param>
+    /// <param name="original">The backed-up path, e.g. "C:\Users\Besitzer\Pictures\a.jpg".</param>
+    /// <param name="originalProfile">The backed-up profile, if known ("C:\Users\Besitzer").</param>
+    /// <param name="targetProfile">The profile being restored into ("C:\Users\Anwender").</param>
     public static string? MapIntoProfile(string? original, string? originalProfile, string targetProfile)
     {
         if (string.IsNullOrWhiteSpace(original) || string.IsNullOrWhiteSpace(targetProfile)) return null;
@@ -48,7 +49,7 @@ public static class ProfilePaths
         }
         if (string.IsNullOrEmpty(rest)) return null;
 
-        // Im Trennzeichen des Zielprofils zusammensetzen - unter Windows "\".
+        // Join with the target profile's separator - "\" on Windows.
         char trenner = targetProfile.Contains('\\') || !targetProfile.Contains('/') ? '\\' : '/';
         return targetProfile.TrimEnd('\\', '/') + trenner + rest.Replace('\\', trenner);
     }

@@ -7,48 +7,48 @@ using System.Text.Json;
 
 namespace WindowsDaSiTool.Services;
 
-/// <summary>Ein Wert aus der Registry des Benutzers (HKEY_CURRENT_USER).</summary>
-/// <param name="Gruppe">Fuers Protokoll: "Farben", "Akzentfarbe", "Mauszeiger", "Taskleiste", "Start".</param>
-/// <param name="Schluessel">Pfad unter HKEY_CURRENT_USER.</param>
-/// <param name="Name">Name des Werts; "" ist der Standardwert.</param>
+/// <summary>A value from the user's registry (HKEY_CURRENT_USER).</summary>
+/// <param name="Gruppe">For the log: "Farben", "Akzentfarbe", "Mauszeiger", "Taskleiste", "Start".</param>
+/// <param name="Schluessel">Path under HKEY_CURRENT_USER.</param>
+/// <param name="Name">Name of the value; "" is the default value.</param>
 public sealed record DesignWert(string Gruppe, string Schluessel, string Name);
 
-/// <summary>Ein gesicherter Wert.</summary>
+/// <summary>A backed-up value.</summary>
 public sealed class DesignEintrag
 {
     public string Gruppe { get; set; } = "";
     public string Schluessel { get; set; } = "";
     public string Name { get; set; } = "";
-    /// <summary>"DWord", "String", "ExpandString" oder "Binary".</summary>
+    /// <summary>"DWord", "String", "ExpandString" or "Binary".</summary>
     public string Typ { get; set; } = "";
-    /// <summary>DWord als Zahl, Text wie er ist, Binary als Base64.</summary>
+    /// <summary>DWord as a number, text as is, binary as Base64.</summary>
     public string Wert { get; set; } = "";
 }
 
-/// <summary>Die Datei Design\Design.json - Hintergrund und Einstellungen in einem.</summary>
+/// <summary>The file Design\Design.json - wallpaper and settings in one.</summary>
 public sealed class DesignSicherung
 {
     public int Version { get; set; } = 2;
     public string Rechner { get; set; } = "";
     public DateTime Erstellt { get; set; }
-    /// <summary>Bild oder Volltonfarbe; null, wenn es nichts Festes zu sichern gab (Diashow).</summary>
+    /// <summary>Image or solid color; null if there was nothing fixed to back up (slideshow).</summary>
     public HintergrundEinstellung? Hintergrund { get; set; }
     public List<DesignEintrag> Werte { get; set; } = new();
 }
 
 /// <summary>
-/// Die Design-Einstellungen von Windows (Personalisierung) - was ausser dem
-/// Hintergrund dazugehoert: Hell/Dunkel fuer Windows und Apps, Transparenz,
-/// Akzentfarbe, Mauszeiger, Taskleiste und Start.
+/// Windows' design settings (Personalization) - what belongs to it besides
+/// the wallpaper: light/dark for Windows and apps, transparency, accent
+/// color, mouse pointers, taskbar and Start.
 ///
-/// Es sind Werte in HKEY_CURRENT_USER. Gesichert wird eine feste Liste - nicht
-/// der ganze Zweig: Daneben liegen Zwischenstaende und rechnergebundene Werte
-/// (Bildschirmpositionen, Kennungen), die auf einem anderen Rechner Schaden
-/// anrichten. Werte, die Windows inzwischen schuetzt (etwa der Widgets-Knopf),
-/// fehlen bewusst.
+/// These are values in HKEY_CURRENT_USER. A fixed list is backed up - not
+/// the whole key: next to them live interim states and machine-bound values
+/// (screen positions, IDs) that do harm on another computer. Values that
+/// Windows protects by now (such as the Widgets button) are deliberately
+/// missing.
 ///
-/// Ohne Abhaengigkeiten: Lesen und Schreiben der Registry werden hereingereicht,
-/// damit sich alles ohne Windows pruefen laesst.
+/// No dependencies: reading and writing the registry are passed in, so
+/// everything can be tested without Windows.
 /// </summary>
 public static class DesignEinstellungen
 {
@@ -56,9 +56,9 @@ public static class DesignEinstellungen
     public const string DateiName = "Design.json";
 
     /// <summary>
-    /// So hiess die Datei in einer Zwischenfassung - damals nur die
-    /// Einstellungen, der Hintergrund lag getrennt in "Hintergrundbild".
-    /// Wird beim Wiederherstellen weiter gelesen.
+    /// The file's name in an interim version - back then only the settings;
+    /// the wallpaper was kept separately in "Hintergrundbild". Still read on
+    /// restore.
     /// </summary>
     public const string AlterDateiName = "Design-Einstellungen.json";
 
@@ -69,26 +69,26 @@ public static class DesignEinstellungen
     private const string Search = @"Software\Microsoft\Windows\CurrentVersion\Search";
     private const string Cursors = @"Control Panel\Cursors";
 
-    /// <summary>Die Mauszeiger eines Schemas - jeder Wert ist der Pfad einer .cur/.ani-Datei.</summary>
+    /// <summary>The mouse pointers of a scheme - each value is the path of a .cur/.ani file.</summary>
     private static readonly string[] Zeiger =
     {
         "Arrow", "Help", "AppStarting", "Wait", "Crosshair", "IBeam", "NWPen", "No", "SizeNS",
         "SizeWE", "SizeNWSE", "SizeNESW", "SizeAll", "UpArrow", "Hand", "Pin", "Person",
     };
 
-    /// <summary>Was gesichert wird.</summary>
+    /// <summary>What is backed up.</summary>
     public static readonly IReadOnlyList<DesignWert> Katalog = BuildCatalog();
 
     private static List<DesignWert> BuildCatalog()
     {
         var k = new List<DesignWert>
         {
-            // Einstellungen > Personalisierung > Farben
+            // Settings > Personalization > Colors
             new("Farben", Personalize, "SystemUsesLightTheme"),
             new("Farben", Personalize, "AppsUseLightTheme"),
             new("Farben", Personalize, "EnableTransparency"),
             new("Farben", Personalize, "ColorPrevalence"),
-            // Akzentfarbe - Start/Taskleiste und Titelleisten
+            // Accent color - Start/taskbar and title bars
             new("Akzentfarbe", Accent, "AccentPalette"),
             new("Akzentfarbe", Accent, "AccentColorMenu"),
             new("Akzentfarbe", Accent, "StartColorMenu"),
@@ -98,7 +98,7 @@ public static class DesignEinstellungen
             new("Akzentfarbe", Dwm, "ColorizationAfterglow"),
             new("Akzentfarbe", Dwm, "ColorPrevalence"),
             new("Akzentfarbe", @"Control Panel\Desktop", "AutoColorization"),
-            // Mauszeiger: Schema, Groesse, die einzelnen Zeiger
+            // Mouse pointers: scheme, size, the individual pointers
             new("Mauszeiger", Cursors, ""),
             new("Mauszeiger", Cursors, "Scheme Source"),
             new("Mauszeiger", Cursors, "CursorBaseSize"),
@@ -106,7 +106,7 @@ public static class DesignEinstellungen
         k.AddRange(Zeiger.Select(z => new DesignWert("Mauszeiger", Cursors, z)));
         k.AddRange(new DesignWert[]
         {
-            // Einstellungen > Personalisierung > Taskleiste
+            // Settings > Personalization > Taskbar
             new("Taskleiste", Advanced, "TaskbarAl"),
             new("Taskleiste", Advanced, "ShowTaskViewButton"),
             new("Taskleiste", Advanced, "TaskbarGlomLevel"),
@@ -115,7 +115,7 @@ public static class DesignEinstellungen
             new("Taskleiste", Advanced, "MMTaskbarMode"),
             new("Taskleiste", Advanced, "MMTaskbarGlomLevel"),
             new("Taskleiste", Search, "SearchboxTaskbarMode"),
-            // Einstellungen > Personalisierung > Start
+            // Settings > Personalization > Start
             new("Start", Advanced, "Start_Layout"),
             new("Start", Advanced, "Start_TrackDocs"),
             new("Start", Advanced, "Start_TrackProgs"),
@@ -125,8 +125,8 @@ public static class DesignEinstellungen
     }
 
     /// <summary>
-    /// Liest alle Werte des Katalogs. <paramref name="lesen"/> liefert zu
-    /// Schluessel und Name (Typ, Wert) oder null, wenn es den Wert nicht gibt.
+    /// Reads all values of the catalog. <paramref name="lesen"/> returns
+    /// (type, value) for a key and name, or null if the value does not exist.
     /// </summary>
     public static List<DesignEintrag> ReadAll(Func<string, string, (string Typ, string Wert)?> lesen)
     {
@@ -142,19 +142,19 @@ public static class DesignEinstellungen
     }
 
     /// <summary>
-    /// Ein Mauszeiger, dessen Datei es hier nicht gibt (eigenes Schema vom
-    /// alten Rechner)? Dann wird er ausgelassen - Windows zeigte sonst gar
-    /// keinen Zeiger an dieser Stelle.
+    /// A mouse pointer whose file does not exist here (a custom scheme from the
+    /// old computer)? Then it is skipped - otherwise Windows would show no
+    /// pointer at all in that place.
     /// </summary>
-    /// <param name="dateiDa">Gibt es die Datei (nach Aufloesen von %SystemRoot% usw.)?</param>
+    /// <param name="dateiDa">Does the file exist (after expanding %SystemRoot% etc.)?</param>
     public static bool PointerMissing(DesignEintrag e, Func<string, bool> dateiDa)
         => e.Gruppe == "Mauszeiger" && Zeiger.Contains(e.Name) && e.Typ is "String" or "ExpandString"
            && e.Wert.Trim().Length > 0 && !dateiDa(e.Wert.Trim());
 
     /// <summary>
-    /// Kurzfassung fuers Protokoll, z. B. "Windows dunkel, Apps dunkel,
+    /// Short version for the log, e.g. "Windows dunkel, Apps dunkel,
     /// Transparenz an, Akzentfarbe #0063B1, Mauszeiger "Windows-Standard",
-    /// Taskleiste zentriert".
+    /// Taskleiste zentriert" (in the UI language).
     /// </summary>
     public static string Summary(IReadOnlyList<DesignEintrag> werte, Func<string, string, string> tr)
     {
@@ -180,11 +180,11 @@ public static class DesignEinstellungen
         return string.Join(", ", teile);
     }
 
-    /// <summary>DWM-Farbe 0xAABBGGRR -> "#RRGGBB".</summary>
+    /// <summary>DWM color 0xAABBGGRR -> "#RRGGBB".</summary>
     public static string AccentHex(int abgr)
         => $"#{abgr & 0xFF:X2}{(abgr >> 8) & 0xFF:X2}{(abgr >> 16) & 0xFF:X2}";
 
-    /// <summary>Welche Gruppen kommen vor - "Farben, Akzentfarbe, Mauszeiger ..."?</summary>
+    /// <summary>Which groups occur - "Farben, Akzentfarbe, Mauszeiger ..."?</summary>
     public static string Groups(IEnumerable<DesignEintrag> werte)
         => string.Join(", ", werte.Select(w => w.Gruppe).Distinct());
 
@@ -199,8 +199,8 @@ public static class DesignEinstellungen
     }
 
     /// <summary>
-    /// Design.json - oder die Datei der Zwischenfassung. null, wenn es keine
-    /// (lesbare) gibt oder nichts darin steht.
+    /// Design.json - or the interim version's file. null if there is no
+    /// (readable) one or it is empty.
     /// </summary>
     public static DesignSicherung? Load(string sicherung)
     {
@@ -213,11 +213,11 @@ public static class DesignEinstellungen
                 var s = JsonSerializer.Deserialize<DesignSicherung>(File.ReadAllText(d));
                 if (s is not null && (s.Werte.Count > 0 || s.Hintergrund is not null)) return s;
             }
-            catch { /* naechste */ }
+            catch { /* next one */ }
         }
         return null;
     }
 
-    /// <summary>Liegen Design-Einstellungen in der Sicherung?</summary>
+    /// <summary>Are there design settings in the backup?</summary>
     public static bool Exists(string sicherung) => Load(sicherung) is not null;
 }

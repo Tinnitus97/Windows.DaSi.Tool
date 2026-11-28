@@ -1,6 +1,6 @@
-# Funktionen, die keine Pruefung ausfuehren kann - jede mit Begruendung.
+# Functions no test can execute - each one with a reason.
 #
-# Format: "<Datei>: <Klasse>.<Funktion> | <Begruendung>" - genau so, wie
-# tools/abdeckung.py die Funktion nennt. Steht hier etwas, das inzwischen
-# doch geprueft wird, meldet die CI das ebenfalls: Die Liste bleibt so kurz
-# wie moeglich.
+# Format: "<file>: <class>.<function> | <reason>" - exactly the way
+# tools/abdeckung.py names the function. If something listed here is
+# tested by now, CI reports that as well: the list stays as short as
+# possible.

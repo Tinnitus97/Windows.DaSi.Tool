@@ -1,23 +1,23 @@
 name: Veröffentlichen
 
-# Baut WindowsDaSiTool.exe, hängt sie samt Prüfsumme an eine Veröffentlichung
-# und schreibt danach update.json fort - die Datei, die das Programm abfragt.
+# Builds WindowsDaSiTool.exe, attaches it with its checksum to a release and
+# then updates update.json - the file the program checks.
 #
-# ZWEI WEGE, DAS AUSZULÖSEN:
+# TWO WAYS TO TRIGGER IT:
 #
-#   1. Etikett setzen und schieben (GitHub Desktop: Rechtsklick auf einen
-#      Commit im Verlauf -> "Create Tag…", danach "Push origin").
+#   1. Create and push a tag (GitHub Desktop: right-click a commit in the
+#      history -> "Create Tag…", then "Push origin").
 #
-#   2. Ohne Etikett, ohne Kommandozeile: im Reiter "Actions" links diesen
-#      Workflow wählen, rechts "Run workflow", Nummer eintragen.
-#      Das Etikett wird dabei selbst angelegt.
+#   2. Without a tag, without a command line: in the "Actions" tab pick
+#      this workflow on the left, "Run workflow" on the right, enter the
+#      number. The tag is created automatically.
 
 on:
   push:
-    # Bewusst großzügig: In diesem Repository heißen die Etiketten bisher
-    # schlicht "1.0.5" - ohne führendes v. Damit ein Etikett nicht wirkungslos
-    # verpufft, weil es anders geschrieben ist als erwartet, greifen mehrere
-    # Muster. Die Nummer wird anschließend aus dem Namen herausgelesen.
+    # Deliberately generous: in this repository the tags have so far been
+    # plain "1.0.5" - without a leading v. So that a tag does not fizzle out
+    # because it is spelled differently than expected, several patterns
+    # match. The number is then read from the name.
     tags:
       - '[0-9]*'          # 1.0.6
       - 'v*'              # v1.0.6
@@ -38,11 +38,11 @@ permissions:
 jobs:
   programm:
     runs-on: windows-latest
-    # Ein hängender Läufer soll eine Veröffentlichung nicht stundenlang offen
-    # halten. Üblich sind wenige Minuten.
+    # A hanging runner should not keep a release open for hours. A few minutes
+    # are usual.
     timeout-minutes: 30
     steps:
-      # Beim Etikett dessen Stand, beim Knopfdruck der Stand des Standardzweigs.
+      # For a tag its commit, for the button the default branch.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -56,9 +56,8 @@ jobs:
           $istKnopf = '${{ github.event_name }}' -eq 'workflow_dispatch'
           $roh = if ($istKnopf) { '${{ inputs.nummer }}' } else { '${{ github.ref_name }}' }
 
-          # Die Nummer wird aus dem Namen HERAUSGELESEN statt nur ein "v"
-          # abgeschnitten. So funktionieren "1.0.6", "v1.0.6" und
-          # "Version-1.0.6" gleichermaßen.
+          # The number is EXTRACTED from the name instead of just cutting off a "v".
+          # That way "1.0.6", "v1.0.6" and "Version-1.0.6" all work.
           $treffer = [regex]::Match($roh.Trim(), '\d+\.\d+\.\d+(\.\d+)?')
           if (-not $treffer.Success) {
             Write-Host "::error::Aus '$roh' lässt sich keine Versionsnummer der Form 1.2.3 lesen."
@@ -66,12 +65,12 @@ jobs:
           }
           $version = $treffer.Value
 
-          # Beim Etikett dessen Namen unverändert weiterbenutzen - sonst
-          # entstünde neben dem gesetzten Etikett ein zweites mit anderem Namen.
-          # Beim Knopfdruck die hier übliche Schreibweise: blanke Nummer.
+          # For a tag keep using its name unchanged - otherwise a second tag with a
+          # different name would appear next to the one that was pushed.
+          # For the button the usual spelling here: the bare number.
           $tag = if ($istKnopf) { $version } else { '${{ github.ref_name }}' }
 
-          # Gegenprobe: Steht in der Projektdatei dieselbe Nummer?
+          # Cross-check: does the project file carry the same number?
           $csproj = Get-ChildItem -Recurse -Filter 'WindowsDaSiTool.csproj' | Select-Object -First 1
           if (-not $csproj) { throw 'WindowsDaSiTool.csproj nicht gefunden.' }
 
@@ -106,7 +105,7 @@ jobs:
           "sha256=$hash" >> $env:GITHUB_OUTPUT
           "$hash *WindowsDaSiTool.exe" | Out-File publish/SHA256SUMS.txt -Encoding ascii
 
-      # Legt das Etikett mit an, falls es noch nicht existiert (Knopfdruck-Weg).
+      # Creates the tag as well if it does not exist yet (button path).
       - name: Veröffentlichung anlegen
         uses: softprops/action-gh-release@v3
         with:
@@ -117,11 +116,11 @@ jobs:
             publish/SHA256SUMS.txt
           generate_release_notes: true
 
-      # Gebaut wurde unter Umständen von einem Etikett aus - das ist ein loser
-      # Stand ohne Zweig. Zum Schreiben von update.json deshalb erst auf den
-      # Standardzweig wechseln. Der Name steht bewusst NICHT fest im Text,
-      # sondern kommt aus dem Repository selbst: Wird der Standardzweig einmal
-      # umbenannt, läuft der Workflow weiter, statt am Namen zu scheitern.
+      # The build may have run from a tag - that is a detached state without a
+      # branch. So switch to the default branch before writing update.json. The
+      # name is deliberately NOT hard-coded but comes from the repository
+      # itself: if the default branch is ever renamed, the workflow keeps
+      # running instead of failing on the name.
       - name: update.json fortschreiben
         shell: pwsh
         env:
@@ -142,9 +141,9 @@ jobs:
 
           git add update.json
 
-          # "git diff --quiet" meldet ueber den Rueckgabewert, nicht ueber
-          # Text. Ein "if (git diff …)" waere immer falsch, weil der Befehl
-          # gar nichts ausgibt - deshalb ausdruecklich $LASTEXITCODE pruefen.
+          # "git diff --quiet" reports through its exit code, not through text. An
+          # "if (git diff …)" would always be false because the command prints
+          # nothing - so check $LASTEXITCODE explicitly.
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) {
             Write-Host 'update.json war bereits aktuell.'

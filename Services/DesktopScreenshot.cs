@@ -10,8 +10,8 @@ using Microsoft.Win32;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Ein Bildschirmfoto als rohe Bildpunkte (B, G, R, A; Zeilen von oben) -
-/// der ganze virtuelle Bildschirm, dazu die Flaechen der einzelnen Monitore.
+/// A screenshot as raw pixels (B, G, R, A; rows top-down) - the whole
+/// virtual screen, plus the areas of the individual monitors.
 /// </summary>
 public sealed record ScreenCapture(int Left, int Top, int Width, int Height, IReadOnlyList<MonitorArea> Areas, byte[] Bgra)
 {
@@ -19,64 +19,64 @@ public sealed record ScreenCapture(int Left, int Top, int Width, int Height, IRe
 }
 
 /// <summary>
-/// Ein Monitor, in Bildpunkten des virtuellen Bildschirms (kann links oder
-/// oberhalb des Hauptbildschirms liegen, dann sind Left/Top negativ).
+/// A monitor, in pixels of the virtual screen (it can sit left of or above
+/// the primary screen; then Left/Top are negative).
 /// </summary>
-/// <param name="Device">Windows-Geraetename, z. B. "\\.\DISPLAY2".</param>
+/// <param name="Device">Windows device name, e.g. "\\.\DISPLAY2".</param>
 public sealed record MonitorArea(int Left, int Top, int Width, int Height, bool Primary, string Device);
 
-/// <summary>Ein Monitor und der Name seines Bildes.</summary>
+/// <summary>A monitor and the name of its image.</summary>
 public sealed record MonitorImage(MonitorArea Area, int Number, string FileName);
 
-/// <summary>Der an diesem Bildschirm angemeldete Benutzer.</summary>
-/// <param name="Sid">Seine Sicherheitskennung - fuer seinen Zweig der Registry (HKEY_USERS\&lt;SID&gt;).</param>
+/// <summary>The user signed in at this screen.</summary>
+/// <param name="Sid">The user's security ID - for the user's registry key (HKEY_USERS\&lt;SID&gt;).</param>
 public sealed record InteractiveUser(string Name, string? ProfilePath, string? Sid = null);
 
 /// <summary>
-/// Fotografiert den Desktop, damit sich nach einer Neuinstallation nachsehen
-/// laesst, wo welche Symbole lagen.
+/// Takes a picture of the desktop, so after a fresh install the user can
+/// look up which icons were where.
 ///
-/// Drei Dinge, an denen ein schlichtes "Bildschirm kopieren" scheitern wuerde:
+/// Three things a plain "copy the screen" would fail on:
 ///
-/// 1. MEHRERE MONITORE. Aufgenommen wird der ganze virtuelle Bildschirm in
-///    einem Zug - alle Monitore zeigen denselben Moment. Gespeichert wird
-///    daraus ein Bild PRO MONITOR, genau auf dessen Flaeche zugeschnitten.
-///    Ein Gesamtbild hatte bei unterschiedlich grossen Monitoren schwarze
-///    Flaechen, wo kein Monitor ist, und war zum Nachsehen unhandlich.
+/// 1. SEVERAL MONITORS. The whole virtual screen is captured in one go -
+///    all monitors show the same moment. From that, one image PER MONITOR
+///    is saved, cropped exactly to its area. A single combined image had
+///    black areas where there is no monitor when the monitors differed in
+///    size, and was awkward to look at.
 ///
-/// 2. SKALIERUNG. Ist ein Monitor auf 150 % gestellt, liefert Windows einem
-///    nicht DPI-bewussten Thread verkleinerte Masse: Das Foto waere unscharf
-///    oder abgeschnitten. Fuer die Aufnahme wird der Thread deshalb
-///    ausdruecklich auf "pro Monitor" gestellt und danach zurueckgesetzt.
+/// 2. SCALING. If a monitor is set to 150 %, Windows hands a thread that is
+///    not DPI-aware scaled-down measurements: the picture would be blurry or
+///    cropped. So for the capture, the thread is explicitly set to "per
+///    monitor" and reset afterwards.
 ///
-/// 3. FENSTER DAVOR. Ohne Weiteres zeigte das Foto vor allem das Tool selbst.
-///    Die Programmfenster werden kurz beiseitegelegt und danach genau so
-///    zurueckgeholt, wie sie waren - siehe HideWindows/RestoreWindows.
+/// 3. WINDOWS IN FRONT. Left alone, the picture would mostly show the tool
+///    itself. The program windows are moved out of the way briefly and
+///    brought back exactly as they were - see HideWindows/RestoreWindows.
 /// </summary>
 public static class DesktopScreenshot
 {
-    /// <summary>Unterordner im Backup-Ziel.</summary>
+    /// <summary>Subfolder in the backup target.</summary>
     public const string FolderName = "Desktop-Screenshot";
 
     /// <summary>
-    /// Fruehere Fassung: alle Monitore in einem Bild. Wird beim Wiederherstellen
-    /// noch gezeigt, wenn eine Sicherung nur dieses enthaelt.
+    /// Earlier version: all monitors in one image. Still shown on restore if a
+    /// backup contains only that one.
     /// </summary>
     public const string LegacyFileName = "Desktop.png";
 
-    /// <summary>Anfang der Bildnamen: "Bildschirm-1.png", "Bildschirm-2.png" ...</summary>
+    /// <summary>Start of the image names: "Bildschirm-1.png", "Bildschirm-2.png" ...</summary>
     public const string FilePrefix = "Bildschirm-";
 
-    // ------------------------------------------------------------ Ein Bild pro Monitor
+    // ------------------------------------------------------------ One image per monitor
 
     /// <summary>
-    /// Nummer und Dateiname je Monitor, nach Nummer sortiert.
+    /// Number and file name per monitor, sorted by number.
     ///
-    /// Die Nummer ist die von Windows ("\\.\DISPLAY2" -> 2) - meist dieselbe,
-    /// die "Identifizieren" in den Anzeigeeinstellungen zeigt. Fehlt sie oder
-    /// kommt sie doppelt vor, wird gezaehlt: Hauptbildschirm zuerst, dann von
-    /// links nach rechts. Bei mehreren Monitoren traegt das Bild des
-    /// Hauptbildschirms das im Namen.
+    /// The number is Windows' own ("\\.\DISPLAY2" -> 2) - usually the same one
+    /// "Identify" shows in the display settings. If it is missing or appears
+    /// twice, the monitors are counted: primary screen first, then left to
+    /// right. With several monitors, the primary screen's image says so in its
+    /// name.
     /// </summary>
     public static IReadOnlyList<MonitorImage> PlanImages(IReadOnlyList<MonitorArea> areas)
     {
@@ -96,7 +96,7 @@ public static class DesktopScreenshot
             .ToList();
     }
 
-    /// <summary>"\\.\DISPLAY2" -> 2; 0, wenn keine Nummer darin steht.</summary>
+    /// <summary>"\\.\DISPLAY2" -> 2; 0 if it contains no number.</summary>
     public static int DisplayNumber(string? device)
     {
         if (string.IsNullOrEmpty(device)) return 0;
@@ -109,8 +109,8 @@ public static class DesktopScreenshot
     }
 
     /// <summary>
-    /// Schneidet ein Rechteck aus einem BGRA-Bild. Was ueber den Rand ragt,
-    /// faellt weg; liegt nichts im Bild, ist das Ergebnis leer (0 x 0).
+    /// Crops a rectangle out of a BGRA image. Whatever sticks out over the edge
+    /// is dropped; if nothing lies inside the image, the result is empty (0 x 0).
     /// </summary>
     public static byte[] Crop(ReadOnlySpan<byte> bgra, int width, int height,
                               int x, int y, int w, int h, out int outWidth, out int outHeight)
@@ -127,8 +127,8 @@ public static class DesktopScreenshot
     }
 
     /// <summary>
-    /// Die Bilder eines gesicherten Desktop-Screenshots, in Nummernfolge.
-    /// Enthaelt der Ordner nur das fruehere Gesamtbild, ist es das.
+    /// The images of a backed-up desktop screenshot, in number order. If the
+    /// folder holds only the earlier combined image, it is that one.
     /// </summary>
     public static IReadOnlyList<string> FindImages(string folder)
     {
@@ -151,15 +151,15 @@ public static class DesktopScreenshot
                                      System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0;
     }
 
-    // ------------------------------------------------------------ Aufnahme
+    // ------------------------------------------------------------ Capture
 
-    /// <summary>Nimmt alle Monitore in einem Zug auf und merkt sich ihre Flaechen.</summary>
+    /// <summary>Captures all monitors in one go and remembers their areas.</summary>
     [SupportedOSPlatform("windows")]
     public static ScreenCapture CaptureVirtualScreen()
     {
         var vorher = IntPtr.Zero;
         try { vorher = SetThreadDpiAwarenessContext(DpiAwarenessPerMonitorV2); }
-        catch (EntryPointNotFoundException) { /* aelteres Windows: Manifest muss reichen */ }
+        catch (EntryPointNotFoundException) { /* older Windows: the manifest has to do */ }
 
         try
         {
@@ -168,8 +168,8 @@ public static class DesktopScreenshot
             if (width <= 0 || height <= 0)
                 throw new InvalidOperationException("Windows meldet keinen Bildschirm (kein angemeldeter Desktop?).");
 
-            // Im selben DPI-Zustand wie die Aufnahme - sonst passten die
-            // Flaechen bei skalierten Monitoren nicht zu den Bildpunkten.
+            // In the same DPI state as the capture - otherwise the areas would not
+            // match the pixels on scaled monitors.
             var monitore = EnumMonitors();
             if (monitore.Count == 0)
                 monitore.Add(new MonitorArea(left, top, width, height, true, ""));
@@ -186,7 +186,7 @@ public static class DesktopScreenshot
                     {
                         biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>(),
                         biWidth = width,
-                        biHeight = -height,        // negativ = Zeilen von oben nach unten
+                        biHeight = -height,        // negative = rows top-down
                         biPlanes = 1,
                         biBitCount = 32,
                         biCompression = 0          // BI_RGB
@@ -197,7 +197,7 @@ public static class DesktopScreenshot
                     throw new InvalidOperationException($"Speicher fuer {width} x {height} Bildpunkte nicht verfuegbar.");
                 alt = SelectObject(memDc, bitmap);
 
-                // CAPTUREBLT nimmt auch halbdurchsichtige Fenster mit (Taskleiste).
+                // CAPTUREBLT includes semi-transparent windows as well (taskbar).
                 if (!BitBlt(memDc, 0, 0, width, height, screenDc, left, top, SRCCOPY | CAPTUREBLT))
                     throw new InvalidOperationException($"Bildschirm konnte nicht gelesen werden (Win32-Fehler {Marshal.GetLastWin32Error()}).");
 
@@ -217,15 +217,15 @@ public static class DesktopScreenshot
         {
             if (vorher != IntPtr.Zero)
             {
-                try { SetThreadDpiAwarenessContext(vorher); } catch { /* egal */ }
+                try { SetThreadDpiAwarenessContext(vorher); } catch { /* does not matter */ }
             }
         }
     }
 
     /// <summary>
-    /// Das Desktop-Fenster selbst (Progman, mit Hintergrund) - per
-    /// PrintWindow, also auch dann, wenn Fenster darueber liegen. null, wenn
-    /// es das Fenster nicht gibt oder es sich nicht abbilden laesst.
+    /// The desktop window itself (Progman, with the wallpaper) - via
+    /// PrintWindow, so even when windows lie on top of it. null if the window
+    /// does not exist or cannot be captured.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static byte[]? CaptureDesktopWindow()
@@ -266,7 +266,7 @@ public static class DesktopScreenshot
         }
     }
 
-    /// <summary>Anteil der Bildpunkte (Stichprobe), die ungefaehr diese Farbe haben.</summary>
+    /// <summary>Share of the pixels (sampled) that have roughly this color.</summary>
     public static double ColorShare(ReadOnlySpan<byte> bgra, (byte R, byte G, byte B) f, int toleranz = 24)
     {
         int pixel = bgra.Length / 4, schritt = Math.Max(1, pixel / 20000), treffer = 0, gesamt = 0;
@@ -280,7 +280,7 @@ public static class DesktopScreenshot
         return gesamt == 0 ? 0 : (double)treffer / gesamt;
     }
 
-    /// <summary>Die haeufigste Farbe (auf 16 Stufen je Kanal gerundet) und ihr Anteil, z. B. ("#6666DD", 0.98).</summary>
+    /// <summary>The most common color (rounded to 16 levels per channel) and its share, e.g. ("#6666DD", 0.98).</summary>
     public static (string Farbe, double Anteil) MostCommonColor(ReadOnlySpan<byte> bgra)
     {
         int pixel = bgra.Length / 4, schritt = Math.Max(1, pixel / 20000), gesamt = 0;
@@ -297,7 +297,7 @@ public static class DesktopScreenshot
         return ($"#{((top.Key >> 8) & 0xF) * 17:X2}{((top.Key >> 4) & 0xF) * 17:X2}{(top.Key & 0xF) * 17:X2}", (double)top.Value / gesamt);
     }
 
-    /// <summary>Alle Monitore mit Flaeche, Hauptbildschirm-Kennung und Geraetenamen.</summary>
+    /// <summary>All monitors with area, primary-screen flag and device name.</summary>
     [SupportedOSPlatform("windows")]
     private static List<MonitorArea> EnumMonitors()
     {
@@ -318,9 +318,9 @@ public static class DesktopScreenshot
     }
 
     /// <summary>
-    /// true, wenn das Bild durchgehend schwarz ist - so sieht es aus, wenn der
-    /// Bildschirm gesperrt ist oder gerade eine UAC-Abfrage den Desktop belegt.
-    /// Geprueft wird eine Stichprobe, nicht jeder Bildpunkt.
+    /// true if the image is black throughout - which is what it looks like when
+    /// the screen is locked or a UAC prompt holds the desktop. A sample is
+    /// checked, not every pixel.
     /// </summary>
     public static bool IsBlank(ReadOnlySpan<byte> bgra)
     {
@@ -335,17 +335,17 @@ public static class DesktopScreenshot
         return true;
     }
 
-    // ------------------------------------------------------------ Fenster beiseite
+    // ------------------------------------------------------------ Windows out of the way
 
-    /// <summary>Was sich ueber ein Fenster sagen laesst, ohne es anzufassen.</summary>
+    /// <summary>What can be said about a window without touching it.</summary>
     public sealed record WindowInfo(
         string ClassName, bool Visible, bool Minimized, bool Cloaked,
         bool HasOwner, bool ToolWindow, bool AppWindow, int Width, int Height);
 
-    /// <summary>Die beiseitegelegten Fenster, von oben nach unten, und welches aktiv war.</summary>
+    /// <summary>The windows moved out of the way, top to bottom, and which one was active.</summary>
     public sealed record HiddenWindows(IReadOnlyList<IntPtr> TopToBottom, IntPtr Foreground);
 
-    /// <summary>Fenster der Windows-Oberflaeche selbst - die gehoeren zum Desktop.</summary>
+    /// <summary>Windows of the Windows shell itself - they belong to the desktop.</summary>
     private static readonly HashSet<string> ShellClasses = new(StringComparer.OrdinalIgnoreCase)
     {
         "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd",
@@ -353,13 +353,13 @@ public static class DesktopScreenshot
     };
 
     /// <summary>
-    /// Soll dieses Fenster fuer das Foto beiseite? Dieselbe Auswahl, die Windows
-    /// fuer Alt+Tab trifft: sichtbare, nicht minimierte Programmfenster.
-    /// Bewusst NICHT dabei:
-    ///  - Fenster anderer virtueller Desktops (Windows "verhuellt" sie, cloaked),
-    ///  - untergeordnete Fenster (Dialoge, Paletten) - sie folgen ihrem Hauptfenster,
-    ///  - Werkzeugfenster ohne eigenen Taskleisten-Eintrag (Tray-Menues u. a.),
-    ///  - Desktop und Taskleiste selbst.
+    /// Should this window be moved out of the way for the picture? The same
+    /// selection Windows makes for Alt+Tab: visible program windows that are not
+    /// minimized. Deliberately NOT included:
+    ///  - windows of other virtual desktops (Windows "cloaks" them),
+    ///  - owned windows (dialogs, palettes) - they follow their main window,
+    ///  - tool windows without a taskbar entry of their own (tray menus etc.),
+    ///  - the desktop and the taskbar themselves.
     /// </summary>
     public static bool ShouldHide(WindowInfo w)
     {
@@ -372,55 +372,56 @@ public static class DesktopScreenshot
     }
 
     /// <summary>
-    /// Legt alle Programmfenster beiseite (minimiert) und merkt sich Reihenfolge
-    /// und aktives Fenster.
+    /// Moves all program windows out of the way (minimized) and remembers their
+    /// order and the active window.
     ///
-    /// Frueher: "Desktop anzeigen" (Win+D) und danach erneut. Das ist ein
-    /// Umschalter - aendert sich zwischendurch der Fokus, holt der zweite Aufruf
-    /// die Fenster nicht zurueck, sondern blendet erneut aus. Hier wird genau
-    /// das zurueckgeholt, was vorher beiseitegelegt wurde.
+    /// This used to be "Show desktop" (Win+D) and then once more. That is a
+    /// toggle - if the focus changes in between, the second call does not bring
+    /// the windows back but hides them again. Here exactly what was moved out of
+    /// the way is brought back.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static HiddenWindows HideWindows()
     {
         var vordergrund = GetForegroundWindow();
         var liste = new List<IntPtr>();
-        // EnumWindows liefert die Fenster von oben nach unten.
+        // EnumWindows returns the windows top to bottom.
         EnumWindows((h, _) =>
         {
             try { if (ShouldHide(Describe(h)) && !IsHungAppWindow(h)) liste.Add(h); }
-            catch { /* ein seltsames Fenster darf die Aufnahme nicht verhindern */ }
+            catch { /* one odd window must not prevent the capture */ }
             return true;
         }, IntPtr.Zero);
 
-        // Asynchron: Ein haengendes Programm darf das Tool nicht mit anhalten.
+        // Asynchronous: a hung program must not stall the tool as well.
         foreach (var h in liste) ShowWindowAsync(h, SW_MINIMIZE);
         return new HiddenWindows(liste, vordergrund);
     }
 
     /// <summary>
-    /// Holt die Fenster zurueck: maximierte wieder maximiert, in der alten
-    /// Stapelreihenfolge, und das vorher aktive Fenster wieder im Vordergrund.
+    /// Brings the windows back: maximized ones maximized again, in the old
+    /// stacking order, and the previously active window in the foreground
+    /// again.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static void RestoreWindows(HiddenWindows versteckt)
     {
         var fenster = versteckt.TopToBottom;
 
-        // 1. Aufdecken, von unten nach oben. SW_RESTORE stellt ein Fenster so
-        //    wieder her, wie es vor dem Minimieren war - maximiert bleibt maximiert.
+        // 1. Uncover, bottom to top. SW_RESTORE restores a window to how it was
+        //    before minimizing - maximized stays maximized.
         for (int i = fenster.Count - 1; i >= 0; i--)
             if (IsWindow(fenster[i]) && IsIconic(fenster[i])) ShowWindowAsync(fenster[i], SW_RESTORE);
 
-        // Die Aufrufe oben laufen in den Programmen selbst, jedes in seinem
-        // Tempo. Kurz warten, sonst kaeme Schritt 2 dem Aufdecken zuvor.
+        // The calls above run inside the programs themselves, each at its own
+        // pace. Wait briefly, otherwise step 2 would come before the uncovering.
         var uhr = System.Diagnostics.Stopwatch.StartNew();
         while (uhr.ElapsedMilliseconds < 3000 && fenster.Any(h => IsWindow(h) && IsIconic(h) && !IsHungAppWindow(h)))
             Thread.Sleep(50);
 
-        // 2. Stapelreihenfolge wiederherstellen: von unten nach oben jeweils
-        //    nach oben legen - am Ende liegt das oberste wieder oben. Auf einem
-        //    eigenen Thread mit Zeitlimit, falls ein Programm nicht antwortet.
+        // 2. Restore the stacking order: bring each one to the top, bottom to
+        //    top - in the end the topmost one is on top again. On a thread of its
+        //    own with a time limit, in case a program does not respond.
         var t = new Thread(() =>
         {
             for (int i = fenster.Count - 1; i >= 0; i--)
@@ -429,7 +430,7 @@ public static class DesktopScreenshot
                 if (!IsWindow(h) || IsHungAppWindow(h)) continue;
                 SetWindowPos(h, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
-            // 3. Das vorher aktive Fenster wieder aktiv.
+            // 3. Make the previously active window active again.
             if (versteckt.Foreground != IntPtr.Zero && IsWindow(versteckt.Foreground))
                 SetForegroundWindow(versteckt.Foreground);
         }) { IsBackground = true, Name = "FensterZurueck" };
@@ -452,22 +453,21 @@ public static class DesktopScreenshot
             r.Right - r.Left, r.Bottom - r.Top);
     }
 
-    /// <summary>Fuer die Pruefungen: Ist das Fenster gerade minimiert / maximiert?</summary>
+    /// <summary>For the tests: is the window currently minimized / maximized?</summary>
     [SupportedOSPlatform("windows")]
     internal static (bool Minimiert, bool Maximiert) State(IntPtr h) => (IsIconic(h), IsZoomed(h));
 
-    // ------------------------------------------------------------ Wessen Desktop?
+    // ------------------------------------------------------------ Whose desktop?
 
     /// <summary>
-    /// Der Benutzer, dessen Desktop gerade zu sehen ist, samt Profilordner.
+    /// The user whose desktop is visible right now, with the profile folder.
     ///
-    /// Bewusst NICHT Environment.UserName: Das Tool laeuft mit
-    /// Administratorrechten. Meldet sich ein Administrator per UAC-Abfrage an
-    /// einem fremden Konto an, liefe es unter dessen Namen - zu sehen ist aber
-    /// weiterhin der Desktop des angemeldeten Benutzers. Massgeblich ist
-    /// deshalb die Sitzung, nicht der Prozess.
+    /// Deliberately NOT Environment.UserName: the tool runs with administrator
+    /// rights. If an administrator enters another account in the UAC prompt, it
+    /// would run under that name - but the desktop on screen is still the
+    /// signed-in user's. So the session counts, not the process.
     /// </summary>
-    /// <returns>null, wenn sich das nicht ermitteln laesst.</returns>
+    /// <returns>null if it cannot be determined.</returns>
     [SupportedOSPlatform("windows")]
     public static InteractiveUser? GetInteractiveUser()
     {
@@ -487,7 +487,7 @@ public static class DesktopScreenshot
                 if (key?.GetValue("ProfileImagePath") is string pfad)
                     profil = Environment.ExpandEnvironmentVariables(pfad);
             }
-            catch { /* Name bekannt, Profil nicht - das reicht fuer die Meldung */ }
+            catch { /* name known, profile not - enough for the message */ }
 
             return new InteractiveUser(string.IsNullOrEmpty(domain) ? name : $@"{domain}\{name}", profil, sid);
         }

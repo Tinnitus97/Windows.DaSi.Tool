@@ -2,14 +2,13 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <!-- Bewusst .NET 10 (LTS), festgelegt auch in global.json: Mit .NET 11
-         gebaut (Version 1.2.0) startete die EXE auf Windows-10-Rechnern nicht.
-         Gebaut wird immer mit der neuesten LTS-Version: Die Workflows holen
-         ihr SDK ueber .github/actions/dotnet-lts, und die woechentliche
-         Pruefung (.github/workflows/dotnet-version.yml) wird rot, sobald eine
-         neue LTS-Version erscheint (.NET 12, voraussichtlich November 2027).
-         STS-Versionen wie .NET 11 laesst sie aus. Vor einem Wechsel: auf
-         Windows 10 testen. -->
+    <!-- Deliberately .NET 10 (LTS), also pinned in global.json: built with
+         .NET 11 (version 1.2.0), the EXE did not start on Windows 10 computers.
+         The build always uses the latest LTS version: the workflows get their
+         SDK through .github/actions/dotnet-lts, and the weekly check
+         (.github/workflows/dotnet-version.yml) turns red as soon as a new LTS
+         version comes out (.NET 12, expected in November 2027). It skips STS
+         versions like .NET 11. Before switching: test on Windows 10. -->
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
@@ -23,13 +22,13 @@
     <Version>1.2.8</Version>
     <Description>Backup- und Restore-Tool fuer Windows-Benutzerprofile</Description>
 
-    <!-- Fenster-Icon der EXE -->
+    <!-- Window icon of the EXE -->
     <ApplicationIcon>Assets/app.ico</ApplicationIcon>
 
-    <!-- Debug-Symbole (.pdb) nicht mit ausgeben. Betrifft auch die nativen
-         PDBs von SkiaSharp/HarfBuzzSharp (libSkiaSharp.pdb, libHarfBuzzSharp.pdb),
-         die sonst im publish-Ordner landen, zur Laufzeit aber nicht gebraucht
-         werden. -->
+    <!-- Do not emit debug symbols (.pdb). This also covers the native PDBs of
+         SkiaSharp/HarfBuzzSharp (libSkiaSharp.pdb, libHarfBuzzSharp.pdb), which
+         would otherwise land in the publish folder but are not needed at
+         runtime. -->
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
     <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
@@ -41,14 +40,14 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.6" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <!-- System.Text.Encoding.CodePages wurde entfernt: Ab .NET 10 ist die
-         Funktionalitaet (CodePagesEncodingProvider fuer Codepage 850) im
-         Framework enthalten. Das separate Paket ist unnoetig (Warnung NU1510).
-         Der Registrierungscode in Program.cs bleibt unveraendert und funktioniert. -->
-    <!-- Diese (nur unter Linux genutzte) D-Bus-Abhaengigkeit kommt ueber
-         Avalonia.Desktop transitiv herein. Wir setzen sie explizit auf die
-         neueste Fassung - deutlich ueber der fuer CVE-2026-39959 (HIGH)
-         gepatchten 0.92.0, also CVE-frei. Unter Windows nicht ausgefuehrt. -->
+    <!-- System.Text.Encoding.CodePages was removed: since .NET 10 the
+         functionality (CodePagesEncodingProvider for code page 850) is part of
+         the framework. The separate package is not needed (warning NU1510).
+         The registration code in Program.cs stays unchanged and works. -->
+    <!-- This D-Bus dependency (used on Linux only) comes in transitively via
+         Avalonia.Desktop. We pin it explicitly to the latest version - well
+         above 0.92.0, which patched CVE-2026-39959 (HIGH), so free of known
+         CVEs. Not executed on Windows. -->
     <PackageReference Include="Tmds.DBus.Protocol" Version="0.95.2" />
   </ItemGroup>
 
@@ -56,16 +55,17 @@
     <AvaloniaResource Include="Assets/**" />
   </ItemGroup>
 
-  <!-- Die Oberflaechen-Pruefung (tests/DaSiGuiTests) setzt die Haken fuer
-       Ordner-Dialog, Browser und winget-Attrappe, die nur intern sichtbar sind. -->
+  <!-- The UI tests (tests/DaSiGuiTests) set the hooks for the folder
+       dialog, the browser and the winget fake, which are only visible
+       internally. -->
   <ItemGroup>
     <InternalsVisibleTo Include="DaSiGuiTests" />
   </ItemGroup>
 
   <!--
-    Die Projektdatei liegt im Wurzelverzeichnis des Repositories. Das .NET SDK
-    sammelt von dort JEDE .cs-Datei ein - auch die des Testprojekts unter
-    tests\. Das ergaebe zwei Einstiegspunkte (Fehler CS0017).
+    The project file lives in the repository root. From there the .NET SDK
+    collects EVERY .cs file - including those of the test projects under
+    tests\. That would result in two entry points (error CS0017).
   -->
   <ItemGroup>
     <Compile Remove="tests/**" />

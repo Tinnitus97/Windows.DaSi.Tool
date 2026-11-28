@@ -12,30 +12,30 @@ using System.Threading.Tasks;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Der angebotene Programmstand, wie er in update.json steht.
+/// The offered program version, as listed in update.json.
 /// </summary>
 public sealed class UpdateEntry
 {
-    /// <summary>Versionsnummer der angebotenen Fassung, z.B. "1.2.0".</summary>
+    /// <summary>Version number of the offered release, e.g. "1.2.0".</summary>
     public string Version { get; init; } = "";
 
-    /// <summary>Tag der Veroeffentlichung - reine Anzeige.</summary>
+    /// <summary>Release date - display only.</summary>
     public string Released { get; init; } = "";
 
-    /// <summary>Adresse der EXE an der Veroeffentlichung.</summary>
+    /// <summary>Address of the EXE in the release.</summary>
     public string Url { get; init; } = "";
 
-    /// <summary>Erwartete SHA256-Summe, klein geschrieben.</summary>
+    /// <summary>Expected SHA256 checksum, lower case.</summary>
     public string Sha256 { get; init; } = "";
 
-    /// <summary>Adresse der Veroeffentlichungsseite fuer "Was ist neu?".</summary>
+    /// <summary>Address of the release page for "What's new?".</summary>
     public string Notes { get; init; } = "";
 
-    /// <summary>true, wenn Nummer und Adresse vorhanden sind.</summary>
+    /// <summary>true if number and address are present.</summary>
     public bool IsUsable => !string.IsNullOrWhiteSpace(Version) && !string.IsNullOrWhiteSpace(Url);
 }
 
-/// <summary>Ergebnis der Abfrage von update.json.</summary>
+/// <summary>Result of fetching update.json.</summary>
 public sealed class UpdateManifest
 {
     public UpdateEntry Program { get; init; } = new();
@@ -48,70 +48,67 @@ public sealed class UpdateManifest
 }
 
 /// <summary>
-/// Die Selbstaktualisierung des Windows DaSi Tools.
+/// The self-update of Windows DaSi Tool.
 ///
-/// Ablauf: Beim Start wird EINE Datei geholt - update.json aus dem
-/// Repository. Steht dort eine hoehere Versionsnummer als die eigene,
-/// erscheint der Hinweisstreifen. Erst auf ausdrueckliche Zustimmung wird die
-/// neue EXE geladen, ihre Pruefsumme verglichen und die laufende Datei
-/// ersetzt.
+/// Flow: at startup ONE file is fetched - update.json from the repository.
+/// If it lists a higher version number than our own, the notice bar
+/// appears. Only after explicit consent is the new EXE downloaded, its
+/// checksum compared and the running file replaced.
 ///
-/// ZWEI ENTSCHEIDUNGEN, DIE EINE ERKLAERUNG VERDIENEN:
+/// TWO DECISIONS THAT DESERVE AN EXPLANATION:
 ///
-/// 1. Abgefragt wird ueber raw.githubusercontent.com, NICHT ueber
-///    api.github.com. Die Schnittstelle laesst ohne Anmeldung nur 60 Abrufe je
-///    Stunde und IP-Adresse zu - in einer Firma sitzen alle Rechner hinter
-///    derselben Adresse, nach 60 Programmstarts waere Schluss. Ein
-///    Zugangstoken hat in einer verteilten EXE ohnehin nichts zu suchen.
+/// 1. The check goes through raw.githubusercontent.com, NOT api.github.com.
+///    Without sign-in, the API allows only 60 requests per hour and IP
+///    address - in a company all computers sit behind the same address, so
+///    it would stop after 60 program starts. An access token has no place
+///    in a distributed EXE anyway.
 ///
-/// 2. In der Adresse steht "HEAD" statt eines festen Zweignamens. Damit zeigt
-///    sie immer auf den Standardzweig des Repositories - heute "main". Ein
-///    fest eingetragener Name waere eine stille Falle: Wird der Standardzweig
-///    spaeter umbenannt oder ausgetauscht, liefe die Abfrage ins Leere, und
-///    zwar in jeder bereits ausgelieferten EXE. Die laesst sich dann nicht
-///    mehr nachbessern - sie holt ihre Nachbesserung ja ueber genau diese
-///    Adresse.
+/// 2. The address says "HEAD" instead of a fixed branch name. That way it
+///    always points to the repository's default branch - "main" today. A
+///    hard-coded name would be a silent trap: if the default branch were
+///    later renamed or replaced, the check would come up empty, and in
+///    every EXE already shipped. Those could not be fixed any more - they
+///    fetch their fix through exactly this address.
 ///
-/// Es wird nichts heruntergeladen und nichts ersetzt, ohne dass jemand
-/// zugestimmt hat - und ausschliesslich das eingespielt, dessen Pruefsumme zu
-/// der Angabe in update.json passt.
+/// Nothing is downloaded and nothing replaced without someone agreeing - and
+/// only what matches the checksum in update.json is installed.
 /// </summary>
 public static class UpdateService
 {
     /// <summary>
-    /// Vorgabeadresse. Laesst sich ueber <see cref="UrlOverrideFileName"/>
-    /// neben der EXE ersetzen - etwa fuer ein internes Spiegelverzeichnis.
+    /// Default address. Can be replaced through <see cref="UrlOverrideFileName"/>
+    /// next to the EXE - e.g. for an internal mirror.
     /// </summary>
     public const string DefaultManifestUrl =
         "https://raw.githubusercontent.com/Tinnitus97/Windows.DaSi.Tool/HEAD/update.json";
 
-    /// <summary>Uebersicht der Veroeffentlichungen - Ziel von "Was ist neu?".</summary>
+    /// <summary>Overview of the releases - target of "What's new?".</summary>
     public const string ReleasesPageUrl =
         "https://github.com/Tinnitus97/Windows.DaSi.Tool/releases";
 
-    /// <summary>Name der Datei mit einer abweichenden Adresse.</summary>
+    /// <summary>Name of the file holding a custom address.</summary>
     public const string UrlOverrideFileName = "Update-Url.txt";
 
-    /// <summary>Wie lange auf update.json gewartet wird.</summary>
+    /// <summary>How long to wait for update.json.</summary>
     private static readonly TimeSpan AbfrageZeitgrenze = TimeSpan.FromSeconds(20);
 
-    /// <summary>Wie lange der Download der EXE dauern darf.</summary>
+    /// <summary>How long the download of the EXE may take.</summary>
     private static readonly TimeSpan DownloadZeitgrenze = TimeSpan.FromMinutes(10);
 
     /// <summary>
-    /// Arbeitsordner fuer die heruntergeladene EXE und das Austauschskript.
+    /// Working folder for the downloaded EXE and the swap script.
     ///
-    /// Bewusst ein eigener Ordner neben dem Programm und nicht darin: Das
-    /// Skript laeuft noch, waehrend sich das Programm schon beendet hat.
+    /// Deliberately a folder of its own next to the program and not inside it:
+    /// the script is still running while the program has already exited.
     /// </summary>
     public static string WorkFolder => Path.Combine(Path.GetTempPath(), "WindowsDaSiTool-Update");
 
-    // ------------------------------------------------------------ Adresse
+    // ------------------------------------------------------------ Address
 
     /// <summary>
-    /// Liest eine abweichende Adresse aus <see cref="UrlOverrideFileName"/>
-    /// neben der EXE. Erwartet wird eine Zeile mit vollstaendiger Adresse;
-    /// alles andere (z.B. Zeilen mit "#") wird uebergangen.
+    /// Reads a custom address from <see cref="UrlOverrideFileName"/> next to
+    /// the EXE. Expected is one line with a full address; everything else
+    /// (e.g. lines starting with "#") is skipped.
     /// </summary>
     public static string ResolveManifestUrl(string programFolder)
     {
@@ -128,14 +125,14 @@ public static class UpdateService
         }
         catch
         {
-            // Eine unlesbare Datei darf die Abfrage nicht verhindern.
+            // An unreadable file must not prevent the check.
             return DefaultManifestUrl;
         }
     }
 
-    // ------------------------------------------------------------ Abfragen
+    // ------------------------------------------------------------ Check
 
-    /// <summary>Holt update.json und wertet sie aus.</summary>
+    /// <summary>Fetches update.json and evaluates it.</summary>
     public static async Task<UpdateManifest> FetchAsync(string url, CancellationToken ct)
     {
         try
@@ -143,8 +140,8 @@ public static class UpdateService
             using var client = new HttpClient { Timeout = AbfrageZeitgrenze };
             client.DefaultRequestHeaders.UserAgent.ParseAdd("WindowsDaSiTool");
 
-            // Ohne diesen Zusatz meldet ein Rechner unter Umstaenden
-            // stundenlang den zwischengespeicherten alten Stand.
+            // Without this suffix a computer may report the cached old version for
+            // hours.
             client.DefaultRequestHeaders.CacheControl =
                 new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true };
 
@@ -158,8 +155,8 @@ public static class UpdateService
     }
 
     /// <summary>
-    /// Wertet den Inhalt von update.json aus. Oeffentlich, damit sich das
-    /// Einlesen ohne Netzzugriff pruefen laesst.
+    /// Evaluates the content of update.json. Public, so parsing can be tested
+    /// without network access.
     /// </summary>
     public static UpdateManifest Parse(string json)
     {
@@ -190,7 +187,7 @@ public static class UpdateService
         }
     }
 
-    /// <summary>Liest einen Wert und nimmt eine Zahl wie Text entgegen.</summary>
+    /// <summary>Reads a value and accepts a number as well as text.</summary>
     private static string Text(JsonElement element, string name)
         => element.TryGetProperty(name, out var wert)
             ? wert.ValueKind switch
@@ -202,26 +199,27 @@ public static class UpdateService
             : "";
 
     /// <summary>
-    /// true, wenn die angebotene Nummer hoeher ist als die eigene.
+    /// true if the offered number is higher than our own.
     ///
-    /// Laesst sich eine der beiden nicht als Versionsnummer lesen, gilt das
-    /// ausdruecklich NICHT als Update: lieber nichts anbieten als das Falsche.
+    /// If either of them cannot be read as a version number, that explicitly
+    /// does NOT count as an update: better to offer nothing than the wrong
+    /// thing.
     /// </summary>
     public static bool IsProgramNewer(string? installed, string? offered)
         => Version.TryParse(installed, out var hier)
            && Version.TryParse(offered, out var dort)
            && dort > hier;
 
-    // ------------------------------------------------------------ Herunterladen
+    // ------------------------------------------------------------ Download
 
-    /// <summary>Ergebnis eines Downloads samt Pruefsummenvergleich.</summary>
+    /// <summary>Result of a download including the checksum comparison.</summary>
     public sealed record DownloadResult(bool Success, string File, string? Error, long Bytes);
 
     /// <summary>
-    /// Laedt eine Datei und vergleicht ihre SHA256-Summe mit der Angabe aus
-    /// update.json. Stimmt sie nicht, wird die Datei wieder geloescht: Eine
-    /// halb uebertragene oder ausgetauschte Datei darf nicht an die Stelle des
-    /// laufenden Programms treten.
+    /// Downloads a file and compares its SHA256 checksum with the one from
+    /// update.json. If it does not match, the file is deleted again: a
+    /// half-transferred or tampered file must not take the place of the running
+    /// program.
     /// </summary>
     public static async Task<DownloadResult> DownloadAsync(
         string url, string expectedSha256, string targetFile, CancellationToken ct)
@@ -266,7 +264,7 @@ public static class UpdateService
         }
     }
 
-    /// <summary>Bildet die SHA256-Summe einer Datei als Kleinbuchstaben.</summary>
+    /// <summary>Computes a file's SHA256 checksum in lower case.</summary>
     public static string ComputeSha256(string file)
     {
         using var strom = File.OpenRead(file);
@@ -277,56 +275,51 @@ public static class UpdateService
 
     private static void TryDelete(string file)
     {
-        try { if (File.Exists(file)) File.Delete(file); } catch { /* schon weg */ }
+        try { if (File.Exists(file)) File.Delete(file); } catch { /* already gone */ }
     }
 
-    // ------------------------------------------------------------ Austauschen
+    // ------------------------------------------------------------ Swap
 
     /// <summary>
-    /// Wie oft das Skript den Austausch versucht, etwa eine Sekunde Abstand.
-    /// Reicht, damit sich das Programm in Ruhe beendet.
+    /// How often the script attempts the swap, about one second apart. Enough
+    /// for the program to exit in peace.
     /// </summary>
     public const int MaxReplaceAttempts = 60;
 
-    /// <summary>Name der Erklaerung, die bei einem gescheiterten Austausch erscheint.</summary>
+    /// <summary>Name of the explanation that appears when the swap fails.</summary>
     public const string FailureNoteFileName = "update-fehler.txt";
 
     /// <summary>
-    /// Schreibt das Skript, das die laufende EXE ersetzt.
+    /// Writes the script that replaces the running EXE.
     ///
-    /// Warum ueberhaupt ein Skript: Eine laufende EXE kann sich unter Windows
-    /// nicht selbst ueberschreiben - die Datei ist gesperrt, solange der
-    /// Vorgang laeuft. Das Skript wartet deshalb auf dessen Ende, verschiebt
-    /// die neue Fassung an die alte Stelle und startet sie.
+    /// Why a script at all: on Windows a running EXE cannot overwrite itself -
+    /// the file is locked as long as the process runs. So the script waits for
+    /// it to end, moves the new version to the old place and starts it.
     ///
-    /// DIE PFADE STEHEN NICHT IN DER DATEI, sie kommen als Argumente (%~1,
-    /// %~2). Frueher standen sie als "set NEU=..." im Skript, und das Skript
-    /// wurde als UTF-8 geschrieben. cmd.exe liest eine Batchdatei aber in der
-    /// OEM-Codepage (850): Aus jedem Umlaut wurde beim Lesen Zeichensalat,
-    /// der Pfad stimmte nicht mehr, move scheiterte. Das Skript liegt in
-    /// %TEMP%, also unter C:\Users\[Name] - fuer jeden Benutzer mit Umlaut
-    /// im Namen war die Selbstaktualisierung damit kaputt. Argumente reicht
-    /// cmd dagegen als Unicode durch. Die Datei selbst enthaelt nur noch
-    /// ASCII und wird ohne BOM geschrieben.
+    /// THE PATHS ARE NOT IN THE FILE; they come as arguments (%~1, %~2). They
+    /// used to be in the script as "set NEU=...", and the script was written as
+    /// UTF-8. But cmd.exe reads a batch file in the OEM code page (850): every
+    /// umlaut turned into garbage when read, the path no longer matched, and
+    /// move failed. The script lives in %TEMP%, i.e. under C:\Users\[name] -
+    /// so self-update was broken for every user with an umlaut in their name.
+    /// Arguments, on the other hand, are passed through by cmd as Unicode. The
+    /// file itself now contains only ASCII and is written without a BOM.
     ///
-    /// GEWARTET WIRD UEBER DIE DATEISPERRE, nicht ueber die Prozessnummer.
-    /// Solange die alte Fassung laeuft, haelt Windows ihre Datei fest, und
-    /// move scheitert - also wird move einfach wiederholt, bis es klappt.
-    /// Frueher fragte eine for-Schleife per "tasklist | find" nach der
-    /// Prozessnummer und sollte per goto aussteigen. Auf einem echten
-    /// Windows lief sie trotzdem alle 30 Durchgaenge durch (im Test: 60 s,
-    /// fuer eine Prozessnummer, die es gar nicht gab). Jedes Update stand so
-    /// rund eine Minute still - und wer das Programm in der Zeit erneut
-    /// startete, sperrte die Datei. Die Schleife hier kommt ohne for, ohne
-    /// tasklist und ohne find aus; "ping" statt "timeout" wartet auch dann,
-    /// wenn keine Konsole zum Lesen da ist.
+    /// THE WAIT USES THE FILE LOCK, not the process ID. As long as the old
+    /// version runs, Windows holds its file, and move fails - so move is simply
+    /// repeated until it works. This used to be a for loop that asked for the
+    /// process ID via "tasklist | find" and was meant to exit via goto. On real
+    /// Windows it still ran all 30 rounds (in the test: 60 s, for a process ID
+    /// that did not even exist). Every update stood still for about a minute -
+    /// and whoever restarted the program in that time locked the file. The loop
+    /// here needs no for, no tasklist and no find; "ping" instead of "timeout"
+    /// waits even when there is no console to read from.
     ///
-    /// Schlaegt das Verschieben fehl - fehlende Schreibrechte, oder das
-    /// Programm laeuft an einem anderen Arbeitsplatz aus demselben Ordner -,
-    /// oeffnet sich eine Erklaerung im Editor, und die bisherige Fassung
-    /// startet wieder. Frueher stand dort "pause": in einem Fenster, das
-    /// wegen CreateNoWindow nie erschien. Das Programm war dann einfach weg,
-    /// und ein unsichtbares cmd wartete fuer immer.
+    /// If the move fails - missing write permissions, or the program runs on
+    /// another workstation from the same folder -, an explanation opens in the
+    /// editor and the previous version starts again. This used to be "pause":
+    /// in a window that never appeared because of CreateNoWindow. The program
+    /// was then simply gone, and an invisible cmd waited forever.
     /// </summary>
     public static string WriteUpdateScript(string newExe, string currentExe)
     {
@@ -368,13 +361,13 @@ public static class UpdateService
             exit /b 1
             """;
 
-        // Nur ASCII, ohne BOM - ein BOM machte aus "@echo off" einen
-        // unbekannten Befehl.
+        // ASCII only, without a BOM - a BOM turned "@echo off" into an unknown
+        // command.
         File.WriteAllText(skript, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
-        // Die Erklaerung fuer den Fehlerfall: mit BOM, damit der Editor die
-        // Umlaute in den Pfaden richtig zeigt. Zweisprachig, weil das Skript
-        // die Spracheinstellung des Programms nicht kennt.
+        // The explanation for the failure case: with a BOM, so the editor shows
+        // the umlauts in the paths correctly. Bilingual, because the script does
+        // not know the program's language setting.
         var notiz = $"""
             Windows DaSi Tool - Die Aktualisierung konnte nicht abgeschlossen werden
             =========================================================================
@@ -407,12 +400,11 @@ public static class UpdateService
     }
 
     /// <summary>
-    /// Baut den Aufruf des Austauschskripts. Eigene Methode, damit der Test
-    /// unter Windows genau diesen Aufruf ausfuehren kann.
+    /// Builds the command line for the swap script. A method of its own, so the
+    /// Windows test can run exactly this command.
     ///
-    /// Die aeusseren Anfuehrungszeichen nach /c entfernt cmd, uebrig bleibt
-    /// "skript" "neu" "ziel" - die uebliche, robuste Form fuer Pfade mit
-    /// Leerzeichen.
+    /// cmd removes the outer quotes after /c, leaving "script" "new" "target" -
+    /// the usual, robust form for paths with spaces.
     /// </summary>
     public static ProcessStartInfo BuildUpdateStart(string script, string newExe, string currentExe)
         => new("cmd.exe", $"/c \"\"{script}\" \"{newExe}\" \"{currentExe}\"\"")
@@ -423,8 +415,8 @@ public static class UpdateService
         };
 
     /// <summary>
-    /// Startet das Austauschskript. Danach muss sich das Programm beenden -
-    /// solange es laeuft, wartet das Skript.
+    /// Starts the swap script. The program has to exit afterwards - the script
+    /// waits as long as it runs.
     /// </summary>
     public static void StartUpdateScript(string script, string newExe, string currentExe)
     {
@@ -432,9 +424,8 @@ public static class UpdateService
     }
 
     /// <summary>
-    /// Raeumt den Arbeitsordner auf und fasst dabei mehrfach nach - ein
-    /// Virenscanner haelt eine frisch geschriebene Datei manchmal noch kurz
-    /// offen.
+    /// Cleans up the working folder and retries a few times - a virus scanner
+    /// sometimes keeps a freshly written file open for a moment.
     /// </summary>
     public static void CleanUp()
     {
@@ -446,7 +437,7 @@ public static class UpdateService
             {
                 foreach (var datei in Directory.EnumerateFiles(WorkFolder, "*", SearchOption.AllDirectories))
                 {
-                    try { File.SetAttributes(datei, FileAttributes.Normal); } catch { /* egal */ }
+                    try { File.SetAttributes(datei, FileAttributes.Normal); } catch { /* does not matter */ }
                 }
 
                 Directory.Delete(WorkFolder, recursive: true);
@@ -458,7 +449,7 @@ public static class UpdateService
             }
             catch
             {
-                // Beim naechsten Start erneut versuchen.
+                // Try again at the next start.
                 return;
             }
         }

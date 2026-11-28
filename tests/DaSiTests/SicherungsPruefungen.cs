@@ -10,14 +10,14 @@ using WindowsDaSiTool.Services;
 namespace DaSiTests;
 
 /// <summary>
-/// Der Sicherungsdienst (BackupService) im Ganzen: jede Aktion der
-/// Warteschlange, mit echtem robocopy, netsh und PrintBrm, an einem
-/// Testprofil im Temp-Ordner. Programme installiert die winget-Attrappe,
-/// "laufende Browser" sind Kopien von ping.exe unter dem Namen des Browsers.
+/// The backup service (BackupService) as a whole: every action of the queue,
+/// with real robocopy, netsh and PrintBrm, on a test profile in the temp
+/// folder. Programs are installed by the winget fake; "running browsers" are
+/// copies of ping.exe under the browser's name.
 /// </summary>
 internal static partial class Program
 {
-    /// <summary>Ein Programm wie Firefox oder Chrome - nur mit eigenem Namen, damit nichts Echtes beendet wird.</summary>
+    /// <summary>A program like Firefox or Chrome - only with a name of its own, so nothing real is closed.</summary>
     private static readonly AppEintrag Testbrowser =
         new(Punkt.Chrome, "Testbrowser", @"AppData\Local\DaSiTest\Testbrowser\User Data", "dasi-testbrowser", "DaSi.Testbrowser", true);
     private static readonly AppEintrag OhnePaket =
@@ -31,7 +31,7 @@ internal static partial class Program
         File.WriteAllText(pfad, inhalt);
     }
 
-    /// <summary>Ein Benutzerprofil, wie es auf einem Kundenrechner aussieht - nur klein.</summary>
+    /// <summary>A user profile as it looks on a customer's computer - just small.</summary>
     private static string CreateTestProfile(string pfad)
     {
         WriteFile(Path.Combine(pfad, "Documents", "brief.txt"), "Sehr geehrte Damen und Herren");
@@ -40,13 +40,13 @@ internal static partial class Program
         WriteFile(Path.Combine(pfad, @"AppData\Roaming\Werkzeug\einstellungen.ini"), "a=1");
         WriteFile(Path.Combine(pfad, @"AppData\Local\Temp\muell.tmp"), "Zwischenspeicher");
         WriteFile(Path.Combine(pfad, "OneDrive", "Vertrag.docx"), "Cloud");
-        // Ein Programmprofil wie Chrome: Datenordner mit "Local State", Profil "Default".
+        // A program profile like Chrome's: data folder with "Local State", profile "Default".
         var daten = Path.Combine(pfad, Testbrowser.ProfilRel);
         WriteFile(Path.Combine(daten, "Local State"), "{\"profile\":{}}");
         WriteFile(Path.Combine(daten, "Default", "Preferences"), "{\"homepage\":\"https://example.test\"}");
         WriteFile(Path.Combine(daten, "Default", "Bookmarks"), "{\"roots\":{}}");
         WriteFile(Path.Combine(daten, "Default", "Cache", "Cache_Data", "f_000001"), new string('c', 2000));
-        // Opera in drei Fassungen.
+        // Opera in three editions.
         var opera = Path.Combine(pfad, AppCatalog.Opera.Rel);
         WriteFile(Path.Combine(opera, "Opera Stable", "Local State"), "{}");
         WriteFile(Path.Combine(opera, "Opera Stable", "Preferences"), "{}");
@@ -55,7 +55,7 @@ internal static partial class Program
         return pfad;
     }
 
-    /// <summary>Startet einen "laufenden Browser": ping.exe unter fremdem Namen.</summary>
+    /// <summary>Starts a "running browser": ping.exe under another name.</summary>
     private static Process? RunningProcess(string root, string name)
     {
         if (!OperatingSystem.IsWindows()) return null;
@@ -116,7 +116,7 @@ internal static partial class Program
         DesktopIconsViaService(root, c, runner);
 
         Console.WriteLine("\n== PrintBrm: Fehler in der Ausgabe trotz Exit-Code 0 ==");
-        // Genau so von PrintBrm unter Windows Server 2025 ausgegeben (Exit-Code 0).
+        // Exactly what PrintBrm prints on Windows Server 2025 (exit code 0).
         var englisch = "Operation mode: restore\r\nTarget server: local machine\r\nThe following error occurred: 0x80070057.\r\nThe parameter is incorrect.\r\n\r\nCheck the eventlog for detailed information about the error which occurred.";
         Check("Fehlercode und Erklaerung erkannt (englisch)",
             BackupService.PrintBrmError(englisch) == "The following error occurred: 0x80070057. The parameter is incorrect.", BackupService.PrintBrmError(englisch));
@@ -127,7 +127,7 @@ internal static partial class Program
 
         if (!OperatingSystem.IsWindows()) return;
 
-        // ---- Profil, AppData, Cloud mit echtem robocopy ----
+        // ---- Profile, AppData, cloud with real robocopy ----
         Console.WriteLine("\n== Sicherungsdienst: Benutzerprofil, AppData und Cloud ==");
         var sicherung = Path.Combine(basis, "Sicherung");
         var aussen = Path.Combine(basis, "Spiele-auf-D");
@@ -143,7 +143,7 @@ internal static partial class Program
             !Directory.Exists(Path.Combine(gesichert, "AppData")) && !Directory.Exists(Path.Combine(gesichert, "OneDrive")) && !File.Exists(Path.Combine(gesichert, "NTUSER.DAT")));
         Check("Verknuepfung nach aussen: Warnung im Protokoll", log.Has("außerhalb des Profils"), log.Text);
 
-        // Mit AppData und Cloud - eine Datei ist gesperrt wie von einem laufenden Programm.
+        // With AppData and cloud - one file is locked as if by a running program.
         var gesperrt = Path.Combine(profil, @"AppData\Roaming\Werkzeug\gesperrt.db");
         WriteFile(gesperrt, "offen");
         log.Clear();
@@ -162,7 +162,7 @@ internal static partial class Program
         Check("gesperrte Datei: zusammengefasst, Liste neben der Sicherung, trotzdem Erfolg",
             log.Has("[ERFOLG] Benutzerprofil gesichert - bis auf") && File.Exists(Path.Combine(sicherung, RobocopySkips.ListFileName)), log.Text);
 
-        // Erneut ohne gesperrte Datei: Die Liste von eben ist dann falsch und geht weg.
+        // Again without a locked file: the list from before is wrong then and is removed.
         File.Delete(gesperrt);
         log.Clear();
         d = Service(profil, sicherung);
@@ -176,7 +176,7 @@ internal static partial class Program
         d.BackupUserProfile().Wait();
         Check("Cloud gewuenscht, aber keiner da: Hinweis", log.Has("es wurde aber keiner gefunden"), log.Text);
 
-        // Zurueck in ein neues Profil.
+        // Restore into a new profile.
         var neu = Path.Combine(basis, "Anwender");
         Directory.CreateDirectory(neu);
         log.Clear();
@@ -196,7 +196,7 @@ internal static partial class Program
         Check("Profil zurueck mit AppData", log.Has("AppData wird mit wiederhergestellt") && File.Exists(Path.Combine(neu, @"AppData\Roaming\Werkzeug\einstellungen.ini")), log.Text);
         Check("Cloud zurueck ein zweites Mal: wird ergaenzt", log.Has("besteht schon"), log.Text);
 
-        // AppData und Cloud ohne das Profil.
+        // AppData and cloud without the profile.
         var nurTeile = Path.Combine(basis, "NurTeile");
         log.Clear();
         d = Service(profil, nurTeile);
@@ -222,7 +222,7 @@ internal static partial class Program
         Service(neu2, leer).RestoreCloudOnly().Wait();
         Check("Sicherung ohne Cloud-Ordner: Hinweis", log.Has("enthält keine Cloud-Ordner"), log.Text);
 
-        // Laufende "Browser" werden vor dem Zurueckschreiben von AppData geschlossen.
+        // Running "browsers" are closed before AppData is restored.
         using (var edge = RunningProcess(root, AppCatalog.Edge.Prozess))
         {
             log.Clear();
@@ -258,13 +258,13 @@ internal static partial class Program
         Check("Chromium-Zwischenspeicher bleibt draussen", File.Exists(Path.Combine(gesichert, "Default", "Preferences"))
             && !Directory.Exists(Path.Combine(gesichert, "Default", "Cache")));
 
-        // Zurueck in ein Profil, in dem schon ein (frisches) Browserprofil liegt.
+        // Restore into a profile that already has a (fresh) browser profile.
         var ziel = Path.Combine(basis, "Browser-Anwender");
         var vorhanden = Path.Combine(ziel, Testbrowser.ProfilRel);
         WriteFile(Path.Combine(vorhanden, "Local State"), "frisch");
         var d = Service(ziel);
         bool nachgestartet = false;
-        // Waehrend des Kopierens startet sich der Browser selbst (wie nach einer Installation).
+        // While copying, the browser starts by itself (as after an install).
         d.OnFilesProgress = _ => { if (!nachgestartet) { nachgestartet = true; RunningProcess(root, Testbrowser.Prozess)?.Dispose(); } };
         log.Clear();
         using (var p = RunningProcess(root, Testbrowser.Prozess))
@@ -276,7 +276,7 @@ internal static partial class Program
         Check("Profil wiederhergestellt und abgeglichen", log.Has("[ERFOLG] Testbrowser Profil wiederhergestellt (Default)")
             && File.ReadAllText(Path.Combine(vorhanden, "Local State")) != "frisch", log.Text);
 
-        // Ohne winget-Paket (wie Edge) und mit scheiternder Installation.
+        // Without a winget package (like Edge) and with a failing install.
         WriteFile(Path.Combine(sicherung, OhnePaket.BackupOrdner, "Local State"), "{}");
         WriteFile(Path.Combine(sicherung, OhnePaket.BackupOrdner, "Default", "Preferences"), "{}");
         log.Clear();
@@ -287,7 +287,7 @@ internal static partial class Program
         Check("Installation scheitert: Warnung, Backup fehlt: Fehler",
             log.Has("Kaputtpaket ließ sich per winget nicht installieren") && log.Has("[FEHLER] Kaputtpaket Backup nicht gefunden"), log.Text);
 
-        // Ohne WingetService: "winget" aus dem Suchpfad - hier die Attrappe.
+        // Without WingetService: "winget" from the search path - here the fake.
         if (attrappe is not null)
         {
             var pfad = Environment.GetEnvironmentVariable("PATH");
@@ -302,7 +302,7 @@ internal static partial class Program
             finally { Environment.SetEnvironmentVariable("PATH", pfad); }
         }
 
-        // Das bisherige Profil laesst sich nicht beiseitelegen: nichts anfassen.
+        // The existing profile cannot be moved aside: touch nothing.
         var sperre = Path.Combine(vorhanden, "Default", "Preferences");
         log.Clear();
         using (new FileStream(sperre, FileMode.Open, FileAccess.Read, FileShare.None))
@@ -311,7 +311,7 @@ internal static partial class Program
 
         MozillaServiceCheck(basis, Service, log, ordner);
 
-        // Opera: alle Fassungen, je nach Lage installiert, nachinstalliert oder nur zurueckgeschrieben.
+        // Opera: all editions, installed, reinstalled or just restored depending on the situation.
         Attrappen.WriteScenario(ordner, Scenario(("install.*.code", "0")));
         log.Clear();
         Service(profil).BackupOpera().Wait();
@@ -363,7 +363,7 @@ internal static partial class Program
         Check("Drucker-Export: Ergebnis gemeldet", log.Has("[ERFOLG] Drucker gesichert") || log.Has("[FEHLER] Druckersicherung fehlgeschlagen") || log.Has("PrintBrm.exe wurde nicht gefunden"), log.Text);
 
         WriteFile(Path.Combine(sicherung, "Drucker", "Drucker.printerExport"), "keine echte Druckersicherung");
-        // Was sagt PrintBrm selbst zu einer unbrauchbaren Datei? (Zur Auswertung im Protokoll der CI.)
+        // What does PrintBrm itself say about an unusable file? (For evaluation in the CI log.)
         var brm = Path.Combine(Environment.SystemDirectory, "spool", "tools", "PrintBrm.exe");
         if (File.Exists(brm))
         {
@@ -383,14 +383,14 @@ internal static partial class Program
     }
 
     /// <summary>
-    /// Desktop-Symbole ueber den Dienst - mit einem Test-Desktop statt des
-    /// Explorers, damit sich auch fehlende und Systemsymbole durchspielen lassen.
+    /// Desktop icons through the service - with a test desktop instead of
+    /// Explorer, so missing icons and system icons can be played through as well.
     /// </summary>
     private static void DesktopIconsViaService(string root, CancellationTokenState c, ProcessRunner runner)
     {
         Console.WriteLine("\n== Sicherungsdienst: Desktop-Symbole (Test-Desktop) ==");
         var log = new Protokoll();
-        // Der Dienst arbeitet nur am Desktop des angemeldeten Benutzers.
+        // The service only works on the desktop of the signed-in user.
         var profil = OperatingSystem.IsWindows() ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) : Path.Combine(root, "dienst", "Besitzer");
         var sicherung = Path.Combine(root, "dienst", "Symbole");
         var dieserPc = "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}";
@@ -407,9 +407,9 @@ internal static partial class Program
             d.BackupDesktopIcons().Wait();
             Check("Symbolpositionen gesichert (4 Symbole)", log.Has("[ERFOLG] Positionen von 4 Desktop-Symbolen gesichert") && DesktopIcons.Exists(sicherung), log.Text);
             Check("automatisch anordnen: vermerkt", log.Has("automatisch anordnen\" ist an"), log.Text);
-            // Ohne Taskleiste weiter - deren Rueckschreiben startet den Explorer neu.
+            // Carry on without the taskbar - restoring it restarts Explorer.
             try { Directory.Delete(Taskleiste.BackupFolder(sicherung), true); } catch { }
-            // Was in der Sicherung auf dem Desktop lag, stammt aus dem Profil.
+            // What was on the desktop in the backup comes from the profile.
             WriteFile(Path.Combine(sicherung, "Benutzerprofil", "Desktop", "Rechnung.pdf"));
 
             log.Clear();
@@ -418,7 +418,7 @@ internal static partial class Program
             d.BackupDesktopIcons().Wait();
             Check("leerer Desktop: nichts zu sichern", log.Has("keine Symbole"), log.Text);
 
-            // Neuer Rechner: kleinerer Desktop, "Dieser PC" aus, zwei Symbole fehlen noch.
+            // New computer: smaller desktop, "This PC" off, two icons still missing.
             var neu = new TestDesktop(1280, 720, false, true, new DesktopIcon("Brief.lnk", "Brief", 500, 500))
             { SpaeterDazu = (1, new DesktopIcon(dieserPc, "Dieser PC", 600, 600)) };
             DesktopIcons.OeffneDesktop = () => neu;
@@ -432,7 +432,7 @@ internal static partial class Program
             if (OperatingSystem.IsWindows())
                 Check("Systemsymbol 'Dieser PC' eingeschaltet", log.Has("Systemsymbole eingeschaltet wie auf dem alten Desktop: Dieser PC"), log.Text);
 
-            // Nichts passt: Fehler.
+            // Nothing matches: error.
             DesktopIcons.OeffneDesktop = () => new TestDesktop(800, 600, false, false, new DesktopIcon("Fremd.lnk", "Fremd", 1, 1));
             var nurFremd = Path.Combine(root, "dienst", "SymboleFremd");
             DesktopIcons.Save(Path.Combine(nurFremd, DesktopIcons.FolderName), new DesktopLayout
@@ -444,7 +444,7 @@ internal static partial class Program
             new BackupService(runner, c, log.Write) { SourcePath = profil, BackupPath = nurFremd }.RestoreDesktopIcons().Wait();
             Check("kein Symbol zuzuordnen: Fehler", log.Has("[FEHLER] Kein gesichertes Symbol"), log.Text);
 
-            // Der Desktop laesst sich nicht oeffnen.
+            // The desktop cannot be opened.
             DesktopIcons.OeffneDesktop = () => throw new InvalidOperationException("Explorer laeuft nicht");
             log.Clear();
             new BackupService(runner, c, log.Write) { SourcePath = profil, BackupPath = nurFremd }.RestoreDesktopIcons().Wait();
@@ -460,9 +460,9 @@ internal static partial class Program
     }
 
     /// <summary>
-    /// Design, Desktop-Foto und Symbole am echten Desktop des angemeldeten
-    /// Benutzers - nur unter Windows. Laeuft am Ende, weil dabei Hintergrund
-    /// und Explorer wirklich umgestellt werden.
+    /// Design, desktop picture and icons on the real desktop of the signed-in
+    /// user - Windows only. Runs at the end, because the wallpaper and Explorer
+    /// really get changed.
     /// </summary>
     private static void BackupServiceOnRealDesktop(string root)
     {
@@ -475,7 +475,7 @@ internal static partial class Program
         var sicherung = Path.Combine(root, "echt", "Sicherung");
         var d = new BackupService(runner, c, log.Write) { SourcePath = profil, BackupPath = sicherung };
 
-        // Desktop-Foto: aufnehmen, oeffnen (ohne Bildanzeige), Fehler beim Oeffnen.
+        // Desktop picture: capture, open (without an image viewer), error while opening.
         d.CaptureDesktop().Wait();
         Check("Desktop-Foto ueber den Dienst gespeichert", log.Has("[ERFOLG] Desktop-Screenshot gespeichert") && AppCatalog.HasDesktopScreenshot(sicherung), log.Text);
         var geoeffnet = new List<string>();
@@ -488,7 +488,7 @@ internal static partial class Program
         d.ShowDesktopScreenshot().Wait();
         Check("Desktop-Foto oeffnen scheitert: Fehler mit Ablageort", log.Has("konnte nicht geöffnet werden (keine Bildanzeige)"), log.Text);
 
-        // Design: sichern, ein Bild aus einer alten Sicherung setzen, das eigene zuruecksetzen.
+        // Design: back up, set an image from an old backup, reset our own.
         log.Clear();
         d.ExportDesign().Wait();
         Check("Design gesichert (Design.json)", DesignEinstellungen.Load(sicherung) is not null && log.Has("[ERFOLG] Design-Einstellungen gesichert"), log.Text);
@@ -506,7 +506,7 @@ internal static partial class Program
         Check("alte Sicherung: Hintergrund gesetzt", log.Has("[ERFOLG] Hintergrund gesetzt") || log.Has("[WARNUNG] Hintergrund eingetragen"), log.Text);
         Check("alte Sicherung: ohne Design-Einstellungen nur der Hintergrund", log.Has("enthält keine Design-Einstellungen"), log.Text);
 
-        // Eine Sicherung mit Volltonfarbe statt Bild.
+        // A backup with a solid color instead of an image.
         var farbig = Path.Combine(root, "echt", "Volltonfarbe");
         DesignEinstellungen.Save(farbig, new DesignSicherung
         {
@@ -517,11 +517,11 @@ internal static partial class Program
         new BackupService(runner, c, log.Write) { SourcePath = profil, BackupPath = farbig }.ImportDesign().Wait();
         Check("Volltonfarbe aus der Sicherung gesetzt", log.Has("Volltonfarbe RGB 30, 90, 150") && Hintergrund.ReadColor(DesktopHintergrund.Read(Microsoft.Win32.Registry.CurrentUser).Farbe) == (30, 90, 150), log.Text);
 
-        // Laeuft das Tool unter einem anderen Konto: nur eintragen, Windows zeigt es nach der Anmeldung.
+        // If the tool runs under another account: only register it, Windows shows it after sign-in.
         var fremd = DesktopHintergrund.SetColor(Microsoft.Win32.Registry.CurrentUser, eigenerBenutzer: false, (40, 40, 40), profil);
         Check("anderes Konto: eingetragen, ohne den Weg ueber den Explorer", fremd.Eingetragen && fremd.ExplorerFehler == "Tool läuft unter einem anderen Konto", fremd.ExplorerFehler);
 
-        // Schwarzer Desktop, erwartet war ein Bild: Kontrolle sieht auch auf den Bildschirm.
+        // Black desktop where an image was expected: Verify also looks at the screen.
         DesktopHintergrund.SetColor(Microsoft.Win32.Registry.CurrentUser, eigenerBenutzer: true, (0, 0, 0), profil);
         Thread.Sleep(1500);
         var schwarz = DesktopHintergrund.Verify(new HintergrundStand(@"C:\Bilder\Urlaub.png", "0 0 0", 0, "10", "0", Array.Empty<string>()), German);
@@ -531,7 +531,7 @@ internal static partial class Program
         bool erwartet = DesktopScreenshot.ColorShare(schirm.Bgra, (0, 0, 0), 10) >= 0.5;
         Check("Bildschirm ueberwiegend schwarz? - wie eine eigene Aufnahme", DesktopHintergrund.IsScreenBlack() == erwartet, erwartet.ToString());
 
-        // Ein Design anwenden ohne bekannten Benutzer (direkt ueber explorer.exe) - und mit einem, den es nicht gibt.
+        // Apply a theme without a known user (directly through explorer.exe) - and with one that does not exist.
         var aktuell = DesktopHintergrund.ThemeFilePath(Microsoft.Win32.Registry.CurrentUser, profil);
         if (aktuell is not null && File.Exists(aktuell))
         {
@@ -552,7 +552,7 @@ internal static partial class Program
         try { File.Delete(bildNeu); } catch { }
     }
 
-    /// <summary>Symbole und Taskleiste am echten Desktop - startet den Explorer neu, deshalb ganz zuletzt.</summary>
+    /// <summary>Icons and taskbar on the real desktop - restarts Explorer, so it runs at the very end.</summary>
     private static void IconsOnRealDesktop(string root)
     {
         if (!OperatingSystem.IsWindows()) return;
@@ -569,8 +569,8 @@ internal static partial class Program
             log.Has("Desktop-Symbolen gesichert") || log.Has("keine Symbole"), log.Text);
         Check("echte Taskleiste: gesichert oder nichts angeheftet", log.Has("Taskleiste gesichert") || log.Has("nichts angeheftet"), log.Text);
 
-        // Die Sicherung so abwandeln, dass am echten Desktop alles umgestellt
-        // wird: anderes Raster, automatisch anordnen, ein Systemsymbol mehr.
+        // Alter the backup so that everything changes on the real desktop: another
+        // grid, auto arrange, one more system icon.
         var ordner = Path.Combine(d.BackupPath, DesktopIcons.FolderName);
         var layout = DesktopIcons.Load(DesktopIcons.FilePath(d.BackupPath)) ?? new DesktopLayout
         {
@@ -596,8 +596,8 @@ internal static partial class Program
                 (log.Has("Die Taskleiste zeigt") || log.Has("ließ sich nicht nachsehen")) && !log.Has("zeigt diese angehefteten Symbole nicht"), log.Text);
         }
 
-        // Was die Taskleiste zeigt: ein Symbol fehlt, obwohl das Programm da ist -
-        // oder die Taskleiste laesst sich nicht lesen.
+        // What the taskbar shows: an icon is missing although the program is
+        // there - or the taskbar cannot be read.
         if (Taskleiste.Load(d.BackupPath) is { Taskband.Count: > 0 } tl
             && Taskleiste.Entries(Taskleiste.Favorites(tl.Taskband), tl.Verknuepfungen) is { Count: > 1 } eintraege
             && eintraege[0].Kennung is { } nurDiese)
@@ -615,8 +615,8 @@ internal static partial class Program
             d.TaskleistenSicht = null;
         }
 
-        // Windows belegt die Taskleiste nach dem Neustart selbst neu (wie bei
-        // einem Anwender): einmal erneut schreiben, dann ein Fehler statt "Erfolg".
+        // Windows fills the taskbar by itself after the restart (as at one user's):
+        // write once more, then an error instead of "success".
         if (Taskleiste.Load(d.BackupPath) is { Taskband.Count: > 0 })
         {
             log.Clear();
@@ -629,7 +629,7 @@ internal static partial class Program
                 && log.Has("[FEHLER] Windows übernimmt die gesicherten Taskleisten-Symbole nicht") && !log.Has("[ERFOLG] Taskleiste wiederhergestellt"), log.Text);
         }
 
-        // Und wieder wie vorher.
+        // And back to how it was.
         var zurueck = new BackupService(new ProcessRunner(c), c, log.Write)
         {
             SourcePath = d.SourcePath,

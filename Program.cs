@@ -14,13 +14,13 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // Codepage 850 (u.a. von Robocopy genutzt) ist in modernem .NET nicht
-        // mehr standardmaessig verfuegbar. Provider einmalig registrieren,
-        // sonst wirft Encoding.GetEncoding(850) eine Exception.
+        // Code page 850 (used by robocopy, among others) is no longer available
+        // by default in modern .NET. Register the provider once, otherwise
+        // Encoding.GetEncoding(850) throws.
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-        // Globale Absturz-Faenger: schreiben jede unbehandelte Exception in
-        // eine Logdatei auf dem Desktop, statt die App kommentarlos zu beenden.
+        // Global crash handlers: write every unhandled exception to a log file
+        // on the desktop instead of letting the app vanish without a word.
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             WriteCrashLog("AppDomain.UnhandledException", e.ExceptionObject as Exception);
 
@@ -49,8 +49,8 @@ internal static class Program
             .LogToTrace();
 
     /// <summary>
-    /// Schreibt einen Absturzbericht nach %USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log
-    /// (mit Fallback ins TEMP-Verzeichnis).
+    /// Writes a crash report to %USERPROFILE%\Desktop\WindowsDaSiTool_Absturz.log
+    /// (falls back to the TEMP folder).
     /// </summary>
     public static void WriteCrashLog(string source, Exception? ex)
     {
@@ -87,7 +87,7 @@ internal static class Program
         }
         catch
         {
-            // Wenn selbst das Schreiben scheitert, gibt es nichts mehr zu tun.
+            // If even writing fails, there is nothing left to do.
         }
     }
 }

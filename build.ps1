@@ -1,27 +1,27 @@
 #Requires -Version 5.1
 <#
 ======================================================================
- Build-Skript fuer das Windows DaSi Tool (Avalonia / .NET 10)
+ Build script for Windows DaSi Tool (Avalonia / .NET 10)
 ----------------------------------------------------------------------
- Erzeugt eine native Windows-EXE aus dem C#/Avalonia-Projekt.
+ Creates a native Windows EXE from the C#/Avalonia project.
 
- AUFRUF (normale PowerShell, KEINE Admin-Rechte noetig):
+ USAGE (normal PowerShell, NO admin rights needed):
 
-   .\build.ps1                          # Standard: self-contained SingleFile-EXE
-   .\build.ps1 -Mode framework          # kleine EXE, benoetigt .NET 10 Runtime
-   .\build.ps1 -Mode selfcontained      # explizit self-contained (= Standard)
-   .\build.ps1 -Clean                   # vorher bin/ und obj/ loeschen
-   .\build.ps1 -Sign -PfxPath cert.pfx  # nach dem Build signieren (PFX)
-   .\build.ps1 -Sign                     # signieren mit Zertifikat aus dem Store
+   .\build.ps1                          # default: self-contained single-file EXE
+   .\build.ps1 -Mode framework          # small EXE, needs the .NET 10 runtime
+   .\build.ps1 -Mode selfcontained      # explicitly self-contained (= default)
+   .\build.ps1 -Clean                   # delete bin/ and obj/ first
+   .\build.ps1 -Sign -PfxPath cert.pfx  # sign after the build (PFX)
+   .\build.ps1 -Sign                    # sign with a certificate from the store
 
- Ergebnis liegt danach unter:  .\publish\WindowsDaSiTool.exe
+ The result is placed at:  .\publish\WindowsDaSiTool.exe
 ======================================================================
 #>
 [CmdletBinding()]
 param(
-    # Publish-Variante:
-    #   selfcontained = eigenstaendige EXE inkl. .NET (groesser, laeuft ueberall)
-    #   framework     = kleine EXE, benoetigt installiertes .NET 10 Desktop Runtime
+    # Publish variant:
+    #   selfcontained = standalone EXE including .NET (larger, runs everywhere)
+    #   framework     = small EXE, needs the .NET 10 Desktop Runtime installed
     [ValidateSet('selfcontained', 'framework')]
     [string]$Mode = 'selfcontained',
 
@@ -31,7 +31,7 @@ param(
 
     [switch]$Clean,
 
-    # Signieren (optional)
+    # Signing (optional)
     [switch]$Sign,
     [string]$PfxPath,
     [string]$PfxPassword,
@@ -46,7 +46,7 @@ function Write-Warn($msg) { Write-Host "[!] $msg"   -ForegroundColor Yellow }
 function Fail($msg)       { Write-Host "[FEHLER] $msg" -ForegroundColor Red; exit 1 }
 
 # ---------------------------------------------------------------------
-# 1. Projektdatei finden
+# 1. Find the project file
 # ---------------------------------------------------------------------
 $projectFile = Get-ChildItem -Path $PSScriptRoot -Filter '*.csproj' -File | Select-Object -First 1
 if (-not $projectFile) {
@@ -55,10 +55,10 @@ if (-not $projectFile) {
 Write-Step "Projekt: $($projectFile.Name)"
 
 # ---------------------------------------------------------------------
-# 2. .NET SDK pruefen (10.0)
-#    Das Projekt ist per global.json auf .NET 10 festgelegt: Mit .NET 11
-#    gebaut, startete die EXE auf Windows-10-Rechnern nicht. Ein daneben
-#    installiertes .NET 11 SDK stoert nicht - dotnet nimmt hier trotzdem 10.
+# 2. Check the .NET SDK (10.0)
+#    The project is pinned to .NET 10 through global.json: built with
+#    .NET 11, the EXE did not start on Windows 10 computers. A .NET 11 SDK
+#    installed alongside does no harm - dotnet still picks 10 here.
 # ---------------------------------------------------------------------
 Write-Step "Pruefe .NET SDK..."
 $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
@@ -81,7 +81,7 @@ if (-not $hasSdk) {
 Write-Ok "SDK vorhanden: $(($hasSdk | Select-Object -First 1).Trim())"
 
 # ---------------------------------------------------------------------
-# 3b. Paketquellen pruefen (Ursache von NU1100 = keine nuget.org-Quelle)
+# 3b. Check the package sources (cause of NU1100 = no nuget.org source)
 # ---------------------------------------------------------------------
 Write-Step "Pruefe NuGet-Paketquellen..."
 $localConfig = Join-Path $PSScriptRoot 'NuGet.config'
@@ -101,7 +101,7 @@ if (Test-Path $localConfig) {
 }
 
 # ---------------------------------------------------------------------
-# 3. Optional aufraeumen
+# 3. Optional clean-up
 # ---------------------------------------------------------------------
 if ($Clean) {
     Write-Step "Raeume bin/ und obj/ auf..."
@@ -113,14 +113,14 @@ if ($Clean) {
 
 # ---------------------------------------------------------------------
 # 4. Restore
-#    Manche .NET-Installationen koennen ihre Workloads nicht aufloesen und
-#    brechen schon hier ab:
-#      MSB4236: Das angegebene SDK
-#      "Microsoft.NET.SDK.WorkloadAutoImportPropsLocator" wurde nicht gefunden.
-#    Dieses Projekt braucht keine Workloads; ohne die Workload-Aufloesung
-#    entsteht bytegenau dieselbe EXE. Tritt genau dieser Fehler auf, wird sie
-#    deshalb fuer Restore und Publish abgeschaltet - nur in diesem Lauf, die
-#    Variable wird danach in jedem Fall (auch bei Abbruch) zurueckgesetzt.
+#    Some .NET installations cannot resolve their workloads and fail right
+#    here:
+#      MSB4236: The SDK
+#      "Microsoft.NET.SDK.WorkloadAutoImportPropsLocator" specified could not be found.
+#    This project needs no workloads; without workload resolution the EXE
+#    is byte-for-byte the same. So if exactly this error occurs, it is
+#    switched off for restore and publish - only for this run; the
+#    variable is reset afterwards in any case (even on abort).
 # ---------------------------------------------------------------------
 $workloadVorher = $env:MSBuildEnableWorkloadResolver
 try {
@@ -154,8 +154,8 @@ try {
         "-p:DebugType=none",
         "-p:DebugSymbols=false"
     )
-    # Kompression der eingebetteten Laufzeit lohnt nur im self-contained-Modus
-    # (verkleinert die EXE deutlich; erster Start dauert minimal laenger).
+    # Compressing the embedded runtime only pays off in self-contained mode
+    # (makes the EXE much smaller; the first start takes slightly longer).
     if ($selfContained) {
         $publishArgs += "-p:EnableCompressionInSingleFile=true"
     }
@@ -165,16 +165,16 @@ try {
     & dotnet @publishArgs
     if ($LASTEXITCODE -ne 0) { Fail "dotnet publish fehlgeschlagen." }
 } finally {
-    # Zuweisen von $null entfernt die Variable wieder ganz.
+    # Assigning $null removes the variable completely again.
     $env:MSBuildEnableWorkloadResolver = $workloadVorher
 }
 
 # ---------------------------------------------------------------------
-# 5b. Aufraeumen: native Debug-Symbole (.pdb) entfernen
-#     SkiaSharp/HarfBuzzSharp liefern libSkiaSharp.pdb und
-#     libHarfBuzzSharp.pdb mit. Diese werden zur Laufzeit nicht benoetigt
-#     und lassen sich ueber die .csproj nicht zuverlaessig unterdruecken,
-#     daher werden sie hier nach dem Publish geloescht.
+# 5b. Clean-up: remove native debug symbols (.pdb)
+#     SkiaSharp/HarfBuzzSharp ship libSkiaSharp.pdb and
+#     libHarfBuzzSharp.pdb. They are not needed at runtime and cannot be
+#     suppressed reliably through the .csproj, so they are deleted here
+#     after publishing.
 # ---------------------------------------------------------------------
 $pdbFiles = Get-ChildItem -Path $OutputDir -Filter '*.pdb' -File -ErrorAction SilentlyContinue
 if ($pdbFiles) {
@@ -186,7 +186,7 @@ if ($pdbFiles) {
 }
 
 # ---------------------------------------------------------------------
-# 6. Ergebnis pruefen
+# 6. Check the result
 # ---------------------------------------------------------------------
 $exePath = Join-Path $OutputDir 'WindowsDaSiTool.exe'
 if (-not (Test-Path $exePath)) {
@@ -196,12 +196,12 @@ $sizeMb = [math]::Round((Get-Item $exePath).Length / 1MB, 1)
 Write-Ok "EXE erstellt: $exePath ($sizeMb MB)"
 
 # ---------------------------------------------------------------------
-# 7. Optional signieren
+# 7. Optional signing
 # ---------------------------------------------------------------------
 if ($Sign) {
     Write-Step "Signiere die EXE..."
 
-    # signtool suchen (Windows SDK)
+    # Find signtool (Windows SDK)
     $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
     if (-not $signtool) {
         $candidates = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter 'signtool.exe' -ErrorAction SilentlyContinue |
@@ -217,7 +217,7 @@ if ($Sign) {
             $stArgs += @('/f', $PfxPath)
             if ($PfxPassword) { $stArgs += @('/p', $PfxPassword) }
         } else {
-            # Zertifikat automatisch aus dem persoenlichen Zertifikatspeicher waehlen
+            # Pick the certificate automatically from the personal certificate store
             $stArgs += '/a'
         }
         $stArgs += $exePath
@@ -229,7 +229,7 @@ if ($Sign) {
 }
 
 # ---------------------------------------------------------------------
-# 8. Abschluss
+# 8. Done
 # ---------------------------------------------------------------------
 Write-Host ""
 Write-Ok "Fertig."

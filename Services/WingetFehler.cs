@@ -8,11 +8,11 @@ using System.Text.RegularExpressions;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Was winget mit seinen Rueckgabewerten meint, und wie seine Ausgabe lesbar
-/// wird. Ohne Abhaengigkeiten, damit es sich pruefen laesst.
+/// What winget means by its return codes, and how to make its output
+/// readable. No dependencies, so it can be tested.
 ///
-/// Die Werte stehen in der Doku von winget (returnCodes.md) als HRESULT, z. B.
-/// 0x8A150009; als Prozess-Rueckgabewert kommen sie vorzeichenbehaftet an
+/// winget's documentation (returnCodes.md) lists the values as HRESULT,
+/// e.g. 0x8A150009; as a process exit code they arrive signed
 /// (-1978335223).
 /// </summary>
 public static class WingetFehler
@@ -22,34 +22,34 @@ public static class WingetFehler
     /// <summary>0x8A150009: "Cannot write to index; it is a higher schema version".</summary>
     public const int IndexZuNeu = unchecked((int)0x8A150009);
 
-    /// <summary>0x8A15000A: Der Index ist beschaedigt.</summary>
+    /// <summary>0x8A15000A: the index is corrupt.</summary>
     public const int IndexBeschaedigt = unchecked((int)0x8A15000A);
 
-    /// <summary>0x8A15000B: Die eingerichteten Quellen sind beschaedigt.</summary>
+    /// <summary>0x8A15000B: the configured sources are corrupt.</summary>
     public const int QuellenBeschaedigt = unchecked((int)0x8A15000B);
 
-    /// <summary>0x8A15000F: Daten, die die Quelle braucht, fehlen.</summary>
+    /// <summary>0x8A15000F: data required by the source is missing.</summary>
     public const int QuellDatenFehlen = unchecked((int)0x8A15000F);
 
-    /// <summary>0x8A150014: Kein Paket passt zur Angabe.</summary>
+    /// <summary>0x8A150014: no package matches the query.</summary>
     public const int NichtGefunden = unchecked((int)0x8A150014);
 
-    /// <summary>0x8A15002B: Keine passende Aktualisierung - schon die neueste Fassung.</summary>
+    /// <summary>0x8A15002B: no applicable update - already the newest version.</summary>
     public const int SchonAktuell = unchecked((int)0x8A15002B);
 
-    /// <summary>0x8A150061: Das Paket ist schon installiert.</summary>
+    /// <summary>0x8A150061: the package is already installed.</summary>
     public const int SchonInstalliert = unchecked((int)0x8A150061);
 
     /// <summary>
-    /// true, wenn nicht das Paket schuld ist, sondern winget selbst: Seine
-    /// Paketquelle oder deren Datenbank ist kaputt oder stammt von einer
-    /// neueren winget-Fassung. Dann scheitert JEDES weitere Paket genauso -
-    /// erst reparieren, dann weiter.
+    /// true if it is not the package's fault but winget's own: its package
+    /// source or the source's database is broken or comes from a newer winget
+    /// version. Then EVERY further package fails the same way - repair first,
+    /// then carry on.
     /// </summary>
     public static bool SourceBroken(int code)
         => code is IndexZuNeu or IndexBeschaedigt or QuellenBeschaedigt or QuellDatenFehlen;
 
-    /// <summary>Auch an der Ausgabe erkennbar - falls ein Rueckgabewert fehlt oder verfaelscht ist.</summary>
+    /// <summary>Also recognizable from the output - in case an exit code is missing or wrong.</summary>
     public static bool SourceBroken(int code, string? ausgabe)
     {
         if (SourceBroken(code)) return true;
@@ -61,12 +61,12 @@ public static class WingetFehler
                || ausgabe.Contains("higher schema version", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>"0x8A150009" - so steht der Wert in der Doku und in Suchmaschinen.</summary>
+    /// <summary>"0x8A150009" - the form used in the documentation and in search engines.</summary>
     public static string Hex(int code) => "0x" + code.ToString("X8", CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// Ein Satz, was der Wert bedeutet - nur fuer die Werte, bei denen der
-    /// Benutzer daraus etwas machen kann. Sonst null.
+    /// One sentence on what the value means - only for values the user can act
+    /// on. Otherwise null.
     /// </summary>
     public static string? Explanation(int code, Func<string, string, string> tr) => code switch
     {
@@ -81,23 +81,23 @@ public static class WingetFehler
         _ => null,
     };
 
-    // ------------------------------------------------------------ Ausgabe lesbar machen
+    // ------------------------------------------------------------ Make the output readable
 
-    // Der Fortschrittskreisel von winget: einzelne Zeichen, die per "\r" bzw.
-    // Rueckschritt ueberschrieben werden.
+    // winget's progress spinner: single characters overwritten with "\r" or
+    // backspace.
     private static readonly Regex NurKreisel = new(@"^[\s\-\\|/]*$", RegexOptions.CultureInvariant);
 
-    // Fortschrittsbalken: "██████▒▒▒  1.2 MB / 3.4 MB" bzw. Prozentangaben.
+    // Progress bars: "██████▒▒▒  1.2 MB / 3.4 MB" or percentages.
     private static readonly Regex Balken = new(@"[█▒▓░]{3,}", RegexOptions.CultureInvariant);
 
     /// <summary>
-    /// Die letzten <paramref name="zeilen"/> aussagekraeftigen Zeilen der
-    /// Ausgabe, mit " | " verbunden.
+    /// The last <paramref name="zeilen"/> meaningful lines of the output, joined
+    /// with " | ".
     ///
-    /// Die rohe Ausgabe enthaelt den Fortschrittskreisel ("-", "\", "|", "/")
-    /// und Fortschrittsbalken, die eine Konsole per Wagenruecklauf
-    /// ueberschreibt. Ungefiltert stand im Protokoll nur "-" und eine Zeile
-    /// voller Leerzeichen statt der eigentlichen Meldung.
+    /// The raw output contains the progress spinner ("-", "\", "|", "/") and
+    /// progress bars that a console overwrites with carriage returns.
+    /// Unfiltered, the log showed only "-" and a line full of spaces instead of
+    /// the actual message.
     /// </summary>
     public static string LastMessage(string? ausgabe, int zeilen = 2)
     {
@@ -105,11 +105,11 @@ public static class WingetFehler
         var sauber = new List<string>();
         foreach (var roh in ausgabe.Split('\n'))
         {
-            // Was nach dem letzten Wagenruecklauf steht, ist das, was in einer
-            // Konsole am Ende zu sehen waere.
+            // What follows the last carriage return is what a console would show in
+            // the end.
             var teile = roh.Split('\r').Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
             var zeile = teile.Count > 0 ? teile[^1] : "";
-            // Rueckschritte fallen weg, andere Steuerzeichen (Tabulator) werden zu Leerzeichen.
+            // Backspaces are dropped, other control characters (tab) become spaces.
             zeile = new string(zeile.Where(c => c != '\b').Select(c => char.IsControl(c) ? ' ' : c).ToArray()).Trim();
             if (zeile.Length == 0 || NurKreisel.IsMatch(zeile) || Balken.IsMatch(zeile)) continue;
             sauber.Add(zeile);
@@ -117,17 +117,17 @@ public static class WingetFehler
         return string.Join(" | ", sauber.TakeLast(Math.Max(1, zeilen)));
     }
 
-    // ------------------------------------------------------------ Welche winget.exe?
+    // ------------------------------------------------------------ Which winget.exe?
 
     // "Microsoft.DesktopAppInstaller_1.26.430.0_x64__8wekyb3d8bbwe"
     private static readonly Regex PaketOrdner =
         new(@"^Microsoft\.DesktopAppInstaller_(\d+(?:\.\d+){1,3})_", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
-    /// <summary>Die Fassung im Namen eines App-Installer-Ordners, sonst null.</summary>
+    /// <summary>The version in the name of an App Installer folder, otherwise null.</summary>
     public static Version? FolderVersion(string ordner)
     {
-        // Letzter Teil des Pfads - von Hand, damit "\\" auch in der Pruefumgebung
-        // unter Linux als Trennzeichen zaehlt.
+        // Last part of the path - done by hand, so "\\" counts as a separator in
+        // the Linux test environment as well.
         var name = ordner.TrimEnd('\\', '/');
         var schnitt = name.LastIndexOfAny(new[] { '\\', '/' });
         if (schnitt >= 0) name = name[(schnitt + 1)..];
@@ -136,11 +136,11 @@ public static class WingetFehler
     }
 
     /// <summary>
-    /// App-Installer-Ordner aus WindowsApps, neueste Fassung zuerst.
+    /// App Installer folders from WindowsApps, newest version first.
     ///
-    /// Frueher nach dem Namen sortiert - als Text ist "1.9" groesser als
-    /// "1.26", und ein uralter App-Installer stand vor dem aktuellen. Mit ihm
-    /// passen die heutigen Paketquellen nicht mehr zusammen.
+    /// They used to be sorted by name - as text, "1.9" is greater than "1.26",
+    /// and an ancient App Installer came before the current one. It no longer
+    /// works with today's package sources.
     /// </summary>
     public static List<string> NewestFirst(IEnumerable<string> ordner)
         => ordner.OrderByDescending(o => FolderVersion(o) ?? new Version(0, 0))

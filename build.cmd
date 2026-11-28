@@ -1,8 +1,8 @@
 @echo off
 REM ====================================================================
-REM  Doppelklick-Starter fuer build.ps1
-REM  Ruft das PowerShell-Build-Skript mit umgangener ExecutionPolicy auf.
-REM  Alle uebergebenen Argumente werden durchgereicht, z.B.:
+REM  Double-click launcher for build.ps1
+REM  Calls the PowerShell build script with the execution policy bypassed.
+REM  All arguments are passed through, e.g.:
 REM     build.cmd -Mode framework
 REM     build.cmd -Clean -Sign -PfxPath cert.pfx
 REM ====================================================================

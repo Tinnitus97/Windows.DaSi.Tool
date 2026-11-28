@@ -8,17 +8,17 @@ using System.Text;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Die Design-Datei von Windows (".theme", meist
-/// %LOCALAPPDATA%\Microsoft\Windows\Themes\Custom.theme) - eine INI-Datei.
+/// Windows' theme file (".theme", usually
+/// %LOCALAPPDATA%\Microsoft\Windows\Themes\Custom.theme) - an INI file.
 ///
-/// Warum das Tool sie anfasst: Windows uebernimmt beim Anmelden Teile daraus
-/// wieder in die Registry - unter Windows 11 nachweislich die Hintergrundfarbe
-/// ([Control Panel\Colors] Background). Die Einstellungen-App traegt jede
-/// Aenderung deshalb auch hier ein. Das Tool schrieb bisher nur die Registry:
-/// Nach dem naechsten Neustart war die Volltonfarbe wieder die alte (schwarz).
-/// Jetzt traegt es Hintergrund und Design-Einstellungen auch hier ein.
+/// Why the tool touches it: at sign-in, Windows copies parts of it back into
+/// the registry - on Windows 11 demonstrably the background color
+/// ([Control Panel\Colors] Background). The Settings app therefore records
+/// every change here as well. The tool used to write only the registry:
+/// after the next restart the solid color was the old one again (black).
+/// Now it records the wallpaper and the design settings here as well.
 ///
-/// Ohne Abhaengigkeiten, damit es sich pruefen laesst.
+/// No dependencies, so it can be tested.
 /// </summary>
 public static class DesignDatei
 {
@@ -28,18 +28,18 @@ public static class DesignDatei
     public const string StilAbschnitt = "VisualStyles";
     public const string DiashowAbschnitt = "Slideshow";
 
-    // ------------------------------------------------------------ Inhalt
+    // ------------------------------------------------------------ Content
 
     /// <summary>
-    /// Volltonfarbe: nur die Farbe eintragen, keine Diashow. Das Bild bleibt
-    /// stehen - so macht es die Einstellungen-App (ob Bild oder Farbe, sagt
-    /// BackgroundType in der Registry). Ein leeres "Wallpaper=" deutet Windows 11
-    /// beim Anwenden als "Windows-Blickpunkt".
+    /// Solid color: only record the color, no slideshow. The image stays - the
+    /// Settings app does the same (whether image or color is shown is decided
+    /// by BackgroundType in the registry). Windows 11 reads an empty
+    /// "Wallpaper=" as "Windows Spotlight" when applying the theme.
     /// </summary>
     public static string ForColor(string inhalt, (byte R, byte G, byte B) farbe)
         => RemoveSection(Set(inhalt, FarbenAbschnitt, "Background", Hintergrund.ColorText(farbe)), DiashowAbschnitt);
 
-    /// <summary>Bild: Pfad, Darstellung und Randfarbe eintragen, keine Diashow.</summary>
+    /// <summary>Image: record path, fit mode and edge color, no slideshow.</summary>
     public static string ForImage(string inhalt, string pfad, HintergrundEinstellung? e)
     {
         var t = Set(inhalt, DesktopAbschnitt, "Wallpaper", pfad);
@@ -50,9 +50,9 @@ public static class DesignDatei
     }
 
     /// <summary>
-    /// Die gesetzten Design-Einstellungen: Hell/Dunkel, Akzentfarbe,
-    /// "automatisch", Mauszeiger. Nur Eintraege, die die Datei schon kennt -
-    /// was Windows dort nicht fuehrt, setzt es beim Anmelden auch nicht zurueck.
+    /// The design settings that were set: light/dark, accent color,
+    /// "automatic", mouse pointers. Only keys the file already has - what
+    /// Windows does not keep there, it does not reset at sign-in either.
     /// </summary>
     public static string ForDesign(string inhalt, IEnumerable<DesignEintrag> werte)
     {
@@ -78,26 +78,25 @@ public static class DesignDatei
             else if (string.Equals(e.Schluessel, @"Control Panel\Cursors", StringComparison.OrdinalIgnoreCase)
                      && e.Typ is "String" or "ExpandString")
             {
-                // Der unbenannte Wert (Schemaname) heisst in der Datei "DefaultValue".
+                // The unnamed value (scheme name) is called "DefaultValue" in the file.
                 t = OnlyIfPresent(t, ZeigerAbschnitt, name.Length == 0 ? "DefaultValue" : name, e.Wert);
             }
         }
         return t;
     }
 
-    /// <summary>Steht bei einer Volltonfarbe kein (brauchbares) Bild in der Datei, dieses - wie die Einstellungen-App.</summary>
+    /// <summary>If the file has no (usable) image for a solid color, this one - like the Settings app.</summary>
     public const string Ersatzbild = @"%SystemRoot%\web\wallpaper\Windows\img0.jpg";
 
     /// <summary>
-    /// Die Design-Datei, die Windows beim Wiederherstellen anwenden soll: die
-    /// aktuelle des Benutzers als Vorlage, darin Hintergrund und
-    /// Design-Einstellungen aus der Sicherung.
+    /// The theme file Windows should apply on restore: the user's current one
+    /// as a template, with the wallpaper and design settings from the backup.
     ///
-    /// Bei einer Volltonfarbe bleibt ein Bild eingetragen - so haelt es die
-    /// Einstellungen-App: Ob Bild oder Farbe gezeigt wird, sagt BackgroundType
-    /// in der Registry, das Tool schaltet danach um. Ein leeres "Wallpaper=" oder
-    /// eines von Windows-Blickpunkt deutet Windows 11 beim Anwenden als
-    /// "Blickpunkt" (unter Windows 11 25H2 geprueft).
+    /// For a solid color an image stays registered - that is how the Settings
+    /// app does it: whether image or color is shown is decided by BackgroundType
+    /// in the registry, and the tool switches it afterwards. Windows 11 reads an
+    /// empty "Wallpaper=" or a Spotlight image as "Spotlight" when applying the
+    /// theme (verified on Windows 11 25H2).
     /// </summary>
     public static string ForRestore(string vorlage, string anzeigename, (byte R, byte G, byte B)? farbe,
                                                string? bild, HintergrundEinstellung? e, IEnumerable<DesignEintrag> werte)
@@ -118,9 +117,9 @@ public static class DesignDatei
     }
 
     /// <summary>
-    /// Aus der aktuellen Design-Datei eine eigene machen, die Windows anwenden
-    /// soll: eigener Anzeigename, ohne die Kennung des Vorbilds (ThemeId) -
-    /// sonst hielte Windows sie fuer dasselbe Design.
+    /// Turns the current theme file into one of our own for Windows to apply:
+    /// its own display name, without the template's ID (ThemeId) - otherwise
+    /// Windows would consider it the same theme.
     /// </summary>
     public static string ForApplying(string vorlage, string anzeigename)
     {
@@ -130,7 +129,7 @@ public static class DesignDatei
 
     // ------------------------------------------------------------ INI
 
-    /// <summary>Wert eines Schluessels - null, wenn es Abschnitt oder Schluessel nicht gibt.</summary>
+    /// <summary>Value of a key - null if the section or the key does not exist.</summary>
     public static string? Read(string inhalt, string abschnitt, string schluessel)
     {
         var (zeilen, _, _) = SplitLines(inhalt);
@@ -140,7 +139,7 @@ public static class DesignDatei
         return i < 0 ? null : zeilen[i][(zeilen[i].IndexOf('=') + 1)..].Trim();
     }
 
-    /// <summary>Setzt einen Schluessel - legt ihn (und den Abschnitt) an, wenn noetig.</summary>
+    /// <summary>Sets a key - creates it (and the section) if needed.</summary>
     public static string Set(string inhalt, string abschnitt, string schluessel, string wert)
     {
         var (zeilen, umbruch, schlussUmbruch) = SplitLines(inhalt);
@@ -160,7 +159,7 @@ public static class DesignDatei
         }
         else
         {
-            // Hinter die letzte nicht leere Zeile des Abschnitts.
+            // After the last non-empty line of the section.
             int pos = bis;
             while (pos > von + 1 && zeilen[pos - 1].Trim().Length == 0) pos--;
             zeilen.Insert(pos, $"{schluessel}={wert}");
@@ -170,11 +169,11 @@ public static class DesignDatei
         static string KeyAsBefore(string zeile) => zeile[..zeile.IndexOf('=')].Trim();
     }
 
-    /// <summary>Setzt einen Schluessel nur, wenn es ihn schon gibt.</summary>
+    /// <summary>Sets a key only if it already exists.</summary>
     public static string OnlyIfPresent(string inhalt, string abschnitt, string schluessel, string wert)
         => Read(inhalt, abschnitt, schluessel) is null ? inhalt : Set(inhalt, abschnitt, schluessel, wert);
 
-    /// <summary>Entfernt einen Schluessel, falls es ihn gibt.</summary>
+    /// <summary>Removes a key if it exists.</summary>
     public static string RemoveKey(string inhalt, string abschnitt, string schluessel)
     {
         var (zeilen, umbruch, schlussUmbruch) = SplitLines(inhalt);
@@ -186,7 +185,7 @@ public static class DesignDatei
         return JoinLines(zeilen, umbruch, schlussUmbruch);
     }
 
-    /// <summary>Entfernt einen ganzen Abschnitt samt Kopfzeile.</summary>
+    /// <summary>Removes a whole section including its header line.</summary>
     public static string RemoveSection(string inhalt, string abschnitt)
     {
         var (zeilen, umbruch, schlussUmbruch) = SplitLines(inhalt);
@@ -208,7 +207,7 @@ public static class DesignDatei
     private static string JoinLines(List<string> zeilen, string umbruch, bool schlussUmbruch)
         => string.Join(umbruch, zeilen) + (schlussUmbruch ? umbruch : "");
 
-    /// <summary>[von, bis): Kopfzeile bis vor den naechsten Abschnitt; (-1, -1), wenn es ihn nicht gibt.</summary>
+    /// <summary>[from, to): header line up to the next section; (-1, -1) if the section does not exist.</summary>
     private static (int Von, int Bis) Section(List<string> zeilen, string abschnitt)
     {
         int von = zeilen.FindIndex(z => string.Equals(z.Trim(), $"[{abschnitt}]", StringComparison.OrdinalIgnoreCase));
@@ -228,11 +227,11 @@ public static class DesignDatei
         return -1;
     }
 
-    // ------------------------------------------------------------ Datei
+    // ------------------------------------------------------------ File
 
     /// <summary>
-    /// Liest die Datei samt Kodierung: Windows schreibt Design-Dateien meist
-    /// als UTF-16 mit BOM, aeltere oder von Hand erstellte auch ANSI.
+    /// Reads the file together with its encoding: Windows usually writes theme
+    /// files as UTF-16 with BOM, older or hand-made ones also as ANSI.
     /// </summary>
     public static (string Inhalt, Encoding Kodierung) ReadFile(string pfad)
     {
@@ -247,9 +246,9 @@ public static class DesignDatei
     }
 
     /// <summary>
-    /// Schreibt in derselben Kodierung zurueck - ueber eine Zwischendatei, damit
-    /// ein Abbruch nie eine halbe Design-Datei hinterlaesst. Passt ein neuer
-    /// Wert nicht in ASCII, wird UTF-16 mit BOM daraus (liest Windows auch).
+    /// Writes back in the same encoding - through a temporary file, so an abort
+    /// never leaves half a theme file. If a new value does not fit into ASCII,
+    /// it becomes UTF-16 with BOM (Windows reads that as well).
     /// </summary>
     public static void WriteFile(string pfad, string inhalt, Encoding kodierung)
     {

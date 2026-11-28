@@ -6,25 +6,24 @@ using System.Linq;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Prueft nach dem Zurueckschreiben eines Browser- oder Mailprofils, ob die
-/// Dateien, an denen das Profil haengt, wirklich so im Ziel stehen wie in der
-/// Sicherung.
+/// After a browser or mail profile is restored, checks whether the files the
+/// profile depends on are really in the target exactly as in the backup.
 ///
-/// Anlass: Nach einer Chrome-Wiederherstellung war Chrome leer - obwohl
-/// robocopy fertig war. Startet der Browser waehrend oder kurz nach dem
-/// Kopieren (manche Installer starten ihn nach der Installation von selbst),
-/// legt er ein frisches Profil an und schreibt beim Beenden "Local State" und
-/// "Preferences" ueber die zurueckgeschriebenen. Von Hand kopiert - bei
-/// geschlossenem Browser - war alles da.
+/// Reason: after a Chrome restore, Chrome was empty - although robocopy had
+/// finished. If the browser starts during or shortly after copying (some
+/// installers start it on their own after installing), it creates a fresh
+/// profile and, when it exits, writes "Local State" and "Preferences" over
+/// the restored ones. Copied by hand - with the browser closed - everything
+/// was there.
 ///
-/// Ohne Abhaengigkeiten, damit es sich pruefen laesst.
+/// No dependencies, so it can be tested.
 /// </summary>
 public static class ProfilAbgleich
 {
-    /// <summary>Dateien direkt im Datenordner: Chromium ("Local State"), Firefox/Thunderbird ("profiles.ini").</summary>
+    /// <summary>Files directly in the data folder: Chromium ("Local State"), Firefox/Thunderbird ("profiles.ini").</summary>
     private static readonly string[] Oben = { "Local State", "profiles.ini", "installs.ini" };
 
-    /// <summary>Dateien je Profil: Chromium (Preferences, Bookmarks ...), Firefox/Thunderbird (prefs.js, places.sqlite ...).</summary>
+    /// <summary>Files per profile: Chromium (Preferences, Bookmarks ...), Firefox/Thunderbird (prefs.js, places.sqlite ...).</summary>
     private static readonly string[] JeProfil =
     {
         "Preferences", "Bookmarks", "History", "Login Data", "Web Data",
@@ -32,9 +31,9 @@ public static class ProfilAbgleich
     };
 
     /// <summary>
-    /// Die Profilordner in einem Datenordner, relativ: bei Chromium "Default",
-    /// "Profile 1" ...; bei Firefox und Thunderbird "Profiles\xxxx.default-release".
-    /// Erkannt an ihrer Einstellungsdatei, nach Namen sortiert.
+    /// The profile folders in a data folder, relative: for Chromium "Default",
+    /// "Profile 1" ...; for Firefox and Thunderbird "Profiles\xxxx.default-release".
+    /// Recognized by their settings file, sorted by name.
     /// </summary>
     public static List<string> Profiles(string ordner)
     {
@@ -51,15 +50,15 @@ public static class ProfilAbgleich
                     erg.Add(Path.GetRelativePath(ordner, k));
             }
         }
-        catch { /* dann eben keine */ }
+        catch { /* then there are none */ }
         erg.Sort(StringComparer.OrdinalIgnoreCase);
         return erg;
     }
 
     /// <summary>
-    /// Die wichtigen Dateien der Sicherung, die im Ziel fehlen oder eine andere
-    /// Groesse haben - relativ zum Datenordner. Leer heisst: Das Profil steht
-    /// so im Ziel, wie es gesichert wurde.
+    /// The important files of the backup that are missing in the target or have
+    /// a different size - relative to the data folder. Empty means: the profile
+    /// is in the target exactly as it was backed up.
     /// </summary>
     public static List<string> Differences(string quelle, string ziel)
     {

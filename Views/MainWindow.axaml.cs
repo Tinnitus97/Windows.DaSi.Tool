@@ -16,8 +16,8 @@ public partial class MainWindow : Window
     private ScrollViewer? _logScroll;
     private SelectableTextBlock? _logText;
 
-    // true = Log folgt automatisch ans Ende. Wird beim manuellen Hochscrollen
-    // ausgeschaltet und beim Zurueckscrollen ans Ende wieder eingeschaltet.
+    // true = the log follows to the end automatically. Switched off when the
+    // user scrolls up, switched on again when scrolled back to the end.
     private bool _autoScroll = true;
     private bool _programScroll;
 
@@ -30,7 +30,7 @@ public partial class MainWindow : Window
 
         if (_logScroll is not null)
         {
-            // Nutzer-Scrollen erkennen: Offset-Aenderung, die NICHT von uns kommt.
+            // Detect user scrolling: an offset change that does NOT come from us.
             _logScroll.PropertyChanged += (_, ev) =>
             {
                 if (ev.Property != ScrollViewer.OffsetProperty) return;
@@ -41,14 +41,14 @@ public partial class MainWindow : Window
                 _autoScroll = distanceFromBottom <= 12;
             };
 
-            // Mausrad nach oben stoppt das automatische Nachspringen sofort.
+            // Mouse wheel up stops the automatic jump to the end right away.
             _logScroll.AddHandler(PointerWheelChangedEvent, (_, e) =>
             {
                 if (e.Delta.Y > 0) _autoScroll = false;
             }, RoutingStrategies.Tunnel);
         }
 
-        // Bei jeder neuen Log-Zeile ans Ende springen - nur wenn Auto-Scroll aktiv.
+        // Jump to the end on every new log line - only while auto-scroll is on.
         if (_logText is not null)
         {
             _logText.PropertyChanged += (_, e) =>
@@ -79,15 +79,14 @@ public partial class MainWindow : Window
         {
             if (DataContext is not MainWindowViewModel vm) return;
 
-            // Gefragt wird NUR, wenn wirklich eine Aktion laeuft. Frueher stand
-            // hier "!vm.UiEnabled" - die Oberflaeche ist aber auch beim
-            // Selbstupdate gesperrt. Dann erschien beim Schliessen die Frage
-            // nach einem harten Abbruch, obwohl nichts lief; ein "Nein" liess
-            // das Fenster offen, waehrend das Austauschskript bereits auf sein
-            // Ende wartete.
+            // Ask ONLY if an action is really running. This used to check
+            // "!vm.UiEnabled" - but the UI is also locked during the self-update. Then
+            // closing asked about a hard abort although nothing was running; a "No"
+            // kept the window open while the swap script was already waiting for it
+            // to end.
             if (!vm.IsActionRunning || _forceClose) return;
 
-            // Es laeuft noch eine Aktion -> Rueckfrage
+            // An action is still running -> ask
             e.Cancel = true;
             var confirmed = await MessageBox.ShowYesNo(this,
                 WindowsDaSiTool.Services.Loc.Tr("Abbruch bestätigen", "Confirm cancellation"),
@@ -104,7 +103,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            // Ein Fehler beim Schliessen darf die App nicht mit einem Crash beenden.
+            // An error while closing must not end the app with a crash.
             Program.WriteCrashLog("OnWindowClosing", ex);
             _forceClose = true;
             try { Close(); } catch { }

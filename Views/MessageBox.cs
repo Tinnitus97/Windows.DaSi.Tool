@@ -7,9 +7,9 @@ using WindowsDaSiTool.Services;
 namespace WindowsDaSiTool.Views;
 
 /// <summary>
-/// Kleiner Ersatz fuer System.Windows.MessageBox mit Catppuccin-Optik.
-/// Die Farben kommen aus den Theme-Stilen (App.axaml, "dialog") und folgen
-/// damit dem hellen bzw. dunklen Modus. Wird immer vom UI-Thread aus aufgerufen.
+/// Small replacement for System.Windows.MessageBox in Catppuccin style. The
+/// colors come from the theme styles (App.axaml, "dialog") and so follow
+/// light and dark mode. Always called from the UI thread.
 /// </summary>
 public static class MessageBox
 {
@@ -76,7 +76,7 @@ public static class MessageBox
         return await tcs.Task;
     }
 
-    /// <param name="art">"yes", "ok", "cancel" oder nichts (neutral) - siehe Button.dialog in App.axaml.</param>
+    /// <param name="art">"yes", "ok", "cancel" or nothing (neutral) - see Button.dialog in App.axaml.</param>
     private static Button MakeButton(string content, string? art = null)
     {
         var b = new Button { Content = content, Width = 90, Height = 32, Classes = { "dialog" } };

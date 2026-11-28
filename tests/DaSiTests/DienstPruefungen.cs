@@ -12,13 +12,13 @@ using WindowsDaSiTool.Services;
 namespace DaSiTests;
 
 /// <summary>
-/// Pruefungen fuer die Dienste, die anfangs keine eigenen hatten: Sprache,
-/// Systemhelfer, Abbruch und Leistungsmodus, Prozessstart, Update ueber HTTP
-/// und das Nachinstallieren von winget.
+/// Tests for the services that had none of their own at first: language,
+/// system helpers, cancellation and performance mode, process start, update
+/// over HTTP and installing winget.
 /// </summary>
 internal static partial class Program
 {
-    /// <summary>Sammelt Protokollzeilen eines Dienstes - wie das Fenster des Programms.</summary>
+    /// <summary>Collects a service's log lines - like the program's window does.</summary>
     private sealed class Protokoll
     {
         private readonly List<string> _zeilen = new();
@@ -41,7 +41,7 @@ internal static partial class Program
         {
             Localizer.I.Lang = AppLang.En;
             Check("Englisch: Tr liefert den englischen Text", Loc.Tr("Ja", "Yes") == "Yes" && Localizer.I.Tr("a", "b") == "b");
-            Localizer.I.Lang = AppLang.En;   // keine Aenderung - kein Ereignis
+            Localizer.I.Lang = AppLang.En;   // no change - no event
             Localizer.I.Lang = AppLang.De;
             Check("Deutsch: Tr liefert den deutschen Text", Loc.Tr("Ja", "Yes") == "Ja");
             Check("jeder echte Sprachwechsel meldet sich genau einmal", meldungen == 2, $"{meldungen} Meldungen");
@@ -76,8 +76,8 @@ internal static partial class Program
         }
         else Check("ohne Registry: dunkel", !hell);
 
-        // Das Pruefprojekt laeuft mit invarianter Kultur - die ist weder de
-        // noch en, also gilt der Rueckfall. de/en prueft die Oberflaechen-Pruefung.
+        // The test project runs with the invariant culture - which is neither de
+        // nor en, so the fallback applies. The UI tests check de/en.
         Check("Sprache: unbekannte Kultur -> Deutsch", SystemHelpers.GetWindowsLanguage() == "de");
 
         var profile = SystemHelpers.GetUserProfiles();
@@ -104,7 +104,7 @@ internal static partial class Program
             if (frei is not null) Check($"freier Platz: Laufwerk {frei} fehlt -> -1", SystemHelpers.GetFreeSpace(frei + "x") == -1);
         }
 
-        // Ordnergroesse mit Ausschluss und Abbruch.
+        // Folder size with exclusion and cancellation.
         var baum = Path.Combine(root, "groesse");
         Directory.CreateDirectory(Path.Combine(baum, "a", "tief"));
         Directory.CreateDirectory(Path.Combine(baum, "weg"));
@@ -126,7 +126,7 @@ internal static partial class Program
         }
         if (OperatingSystem.IsWindows())
         {
-            // Eine Verknuepfung auf den Ordner selbst darf keine Endlosschleife ergeben.
+            // A link to the folder itself must not cause an endless loop.
             var schleife = Path.Combine(baum, "a", "schleife");
             try
             {
@@ -161,7 +161,7 @@ internal static partial class Program
         c.Reset();
         Check("Abbruch: zurueckgesetzt", !c.IsCancelled);
 
-        // KillAll beendet genau die angemeldeten Prozesse.
+        // KillAll ends exactly the registered processes.
         Process LongRunner() => OperatingSystem.IsWindows()
             ? Process.Start(new ProcessStartInfo("ping.exe", "-n 60 127.0.0.1") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true })!
             : Process.Start(new ProcessStartInfo("sleep", "60") { UseShellExecute = false })!;
@@ -186,7 +186,7 @@ internal static partial class Program
                 Check("Leistungsmodus: Prioritaet angehoben", Process.GetCurrentProcess().PriorityClass == ProcessPriorityClass.AboveNormal);
             }
             perf.Dispose();
-            perf.Dispose();   // doppelt darf nichts doppelt tun
+            perf.Dispose();   // calling it twice must not do anything twice
         }
         Check("Leistungsmodus: Prioritaet wie vorher", Process.GetCurrentProcess().PriorityClass == vorher);
         Check("Leistungsmodus: genau einmal beendet", log.Count("Leistungsmodus beendet") == 1, log.Text);
@@ -237,7 +237,7 @@ internal static partial class Program
         Check("ueber cmd: Abbruch", uhr.Elapsed.TotalSeconds < 15);
         c.Reset();
 
-        // robocopy: im schnellen Modus nur zaehlen, sonst jede Zeile ins Protokoll.
+        // robocopy: in fast mode only count, otherwise every line goes to the log.
         var quelle = Path.Combine(root, "robo-zaehlen", "quelle");
         Directory.CreateDirectory(quelle);
         for (int i = 0; i < 60; i++) File.WriteAllText(Path.Combine(quelle, $"datei{i:00}.txt"), "x" + i);
@@ -246,8 +246,8 @@ internal static partial class Program
         int code = r.RunRobocopyAsync($"\"{quelle}\" \"{Path.Combine(root, "robo-zaehlen", "ziel1")}\" /E /NP /NJH",
                                       log.Write, n => { lock (zaehler) zaehler.Add(n); }).GetAwaiter().GetResult();
         Check("robocopy: Exit-Code < 8", code is > 0 and < 8, code.ToString());
-        // Gezaehlt werden die eingerueckten Zeilen von robocopy - Dateien und
-        // Ordner. Es geht um den Fortschritt, nicht um eine genaue Bilanz.
+        // robocopy's indented lines are counted - files and folders. This is about
+        // progress, not an exact summary.
         Check("robocopy schnell: gezaehlt, alle 25 gemeldet, Endstand mit allen 60 Dateien",
             zaehler.Count >= 3 && zaehler[0] == 25 && zaehler[1] == 50 && zaehler.Last() >= 60, string.Join(",", zaehler));
         Check("robocopy schnell: keine Dateizeilen im Protokoll", !log.Has("datei07.txt"), log.Text);
@@ -315,7 +315,7 @@ internal static partial class Program
 
         if (OperatingSystem.IsWindows())
         {
-            // StartUpdateScript: genau so, wie das Programm es aufruft.
+            // StartUpdateScript: exactly the way the program calls it.
             var neu = Path.Combine(root, "start-skript", "neu", "WindowsDaSiTool.exe");
             var alt = Path.Combine(root, "start-skript", "alt", "WindowsDaSiTool.exe");
             Directory.CreateDirectory(Path.GetDirectoryName(neu)!);
@@ -343,7 +343,7 @@ internal static partial class Program
             return;
         }
         using var server = new MiniHttp();
-        // Abhaengigkeiten wie im echten Paket: je Architektur ein Ordner.
+        // Dependencies as in the real package: one folder per architecture.
         var zipDatei = Path.Combine(root, "abhaengigkeiten.zip");
         using (var zip = ZipFile.Open(zipDatei, ZipArchiveMode.Create))
             foreach (var arch in new[] { "x64", "arm64", "x86" })
@@ -355,8 +355,8 @@ internal static partial class Program
         var bundle = new byte[600_000];
         server.Set(WingetInstaller.BundleFile, bundle);
 
-        // Echtes Herunterladen, echtes PowerShell - nur das Paket ist eine
-        // Attrappe, die Windows ablehnt. Installiert wird dabei nichts.
+        // Real download, real PowerShell - only the package is a fake that Windows
+        // rejects. Nothing gets installed.
         var ok = WingetInstaller.InstallAsync(log.Write, () => false, default, server.Basis).GetAwaiter().GetResult();
         Check("Download von Abhaengigkeiten und App-Installer", log.Has("Abhängigkeiten: geladen") && log.Has("App-Installer: geladen"), log.Text);
         Check("Fortschritt beim Laden wird gemeldet", log.Has("25 %"), log.Text);

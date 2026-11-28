@@ -6,60 +6,60 @@ using System.Text.RegularExpressions;
 
 namespace WindowsDaSiTool.Services;
 
-/// <summary>Was als Desktop-Hintergrund eingestellt ist.</summary>
+/// <summary>What is set as the desktop wallpaper.</summary>
 public enum HintergrundArt
 {
-    /// <summary>Ein Bild (Datei).</summary>
+    /// <summary>An image (file).</summary>
     Bild,
-    /// <summary>Eine Volltonfarbe, kein Bild.</summary>
+    /// <summary>A solid color, no image.</summary>
     Volltonfarbe,
-    /// <summary>Diashow oder Windows-Blickpunkt - wechselnde Bilder, nichts Festes zu sichern.</summary>
+    /// <summary>Slideshow or Windows Spotlight - changing images, nothing fixed to back up.</summary>
     Wechselnd,
-    /// <summary>Weder Bild noch Farbe lesbar.</summary>
+    /// <summary>Neither image nor color readable.</summary>
     Unbekannt,
 }
 
 /// <summary>
-/// Die Einstellungen des Hintergrunds neben dem Bild: Art, Farbe und
-/// Darstellung ("Füllen", "Anpassen" ...). Liegt als Hintergrund.json im
-/// Sicherungsordner "Hintergrundbild".
+/// The wallpaper settings stored next to the image: kind, color and fit
+/// mode ("Fill", "Fit" ...). Kept as Hintergrund.json in the backup folder
+/// "Hintergrundbild" (old format) or inside Design.json.
 /// </summary>
 public sealed class HintergrundEinstellung
 {
     public const string DateiName = "Hintergrund.json";
 
-    /// <summary>"Bild" oder "Volltonfarbe".</summary>
+    /// <summary>"Bild" (image) or "Volltonfarbe" (solid color).</summary>
     public string Art { get; set; } = "Bild";
 
-    /// <summary>Die Hintergrundfarbe wie in der Registry: "R G B", z. B. "0 99 177".</summary>
+    /// <summary>The background color as in the registry: "R G B", e.g. "0 99 177".</summary>
     public string? Farbe { get; set; }
 
-    /// <summary>Control Panel\Desktop\WallpaperStyle - 10 Füllen, 6 Anpassen, 2 Strecken, 0 Zentriert/Kacheln, 22 Strecken über Bildschirme.</summary>
+    /// <summary>Control Panel\Desktop\WallpaperStyle - 10 Fill, 6 Fit, 2 Stretch, 0 Center/Tile, 22 Span across monitors.</summary>
     public string? Darstellung { get; set; }
 
-    /// <summary>Control Panel\Desktop\TileWallpaper - "1" bei "Kacheln".</summary>
+    /// <summary>Control Panel\Desktop\TileWallpaper - "1" for "Tile".</summary>
     public string? Kacheln { get; set; }
 
-    /// <summary>Bei einem Bild: der Dateiname in der Sicherung (neben Design.json).</summary>
+    /// <summary>For an image: the file name in the backup (next to Design.json).</summary>
     public string? Bild { get; set; }
 
-    /// <summary>Bei einem Bild: wo es auf dem alten Rechner lag.</summary>
+    /// <summary>For an image: where it was on the old computer.</summary>
     public string? BildPfad { get; set; }
 
-    /// <summary>Das gesicherte Profil - damit sich BildPfad in ein anderes Profil uebertragen laesst.</summary>
+    /// <summary>The backed-up profile - so BildPfad can be carried over to another profile.</summary>
     public string? Profil { get; set; }
 }
 
 /// <summary>
-/// Desktop-Hintergrund: Farbe lesen und schreiben, Art erkennen. Ohne
-/// Abhaengigkeiten, damit es sich pruefen laesst - Registry und Windows-
-/// Aufrufe stecken im BackupService.
+/// Desktop wallpaper: read and write the color, detect the kind. No
+/// dependencies, so it can be tested - the registry and Windows calls live
+/// in BackupService.
 /// </summary>
 public static class Hintergrund
 {
     private static readonly Regex Rgb = new(@"^\s*(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})\s*$", RegexOptions.CultureInvariant);
 
-    /// <summary>"0 99 177" -> (0, 99, 177); alles andere -> null.</summary>
+    /// <summary>"0 99 177" -> (0, 99, 177); anything else -> null.</summary>
     public static (byte R, byte G, byte B)? ReadColor(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
@@ -72,28 +72,28 @@ public static class Hintergrund
         return ((byte)r, (byte)g, (byte)b);
     }
 
-    /// <summary>(0, 99, 177) -> "0 99 177" - so steht es in der Registry.</summary>
+    /// <summary>(0, 99, 177) -> "0 99 177" - the way the registry stores it.</summary>
     public static string ColorText((byte R, byte G, byte B) f)
         => string.Create(CultureInfo.InvariantCulture, $"{f.R} {f.G} {f.B}");
 
     /// <summary>(0, 99, 177) -> "#0063B1".</summary>
     public static string Hex((byte R, byte G, byte B) f) => $"#{f.R:X2}{f.G:X2}{f.B:X2}";
 
-    /// <summary>Fuer SetSysColors: 0x00BBGGRR.</summary>
+    /// <summary>For SetSysColors: 0x00BBGGRR.</summary>
     public static int ColorRef((byte R, byte G, byte B) f) => f.R | (f.G << 8) | (f.B << 16);
 
     /// <summary>
-    /// Was ist eingestellt?
+    /// What is configured?
     ///
-    /// BackgroundType (Explorer\Wallpapers) schreibt Windows 10/11 beim
-    /// Umstellen unter Einstellungen > Personalisierung > Hintergrund: 0 Bild,
-    /// 1 Volltonfarbe, 2 Diashow, 3 Windows-Blickpunkt. Fehlt der Wert (aeltere
-    /// Windows-Fassung, nie umgestellt), entscheidet der Bildpfad: leer heisst
-    /// Volltonfarbe.
+    /// Windows 10/11 writes BackgroundType (Explorer\Wallpapers) when the user
+    /// switches under Settings > Personalization > Background: 0 image, 1 solid
+    /// color, 2 slideshow, 3 Windows Spotlight. If the value is missing (older
+    /// Windows version, never switched), the image path decides: empty means
+    /// solid color.
     /// </summary>
     /// <param name="bildPfad">Control Panel\Desktop\WallPaper.</param>
-    /// <param name="bildVorhanden">Gibt es die Datei?</param>
-    /// <param name="hintergrundTyp">BackgroundType, falls gesetzt.</param>
+    /// <param name="bildVorhanden">Does the file exist?</param>
+    /// <param name="hintergrundTyp">BackgroundType, if set.</param>
     /// <param name="farbe">Control Panel\Colors\Background.</param>
     public static HintergrundArt Determine(string? bildPfad, bool bildVorhanden, int? hintergrundTyp, string? farbe)
     {
@@ -103,7 +103,7 @@ public static class Hintergrund
                 return ReadColor(farbe) is null ? HintergrundArt.Unbekannt : HintergrundArt.Volltonfarbe;
             case 2:
             case 3:
-                // Eine Diashow zeigt gerade ein Bild - das wird gesichert, wenn es da ist.
+                // A slideshow is showing an image right now - it is backed up if it exists.
                 return bildVorhanden ? HintergrundArt.Bild : HintergrundArt.Wechselnd;
         }
         if (!string.IsNullOrWhiteSpace(bildPfad))
@@ -111,18 +111,18 @@ public static class Hintergrund
         return ReadColor(farbe) is null ? HintergrundArt.Unbekannt : HintergrundArt.Volltonfarbe;
     }
 
-    /// <summary>Windows' eigene Kopie des Hintergrunds, relativ zum Profil.</summary>
+    /// <summary>Windows' own copy of the wallpaper, relative to the profile.</summary>
     public const string ZwischenspeicherRel = @"AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper";
 
-    /// <summary>Die Kopie des gerade gezeigten Hintergrunds in einem Profil.</summary>
+    /// <summary>The copy of the currently shown wallpaper in a profile.</summary>
     public static string? Cache(string? profil)
         => string.IsNullOrWhiteSpace(profil) ? null : AppCatalog.PathIn(profil, ZwischenspeicherRel);
 
     /// <summary>
-    /// Liegt das Bild in Windows' Zwischenspeicher - "TranscodedWallpaper"
-    /// oder "CachedFiles" unter AppData\Roaming\Microsoft\Windows\Themes? Diese
-    /// Dateien verwaltet Windows selbst: Als Hintergrund eingetragen, werden
-    /// sie beim naechsten Setzen ueberschrieben oder geloescht.
+    /// Is the image in Windows' cache - "TranscodedWallpaper" or "CachedFiles"
+    /// under AppData\Roaming\Microsoft\Windows\Themes? Windows manages those
+    /// files itself: registered as the wallpaper, they get overwritten or
+    /// deleted the next time a wallpaper is set.
     /// </summary>
     public static bool IsWindowsCache(string? pfad)
     {
@@ -133,7 +133,7 @@ public static class Hintergrund
         return name.StartsWith("TranscodedWallpaper", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Die Endung zur Bildart nach den ersten Bytes - null, wenn unbekannt.</summary>
+    /// <summary>The file extension for the image type based on the first bytes - null if unknown.</summary>
     public static string? ImageExtension(ReadOnlySpan<byte> kopf)
     {
         if (kopf.Length >= 3 && kopf[0] == 0xFF && kopf[1] == 0xD8 && kopf[2] == 0xFF) return ".jpg";
@@ -146,9 +146,9 @@ public static class Hintergrund
     }
 
     /// <summary>
-    /// Unter welchem Namen das Bild gesichert bzw. in "Bilder" abgelegt wird:
-    /// sein eigener - Windows' Zwischenspeicher aber als "Hintergrundbild.jpg"
-    /// (passende Endung), und eine Datei ohne Endung bekommt die zur Bildart.
+    /// The name the image is backed up under or placed into "Bilder" with: its
+    /// own - but Windows' cache as "Hintergrundbild.jpg" (matching extension),
+    /// and a file without an extension gets the one for its image type.
     /// </summary>
     public static string BackupName(string pfad, ReadOnlySpan<byte> kopf)
     {
@@ -170,7 +170,7 @@ public static class Hintergrund
     public static void Save(string ordner, HintergrundEinstellung e)
         => File.WriteAllText(Path.Combine(ordner, HintergrundEinstellung.DateiName), JsonSerializer.Serialize(e, Json));
 
-    /// <summary>Liest Hintergrund.json - null, wenn es sie nicht gibt (aeltere Sicherung) oder sie kaputt ist.</summary>
+    /// <summary>Reads Hintergrund.json - null if it does not exist (older backup) or is broken.</summary>
     public static HintergrundEinstellung? Load(string ordner)
     {
         try
@@ -181,7 +181,7 @@ public static class Hintergrund
         catch { return null; }
     }
 
-    /// <summary>true, wenn die Sicherung eine Volltonfarbe enthaelt (und kein Bild gemeint ist).</summary>
+    /// <summary>true if the backup contains a solid color (and no image is meant).</summary>
     public static bool IsSolidColor(HintergrundEinstellung? e)
         => e is not null && string.Equals(e.Art, "Volltonfarbe", StringComparison.OrdinalIgnoreCase) && ReadColor(e.Farbe) is not null;
 }

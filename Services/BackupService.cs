@@ -8,7 +8,8 @@ using Microsoft.Win32;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Portierung der Backup-/Restore-/Update-Funktionen aus dem PowerShell-Skript.
+/// Backup, restore and update actions of the tool - one method per item
+/// of the UI, each one reporting what it did to the log.
 /// </summary>
 public sealed class BackupService
 {
@@ -16,16 +17,16 @@ public sealed class BackupService
     private readonly CancellationTokenState _cancel;
     private readonly Action<string> _log;
 
-    /// <summary>Optionaler Fortschritts-Callback: gemeldete Dateianzahl.</summary>
+    /// <summary>Optional progress callback: number of files reported.</summary>
     public Action<int>? OnFilesProgress { get; set; }
 
     public string SourcePath { get; set; } = "";
     public string BackupPath { get; set; } = "";
 
     /// <summary>
-    /// Installiert Programme (Firefox, Chrome ...) beim Wiederherstellen ihrer
-    /// Profile - ueber denselben winget-Startweg und dieselbe Reparatur wie der
-    /// Winget-Import. Ohne: "winget" aus dem Suchpfad.
+    /// Installs programs (Firefox, Chrome ...) while restoring their profiles -
+    /// through the same winget launch path and the same repair as the winget
+    /// import. Without it: "winget" from the search path.
     /// </summary>
     public WingetService? Winget { get; set; }
 
@@ -43,25 +44,25 @@ public sealed class BackupService
         _log = log;
     }
 
-    // ------------------------------------------------------------ Benutzerprofil
+    // ------------------------------------------------------------ User profile
 
     /// <summary>
-    /// Soll der Ordner AppData mitgesichert werden? Vorgabe nein.
+    /// Back up the AppData folder as well? Default: no.
     /// </summary>
     public bool IncludeAppData { get; set; }
 
     /// <summary>
-    /// Sollen die erkannten Cloud-Ordner mitgesichert werden? Vorgabe nein.
+    /// Back up the detected cloud folders as well? Default: no.
     /// </summary>
     public bool IncludeCloud { get; set; }
 
     /// <summary>
-    /// Baut die Liste der vom Profil-Backup ausgeschlossenen Ordner (voll
-    /// qualifizierte Pfade). Wird sowohl vom eigentlichen Backup als auch von
-    /// der Speicher-Schaetzung verwendet, damit beide konsistent sind.
+    /// Builds the list of folders excluded from the profile backup (fully
+    /// qualified paths). Used by the backup itself and by the storage estimate,
+    /// so both agree.
     ///
-    /// Die Entscheidung selbst steht in <see cref="ProfileExcludes"/> - dort
-    /// ohne Abhaengigkeiten und damit pruefbar.
+    /// The decision itself lives in <see cref="ProfileExcludes"/> - free of
+    /// dependencies there and therefore testable.
     /// </summary>
     public static List<string> GetProfileExcludes(string userDir, bool includeAppData = false, bool includeCloud = false)
         => ProfileExcludes.Build(userDir, includeAppData, includeCloud);
@@ -71,9 +72,9 @@ public sealed class BackupService
         var userDir = SourcePath;
         var backupTargetDir = Path.Combine(BackupPath, "Benutzerprofil");
 
-        // Frueher ein reiner Praefixvergleich: Profil "C:\Users\Max" und Ziel
-        // "C:\Users\Maximilian\Backup" galten als "Ziel im Quellverzeichnis",
-        // und das Backup wurde verweigert.
+        // This used to be a plain prefix comparison: profile "C:\Users\Max" and
+        // target "C:\Users\Maximilian\Backup" counted as "target inside the
+        // source folder", and the backup was refused.
         if (ProfileExcludes.IsInside(backupTargetDir, userDir))
         {
             _log(Loc.Tr("[FEHLER] Ziel liegt im Quellverzeichnis. Abbruch.", "[ERROR] Target is inside the source directory. Aborting."));
@@ -85,8 +86,8 @@ public sealed class BackupService
         var args = ProfileBackupArgs(userDir, backupTargetDir);
         foreach (var ex in excluded) if (Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
 
-        // Im Protokoll festhalten, was mitlaeuft - sonst laesst sich hinterher
-        // nicht mehr nachvollziehen, warum ein Backup so gross wurde.
+        // Record in the log what is included - otherwise nobody can tell later
+        // why a backup became so large.
         if (IncludeAppData)
             _log(Loc.Tr("[INFO] AppData wird mitgesichert (Zwischenspeicher bleiben ausgenommen).",
                         "[INFO] AppData is included (caches remain excluded)."));
@@ -100,9 +101,9 @@ public sealed class BackupService
                          "[INFO] Cloud folders should be included - but none were found."));
         }
 
-        // Ordner, die in Wahrheit auf einen Ort ausserhalb des Profils zeigen
-        // ("Dokumente\Spiele" -> "D:\Spiele"), folgt robocopy nicht (/XJ). Ihr
-        // Inhalt fehlte sonst in der Sicherung, ohne dass es irgendwo stuende.
+        // robocopy does not follow folders that actually point to a place outside
+        // the profile ("Dokumente\Spiele" -> "D:\Spiele") (/XJ). Their content
+        // would otherwise be missing from the backup without a word anywhere.
         var (verweise, abgebrochen) = await Task.Run(() =>
         {
             var l = ProfileLinks.FindOutsideLinks(userDir, excluded, out var t);
@@ -133,23 +134,22 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Schluss einer Sicherung mit AppData: Zusammenfassung ins Protokoll,
-    /// vollstaendige Liste neben die Sicherung (Wurzel des Sicherungsordners,
-    /// NICHT in "Benutzerprofil" - sonst landete sie beim Wiederherstellen im
-    /// Profil).
+    /// Final step of a backup that includes AppData: summary to the log, the
+    /// full list next to the backup (root of the backup folder, NOT inside
+    /// "Benutzerprofil" - it would otherwise end up in the profile on restore).
     ///
-    /// Rueckgabe true: robocopy meldete zwar einen Fehlschlag (Code 8), aber
-    /// ausschliesslich gesperrte oder verschwundene Dateien in AppData. Die
-    /// Sicherung hat dann alles gesichert, was sich sichern liess.
+    /// Returns true if robocopy did report a failure (code 8), but only for
+    /// locked or vanished files in AppData. The backup then contains everything
+    /// that could be backed up.
     /// </summary>
     private bool ReportAppDataSkips(RobocopySkips skips, int code)
     {
-        // Beim Zurueckschreiben eine eigene Liste - die vom Sichern bleibt stehen.
+        // Restoring writes its own list - the one from the backup stays.
         var liste = Path.Combine(BackupPath, skips.Zurueck ? RobocopySkips.RestoreListFileName : RobocopySkips.ListFileName);
         if (skips.Count == 0)
         {
-            // Eine Liste von frueher (gleicher Ordner, "Eigener Ordner" aus) waere jetzt falsch.
-            try { if (File.Exists(liste)) File.Delete(liste); } catch { /* bleibt eben liegen */ }
+            // A list from earlier (same folder, "own folder" off) would now be wrong.
+            try { if (File.Exists(liste)) File.Delete(liste); } catch { /* then it stays */ }
             return false;
         }
 
@@ -169,7 +169,7 @@ public sealed class BackupService
         }
         _log(skips.Summary("AppData", geschrieben, Loc.Tr));
 
-        // Bit 16 = robocopy selbst ist gescheitert; dann ist nichts "nur uebersprungen".
+        // Bit 16 = robocopy itself failed; then nothing was "just skipped".
         return skips.AllExpected && skips.OtherErrors == 0 && (code & 16) == 0;
     }
 
@@ -182,25 +182,25 @@ public sealed class BackupService
         _log(Loc.Tr("[INFO] Starte Restore Benutzerprofil...", "[INFO] Starting user profile restore..."));
         var args = ProfileRestoreArgs(backupSourceDir, destDir);
 
-        // Dieselben zwei Schalter wirken auch hier - sonst waeren sie beim
-        // Wiederherstellen wirkungslos: robocopy kopiert mit /E den ganzen
-        // Sicherungsordner. Enthielt die Sicherung AppData, landete es ohne
-        // diese Ausschluesse auch dann auf der Platte, wenn der Haken
-        // ausdruecklich NICHT gesetzt ist - und die Rueckfrage davor waere
-        // eine leere Geste.
+        // The same two switches apply here - otherwise they would have no effect
+        // on restore: robocopy copies the whole backup folder with /E. If the
+        // backup contained AppData, it would land on disk without these excludes
+        // even when the box is explicitly NOT checked - and the confirmation
+        // before it would be an empty gesture.
         //
-        // Ausgeschlossen wird relativ zum SICHERUNGSORDNER, nicht zum Profil:
-        // /XD vergleicht gegen die Quelle.
+        // Excludes are relative to the BACKUP FOLDER, not to the profile: /XD
+        // compares against the source.
         //
-        // Cloud-Ordner bleiben in diesem Lauf IMMER draussen - auch mit Haken.
-        // Mit Haken folgen sie danach einzeln, aber nicht an ihren alten Platz.
+        // Cloud folders are ALWAYS left out of this run - even when checked.
+        // When checked, they follow one by one afterwards, but not to their old
+        // place.
         foreach (var ex in GetProfileExcludes(backupSourceDir, IncludeAppData, includeCloud: false))
             if (Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
 
         RobocopySkips? skips = null;
-        // Laeuft das Tool aus dem Zielprofil heraus (meist vom Desktop), wird
-        // seine Datei nicht ueberschrieben - sie ist gesperrt, und in der
-        // Sicherung liegt meist eine aeltere Fassung.
+        // If the tool runs from inside the target profile (usually from the
+        // desktop), its own file is not overwritten - it is locked, and the
+        // backup usually holds an older version.
         var selbst = ProfileExcludes.RunningProgramInBackup(destDir, backupSourceDir, Environment.ProcessPath);
         if (selbst is not null && File.Exists(selbst))
         {
@@ -213,8 +213,8 @@ public sealed class BackupService
         {
             _log(Loc.Tr("[INFO] AppData wird mit wiederhergestellt.", "[INFO] AppData is included in the restore."));
             await CloseAppDataProgramsAsync();
-            // Gesperrte Dateien in AppData zusammenfassen - robocopy nennt den
-            // Pfad in der Sicherung, nicht im Profil.
+            // Summarize locked files in AppData - robocopy names the path in the
+            // backup, not in the profile.
             skips = new RobocopySkips(Path.Combine(backupSourceDir, "AppData"), zurueck: true);
         }
 
@@ -233,9 +233,9 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Schreibt die Cloud-Ordner der Sicherung zurueck - jeden NEBEN seinen
-    /// alten Platz: "OneDrive" landet in "OneDrive_wiederhergestellt".
-    /// Warum, steht bei <see cref="CloudProviders.RestoredFolderName"/>.
+    /// Restores the cloud folders from the backup - each one NEXT TO its old
+    /// place: "OneDrive" goes to "OneDrive_wiederhergestellt". The reason is
+    /// explained at <see cref="CloudProviders.RestoredFolderName"/>.
     /// </summary>
     private async Task RestoreCloudFolders(string backupSourceDir, string destDir)
     {
@@ -268,14 +268,14 @@ public sealed class BackupService
         }
     }
 
-    // ------------------------------------------------------------ AppData / Cloud ohne Profil
+    // ------------------------------------------------------------ AppData / cloud without the profile
     //
-    // AppData und Cloud-Ordner lassen sich auch einzeln sichern, ohne den Rest
-    // des Profils. Sie landen an DERSELBEN Stelle wie bei der Profilsicherung
-    // (Benutzerprofil\AppData, Benutzerprofil\<Cloud-Ordner>) - so findet jede
-    // spaetere Wiederherstellung sie, egal auf welchem Weg gesichert wurde.
+    // AppData and cloud folders can also be backed up on their own, without
+    // the rest of the profile. They land in THE SAME place as with the profile
+    // backup (Benutzerprofil\AppData, Benutzerprofil\<cloud folder>) - so any
+    // later restore finds them, no matter how they were backed up.
 
-    /// <summary>Gemeinsame robocopy-Schalter fuer das Sichern aus dem Profil.</summary>
+    /// <summary>Common robocopy switches for backing up from the profile.</summary>
     private List<string> ProfileBackupArgs(string quelle, string ziel)
     {
         var args = new List<string> { Quote(quelle), Quote(ziel) };
@@ -284,7 +284,7 @@ public sealed class BackupService
         return args;
     }
 
-    /// <summary>Gemeinsame robocopy-Schalter fuer das Zurueckschreiben ins Profil.</summary>
+    /// <summary>Common robocopy switches for restoring into the profile.</summary>
     private List<string> ProfileRestoreArgs(string quelle, string ziel)
     {
         var args = new List<string> { Quote(quelle), Quote(ziel) };
@@ -293,7 +293,7 @@ public sealed class BackupService
         return args;
     }
 
-    /// <summary>Sichert nur AppData - die Zwischenspeicher bleiben wie immer draussen.</summary>
+    /// <summary>Backs up only AppData - the caches stay out as always.</summary>
     public async Task BackupAppDataOnly()
     {
         var quelle = Path.Combine(SourcePath, "AppData");
@@ -310,7 +310,7 @@ public sealed class BackupService
         }
 
         var args = ProfileBackupArgs(quelle, ziel);
-        // Dieselbe Liste wie bei der Profilsicherung, davon nur, was in AppData liegt.
+        // The same list as for the profile backup, only the part inside AppData.
         foreach (var ex in ProfileExcludes.Build(SourcePath, includeAppData: true, includeCloud: true))
             if (ProfileExcludes.IsInside(ex, quelle) && Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
 
@@ -329,7 +329,7 @@ public sealed class BackupService
             _log(Loc.Tr($"[FEHLER] AppData: Robocopy Fehlercode {code}", $"[ERROR] AppData: Robocopy error code {code}"));
     }
 
-    /// <summary>Sichert nur die erkannten Cloud-Ordner, jeden fuer sich.</summary>
+    /// <summary>Backs up only the detected cloud folders, each on its own.</summary>
     public async Task BackupCloudOnly()
     {
         var ordner = CloudProviders.Detect(SourcePath);
@@ -361,7 +361,7 @@ public sealed class BackupService
         }
     }
 
-    /// <summary>Schreibt nur AppData zurueck - aus der Sicherung, wie auch immer sie entstand.</summary>
+    /// <summary>Restores only AppData - from the backup, however it was created.</summary>
     public async Task RestoreAppDataOnly()
     {
         var quelle = Path.Combine(BackupPath, "Benutzerprofil", "AppData");
@@ -376,9 +376,9 @@ public sealed class BackupService
         await CloseAppDataProgramsAsync();
 
         var args = ProfileRestoreArgs(quelle, ziel);
-        // Dieselben Ausschluesse wie beim Profil: Zwischenspeicher und der
-        // rechnergebundene Zustand von winget und Windows-Shell - auch dann,
-        // wenn eine aeltere Sicherung sie noch enthaelt.
+        // The same excludes as for the profile: caches and the machine-bound
+        // state of winget and the Windows shell - even if an older backup still
+        // contains them.
         foreach (var ex in ProfileExcludes.Build(Path.Combine(BackupPath, "Benutzerprofil"), includeAppData: true, includeCloud: true))
             if (ProfileExcludes.IsInside(ex, quelle) && Directory.Exists(ex)) { args.Add("/XD"); args.Add(Quote(ex)); }
 
@@ -396,14 +396,14 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Schliesst vor dem Zurueckschreiben von AppData die Browser und
-    /// Mailprogramme aus dem Katalog, soweit sie laufen.
+    /// Before restoring AppData, closes the browsers and mail programs from
+    /// the catalog that are running.
     ///
-    /// Edge laeuft nach der Anmeldung meist unsichtbar im Hintergrund weiter
-    /// ("Startboost"). Seine Dateien sind dann gesperrt: Ein Teil des Profils
-    /// kam aus der Sicherung, der Rest blieb der alte - und jede gesperrte
-    /// Datei stand mit drei Zeilen im Protokoll. Genauso wird bei den
-    /// einzelnen Browser-Kacheln schon immer verfahren.
+    /// After sign-in, Edge usually keeps running invisibly in the background
+    /// ("startup boost"). Its files are locked then: part of the profile came
+    /// from the backup, the rest stayed the old one - and every locked file
+    /// took three lines in the log. The single browser items have always
+    /// worked this way.
     /// </summary>
     private async Task CloseAppDataProgramsAsync()
     {
@@ -430,7 +430,7 @@ public sealed class BackupService
         await KillAndWait(TimeSpan.FromSeconds(20), geschlossen.Select(g => g.Prozess).ToArray());
     }
 
-    /// <summary>Schreibt nur die Cloud-Ordner zurueck - wie immer neben das Original.</summary>
+    /// <summary>Restores only the cloud folders - as always, next to the original.</summary>
     public async Task RestoreCloudOnly()
     {
         var sicherung = Path.Combine(BackupPath, "Benutzerprofil");
@@ -442,9 +442,9 @@ public sealed class BackupService
         await RestoreCloudFolders(sicherung, SourcePath);
     }
 
-    // ------------------------------------------------------------ Browser-Profile
+    // ------------------------------------------------------------ Browser profiles
 
-    /// <summary>Sichert das Profil eines Programms aus dem Katalog (Firefox, Edge, Chrome, Brave, Thunderbird).</summary>
+    /// <summary>Backs up the profile of a catalog program (Firefox, Edge, Chrome, Brave, Thunderbird).</summary>
     public async Task BackupAppProfile(AppEintrag app)
     {
         var quelle = AppCatalog.PathIn(SourcePath, app.ProfilRel);
@@ -458,7 +458,7 @@ public sealed class BackupService
         if (app.Punkt == Punkt.Thunderbird && !_cancel.IsCancelled) await BackupThunderbirdExternal(app.Name, quelle);
     }
 
-    /// <summary>Schreibt das Profil eines Programms aus dem Katalog zurueck - vorher wird es bei Bedarf installiert.</summary>
+    /// <summary>Restores the profile of a catalog program - installing the program first if needed.</summary>
     public async Task RestoreAppProfile(AppEintrag app)
     {
         var mozilla = MozillaProfile.ProgramOf(app);
@@ -486,12 +486,12 @@ public sealed class BackupService
         }
     }
 
-    // ------------------------------------------------------------ Firefox/Thunderbird: was ein Profil an den PC bindet
+    // ------------------------------------------------------------ Firefox/Thunderbird: what ties a profile to the PC
 
     /// <summary>
-    /// Pfade des alten Benutzers in prefs.js (Mailordner, Download-Ordner,
-    /// Seiten aus dem Profil) auf das gewaehlte Profil umstellen - wie
-    /// MozBackup, das beim Zurueckschreiben die Mailordner in prefs.js anpasst.
+    /// Rewrites the old user's paths in prefs.js (mail folders, download
+    /// folder, pages from the profile) to the selected profile - like
+    /// MozBackup, which adjusts the mail folders in prefs.js on restore.
     /// </summary>
     private void RewriteMozillaPaths(string name, string datenOrdner)
     {
@@ -515,15 +515,15 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Lehnt Firefox/Thunderbird das Profil ab, weil es zuletzt mit einer
-    /// neueren Hauptversion lief? Dann legen sie ein neues, leeres Profil an
-    /// ("Sie haben eine aeltere Version gestartet"). Typisch: hier liegt ESR
-    /// statt der normalen Fassung, oder winget liefert die neue Hauptversion
-    /// erst Tage nach dem Update auf dem alten PC. Firefox vergleicht dabei nur
-    /// die Hauptversion (146.0.1 gegen 146.0 ist kein Problem - in der CI mit
-    /// dem echten Firefox geprueft). Zuruecksetzen hilft nicht: Die Daten liegen
-    /// dann womoeglich in einem neueren Format vor, Firefox legte etwa die
-    /// Lesezeichen neu an. Also: melden, mit Abhilfe.
+    /// Will Firefox/Thunderbird reject the profile because it last ran with a
+    /// newer major version? Then they create a new, empty profile ("You have
+    /// launched an older version"). Typical causes: ESR is installed here
+    /// instead of the regular edition, or winget delivers the new major version
+    /// only days after the update on the old PC. Firefox only compares the
+    /// major version (146.0.1 against 146.0 is fine - verified in CI with the
+    /// real Firefox). Resetting does not help: the data may already be in a
+    /// newer format, e.g. Firefox recreated the bookmarks. So: report it, with
+    /// a remedy.
     /// </summary>
     private void CheckMozillaVersion(string name, string profilOrdner, IEnumerable<string> installationen)
     {
@@ -537,7 +537,7 @@ public sealed class BackupService
                     + $"Please update {name} (Help > About {name}, or winget upgrade) - then it takes the profile."));
     }
 
-    /// <summary>Thunderbird-Konten, deren Mails ausserhalb des Profils liegen: in der Sicherung und beim Zurueckschreiben.</summary>
+    /// <summary>Thunderbird accounts whose mail lives outside the profile: in the backup and on restore.</summary>
     public const string ThunderbirdExternOrdner = "Thunderbird-Extern";
 
     private sealed class ExterneSicherung
@@ -548,20 +548,20 @@ public sealed class BackupService
 
     private sealed class ExternesPostfach
     {
-        /// <summary>Profilordner relativ zum Datenordner ("Profiles\\abcd.default").</summary>
+        /// <summary>Profile folder relative to the data folder ("Profiles\\abcd.default").</summary>
         public string Profil { get; set; } = "";
         public string Server { get; set; } = "";
         public string Ordner { get; set; } = "";
-        /// <summary>Unterordner in Thunderbird-Extern.</summary>
+        /// <summary>Subfolder in Thunderbird-Extern.</summary>
         public string Sicherung { get; set; } = "";
     }
 
     /// <summary>
-    /// Sichert die Mails von Konten, deren Ordner Thunderbird ausserhalb des
-    /// Profils fuehrt (Konten-Einstellungen > Server-Einstellungen > Lokaler
-    /// Ordner, etwa D:\\Mail). Bisher fehlten sie in der Sicherung - MozBackup
-    /// sichert sie mit. Liegen sie im Benutzerprofil, sichert sie schon der
-    /// Punkt Benutzerprofil.
+    /// Backs up the mail of accounts whose folder Thunderbird keeps outside
+    /// the profile (Account Settings > Server Settings > Local Directory, e.g.
+    /// D:\\Mail). Such mail used to be missing from the backup - MozBackup
+    /// includes it. If it lives inside the user profile, the user profile item
+    /// already backs it up.
     /// </summary>
     private async Task BackupThunderbirdExternal(string name, string datenOrdner)
     {
@@ -607,10 +607,10 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Schreibt die Mails von Konten ausserhalb des Profils zurueck: an ihren
-    /// alten Ort (im Benutzerordner des alten PCs: in den des gewaehlten
-    /// Profils), oder - gibt es das Laufwerk hier nicht - in den Profilordner;
-    /// prefs.js wird dann angepasst.
+    /// Restores the mail of accounts outside the profile: to its old place
+    /// (inside the old PC's user folder: into the selected profile's), or - if
+    /// that drive does not exist here - into the profile folder; prefs.js is
+    /// then adjusted.
     /// </summary>
     private async Task RestoreThunderbirdExternal(string name, string datenOrdner)
     {
@@ -656,10 +656,10 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Firefox/Thunderbird: das zurueckgeschriebene Profil als Standard dieser
-    /// Installation eintragen. Sonst nimmt ein Firefox, der hier in einem
-    /// anderen Ordner liegt als auf dem alten PC (64 statt 32 Bit, fuer alle
-    /// statt nur fuer den Benutzer), ein neues, leeres Profil.
+    /// Firefox/Thunderbird: register the restored profile as the default of
+    /// this installation. Otherwise a Firefox installed in a different folder
+    /// than on the old PC (64 instead of 32 bit, for everyone instead of just
+    /// the user) picks a new, empty profile.
     /// </summary>
     private void SetMozillaDefaultProfile(string name, string datenOrdner, string exe, string ordnerName)
     {
@@ -697,18 +697,18 @@ public sealed class BackupService
         if (erg.Verzeichnis is not null) CheckMozillaVersion(name, erg.Verzeichnis, erg.Neu.Select(n => n.Ordner));
     }
 
-    /// <summary>Nur fuer die Pruefung: Installationsordner statt der echten Suche.</summary>
+    /// <summary>Tests only: installation folders instead of the real search.</summary>
     internal List<string>? TestInstallationen { get; set; }
 
-    /// <summary>Die Installationsordner von Firefox/Thunderbird auf diesem PC (in den Pruefungen fest vorgegeben).</summary>
+    /// <summary>The installation folders of Firefox/Thunderbird on this PC (fixed in the tests).</summary>
     private List<string> MozillaInstallationsHere(string exe, string ordnerName)
         => TestInstallationen ?? (OperatingSystem.IsWindows() ? MozillaProfile.Installations(exe, ordnerName, SourcePath) : new List<string>());
 
-    // ------------------------------------------------------------ Opera (alle Fassungen)
+    // ------------------------------------------------------------ Opera (all editions)
 
     /// <summary>
-    /// Sichert jede Opera-Fassung des Benutzers (Opera, Opera GX, Beta ...) in
-    /// einen eigenen Unterordner von "Opera-Profil".
+    /// Backs up every Opera edition of the user (Opera, Opera GX, Beta ...) into
+    /// its own subfolder of "Opera-Profil".
     /// </summary>
     public async Task BackupOpera()
     {
@@ -722,7 +722,7 @@ public sealed class BackupService
         var namen = string.Join(", ", varianten.Select(AppCatalog.Opera.DisplayName));
         _log(Loc.Tr($"[INFO] Gefundene Opera-Fassungen: {namen}", $"[INFO] Opera editions found: {namen}"));
 
-        // Alle Fassungen laufen als opera.exe - einmal beenden genuegt.
+        // All editions run as opera.exe - closing it once is enough.
         if (!await CloseProgram("Opera", false, OperaProzesse))
             _log(Loc.Tr("[WARNUNG] Opera läuft noch - gesichert wird trotzdem, einzelne Dateien können aber unvollständig sein.",
                         "[WARNING] Opera is still running - backing up anyway, but individual files may be incomplete."));
@@ -735,7 +735,7 @@ public sealed class BackupService
         }
     }
 
-    /// <summary>Schreibt jede gesicherte Opera-Fassung zurueck, jede an ihren Platz.</summary>
+    /// <summary>Restores every backed-up Opera edition, each to its own place.</summary>
     public async Task RestoreOpera()
     {
         var quelle = Path.Combine(BackupPath, AppCatalog.Opera.BackupOrdner);
@@ -761,15 +761,15 @@ public sealed class BackupService
         }
     }
 
-    /// <summary>Opera selbst und seine Begleiter, die Dateien im Profil offen halten.</summary>
+    /// <summary>Opera itself and its helpers that keep files in the profile open.</summary>
     private static readonly string[] OperaProzesse = { AppCatalog.Opera.Prozess, "opera_autoupdate", "browser_assistant" };
 
     /// <summary>
-    /// Ist diese Opera-Fassung installiert? Opera installiert sich meist nur
-    /// fuer den Benutzer (AppData\Local\Programs\&lt;Fassung&gt;), seltener fuer alle
-    /// (Programme). Sonst per winget - soweit das Paket bekannt ist.
+    /// Is this Opera edition installed? Opera usually installs for the user
+    /// only (AppData\Local\Programs\&lt;edition&gt;), less often for everyone
+    /// (Program Files). Otherwise via winget - if the package is known.
     /// </summary>
-    /// <returns>true, wenn die Fassung gerade eben installiert wurde.</returns>
+    /// <returns>true if the edition was installed just now.</returns>
     private async Task<bool> InstallOpera(string variante)
     {
         if (_cancel.IsCancelled) return false;
@@ -794,9 +794,9 @@ public sealed class BackupService
         return await InstallViaWinget(name, id);
     }
 
-    // ------------------------------------------------------------ Programmprofile: gemeinsamer Ablauf
+    // ------------------------------------------------------------ Program profiles: shared flow
 
-    /// <summary>Spiegelt ein Programmprofil in die Sicherung.</summary>
+    /// <summary>Mirrors a program profile into the backup.</summary>
     private async Task MirrorAppProfile(string name, string quelle, string ziel, string[]? excludeDirs)
     {
         var args = new List<string> { Quote(quelle), Quote(ziel), "/MIR", "/R:1", "/W:1", "/MT:32" };
@@ -810,15 +810,15 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Schreibt ein Programmprofil zurueck. Ein vorhandenes Profil wird vorher
-    /// beiseitegelegt ("..._alt_&lt;Zeit&gt;"), nicht geloescht.
+    /// Restores a program profile. An existing profile is moved aside first
+    /// ("..._alt_&lt;time&gt;"), not deleted.
     /// </summary>
     /// <param name="prozesse">
-    /// Die Prozesse des Programms. Laeuft eins davon nach dem Kopieren wieder,
-    /// wird es beendet und noch einmal kopiert - sonst ueberschriebe es beim
-    /// Beenden das zurueckgeschriebene Profil.
+    /// The program's processes. If one of them is running again after copying,
+    /// it is closed and the profile copied once more - otherwise it would
+    /// overwrite the restored profile when it exits.
     /// </param>
-    /// <returns>true, wenn das Profil vollstaendig im Ziel steht.</returns>
+    /// <returns>true if the profile is completely in place.</returns>
     private async Task<bool> RestoreAppDir(string name, string quelle, string ziel, params string[] prozesse)
     {
         if (Directory.Exists(ziel))
@@ -832,12 +832,11 @@ public sealed class BackupService
             }
             catch (Exception ex)
             {
-                // Frueher wurde das bestehende Profil hier rekursiv GELOESCHT. Das
-                // scheitert aus demselben Grund wie das Verschieben - eine noch
-                // gesperrte Datei - aber erst, nachdem schon ein Teil weg ist.
-                // Uebrig blieb ein halb geloeschtes Profil, und schlug danach das
-                // Zurueckschreiben fehl, war gar keins mehr da. Abbrechen ist
-                // hier die einzige Antwort, die nichts kaputt machen kann.
+                // The existing profile used to be DELETED recursively here. That fails for
+                // the same reason as moving it - a file that is still locked - but only
+                // after part of it is already gone. What remained was a half-deleted
+                // profile, and if the restore failed afterwards, there was none at all.
+                // Aborting is the only answer here that cannot break anything.
                 _log(Loc.Tr($"[FEHLER] Das bisherige {name}-Profil ließ sich nicht beiseitelegen ({ex.Message}). "
                             + $"Wiederherstellung abgebrochen - am bestehenden Profil wurde nichts verändert. "
                             + $"Bitte {name} vollständig schließen und erneut versuchen.",
@@ -856,8 +855,8 @@ public sealed class BackupService
         var code = await _runner.RunRobocopyAsync(string.Join(" ", args), _log, OnFilesProgress);
         if (_cancel.IsCancelled) return false;
 
-        // Hat sich das Programm waehrend des Kopierens gestartet (Installer,
-        // Autostart, Benutzer), haelt es ein eigenes, frisches Profil offen.
+        // If the program started while copying (installer, autostart, user), it
+        // holds a fresh profile of its own open.
         if (prozesse.Length > 0 && OperatingSystem.IsWindows() && IsRunning(prozesse))
         {
             _log(Loc.Tr($"[WARNUNG] {name} wurde während des Kopierens gestartet - wird beendet, und das Profil wird noch einmal zurückgeschrieben.",
@@ -875,7 +874,7 @@ public sealed class BackupService
             return false;
         }
 
-        // Stehen die Dateien, an denen das Profil haengt, so da wie gesichert?
+        // Are the files the profile depends on exactly as backed up?
         var abweichend = ProfilAbgleich.Differences(quelle, ziel);
         if (abweichend.Count > 0)
         {
@@ -893,12 +892,13 @@ public sealed class BackupService
         return true;
     }
 
-    // ------------------------------------------------------------ Ordner unter C:\
+    // ------------------------------------------------------------ Folders under C:\
 
     /// <summary>
-    /// Sichert die gewaehlten Ordner unter C:\ nach "C-Ordner\&lt;Name&gt;" -
-    /// gespiegelt wie die Programmprofile. Verknuepfungen (/XJ) folgt robocopy
-    /// nicht; liegt das Sicherungsziel in einem der Ordner, bleibt es draussen.
+    /// Backs up the selected folders under C:\ to "C-Ordner\&lt;name&gt;" -
+    /// mirrored like the program profiles. robocopy does not follow junctions
+    /// (/XJ); if the backup target lies inside one of the folders, it is left
+    /// out.
     /// </summary>
     public async Task BackupDriveFolders(IReadOnlyList<string> ordner)
     {
@@ -934,9 +934,9 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Schreibt die gewaehlten Ordner zurueck nach C:\&lt;Name&gt;. Nur ergaenzen
-    /// (/E, nicht /MIR): Was dort schon liegt, bleibt - und ist eine Datei dort
-    /// neuer als in der Sicherung, bleibt sie ebenfalls (/XO).
+    /// Restores the selected folders to C:\&lt;name&gt;. Only adds (/E, not
+    /// /MIR): whatever is already there stays - and if a file there is newer
+    /// than in the backup, it stays as well (/XO).
     /// </summary>
     public async Task RestoreDriveFolders(IReadOnlyList<string> namen)
     {
@@ -973,7 +973,7 @@ public sealed class BackupService
         }
     }
 
-    // ------------------------------------------------------------ WLAN
+    // ------------------------------------------------------------ Wi-Fi
 
     public async Task ExportWlan()
     {
@@ -983,9 +983,9 @@ public sealed class BackupService
         var r = await _runner.RunAsync("netsh", $"wlan export profile folder=\"{destDir}\" key=clear",
                                        SystemHelpers.ConsoleEncoding);
 
-        // Frueher stand hier immer "[ERFOLG]" - auch wenn netsh gar nicht lief
-        // oder ablehnte. Typisch auf einem PC ohne WLAN-Adapter: "Der Dienst
-        // 'WLAN-AutoKonfig' wird nicht ausgefuehrt."
+        // This used to say "[ERFOLG]" every time - even if netsh did not run at
+        // all or refused. Typical on a PC without a Wi-Fi adapter: "The Wireless
+        // AutoConfig Service (wlansvc) is not running."
         if (!r.Started)
         {
             _log(Loc.Tr($"[FEHLER] netsh konnte nicht gestartet werden: {r.StartError}",
@@ -1027,12 +1027,12 @@ public sealed class BackupService
                      $"[ERROR] WiFi import: {ok} imported, {fehler} failed."));
     }
 
-    // ------------------------------------------------------------ Drucker
+    // ------------------------------------------------------------ Printers
 
     /// <summary>
-    /// Ermittelt den Pfad zu PrintBrm.exe (Print Backup Recovery Migration).
-    /// Das ist Microsofts offizielles Werkzeug fuer Druckermigration und
-    /// sichert Warteschlangen, Treiber, Ports und Einstellungen in EINE Datei.
+    /// Finds the path to PrintBrm.exe (Print Backup Recovery Migration). It is
+    /// Microsoft's official printer migration tool and saves queues, drivers,
+    /// ports and settings into ONE file.
     /// </summary>
     private static string? FindPrintBrm()
     {
@@ -1048,19 +1048,19 @@ public sealed class BackupService
     private const string PrinterFileName = "Drucker.printerExport";
 
     /// <summary>
-    /// Der Fehler, den PrintBrm in seiner Ausgabe nennt - null, wenn keiner.
+    /// The error PrintBrm names in its output - null if none.
     ///
-    /// PrintBrm endet auch dann mit Exit-Code 0, wenn es scheitert, etwa an
-    /// einer unbrauchbaren Sicherungsdatei: "The following error occurred:
-    /// 0x80070057. / The parameter is incorrect." (unter Windows geprueft).
-    /// Erkennbar ist das am Fehlercode (HRESULT 0x8...) - in jeder Sprache.
+    /// PrintBrm exits with code 0 even when it fails, e.g. on an unusable
+    /// backup file: "The following error occurred: 0x80070057. / The parameter
+    /// is incorrect." (verified on Windows). The error code (HRESULT 0x8...)
+    /// gives it away - in every language.
     /// </summary>
     internal static string? PrintBrmError(string? ausgabe)
     {
         if (string.IsNullOrWhiteSpace(ausgabe)) return null;
         var zeilen = ausgabe.Split('\n').Select(z => z.Trim()).Where(z => z.Length > 0).ToList();
         var i = zeilen.FindIndex(z => System.Text.RegularExpressions.Regex.IsMatch(z, @"\b0x8[0-9A-Fa-f]{7}\b"));
-        // Die Zeile mit dem Code und die Erklaerung dahinter.
+        // The line with the code and the explanation after it.
         return i < 0 ? null : string.Join(" ", zeilen.Skip(i).Take(2));
     }
 
@@ -1078,9 +1078,9 @@ public sealed class BackupService
         Directory.CreateDirectory(destDir);
         var finalFile = Path.Combine(destDir, PrinterFileName);
 
-        // PrintBrm vertraegt Pfade mit Sonderzeichen (z.B. '#') und Netz-/
-        // Wechseldatentraeger nicht zuverlaessig (Fehler 0x8007007b). Deshalb
-        // zuerst in einen kurzen Temp-Pfad sichern und danach ans Ziel kopieren.
+        // PrintBrm does not reliably cope with paths containing special characters
+        // (e.g. '#') or with network/removable drives (error 0x8007007b). So back
+        // up to a short temp path first and copy to the target afterwards.
         var tmpDir = Path.GetTempPath();
         var tmpName = "WDST_Drucker.printerExport";
         var tmpFile = Path.Combine(tmpDir, tmpName);
@@ -1089,9 +1089,9 @@ public sealed class BackupService
         _log(Loc.Tr("[INFO] Sichere Drucker, Treiber und Ports (das kann einen Moment dauern)...",
                     "[INFO] Backing up printers, drivers and ports (this may take a moment)..."));
 
-        // PrintBrm ist bei der Pfad-Uebergabe extrem eigen (Fehler 0x8007007b).
-        // Zuverlaessig ist: im Temp-Ordner als Arbeitsverzeichnis laufen lassen
-        // und -F nur den BLOSSEN Dateinamen ohne Pfad uebergeben.
+        // PrintBrm is extremely picky about the path argument (error 0x8007007b).
+        // What works reliably: run it with the temp folder as working directory
+        // and pass only the BARE file name without a path to -F.
         var r = await _runner.RunAsync(brm, $"-B -F {tmpName}",
                                        SystemHelpers.ConsoleEncoding, 600000, tmpDir);
 
@@ -1102,8 +1102,8 @@ public sealed class BackupService
             return;
         }
 
-        // Erfolg wird am Vorhandensein der Temp-Datei festgemacht (PrintBrm liefert
-        // nicht immer einen sauberen ExitCode).
+        // Success is judged by the temp file existing (PrintBrm does not always
+        // return a clean exit code).
         if (File.Exists(tmpFile) && new FileInfo(tmpFile).Length > 0)
         {
             try
@@ -1151,7 +1151,7 @@ public sealed class BackupService
         _log(Loc.Tr("[INFO] Stelle Drucker, Treiber und Ports wieder her (das kann einen Moment dauern)...",
                     "[INFO] Restoring printers, drivers and ports (this may take a moment)..."));
 
-        // PrintBrm vertraegt Sonderzeichen-Pfade schlecht: erst in Temp kopieren.
+        // PrintBrm copes badly with paths containing special characters: copy to temp first.
         var tmpDir = Path.GetTempPath();
         var tmpName = "WDST_Drucker.printerExport";
         var tmpFile = Path.Combine(tmpDir, tmpName);
@@ -1167,7 +1167,7 @@ public sealed class BackupService
             return;
         }
 
-        // -R = Restore, -O FORCE = ueberschreiben. Im Temp-Ordner mit blossem Dateinamen.
+        // -R = restore, -O FORCE = overwrite. In the temp folder with the bare file name.
         var r = await _runner.RunAsync(brm, $"-R -F {tmpName} -O FORCE",
                                        SystemHelpers.ConsoleEncoding, 900000, tmpDir);
 
@@ -1180,8 +1180,8 @@ public sealed class BackupService
             return;
         }
 
-        // PrintBrm endet auch bei manchem Fehlschlag mit 0 - etwa bei einer
-        // unbrauchbaren Sicherungsdatei. Frueher stand dann "[ERFOLG]" da.
+        // PrintBrm exits with 0 on some failures as well - e.g. with an unusable
+        // backup file. This used to say "[ERFOLG]" then.
         var fehler = PrintBrmError(r.Output);
         if (r.ExitCode == 0 && fehler is null)
         {
@@ -1198,20 +1198,19 @@ public sealed class BackupService
         }
     }
 
-    // ------------------------------------------------------------ Hintergrundbild
+    // ------------------------------------------------------------ Wallpaper
 
-    // Merkt sich neben dem Bild auch dessen Originalpfad ...
+    // Remembers the image's original path as well ...
     private const string WallpaperPathFile = "Hintergrundbild-Pfad.txt";
-    // ... und das gesicherte Profil, damit sich der Pfad beim Zurueckschreiben
-    // in ein ANDERES Profil uebertragen laesst (Besitzer -> Anwender).
-    // Eigene Datei, damit aeltere Fassungen die Pfad-Datei weiter lesen koennen.
+    // ... and the backed-up profile, so the path can be carried over when
+    // restoring into a DIFFERENT profile (owner -> user).
+    // A separate file, so older versions can still read the path file.
     private const string WallpaperProfileFile = "Hintergrundbild-Profil.txt";
 
     /// <summary>
-    /// Sichert den Hintergrund in den Ordner "Design": ein Bild (die Datei
-    /// daneben) oder eine Volltonfarbe. null, wenn es nichts Festes zu sichern
-    /// gibt (Diashow, Blickpunkt, Bild verschwunden) - das steht dann im
-    /// Protokoll.
+    /// Backs up the wallpaper into the "Design" folder: an image (the file next
+    /// to it) or a solid color. null if there is nothing fixed to back up
+    /// (slideshow, Spotlight, image gone) - the log says so.
     /// </summary>
     private async Task<HintergrundEinstellung?> BackupWallpaper(string ordner, DesignZiel ziel)
     {
@@ -1220,8 +1219,8 @@ public sealed class BackupService
         string? farbeText = stand.Farbe, stil = stand.Stil, kacheln = stand.Kacheln;
         var art = Hintergrund.Determine(src, src is not null && File.Exists(src), stand.Typ, farbeText);
 
-        // Das eingetragene Bild ist geloescht, Windows zeigt es aber weiter -
-        // aus seinem Zwischenspeicher. Dann eben das sichern.
+        // The registered image was deleted, but Windows still shows it - from its
+        // cache. Then back that up.
         if (art == HintergrundArt.Unbekannt && src is not null && !File.Exists(src)
             && Hintergrund.Cache(SourcePath) is { } zwischen && File.Exists(zwischen))
         {
@@ -1231,7 +1230,7 @@ public sealed class BackupService
             art = HintergrundArt.Bild;
         }
 
-        // Volltonfarbe: Es gibt kein Bild - gesichert wird die Farbe.
+        // Solid color: there is no image - the color is backed up.
         if (art == HintergrundArt.Volltonfarbe && Hintergrund.ReadColor(farbeText) is { } farbe)
         {
             _log(Loc.Tr($"[ERFOLG] Volltonfarbe als Hintergrund gesichert: RGB {farbe.R}, {farbe.G}, {farbe.B} ({Hintergrund.Hex(farbe)}).",
@@ -1255,9 +1254,8 @@ public sealed class BackupService
             return null;
         }
 
-        // Bild unter seinem Originalnamen neben Design.json - Windows'
-        // Zwischenspeicher ("TranscodedWallpaper", ohne Endung) als
-        // "Hintergrundbild.jpg".
+        // The image under its original name next to Design.json - Windows' cache
+        // ("TranscodedWallpaper", without extension) as "Hintergrundbild.jpg".
         var fileName = Hintergrund.BackupName(src, ReadHeader(src));
         if (Hintergrund.IsWindowsCache(src))
             _log(Loc.Tr($"[INFO] Der Hintergrund liegt nur in Windows' Zwischenspeicher ({src}) - gesichert als {fileName}.",
@@ -1271,8 +1269,8 @@ public sealed class BackupService
             await Task.Run(() => File.Copy(src, Path.Combine(ordner, fileName), overwrite: true));
             _log(Loc.Tr($"[ERFOLG] Hintergrundbild gesichert. Originalpfad: {src}",
                         $"[SUCCESS] Wallpaper backed up. Original path: {src}"));
-            // Darstellung und Farbe dazu: Bei "Anpassen" oder "Zentriert" sieht
-            // man die Farbe am Rand.
+            // Plus fit mode and color: with "Fit" or "Center" the color shows at the
+            // edges.
             return new HintergrundEinstellung
             {
                 Art = "Bild",
@@ -1293,13 +1291,13 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Hintergrund aus einer Sicherung im alten Format lesen: Ordner
-    /// "Hintergrundbild" mit dem Bild, Hintergrundbild-Pfad.txt,
-    /// Hintergrundbild-Profil.txt und ggf. Hintergrund.json (Volltonfarbe,
-    /// Darstellung). Gesetzt wird er wie beim neuen Format - ueber das
-    /// Windows-Design.
+    /// Reads the wallpaper from a backup in the old format: folder
+    /// "Hintergrundbild" with the image, Hintergrundbild-Pfad.txt,
+    /// Hintergrundbild-Profil.txt and possibly Hintergrund.json (solid color,
+    /// fit mode). It is applied the same way as the new format - through the
+    /// Windows theme.
     /// </summary>
-    /// <returns>Die Einstellung (Art, Farbe, Darstellung, Originalpfad, Profil) und das gesicherte Bild - (null, null), wenn nichts Brauchbares da ist.</returns>
+    /// <returns>The setting (kind, color, fit mode, original path, profile) and the backed-up image - (null, null) if nothing usable is there.</returns>
     private async Task<(HintergrundEinstellung? Einstellung, string? Bild)> ReadLegacyBackup()
     {
         var srcDir = Path.Combine(BackupPath, "Hintergrundbild");
@@ -1312,11 +1310,11 @@ public sealed class BackupService
             return (null, null);
         }
 
-        // Volltonfarbe statt Bild?
+        // Solid color instead of an image?
         var einstellung = Hintergrund.Load(srcDir);
         if (Hintergrund.IsSolidColor(einstellung)) return (einstellung, null);
 
-        // Originalpfad und gesichertes Profil einlesen (falls vorhanden).
+        // Read the original path and the backed-up profile (if present).
         string? originalPath = null, originalProfile = null;
         try { if (File.Exists(pathFile)) originalPath = (await File.ReadAllTextAsync(pathFile)).Trim(); }
         catch { /* ignore */ }
@@ -1325,14 +1323,13 @@ public sealed class BackupService
             var profilDatei = Path.Combine(srcDir, WallpaperProfileFile);
             if (File.Exists(profilDatei)) originalProfile = (await File.ReadAllTextAsync(profilDatei)).Trim();
         }
-        catch { /* aeltere Sicherung - dann greift die Regel fuer C:\Users\<Name> */ }
+        catch { /* older backup - then the rule for C:\Users\<name> applies */ }
 
-        // Das gesicherte Bild im Backup-Ordner finden. Es wird unter seinem
-        // Originalnamen abgelegt - nach mehreren Sicherungen mit wechselnden
-        // Hintergruenden liegen deshalb mehrere Bilder nebeneinander. Frueher
-        // nahm diese Stelle "die erste Datei", also ein beliebiges davon. Jetzt
-        // das Bild, dessen Name zum gemerkten Originalpfad passt, und sonst das
-        // zuletzt gesicherte.
+        // Find the backed-up image in the backup folder. It is stored under its
+        // original name - after several backups with changing wallpapers, several
+        // images sit side by side. This spot used to take "the first file", i.e.
+        // any one of them. Now it takes the image whose name matches the
+        // remembered original path, otherwise the most recently backed-up one.
         string? backupImage = null;
         try
         {
@@ -1362,7 +1359,7 @@ public sealed class BackupService
         return (e, backupImage);
     }
 
-    /// <summary>Als Hintergrund setzen - Registry, Sitzung, Design-Datei - samt Darstellung und Randfarbe.</summary>
+    /// <summary>Sets it as the wallpaper - registry, session, theme file - including fit mode and edge color.</summary>
     private void SetImageDirectly(DesignZiel ziel, string pfad, HintergrundEinstellung? einstellung)
     {
         try
@@ -1378,24 +1375,23 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Legt das Bild aus der Sicherung ins gewaehlte Profil. Liefert den Pfad -
-    /// null, wenn das Kopieren scheiterte (steht dann im Protokoll).
+    /// Puts the image from the backup into the selected profile. Returns the
+    /// path - null if copying failed (the log says so).
     /// </summary>
     private async Task<string?> ProvideWallpaperImage(string backupImage, string? originalPath, string? originalProfile)
     {
-        // Zielpfad bestimmen - IMMER im gewaehlten Zielprofil.
+        // Determine the target path - ALWAYS inside the selected target profile.
         //
-        // Frueher wurde der gespeicherte Originalpfad unveraendert benutzt. Auf
-        // einem Rechner mit anderem Benutzernamen (gesichert: Besitzer,
-        // zurueck zu: Anwender) entstand so ein Ordner "C:\Users\Besitzer" -
-        // ein Profil, das es dort nicht gibt. Und ohne gespeicherten Pfad ging
-        // das Bild in "Bilder" dessen, der das Tool ausfuehrt, nicht des
-        // Zielprofils.
+        // The stored original path used to be used as is. On a computer with a
+        // different user name (backed up: Besitzer, restored to: Anwender) that
+        // created a folder "C:\Users\Besitzer" - a profile that does not exist
+        // there. And without a stored path, the image went into the "Bilder"
+        // folder of whoever runs the tool, not of the target profile.
         //
-        // Lag es in Windows' Zwischenspeicher (Themes\TranscodedWallpaper,
-        // CachedFiles): NICHT dorthin zurueck. Die Dateien verwaltet Windows
-        // selbst - als Hintergrund eingetragen, ueberschreibt bzw. loescht es
-        // sie, und nach dem naechsten Neustart ist der Desktop schwarz.
+        // If it was in Windows' cache (Themes\TranscodedWallpaper, CachedFiles):
+        // NOT back there. Windows manages those files itself - registered as the
+        // wallpaper, it overwrites or deletes them, and after the next restart the
+        // desktop is black.
         string targetPath;
         bool zwischenspeicher = Hintergrund.IsWindowsCache(originalPath);
         var imZielprofil = zwischenspeicher ? null : ProfilePaths.MapIntoProfile(originalPath, originalProfile, SourcePath);
@@ -1406,8 +1402,8 @@ public sealed class BackupService
         else if (!zwischenspeicher && !string.IsNullOrWhiteSpace(originalPath) && File.Exists(originalPath)
                  && FilesAreEqual(backupImage, originalPath))
         {
-            // Ein Windows-Hintergrund ausserhalb jedes Profils (C:\Windows\Web\...),
-            // der hier schon genau so liegt: nur setzen, nichts kopieren.
+            // A Windows wallpaper outside any profile (C:\Windows\Web\...) that is
+            // already here exactly like that: just set it, copy nothing.
             targetPath = originalPath;
         }
         else
@@ -1421,7 +1417,7 @@ public sealed class BackupService
 
         try
         {
-            // Wenn das Bild bereits am Zielpfad liegt: NICHT kopieren, nur setzen.
+            // If the image is already at the target path: do NOT copy, just set it.
             bool alreadyThere = File.Exists(targetPath) &&
                                 FilesAreEqual(backupImage, targetPath);
 
@@ -1450,9 +1446,9 @@ public sealed class BackupService
 
 
     /// <summary>
-    /// Setzt eine Volltonfarbe als Hintergrund - wie unter Einstellungen >
-    /// Personalisierung > Hintergrund > Volltonfarbe: Bild entfernen, Farbe
-    /// fuer die laufende Sitzung und dauerhaft beim angemeldeten Benutzer.
+    /// Sets a solid color as the wallpaper - like Settings > Personalization >
+    /// Background > Solid color: remove the image, set the color for the
+    /// running session and permanently for the signed-in user.
     /// </summary>
     private void SetSolidColor(DesignZiel ziel, (byte R, byte G, byte B) farbe)
     {
@@ -1469,7 +1465,7 @@ public sealed class BackupService
         }
     }
 
-    /// <summary>Was beim Setzen des Hintergrunds herauskam - ins Protokoll.</summary>
+    /// <summary>What setting the wallpaper resulted in - for the log.</summary>
     private void WallpaperResult(DesignZiel ziel, HintergrundGesetzt r, string was)
     {
         if (r.VirtuelleDesktops > 0)
@@ -1491,7 +1487,7 @@ public sealed class BackupService
                         $"[ERROR] The background could not be saved permanently ({was}) - it would be gone after a restart."));
     }
 
-    /// <summary>Was mit der Design-Datei von Windows geschah - ins Protokoll.</summary>
+    /// <summary>What happened to Windows' theme file - for the log.</summary>
     private void LogThemeFile(DesignDateiErgebnis? d)
     {
         if (d is null) return;
@@ -1504,7 +1500,7 @@ public sealed class BackupService
                         $"[INFO] Windows theme file not adjusted ({(d.Datei ?? "-")}): {d.Grund}."));
     }
 
-    /// <summary>Die ersten Bytes einer Datei - fuer die Bildart. Leer, wenn sie sich nicht lesen laesst.</summary>
+    /// <summary>The first bytes of a file - to tell the image type. Empty if it cannot be read.</summary>
     private static byte[] ReadHeader(string pfad)
     {
         try
@@ -1520,10 +1516,10 @@ public sealed class BackupService
     // ------------------------------------------------------------ Design
 
     /// <summary>
-    /// "Design sichern": der Hintergrund (Bild oder Volltonfarbe) und die
-    /// Design-Einstellungen von Windows - Hell/Dunkel, Akzentfarbe,
-    /// Transparenz, Mauszeiger, Taskleiste, Start. Alles in EINEM Ordner
-    /// "Design": Design.json und, bei einem Bild, die Bilddatei daneben.
+    /// "Back up design": the wallpaper (image or solid color) and Windows'
+    /// design settings - light/dark, accent color, transparency, mouse
+    /// pointer, taskbar, Start. All in ONE folder "Design": Design.json and, for
+    /// an image, the image file next to it.
     /// </summary>
     public async Task ExportDesign()
     {
@@ -1553,9 +1549,9 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Wird in einen vorhandenen Sicherungsordner erneut gesichert, laege
-    /// sonst ein frueheres Bild neben dem neuen - und die Datei der
-    /// Zwischenfassung neben Design.json.
+    /// When backing up into an existing backup folder again, an earlier image
+    /// would otherwise sit next to the new one - and the interim version's file
+    /// next to Design.json.
     /// </summary>
     private static void CleanUpDesignFolder(string ordner, string? bild)
     {
@@ -1569,15 +1565,14 @@ public sealed class BackupService
                 File.Delete(f);
             }
         }
-        catch { /* bleibt eben liegen - gelesen wird nur, was Design.json nennt */ }
+        catch { /* then it stays - only what Design.json names is read */ }
     }
 
     /// <summary>
-    /// "Design wiederherstellen": erst die Einstellungen (Hell/Dunkel,
-    /// Akzentfarbe ...), dann der Hintergrund - ist "Akzentfarbe automatisch"
-    /// an, leitet Windows sie danach aus dem Hintergrund ab, wie auf dem alten
-    /// Rechner. Sicherungen im alten Format (Ordner "Hintergrundbild") werden
-    /// weiter gelesen.
+    /// "Restore design": first the settings (light/dark, accent color ...),
+    /// then the wallpaper - if "accent color automatic" is on, Windows then
+    /// derives it from the wallpaper, as on the old computer. Backups in the
+    /// old format (folder "Hintergrundbild") are still read.
     /// </summary>
     public async Task ImportDesign()
     {
@@ -1586,14 +1581,14 @@ public sealed class BackupService
         if (ziel is null) return;
         if (_cancel.IsCancelled) return;
 
-        // Legt eine Richtlinie den Hintergrund fest, gewinnt sie - vorher sagen.
+        // If a policy dictates the wallpaper, the policy wins - say so up front.
         if (OperatingSystem.IsWindows())
             foreach (var e in DesktopHintergrund.Influences(ziel.Wurzel, mitWechsel: false, Loc.Tr))
                 _log("[WARNUNG] " + e + ".");
 
-        // 1. Den Hintergrund bereitlegen: Farbe oder Bild (ins Profil kopiert) -
-        //    aus Design.json oder aus einer Sicherung im alten Format
-        //    (Ordner "Hintergrundbild", bis Version 1.2.6).
+        // 1. Prepare the wallpaper: a color or an image (copied into the profile) -
+        //    from Design.json or from a backup in the old format
+        //    (folder "Hintergrundbild", up to version 1.2.6).
         var h = design?.Hintergrund;
         string? gesichert = h?.Bild is null ? null : Path.Combine(BackupPath, DesignEinstellungen.Ordner, h.Bild);
         if (h is null && AppCatalog.HasWallpaper(BackupPath))
@@ -1614,24 +1609,24 @@ public sealed class BackupService
         }
         var werte = design?.Werte ?? new List<DesignEintrag>();
 
-        // 2. Windows das Design selbst anwenden lassen - wie ein Doppelklick
-        //    auf eine .theme-Datei. Sonst schreibt der Designdienst beim
-        //    Neustart des Explorers bzw. beim Abmelden sein altes Design zurueck.
+        // 2. Let Windows apply the theme itself - like double-clicking a .theme
+        //    file. Otherwise the theme service writes its old theme back when
+        //    Explorer restarts or the user signs out.
         if (OperatingSystem.IsWindows() && (farbe is not null || bild is not null || werte.Count > 0))
             await ApplyDesignViaWindows(ziel, farbe, bild, h, werte);
         if (_cancel.IsCancelled) return;
 
-        // 3. Die Design-Einstellungen ausdruecklich eintragen - erst JETZT:
-        //    Stuenden Hell/Dunkel vorher schon da, saehe Windows beim Anwenden
-        //    keinen Wechsel und sagte Taskleiste und Fenstern nicht Bescheid
-        //    (CLInstall). Taskleiste und Start stehen nicht in der Design-Datei.
+        // 3. Write the design settings explicitly - only NOW: if light/dark were
+        //    already set before, Windows would see no change while applying and
+        //    would not notify the taskbar and windows (found in CLInstall).
+        //    Taskbar and Start are not part of the theme file.
         if (werte.Count > 0) ApplyDesignSettings(design!, ziel);
         else _log(Loc.Tr("[INFO] Die Sicherung enthält keine Design-Einstellungen (ältere Fassung des Tools) - nur der Hintergrund wird wiederhergestellt.",
                          "[INFO] The backup contains no design settings (older version of the tool) - only the wallpaper is restored."));
         if (_cancel.IsCancelled) return;
 
-        // 4. Der Hintergrund - bei einer Volltonfarbe erst hier: Das Design
-        //    traegt sie ein, gezeigt wird aber noch das Bild der Datei.
+        // 4. The wallpaper - a solid color only here: the theme registers it, but
+        //    the file's image is still what is shown.
         bool gesetzt = false;
         if (farbe is { } f)
         {
@@ -1648,19 +1643,19 @@ public sealed class BackupService
             _log(Loc.Tr("[INFO] Die Sicherung enthält keinen Hintergrund.", "[INFO] The backup contains no wallpaper."));
         }
 
-        // Ein paar Sekunden spaeter nachsehen, ob Windows ihn stehen laesst.
+        // Check a few seconds later whether Windows keeps it.
         if (gesetzt && OperatingSystem.IsWindows() && !_cancel.IsCancelled)
             await VerifyWallpaper(ziel, DesktopHintergrund.Read(ziel.Wurzel),
                                            Loc.Tr("Kontrolle nach dem Setzen", "Check after setting"));
     }
 
-    /// <summary>Das Design, das Windows in diesem Lauf angewendet hat - fuer ein erneutes Anwenden.</summary>
+    /// <summary>The theme Windows applied in this run - for applying it again.</summary>
     private string? _angewandtesDesign;
 
     /// <summary>
-    /// Baut aus der aktuellen Design-Datei des Benutzers eine mit den Werten
-    /// der Sicherung und laesst Windows sie als der angemeldete Benutzer
-    /// anwenden (<see cref="WindowsDesign"/>).
+    /// Builds a theme file from the user's current one with the values from the
+    /// backup and lets Windows apply it as the signed-in user
+    /// (<see cref="WindowsDesign"/>).
     /// </summary>
     private async Task ApplyDesignViaWindows(DesignZiel ziel, (byte R, byte G, byte B)? farbe, string? bild,
                                                 HintergrundEinstellung? h, List<DesignEintrag> werte)
@@ -1672,7 +1667,7 @@ public sealed class BackupService
             if (DesktopHintergrund.ThemeFilePath(ziel.Wurzel, SourcePath) is { } aktuell && File.Exists(aktuell))
                 vorlage = DesignDatei.ReadFile(aktuell).Inhalt;
         }
-        catch { /* dann ohne */ }
+        catch { /* then without it */ }
         if (vorlage is null)
         {
             _log(Loc.Tr("[INFO] Kein aktuelles Windows-Design lesbar - Hintergrund und Einstellungen werden direkt eingetragen.",
@@ -1698,13 +1693,13 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Laesst Windows das Design anwenden (neue Datei unter ...\Themes im
-    /// Profil) und wartet bis 20 s, bis es uebernommen ist: Die Datei ist das
-    /// aktuelle Design, bei einer Volltonfarbe steht zudem die Farbe in der
-    /// Registry. Ein Bild setzt der Aufrufer danach ohnehin noch direkt - kennt
-    /// Windows es schon, aendert das Anwenden daran nichts.
+    /// Lets Windows apply the theme (a new file under ...\Themes in the
+    /// profile) and waits up to 20 s until it is taken over: the file is the
+    /// current theme, and for a solid color the color is also in the registry.
+    /// The caller sets an image directly afterwards anyway - if Windows already
+    /// knows it, applying changes nothing about it.
     /// </summary>
-    /// <returns>Die angewendete Datei - null, wenn Windows es nicht uebernommen hat.</returns>
+    /// <returns>The applied file - null if Windows did not take it over.</returns>
     private async Task<string?> ApplyDesignAndWait(DesignZiel ziel, string inhalt, (byte R, byte G, byte B)? farbe, string? bild)
     {
         if (!OperatingSystem.IsWindows()) return null;
@@ -1715,8 +1710,8 @@ public sealed class BackupService
             => IsCurrent(datei) && (farbe is not { } c || Hintergrund.ReadColor(DesktopHintergrund.Read(ziel.Wurzel).Farbe) == c);
         try
         {
-            // Erst die Art: Steht "Volltonfarbe" darin, nimmt Windows aus dem
-            // Design nur die Farbe, nicht das Bild.
+            // The kind first: if it says "solid color", Windows takes only the color
+            // from the theme, not the image.
             if (farbe is not null) DesktopHintergrund.WriteStyle(ziel.Wurzel, 1);
             else if (bild is not null) DesktopHintergrund.WriteStyle(ziel.Wurzel, 0);
             var r = await WindowsDesign.ApplyAndWait(ordner, inhalt, DesktopScreenshot.GetInteractiveUser()?.Name, IsApplied, IsCurrent,
@@ -1734,9 +1729,9 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Wartet kurz und sieht nach, ob Registry und Desktop noch zeigen, was
-    /// gesetzt wurde. Wenn nicht: ins Protokoll, was anders ist und was es
-    /// sein koennte, und einmal erneut setzen.
+    /// Waits a moment and checks whether the registry and the desktop still
+    /// show what was set. If not: log what differs and what might cause it,
+    /// and set it once more.
     /// </summary>
     private async Task VerifyWallpaper(DesignZiel ziel, HintergrundStand soll, string wann)
     {
@@ -1754,11 +1749,10 @@ public sealed class BackupService
             _log(Loc.Tr($"[INFO] Möglicher Grund: {e}.", $"[INFO] Possible reason: {e}."));
         try
         {
-            // Erst wieder ueber das Windows-Design - das aus diesem Lauf, sonst
-            // das aktuelle mit dem Soll-Hintergrund -, dann direkt (bei einer
-            // Volltonfarbe zeigt das Design noch sein Bild). Ohne das Design
-            // hielte der Explorer weiter seinen alten Stand und schriebe ihn
-            // beim naechsten Neustart zurueck.
+            // First through the Windows theme again - the one from this run, otherwise
+            // the current one with the target wallpaper - then directly (for a solid
+            // color the theme still shows its image). Without the theme, Explorer
+            // would keep its old state and write it back at the next restart.
             var farbeSoll = soll.Bild is null ? Hintergrund.ReadColor(soll.Farbe) : null;
             var inhalt = _angewandtesDesign;
             if (inhalt is null && DesktopHintergrund.ThemeFilePath(ziel.Wurzel, SourcePath) is { } aktuell && File.Exists(aktuell))
@@ -1789,22 +1783,22 @@ public sealed class BackupService
                      $"[WARNING] Windows keeps changing the background: {nochmal}. Please check Settings > Personalization > Background."));
     }
 
-    /// <summary>Wohin Hintergrund und Design-Einstellungen gehoeren.</summary>
-    /// <param name="Wurzel">HKEY_USERS\&lt;SID&gt; des angemeldeten Benutzers, sonst HKEY_CURRENT_USER.</param>
-    /// <param name="EigenerBenutzer">Laeuft das Tool unter genau diesem Benutzer? Sonst gilt Windows-Aufrufe, die in die
-    /// Registry des Prozesses schreiben, nur fuer die laufende Sitzung.</param>
-    /// <param name="Name">Der angemeldete Benutzer, falls bekannt.</param>
+    /// <summary>Where the wallpaper and the design settings belong.</summary>
+    /// <param name="Wurzel">HKEY_USERS\&lt;SID&gt; of the signed-in user, otherwise HKEY_CURRENT_USER.</param>
+    /// <param name="EigenerBenutzer">Does the tool run as exactly this user? Otherwise Windows calls that write to the
+    /// process's registry only affect the running session.</param>
+    /// <param name="Name">The signed-in user, if known.</param>
     private sealed record DesignZiel(RegistryKey Wurzel, bool Eigen, bool EigenerBenutzer, string? Name) : IDisposable
     {
         public void Dispose() { if (Eigen) Wurzel.Dispose(); }
     }
 
     /// <summary>
-    /// Der Registry-Zweig fuer Hintergrund und Design-Einstellungen: der des
-    /// ANGEMELDETEN Benutzers (HKEY_USERS\&lt;SID&gt;) - das Tool laeuft mit
-    /// Adminrechten, womoeglich unter einem anderen Konto. Gehoert der
-    /// angemeldete Benutzer nicht zum gewaehlten Profil, null: Dann wuerden
-    /// Hintergrund und Einstellungen eines anderen gelesen bzw. veraendert.
+    /// The registry key for the wallpaper and the design settings: the one of
+    /// the SIGNED-IN user (HKEY_USERS\&lt;SID&gt;) - the tool runs with admin
+    /// rights, possibly under a different account. If the signed-in user does
+    /// not own the selected profile, null: otherwise someone else's wallpaper
+    /// and settings would be read or changed.
     /// </summary>
     private DesignZiel? DesignKey(bool schreiben)
     {
@@ -1827,8 +1821,8 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// HKEY_USERS\&lt;SID&gt; des angemeldeten Benutzers - sonst HKEY_CURRENT_USER.
-    /// Ob er zum gewaehlten Profil gehoert, prueft der Aufrufer.
+    /// HKEY_USERS\&lt;SID&gt; of the signed-in user - otherwise HKEY_CURRENT_USER.
+    /// Whether it belongs to the selected profile is checked by the caller.
     /// </summary>
     private static (RegistryKey Wurzel, bool Eigen) UserKey(bool schreiben)
     {
@@ -1839,12 +1833,12 @@ public sealed class BackupService
                 var k = Registry.Users.OpenSubKey(sid, schreiben);
                 if (k is not null) return (k, true);
             }
-            catch { /* dann HKEY_CURRENT_USER */ }
+            catch { /* then HKEY_CURRENT_USER */ }
         }
         return (Registry.CurrentUser, false);
     }
 
-    /// <summary>Liest die Design-Einstellungen; null, wenn sie nicht gelesen werden (anderer Benutzer, Fehler).</summary>
+    /// <summary>Reads the design settings; null if they are not read (other user, error).</summary>
     private List<DesignEintrag>? ReadDesignSettings(DesignZiel ziel)
     {
         try
@@ -1872,14 +1866,14 @@ public sealed class BackupService
     {
         try
         {
-            // Schreiben und Windows Bescheid geben. Die Mauszeiger laedt Windows
-            // dabei aus der Registry des PROZESSES - laeuft das Tool unter einem
-            // anderen Konto, gelten sie erst ab der naechsten Anmeldung.
+            // Write and notify Windows. Windows loads the mouse pointers from the
+            // PROCESS's registry - if the tool runs under another account, they only
+            // take effect at the next sign-in.
             var ergebnis = DesignRegistry.Apply(ziel.Wurzel, sicherung.Werte, ziel.EigenerBenutzer);
             var (gesetzt, ohneDatei, nichtSchreibbar) = (ergebnis.Gesetzt, ergebnis.OhneDatei, ergebnis.NichtSchreibbar);
             bool zeiger = ergebnis.Zeiger;
-            // Hell/Dunkel, Akzentfarbe und Zeiger auch in der Design-Datei - die
-            // liest Windows beim Anmelden.
+            // Light/dark, accent color and pointers also go into the theme file -
+            // Windows reads it at sign-in.
             if (OperatingSystem.IsWindows())
                 LogThemeFile(DesktopHintergrund.AlignThemeFile(ziel.Wurzel, SourcePath, t => DesignDatei.ForDesign(t, gesetzt)));
 
@@ -1905,17 +1899,17 @@ public sealed class BackupService
         }
     }
 
-    // ------------------------------------------------------------ Desktop-Screenshot
+    // ------------------------------------------------------------ Desktop screenshot
 
     /// <summary>
-    /// Fotografiert den Desktop samt Symbolen, damit sich nach einer
-    /// Neuinstallation nachsehen laesst, was wo lag.
+    /// Takes a picture of the desktop including its icons, so after a fresh
+    /// install the user can look up what was where.
     /// </summary>
     public async Task CaptureDesktop()
     {
-        // Wessen Desktop ist zu sehen? Gesichert wird oft ein fremdes Profil,
-        // waehrend der Techniker selbst angemeldet ist - dann zeigte das Foto
-        // den falschen Desktop, und das fiele erst beim Wiederherstellen auf.
+        // Whose desktop is visible? Often someone else's profile is backed up
+        // while the technician is signed in - the picture would then show the
+        // wrong desktop, and that would only come out on restore.
         var angemeldet = DesktopScreenshot.GetInteractiveUser();
         if (angemeldet?.ProfilePath is { } eigenesProfil && !ProfileExcludes.SameFolder(eigenesProfil, SourcePath))
         {
@@ -1929,9 +1923,9 @@ public sealed class BackupService
             _log(Loc.Tr("[INFO] Der angemeldete Benutzer ließ sich nicht ermitteln - aufgenommen wird der Desktop, der gerade zu sehen ist.",
                         "[INFO] The signed-in user could not be determined - the desktop currently on screen is captured."));
 
-        // Fenster beiseitelegen - und sich genau merken, welche, in welcher
-        // Reihenfolge und welches aktiv war. Nur so kommen sie danach alle
-        // wieder so zurueck, wie sie waren.
+        // Move the windows out of the way - and remember exactly which ones, in
+        // which order, and which was active. Only then do they all come back
+        // exactly as they were.
         DesktopScreenshot.HiddenWindows? beiseite = null;
         try
         {
@@ -1948,7 +1942,7 @@ public sealed class BackupService
         ScreenCapture bild;
         try
         {
-            // Windows minimiert mit einer kurzen Animation.
+            // Windows minimizes with a short animation.
             await Task.Delay(beiseite is null ? 300 : 1200);
             bild = await Task.Run(DesktopScreenshot.CaptureVirtualScreen);
         }
@@ -1960,7 +1954,7 @@ public sealed class BackupService
         }
         finally
         {
-            // In jedem Fall zurueckholen - auch wenn die Aufnahme scheitert.
+            // Always bring them back - even if the capture fails.
             if (beiseite is not null)
             {
                 try
@@ -1991,8 +1985,8 @@ public sealed class BackupService
             foreach (var m in plan)
             {
                 var ziel = Path.Combine(ordner, m.FileName);
-                // Erst vollstaendig in eine Zwischendatei, dann an ihren Platz -
-                // ein Abbruch beim Schreiben hinterlaesst kein halbes Bild.
+                // Write completely to a temporary file first, then move it into place -
+                // an abort while writing leaves no half image behind.
                 neu = ziel + ".neu";
                 var pfad = neu;
                 await Task.Run(() =>
@@ -2009,20 +2003,20 @@ public sealed class BackupService
                     $"    {m.FileName} ({m.Area.Width} × {m.Area.Height} pixels{(m.Area.Primary && plan.Count > 1 ? ", main screen" : "")})"));
             }
 
-            // Bilder einer frueheren Sicherung in denselben Ordner ("Eigener
-            // Ordner" aus) gehen weg - erst jetzt, da die neuen sicher liegen.
-            // Sonst laege bei inzwischen weniger Monitoren ein altes Bild daneben.
+            // Images of an earlier backup into the same folder ("own folder" off) are
+            // removed - only now that the new ones are safely written. Otherwise an
+            // old image would remain if there are fewer monitors now.
             var neueNamen = plan.Select(m => m.FileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var alt in DesktopScreenshot.FindImages(ordner)
                          .Append(Path.Combine(ordner, DesktopScreenshot.LegacyFileName)))
             {
                 if (neueNamen.Contains(Path.GetFileName(alt))) continue;
-                try { if (File.Exists(alt)) File.Delete(alt); } catch { /* bleibt eben liegen */ }
+                try { if (File.Exists(alt)) File.Delete(alt); } catch { /* then it stays */ }
             }
         }
         catch (Exception ex)
         {
-            try { if (neu != null && File.Exists(neu)) File.Delete(neu); } catch { /* egal */ }
+            try { if (neu != null && File.Exists(neu)) File.Delete(neu); } catch { /* does not matter */ }
             _log(Loc.Tr($"[FEHLER] Desktop-Screenshot konnte nicht gespeichert werden: {ex.Message}",
                         $"[ERROR] Desktop screenshot could not be saved: {ex.Message}"));
             return;
@@ -2036,24 +2030,23 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Oeffnet ein Bild fuer den Benutzer. Fuer die Pruefungen ersetzbar - dort
-    /// soll keine Bildanzeige aufgehen.
+    /// Opens an image for the user. Replaceable for the tests - no image
+    /// viewer should pop up there.
     /// </summary>
     internal Action<string> BildOeffnen { get; set; } = datei =>
     {
-        // Ueber explorer.exe statt direkt: Das Tool laeuft mit
-        // Administratorrechten, und die Fotos-App startet nicht mit
-        // erhoehten Rechten. explorer.exe gibt die Datei an den laufenden
-        // Explorer des Benutzers weiter, der sie mit normalen Rechten oeffnet.
+        // Through explorer.exe instead of directly: the tool runs with
+        // administrator rights, and the Photos app does not start elevated.
+        // explorer.exe hands the file to the user's running Explorer, which
+        // opens it with normal rights.
         using var _ = System.Diagnostics.Process.Start(
             new System.Diagnostics.ProcessStartInfo("explorer.exe", Quote(datei)) { UseShellExecute = false });
     };
 
     /// <summary>
-    /// Oeffnet das gesicherte Desktop-Foto, damit sich die Symbole danach von
-    /// Hand wieder anordnen lassen. Automatisch zurueckstellen laesst sich die
-    /// Anordnung nicht verlaesslich: Der Explorer ueberschreibt sie beim
-    /// naechsten Abmelden mit seinem eigenen Stand.
+    /// Opens the backed-up desktop picture, so the icons can be rearranged by
+    /// hand. Restoring the arrangement automatically from the picture is not
+    /// reliable: Explorer overwrites it with its own state at the next sign-out.
     /// </summary>
     public Task ShowDesktopScreenshot()
     {
@@ -2066,8 +2059,8 @@ public sealed class BackupService
             return Task.CompletedTask;
         }
 
-        // Jedes Bild in seinem eigenen Fenster - so laesst sich jedes auf
-        // "seinen" Monitor ziehen und die Symbole daneben anordnen.
+        // Each image in its own window - so each one can be dragged to "its"
+        // monitor and the icons arranged next to it.
         int offen = 0;
         foreach (var datei in bilder)
         {
@@ -2088,14 +2081,14 @@ public sealed class BackupService
         return Task.CompletedTask;
     }
 
-    // ------------------------------------------------------------ Desktop-Symbole (wie DesktopOK)
+    // ------------------------------------------------------------ Desktop icons (like DesktopOK)
 
-    // ------------------------------------------------------------ Taskleisten-Symbole
+    // ------------------------------------------------------------ Taskbar icons
 
     /// <summary>
-    /// Sichert die an die Taskleiste angehefteten Symbole: die Verknuepfungen
-    /// aus "User Pinned\TaskBar" und den Registry-Schluessel Taskband
-    /// (Reihenfolge, auch angeheftete Store-Apps ohne Verknuepfung).
+    /// Backs up the icons pinned to the taskbar: the shortcuts from
+    /// "User Pinned\TaskBar" and the Taskband registry key (order, also pinned
+    /// Store apps without a shortcut).
     /// </summary>
     private void BackupTaskbar()
     {
@@ -2130,7 +2123,7 @@ public sealed class BackupService
         {
             var ziel = Taskleiste.BackupFolder(BackupPath);
             Directory.CreateDirectory(ziel);
-            // Erneut in denselben Ordner gesichert: fruehere Verknuepfungen weg.
+            // Backed up into the same folder again: earlier shortcuts are removed.
             foreach (var alt in Directory.GetFiles(ziel, "*.lnk")) File.Delete(alt);
             foreach (var n in verknuepfungen) File.Copy(Path.Combine(pinOrdner, n), Path.Combine(ziel, n), overwrite: true);
             Taskleiste.Save(BackupPath, new TaskleistenSicherung
@@ -2154,10 +2147,10 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Heftet die gesicherten Symbole wieder an die Taskleiste: Verknuepfungen
-    /// zurueck, Taskband schreiben, Explorer neu starten.
+    /// Pins the backed-up icons to the taskbar again: restore the shortcuts,
+    /// write Taskband, restart Explorer.
     /// </summary>
-    /// <returns>true, wenn der Explorer dafuer neu gestartet wurde.</returns>
+    /// <returns>true if Explorer was restarted for it.</returns>
     private async Task<bool> RestoreTaskbar(TaskleistenSicherung s)
     {
         var quelle = Taskleiste.BackupFolder(BackupPath);
@@ -2189,14 +2182,13 @@ public sealed class BackupService
             return false;
         }
 
-        // Schreiben, den Explorer neu starten (er liest die angehefteten Symbole
-        // nur beim Start) und nachsehen, ob Windows sie behalten hat. Hat es die
-        // Taskleiste selbst neu belegt, ein zweites Mal - danach ehrlich melden.
-        // Frueher stand hier ungeprueft "[ERFOLG]"; bei einem Anwender war die
-        // Taskleiste danach leer.
+        // Write, restart Explorer (it reads the pinned icons only at startup) and
+        // check whether Windows kept them. If it filled the taskbar on its own, a
+        // second time - and then report honestly. This used to say "[ERFOLG]"
+        // without checking; for one user the taskbar was empty afterwards.
         var taskband = OperatingSystem.IsWindows() ? AdjustAppIds(s.Taskband) : s.Taskband;
-        // Symbole von Programmen, die es hier noch nicht gibt, zeigt Windows erst
-        // mit dem Programm - sie zaehlen bei der Kontrolle nicht mit.
+        // Windows only shows icons of programs that do not exist here yet once
+        // the program is installed - they do not count in the check.
         var erwartet = Taskleiste.PinnedNames(Taskleiste.Favorites(taskband), zurueck.Except(ohneProgramm));
         List<string> nichtUebernommen = new();
         for (int versuch = 1; versuch <= 2; versuch++)
@@ -2247,8 +2239,8 @@ public sealed class BackupService
             return true;
         }
 
-        // Zeigt Windows die Eintraege auch? Das steht in keinem Registry-Wert -
-        // nachgesehen wird auf der Taskleiste selbst, ueber die App-Kennungen.
+        // Does Windows actually show the entries? No registry value says so - the
+        // check looks at the taskbar itself, via the app IDs.
         if (!CheckTaskbarVisible(Taskleiste.Entries(Taskleiste.Favorites(taskband), zurueck), ohneProgramm)) return true;
         _log(Loc.Tr($"[ERFOLG] Taskleiste wiederhergestellt: {(zurueck.Count > 0 ? $"{zurueck.Count} Verknüpfungen ({Taskleiste.Names(zurueck)}) und " : "")}die angehefteten Apps in der gesicherten Reihenfolge.",
                     $"[SUCCESS] Taskbar restored: {(zurueck.Count > 0 ? $"{zurueck.Count} shortcuts ({Taskleiste.Names(zurueck)}) and " : "")}the pinned apps in the saved order."));
@@ -2258,15 +2250,15 @@ public sealed class BackupService
         return true;
     }
 
-    /// <summary>Nur fuer die Pruefung: die App-Kennungen, die die Taskleiste zeigt (null: nicht lesbar).</summary>
+    /// <summary>Tests only: the app IDs the taskbar shows (null: not readable).</summary>
     internal Func<HashSet<string>?>? TaskleistenSicht { get; set; }
 
     /// <summary>
-    /// Vergleicht die angehefteten Eintraege mit dem, was die Taskleiste zeigt.
-    /// Fehlt das Symbol eines Programms, das hier installiert ist, ist das ein
-    /// Fehler; fehlt das Programm selbst noch, ein Hinweis.
+    /// Compares the pinned entries with what the taskbar shows. If the icon of
+    /// a program installed here is missing, that is an error; if the program
+    /// itself is still missing, a hint.
     /// </summary>
-    /// <returns>false, wenn ein Fehler gemeldet wurde.</returns>
+    /// <returns>false if an error was reported.</returns>
     private bool CheckTaskbarVisible(List<Taskleiste.Eintrag> eintraege, List<string> ohneProgramm)
     {
         var sichtbar = TaskleistenSicht is { } sicht ? sicht() : OperatingSystem.IsWindows() ? TaskleistenAnsicht.AppIds() : null;
@@ -2298,10 +2290,10 @@ public sealed class BackupService
         return true;
     }
 
-    /// <summary>Wie lange nach dem Explorer-Neustart gewartet wird, bevor nachgesehen wird.</summary>
+    /// <summary>How long to wait after the Explorer restart before checking.</summary>
     internal TimeSpan TaskleistenKontrolle { get; set; } = TimeSpan.FromSeconds(8);
 
-    /// <summary>Nur fuer die Pruefung: was Windows nach dem Neustart in Taskband\Favorites stehen hat.</summary>
+    /// <summary>Tests only: what Windows has in Taskband\Favorites after the restart.</summary>
     internal Func<byte[]?>? FavoritesNachlesen { get; set; }
 
     private byte[]? ReadFavorites()
@@ -2318,13 +2310,13 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Zeigen die zurueckgeschriebenen Taskleisten-Verknuepfungen auf Programme,
-    /// die es hier gibt? Liegt eins nur woanders (32 statt 64 Bit, anderer Ort
-    /// laut "App Paths"), wird die Verknuepfung umgestellt. Fehlt es, sagt das
-    /// Protokoll, welche - meist Programme, die erst noch installiert werden.
+    /// Do the restored taskbar shortcuts point to programs that exist here? If
+    /// one is just somewhere else (32 instead of 64 bit, another location
+    /// according to "App Paths"), the shortcut is redirected. If it is missing,
+    /// the log names it - usually programs that still need to be installed.
     /// </summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    /// <returns>Die Verknuepfungen (Dateinamen), deren Programm es hier nicht gibt.</returns>
+    /// <returns>The shortcuts (file names) whose program does not exist here.</returns>
     internal List<string> CheckTaskbarTargets(string ordner, IEnumerable<string> verknuepfungen)
     {
         var fehlend = new List<string>();
@@ -2335,7 +2327,7 @@ public sealed class BackupService
         {
             var lnk = Path.Combine(ordner, n);
             var inhalt = Verknuepfung.Read(lnk);
-            // Shell-Objekte (Datei-Explorer) und Ziele, die es gibt: nichts zu tun.
+            // Shell objects (File Explorer) and targets that exist: nothing to do.
             if (inhalt is null || inhalt.Ziel.Length == 0 || File.Exists(inhalt.Ziel) || Directory.Exists(inhalt.Ziel)) continue;
             var name = Path.GetFileNameWithoutExtension(n);
             var neu = Taskleiste.NewTarget(inhalt.Ziel, File.Exists, LookUpAppPath, programme, programme86);
@@ -2357,12 +2349,12 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Passt die App-Kennungen in Taskband\Favorites an die Programme dieses PCs
-    /// an. Ueber die Kennung ordnet die Taskleiste ein angeheftetes Symbol einem
-    /// installierten Programm zu; findet sie keins, zeigt sie es nicht. Bei
-    /// einem Anwender (Windows 10 -> 11) trug Firefox die Kennung des
-    /// 32-Bit-Firefox ("E7CF176E110C211B"), winget hatte das 64-Bit-Firefox
-    /// installiert ("308046B0AF4A39CB"). Ersetzt werden nur gleich lange Kennungen.
+    /// Adjusts the app IDs in Taskband\Favorites to the programs of this PC.
+    /// The taskbar uses the ID to map a pinned icon to an installed program;
+    /// if it finds none, it does not show the icon. For one user (Windows 10 ->
+    /// 11), Firefox carried the ID of the 32-bit Firefox ("E7CF176E110C211B"),
+    /// while winget had installed the 64-bit Firefox ("308046B0AF4A39CB"). Only
+    /// IDs of equal length are replaced.
     /// </summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     internal List<DesignEintrag> AdjustAppIds(List<DesignEintrag> taskband)
@@ -2370,7 +2362,7 @@ public sealed class BackupService
         var kennungen = Taskleiste.AppIds(Taskleiste.Favorites(taskband)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (kennungen.Count == 0) return taskband;
 
-        // Firefox/Thunderbird: Kennung = Schluessel des Installationsordners.
+        // Firefox/Thunderbird: ID = hash of the installation folder.
         var mozilla = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var app in new[] { AppCatalog.Firefox, AppCatalog.Thunderbird })
         {
@@ -2384,7 +2376,7 @@ public sealed class BackupService
                 if (!schluesselHier.Contains(alt, StringComparer.OrdinalIgnoreCase)) mozilla.TryAdd(alt, schluesselHier[0]);
             }
         }
-        // Programme ohne eigene Kennung: Pfad ab dem Programme-Ordner.
+        // Programs without an ID of their own: path from the Program Files folder on.
         var ordner = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             [Taskleiste.OrdnerProgramme86] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
@@ -2400,7 +2392,7 @@ public sealed class BackupService
             foreach (var e in ergebnis.Where(e => e.Typ == "Binary" && e.Name.StartsWith("Favorites", StringComparison.Ordinal)))
             {
                 try { e.Wert = Convert.ToBase64String(Taskleiste.ReplaceAppId(Convert.FromBase64String(e.Wert), k, neu)); }
-                catch { /* unlesbarer Wert - bleibt */ }
+                catch { /* unreadable value - stays */ }
             }
             ersetzt.Add($"{k} -> {neu}");
         }
@@ -2410,7 +2402,7 @@ public sealed class BackupService
         return ergebnis;
     }
 
-    /// <summary>Der Ort eines Programms laut "App Paths" (fuer alle Benutzer, 64 und 32 Bit).</summary>
+    /// <summary>A program's location according to "App Paths" (for all users, 64 and 32 bit).</summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static string? LookUpAppPath(string datei)
     {
@@ -2423,15 +2415,15 @@ public sealed class BackupService
                 if (k?.GetValue("") is string p && p.Trim().Trim('"') is { Length: > 0 } pfad)
                     return Environment.ExpandEnvironmentVariables(pfad);
             }
-            catch { /* naechste */ }
+            catch { /* next one */ }
         }
         return null;
     }
 
     /// <summary>
-    /// Der Explorer zeigt den Desktop des angemeldeten Benutzers. Gehoert das
-    /// gewaehlte Profil jemand anderem, wuerde der falsche Desktop gelesen bzw.
-    /// umgestellt - dann lieber gar nichts tun.
+    /// Explorer shows the desktop of the signed-in user. If the selected
+    /// profile belongs to someone else, the wrong desktop would be read or
+    /// changed - better to do nothing at all then.
     /// </summary>
     private bool DesktopBelongsToProfile(string wasDe, string wasEn)
     {
@@ -2451,8 +2443,8 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// "Symbolpositionen": merkt sich, welches Desktop-Symbol wo liegt, und
-    /// sichert die an die Taskleiste angehefteten Symbole.
+    /// "Icons + taskbar": remembers which desktop icon sits where and backs up
+    /// the icons pinned to the taskbar.
     /// </summary>
     public async Task BackupDesktopIcons()
     {
@@ -2500,9 +2492,8 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Setzt jedes gesicherte Desktop-Symbol wieder an seine Stelle. Laeuft
-    /// zuletzt - nach Profil, Programmen und Hintergrundbild, damit die Symbole
-    /// dann auch da sind.
+    /// Puts every backed-up desktop icon back in its place. Runs last - after
+    /// profile, programs and wallpaper, so the icons exist by then.
     /// </summary>
     public async Task RestoreDesktopIcons()
     {
@@ -2517,9 +2508,8 @@ public sealed class BackupService
         }
         if (!DesktopBelongsToProfile("Symbolpositionen nicht gesetzt", "Icon positions not applied")) return;
 
-        // Erst die Taskleiste: Dafuer startet der Explorer neu - danach erst
-        // die Desktop-Symbole an ihre Stelle, sonst ordnete der Neustart sie
-        // womoeglich neu.
+        // The taskbar first: Explorer restarts for it - only then the desktop
+        // icons go to their places, otherwise the restart might rearrange them.
         HintergrundStand? hgVorher = null;
         if (taskleiste is not null && OperatingSystem.IsWindows())
         {
@@ -2529,8 +2519,8 @@ public sealed class BackupService
         var neuGestartet = taskleiste is not null && await RestoreTaskbar(taskleiste);
         if (_cancel.IsCancelled) return;
 
-        // Unter manchem Windows setzt der Neustart des Explorers den
-        // Hintergrund zurueck - nachsehen und notfalls erneut setzen.
+        // On some Windows versions the Explorer restart resets the wallpaper -
+        // check and set it again if needed.
         if (neuGestartet && hgVorher is not null && OperatingSystem.IsWindows())
         {
             var angemeldet = DesktopScreenshot.GetInteractiveUser();
@@ -2548,8 +2538,8 @@ public sealed class BackupService
                     $"[INFO] Moving {layout.Symbole.Count} desktop icons to their saved positions (saved on {layout.Erstellt:yyyy-MM-dd} on {layout.Rechner})..."));
         IconErgebnis erg;
         var sid = OperatingSystem.IsWindows() ? DesktopScreenshot.GetInteractiveUser()?.Sid : null;
-        // Nach einem Neustart des Explorers erscheinen Desktop und Symbole erst
-        // nach und nach: laenger warten, und das Oeffnen des Desktops wiederholen.
+        // After an Explorer restart, the desktop and its icons appear only bit by
+        // bit: wait longer and retry opening the desktop.
         var warten = TimeSpan.FromSeconds(neuGestartet ? 25 : 10);
         IconErgebnis? ergebnis = null;
         Exception? letzter = null;
@@ -2595,8 +2585,8 @@ public sealed class BackupService
                             + "Sie wurden ausgelassen - am besten zusammen mit dem Benutzerprofil und den Programmen wiederherstellen.",
                             $"[WARNING] {imProfil.Count} of {erg.Gesamt} icons do not exist on this desktop: {Names(imProfil)}. "
                             + "They were skipped - best restore them together with the user profile and the programs."));
-            // Nicht aus dem Profil: Diese Verknuepfungen legen Programme bei der
-            // Installation an - meist auf dem oeffentlichen Desktop.
+            // Not from the profile: programs create these shortcuts when they are
+            // installed - usually on the public desktop.
             if (fremd.Count > 0)
                 _log(Loc.Tr($"[WARNUNG] {fremd.Count} von {erg.Gesamt} Symbolen fehlen hier und stammen nicht aus dem Benutzerprofil: {Names(fremd)}. "
                             + "Solche Verknüpfungen liegen meist auf dem öffentlichen Desktop (für alle Benutzer) und erscheinen, sobald ihr Programm installiert ist. "
@@ -2613,11 +2603,10 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Schaltet Systemsymbole des Desktops ein - dieselbe Einstellung wie
-    /// "Desktopsymboleinstellungen" (0 = sichtbar). Geschrieben wird in den
-    /// Zweig des ANGEMELDETEN Benutzers: Das Tool laeuft mit
-    /// Administratorrechten, womoeglich unter einem anderen Konto - dessen
-    /// HKEY_CURRENT_USER waere der falsche.
+    /// Turns on desktop system icons - the same setting as "Desktop icon
+    /// settings" (0 = visible). It is written to the key of the SIGNED-IN user:
+    /// the tool runs with administrator rights, possibly under another account
+    /// - whose HKEY_CURRENT_USER would be the wrong one.
     /// </summary>
     private static bool EnableSystemIcons(IReadOnlyList<string> kennungen, string? sid)
     {
@@ -2633,7 +2622,7 @@ public sealed class BackupService
         catch { return false; }
         finally { zweig?.Dispose(); }
 
-        // Dem Explorer Bescheid geben - wie es auch die Einstellungsseite tut.
+        // Notify Explorer - just like the settings page does.
         SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_FLUSH, IntPtr.Zero, IntPtr.Zero);
         return true;
     }
@@ -2644,7 +2633,7 @@ public sealed class BackupService
     [System.Runtime.InteropServices.DllImport("shell32.dll")]
     private static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
 
-    /// <summary>Vergleicht zwei Dateien inhaltlich (Groesse, dann Bytes).</summary>
+    /// <summary>Compares two files by content (size, then bytes).</summary>
     private static bool FilesAreEqual(string a, string b)
     {
         try
@@ -2662,41 +2651,41 @@ public sealed class BackupService
         catch { return false; }
     }
 
-    // ------------------------------------------------------------ App-Install/Update
+    // ------------------------------------------------------------ App install/update
 
-    /// <returns>true, wenn das Programm gerade eben installiert wurde.</returns>
-    /// <param name="auchDa">Weitere Pruefung, falls "App Paths" nichts kennt - etwa die Programmordner.</param>
+    /// <returns>true if the program was installed just now.</returns>
+    /// <param name="auchDa">Additional check in case "App Paths" knows nothing - e.g. the program folders.</param>
     private async Task<bool> InstallApp(string appName, string exeName, string? wingetId, Func<bool>? auchDa = null)
     {
         if (_cancel.IsCancelled) return false;
         _log(Loc.Tr($"[INFO] Prüfe, ob {appName} installiert ist...", $"[INFO] Checking whether {appName} is installed..."));
-        // Fuer alle Benutzer (HKLM) oder - wie Chrome ohne Adminrechte - nur
-        // fuer den Benutzer (HKCU) installiert.
+        // Installed for all users (HKLM) or - like Chrome without admin rights -
+        // for the user only (HKCU).
         var appPathKey = $@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exeName}";
         bool da;
         using (var lm = Registry.LocalMachine.OpenSubKey(appPathKey))
         using (var cu = Registry.CurrentUser.OpenSubKey(appPathKey))
             da = lm != null || cu != null;
-        // "App Paths" teilen sich parallele Installationen: Liefen auf einem PC
-        // Firefox ESR (32 Bit) und die aktuelle Fassung (64 Bit), nimmt das
-        // Deinstallieren der einen den Eintrag mit - die andere ist noch da.
-        // Ohne diese Pruefung installierte winget sie unnoetig noch einmal.
-        if (!da && auchDa is not null) { try { da = auchDa(); } catch { /* dann eben winget */ } }
+        // Parallel installations share "App Paths": if a PC had Firefox ESR
+        // (32 bit) and the current release (64 bit), uninstalling one removes the
+        // entry - the other one is still there. Without this check, winget would
+        // needlessly install it once more.
+        if (!da && auchDa is not null) { try { da = auchDa(); } catch { /* then winget */ } }
         if (da) { _log(Loc.Tr($"[INFO] {appName} ist bereits installiert.", $"[INFO] {appName} is already installed.")); return false; }
 
-        // Edge gehoert zu Windows, fuer ihn gibt es kein Paket.
+        // Edge is part of Windows; there is no package for it.
         if (wingetId is null) return false;
         return await InstallViaWinget(appName, wingetId);
     }
 
     /// <summary>
-    /// Schliesst ein Programm vor dem Kopieren seines Profils - und wartet, bis
-    /// es wirklich beendet ist. Wurde es gerade erst installiert, wird vorher
-    /// kurz abgewartet: Manche Installer (Chrome) starten den Browser nach der
-    /// Installation von selbst, ein paar Sekunden spaeter. Lief er dann waehrend
-    /// des Kopierens, legte er ein frisches, leeres Profil an.
+    /// Closes a program before its profile is copied - and waits until it has
+    /// really exited. If it was installed just now, it waits a moment first:
+    /// some installers (Chrome) start the browser on their own a few seconds
+    /// after installing. Running while the profile is copied, it would create
+    /// a fresh, empty profile.
     /// </summary>
-    /// <returns>false, wenn es sich nicht beenden liess.</returns>
+    /// <returns>false if it could not be closed.</returns>
     private async Task<bool> CloseProgram(string name, bool frischInstalliert, params string[] prozesse)
     {
         if (!OperatingSystem.IsWindows()) return true;
@@ -2710,7 +2699,7 @@ public sealed class BackupService
         return await KillAndWait(TimeSpan.FromSeconds(20), prozesse);
     }
 
-    /// <summary>Laeuft einer dieser Prozesse?</summary>
+    /// <summary>Is one of these processes running?</summary>
     private static bool IsRunning(params string[] prozesse)
     {
         foreach (var name in prozesse)
@@ -2722,14 +2711,14 @@ public sealed class BackupService
                 foreach (var pr in liste) pr.Dispose();
                 if (n > 0) return true;
             }
-            catch { /* naechster */ }
+            catch { /* next one */ }
         }
         return false;
     }
 
     /// <summary>
-    /// Beendet die Prozesse und wartet, bis keiner mehr laeuft - und es auch
-    /// eine Sekunde lang so bleibt (Browser starten Hilfsprozesse nach).
+    /// Kills the processes and waits until none is running - and it stays that
+    /// way for a second (browsers start helper processes again).
     /// </summary>
     private async Task<bool> KillAndWait(TimeSpan hoechstens, params string[] prozesse)
     {
@@ -2747,22 +2736,21 @@ public sealed class BackupService
         }
     }
 
-    /// <returns>true, wenn winget das Programm gerade installiert hat.</returns>
+    /// <returns>true if winget installed the program just now.</returns>
     private async Task<bool> InstallViaWinget(string appName, string wingetId)
     {
         _log(Loc.Tr($"[INFO] Versuche, {appName} via Winget zu installieren...", $"[INFO] Trying to install {appName} via winget..."));
-        // Frueher immer "winget" aus dem Suchpfad - an der Pruefung und der
-        // Reparatur des Winget-Imports vorbei. Scheiterte winget an seiner
-        // Paketquelle, scheiterte die Installation hier stumm mit einer Zahl.
+        // This used to always run "winget" from the search path - bypassing the
+        // check and the repair of the winget import. If winget failed on its
+        // package source, the install failed here silently with a number.
         var r = Winget is not null
             ? await Winget.InstallAsync(wingetId)
             : await _runner.RunAsync("winget", $"install --id {wingetId} -e --accept-package-agreements --accept-source-agreements");
 
-        // Frueher stand hier immer "Installation abgeschlossen" - auch wenn
-        // winget gar nicht startete. Bewusst eine WARNUNG und kein FEHLER: Das
-        // Profil selbst wird trotzdem zurueckgeschrieben, und darum geht es
-        // bei dieser Aktion. Nur muss der Benutzer wissen, dass das Programm
-        // noch fehlt.
+        // This used to always say "installation finished" - even if winget did
+        // not start at all. Deliberately a WARNING, not an ERROR: the profile
+        // itself is restored anyway, and that is what this action is about. The
+        // user just needs to know that the program is still missing.
         if (!r.Started)
             _log(Loc.Tr($"[WARNUNG] winget konnte nicht gestartet werden ({r.StartError}). {appName} bitte von Hand installieren - das Profil wird trotzdem zurückgeschrieben.",
                         $"[WARNING] winget could not be started ({r.StartError}). Please install {appName} manually - the profile is restored anyway."));

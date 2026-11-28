@@ -5,22 +5,22 @@ using System.Linq;
 namespace WindowsDaSiTool.Services;
 
 /// <summary>
-/// Stellt zusammen, WAS beim Sichern eines Benutzerprofils ausgelassen wird.
+/// Puts together WHAT is left out when a user profile is backed up.
 ///
-/// Bewusst getrennt von <see cref="BackupService"/> und ohne jede Abhaengigkeit:
-/// Diese Entscheidung laesst sich dadurch pruefen, ohne dass dabei irgendetwas
-/// kopiert wird - dieselbe Trennung wie zwischen Katalog und Ausfuehrung.
+/// Deliberately separate from <see cref="BackupService"/> and free of any
+/// dependency: this way the decision can be tested without copying
+/// anything - the same split as between catalog and execution.
 ///
-/// Dieselbe Liste benutzen das Backup und die Groessenschaetzung. Liefen sie
-/// auseinander, zeigte die Ampel eine Zahl an, die mit dem spaeteren Ergebnis
-/// nichts zu tun haette.
+/// The backup and the size estimate use the same list. If they drifted
+/// apart, the traffic light would show a number that has nothing to do with
+/// the later result.
 /// </summary>
 public static class ProfileExcludes
 {
     /// <summary>
-    /// Altlasten aus Windows XP. Es sind Verknuepfungspunkte (Junctions), die
-    /// auf andere Stellen im Profil zeigen - ohne Ausschluss laeuft robocopy
-    /// im Kreis. Sie bleiben IMMER draussen, egal was angehakt ist.
+    /// Leftovers from Windows XP. They are junctions pointing to other places in
+    /// the profile - without excluding them, robocopy runs in circles. They are
+    /// ALWAYS left out, no matter what is checked.
     /// </summary>
     private static readonly string[] AlwaysExcluded =
     {
@@ -31,10 +31,9 @@ public static class ProfileExcludes
     };
 
     /// <summary>
-    /// Zwischenspeicher innerhalb von AppData. Sie fliegen auch dann raus,
-    /// wenn AppData ausdruecklich mitgesichert wird: Es sind Dateien, die sich
-    /// jederzeit neu anlegen, zusammen aber mehrere Gigabyte wiegen. Sie
-    /// mitzunehmen kostet nur Zeit und Platz.
+    /// Caches inside AppData. They are dropped even when AppData is explicitly
+    /// included: these files are recreated at any time, but together they weigh
+    /// several gigabytes. Taking them along only costs time and space.
     /// </summary>
     private static readonly string[] AppDataCaches =
     {
@@ -45,7 +44,7 @@ public static class ProfileExcludes
         @"AppData\Local\Packages\Microsoft.Windows.Search_cw5n1h2txyewy"
     };
 
-    /// <summary>Die Datenordner der Chromium-Browser in AppData.</summary>
+    /// <summary>The data folders of the Chromium browsers in AppData.</summary>
     private static readonly string[] ChromiumUserData =
     {
         @"AppData\Local\Google\Chrome\User Data",
@@ -54,35 +53,34 @@ public static class ProfileExcludes
     };
 
     /// <summary>
-    /// Zwischenspeicher der Grafikkarte direkt unter "User Data". Sie passen
-    /// ohnehin nur zu Grafikkarte und Treiber des alten Rechners, und solange
-    /// der Browser im Hintergrund laeuft, sind sie gesperrt.
+    /// Graphics card caches directly under "User Data". They only fit the old
+    /// computer's graphics card and driver anyway, and while the browser runs
+    /// in the background they are locked.
     /// </summary>
     private static readonly string[] ChromiumGemeinsameCaches = { "GrShaderCache", "ShaderCache", "GraphiteDawnCache" };
 
-    /// <summary>Zwischenspeicher im Standardprofil ("Default") eines Chromium-Browsers.</summary>
+    /// <summary>Caches in the default profile ("Default") of a Chromium browser.</summary>
     private static readonly string[] ChromiumProfilCaches = { "Cache", "Code Cache", "GPUCache", "DawnWebGPUCache", "DawnGraphiteCache" };
 
     /// <summary>
-    /// Zustand von Windows-Bestandteilen, der nur zu diesem einen Rechner und
-    /// dieser einen Fassung passt. Auf einem anderen Rechner richtet er
-    /// Schaden an, statt zu helfen:
+    /// State of Windows components that only fits this one computer and this
+    /// one version. On another computer it does harm instead of helping:
     ///
-    /// - App-Installer (winget): seine Datenbanken. Stammen sie von einer
-    ///   neueren winget-Fassung als der auf dem Zielrechner, scheitert danach
-    ///   JEDE Installation mit 0x8A150009 ("Cannot write to index; it is a
-    ///   higher schema version") - so geschehen nach einer Wiederherstellung
-    ///   mit AppData auf einen frisch eingerichteten Rechner.
-    /// - Windows-Shell (Suche, Widgets, Startmenue): ihr App-Index und ihre
-    ///   eingebettete Browser-Ansicht. Beides legt Windows selbst neu an, und
-    ///   im laufenden Betrieb ist es ohnehin gesperrt.
-    /// - "WindowsApps": die App-Aliase (winget.exe, python.exe ...), die
-    ///   Windows fuer installierte Apps anlegt. Es sind Verweise, keine
-    ///   Dateien - lesen laesst sich keiner (Fehler 1920), und auf dem neuen
-    ///   Rechner gehoeren sie zu den dort installierten Apps.
+    /// - App Installer (winget): its databases. If they come from a newer winget
+    ///   version than the one on the target computer, EVERY install fails
+    ///   afterwards with 0x8A150009 ("Cannot write to index; it is a higher
+    ///   schema version") - as happened after a restore with AppData onto a
+    ///   freshly set up computer.
+    /// - Windows shell (search, widgets, Start menu): its app index and its
+    ///   embedded browser view. Windows recreates both itself, and they are
+    ///   locked while running anyway.
+    /// - "WindowsApps": the app aliases (winget.exe, python.exe ...) Windows
+    ///   creates for installed apps. They are reparse points, not files - none
+    ///   can be read (error 1920), and on the new computer they belong to the
+    ///   apps installed there.
     ///
-    /// Sie bleiben in beide Richtungen draussen: beim Sichern und - auch fuer
-    /// Sicherungen von frueher, die sie noch enthalten - beim Zurueckschreiben.
+    /// They stay out in both directions: on backup and - also for older backups
+    /// that still contain them - on restore.
     /// </summary>
     private static readonly string[] MaschinenZustand =
     {
@@ -94,16 +92,16 @@ public static class ProfileExcludes
     };
 
     /// <summary>
-    /// Alles innerhalb von AppData, was nie mitgenommen wird - relativ zum
-    /// Profil. Oeffentlich fuer die Pruefungen.
+    /// Everything inside AppData that is never taken along - relative to the
+    /// profile. Public for the tests.
     /// </summary>
     public static IEnumerable<string> AppDataExcludes()
     {
         foreach (var c in AppDataCaches) yield return c;
         foreach (var browser in ChromiumUserData)
         {
-            // Bewusst mit "\\" statt Path.Combine: Die Angaben sind Windows-Pfade,
-            // wie die Eintraege oben - auch in der Pruefumgebung unter Linux.
+            // Deliberately "\\" instead of Path.Combine: these are Windows paths, like
+            // the entries above - also in the Linux test environment.
             foreach (var c in ChromiumGemeinsameCaches) yield return browser + "\\" + c;
             foreach (var c in ChromiumProfilCaches) yield return browser + "\\Default\\" + c;
         }
@@ -111,25 +109,25 @@ public static class ProfileExcludes
     }
 
     /// <summary>
-    /// Die Registry-Dateien des Profils. Sie sind fuer das Kopieren gesperrt,
-    /// gehoeren an genau diesen Rechner und duerfen NIE in ein anderes Profil
-    /// geschrieben werden - das ueberschriebe die Einstellungen des Zielbenutzers.
+    /// The profile's registry files. They are locked for copying, belong to
+    /// exactly this computer and must NEVER be written into another profile -
+    /// that would overwrite the target user's settings.
     /// </summary>
     public static readonly string[] RegistryHiveFiles = { "NTUSER.DAT*", "ntuser.ini", "ntuser.pol", "UsrClass.dat*" };
 
     /// <summary>
-    /// robocopy-Schalter fuer das SICHERN aus dem Profil (ohne Quelle, Ziel, /XD).
+    /// robocopy switches for BACKING UP from the profile (without source,
+    /// target, /XD).
     ///
-    /// Frueher stand hier zusaetzlich /XA:SH. Das liess JEDE versteckte oder
-    /// System-Datei aus - ohne Meldung im Protokoll. Betroffen waren nicht nur
-    /// die Registry-Dateien, um die es ging, sondern auch Benutzerdaten:
-    /// versteckte Dateien und Inhalte von Ordnern, die Windows als
-    /// Systemordner kennzeichnet (angepasste Ordner mit eigenem Symbol oder
-    /// eigener Ansicht). Jetzt werden nur die Registry-Dateien gezielt
-    /// ausgelassen.
+    /// This used to include /XA:SH as well. That skipped EVERY hidden or system
+    /// file - without a word in the log. Affected were not only the registry
+    /// files it was meant for, but user data as well: hidden files and the
+    /// contents of folders Windows marks as system folders (customized folders
+    /// with their own icon or view). Now only the registry files are excluded,
+    /// explicitly.
     ///
-    /// /XJ bleibt: Verknuepfungspunkte wie "Eigene Bilder" in Dokumente zeigen
-    /// auf andere Stellen des Profils, robocopy liefe sonst im Kreis.
+    /// /XJ stays: junctions like "My Pictures" in Documents point to other
+    /// places in the profile; robocopy would run in circles otherwise.
     /// </summary>
     public static List<string> BackupSwitches()
     {
@@ -139,14 +137,14 @@ public static class ProfileExcludes
     }
 
     /// <summary>
-    /// robocopy-Schalter fuer das ZURUECKSCHREIBEN ins Profil.
+    /// robocopy switches for RESTORING into the profile.
     ///
-    /// /COPY:DAT statt /COPYALL: Kopiert werden Inhalt, Attribute und
-    /// Zeitstempel - die Zugriffsrechte NICHT. Neue Dateien erben so die Rechte
-    /// des Zielprofils und gehoeren dem Benutzer, in dessen Profil sie landen.
-    /// /COPYALL uebertrug die Rechte des Sicherungsmediums (die Sicherung
-    /// selbst speichert keine) - auf einem anderen Rechner oder fuer einen
-    /// anderen Benutzer sind das fremde Rechte.
+    /// /COPY:DAT instead of /COPYALL: content, attributes and timestamps are
+    /// copied - the permissions are NOT. New files thus inherit the target
+    /// profile's permissions and belong to the user whose profile they land in.
+    /// /COPYALL carried over the permissions of the backup medium (the backup
+    /// itself stores none) - on another computer or for another user, those are
+    /// foreign permissions.
     /// </summary>
     public static List<string> RestoreSwitches()
     {
@@ -156,17 +154,17 @@ public static class ProfileExcludes
     }
 
     /// <summary>
-    /// Baut die Liste der ausgeschlossenen Ordner als vollstaendige Pfade.
+    /// Builds the list of excluded folders as full paths.
     /// </summary>
-    /// <param name="userDir">Das zu sichernde Benutzerprofil.</param>
+    /// <param name="userDir">The user profile to back up.</param>
     /// <param name="includeAppData">
-    /// true: AppData wird mitgesichert (die Zwischenspeicher oben bleiben
-    /// trotzdem draussen). false: AppData bleibt komplett aussen vor.
+    /// true: AppData is backed up as well (the caches above still stay out).
+    /// false: AppData is left out completely.
     /// </param>
     /// <param name="includeCloud">
-    /// true: die erkannten Cloud-Ordner werden mitgesichert. false: sie
-    /// bleiben draussen - sonst zoege das Backup Daten mit, die ohnehin beim
-    /// Anbieter liegen.
+    /// true: the detected cloud folders are backed up as well. false: they stay
+    /// out - otherwise the backup would drag along data that lives at the
+    /// provider anyway.
     /// </param>
     public static List<string> Build(string userDir, bool includeAppData = false, bool includeCloud = false)
     {
@@ -177,8 +175,8 @@ public static class ProfileExcludes
             excluded.Add(Path.Combine(userDir, "AppData"));
         }
 
-        // Die Zwischenspeicher immer - bei ausgeschlossenem AppData sind sie
-        // ohnehin schon mit drin, doppelt genannt stoert robocopy nicht.
+        // The caches always - with AppData excluded they are covered already, and
+        // naming them twice does not bother robocopy.
         excluded.AddRange(AppDataExcludes().Select(d => Path.Combine(userDir, d)));
 
         if (!includeCloud)
@@ -186,21 +184,21 @@ public static class ProfileExcludes
             excluded.AddRange(CloudProviders.Detect(userDir).Select(c => c.Path));
         }
 
-        // Dublettenfrei: dieselbe Angabe zweimal an robocopy zu uebergeben ist
-        // zwar harmlos, macht die Befehlszeile aber unnoetig lang.
+        // Without duplicates: passing the same entry to robocopy twice is harmless,
+        // but makes the command line needlessly long.
         return excluded.Distinct(System.StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>
-    /// Laeuft das Tool selbst aus dem Zielprofil heraus - typisch:
-    /// "Desktop\WindowsDaSiTool.exe" -, die Datei an derselben Stelle der
-    /// Sicherung. Sie wird beim Zurueckschreiben ausgelassen: Die laufende
-    /// Programmdatei laesst sich ohnehin nicht ueberschreiben (Fehler 32),
-    /// und in der Sicherung liegt meist eine aeltere Fassung. Sonst null.
+    /// If the tool itself runs from inside the target profile - typically
+    /// "Desktop\WindowsDaSiTool.exe" -, the file at the same place in the
+    /// backup. It is skipped on restore: the running executable cannot be
+    /// overwritten anyway (error 32), and the backup usually holds an older
+    /// version. Otherwise null.
     /// </summary>
-    /// <param name="zielProfil">Das Profil, in das zurueckgeschrieben wird.</param>
-    /// <param name="sicherungsProfil">Der Ordner "Benutzerprofil" der Sicherung.</param>
-    /// <param name="programmPfad">Pfad des laufenden Programms (Environment.ProcessPath).</param>
+    /// <param name="zielProfil">The profile being restored into.</param>
+    /// <param name="sicherungsProfil">The backup's "Benutzerprofil" folder.</param>
+    /// <param name="programmPfad">Path of the running program (Environment.ProcessPath).</param>
     public static string? RunningProgramInBackup(string zielProfil, string sicherungsProfil, string? programmPfad)
     {
         if (string.IsNullOrWhiteSpace(programmPfad) || !IsInside(programmPfad, zielProfil) || SameFolder(programmPfad, zielProfil))
@@ -214,12 +212,12 @@ public static class ProfileExcludes
     }
 
     /// <summary>
-    /// true, wenn <paramref name="path"/> derselbe Ordner wie
-    /// <paramref name="baseDir"/> ist oder darunter liegt.
+    /// true if <paramref name="path"/> is the same folder as
+    /// <paramref name="baseDir"/> or lies below it.
     ///
-    /// Bewusst nicht einfach StartsWith: "C:\Users\Maximilian" beginnt mit
-    /// "C:\Users\Max", liegt aber nicht darin. Deshalb wird gegen den Ordner
-    /// MIT abschliessendem Trennzeichen verglichen.
+    /// Deliberately not just StartsWith: "C:\Users\Maximilian" starts with
+    /// "C:\Users\Max" but is not inside it. So the comparison is against the
+    /// folder WITH a trailing separator.
     /// </summary>
     public static bool IsInside(string path, string baseDir)
     {
@@ -227,7 +225,7 @@ public static class ProfileExcludes
 
         static string Normal(string p)
         {
-            try { p = Path.GetFullPath(p); } catch { /* so lassen, wie er ist */ }
+            try { p = Path.GetFullPath(p); } catch { /* leave it as it is */ }
             return p.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         }
 
@@ -238,8 +236,8 @@ public static class ProfileExcludes
     }
 
     /// <summary>
-    /// true, wenn beide Angaben denselben Ordner meinen - unabhaengig von
-    /// Gross-/Kleinschreibung und abschliessendem Trennzeichen.
+    /// true if both mean the same folder - regardless of casing and a trailing
+    /// separator.
     /// </summary>
     public static bool SameFolder(string a, string b) => IsInside(a, b) && IsInside(b, a);
 }
